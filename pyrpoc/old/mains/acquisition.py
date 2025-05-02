@@ -1,10 +1,10 @@
 import os
 from tkinter import messagebox
-from pyrpoc.helpers.utils import generate_data, convert
-from pyrpoc.mains.display import display_data
-from pyrpoc.helpers.galvo_funcs import Galvo
-from pyrpoc.helpers.run_image_2d import run_scan
-import pyrpoc.helpers.prior_stage.functions as prior
+from pyrpoc.old.helpers.utils import generate_data, convert
+from pyrpoc.old.mains.display import display_data
+from pyrpoc.old.helpers.galvo_funcs import Galvo
+from pyrpoc.old.helpers.run_image_2d import run_scan
+import pyrpoc.old.helpers.prior_stage.functions as prior
 from PIL import Image
 import numpy as np
 

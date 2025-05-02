@@ -5,8 +5,8 @@ from PyQt5.QtWidgets import (
 )
 from PyQt5.QtGui import QPixmap, QImage, QPainter, QColor, QPen
 from PyQt5.QtCore import Qt, QTimer
-from pyrpoc.mains import acquisition
-from pyrpoc.helpers.prior_stage.functions import *
+from pyrpoc.old.mains import acquisition
+from pyrpoc.old.helpers.prior_stage.functions import *
 import numpy as np
 import random
 import json

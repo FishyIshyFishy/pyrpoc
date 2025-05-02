@@ -1,10 +1,20 @@
-def main():
-    import tkinter as tk
-    from pyrpoc.mains.gui import GUI
+import sys
 
-    root = tk.Tk()
-    app = GUI(root)
-    root.mainloop()
+from PyQt6.QtWidgets import QVBoxLayout, QApplication, QHBoxLayout, QWidget, QPushButton
 
-if __name__=='__main__':
-    main()
+class Window(QWidget):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle('ex')
+        layout = QVBoxLayout()
+        layout.addWidget(QPushButton('asdasd'))
+        layout.addWidget(QPushButton('center'))
+        layout.addWidget(QPushButton('right'))
+        self.setLayout(layout)
+        print(self.children())
+
+if __name__ == '__main__':
+    app = QApplication(sys.argv)
+    window = Window()
+    window.show()
+    sys.exit(app.exec())

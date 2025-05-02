@@ -2,7 +2,7 @@ from ctypes import WinDLL, create_string_buffer
 import os
 import time
 import numpy as np
-from pyrpoc.mains import acquisition
+from pyrpoc.old.mains import acquisition
 import cv2
 
 DLL_PATH = os.path.join(os.path.dirname(__file__), "PriorScientificSDK.dll")

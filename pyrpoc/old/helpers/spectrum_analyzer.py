@@ -9,7 +9,7 @@ from PyQt5.QtWidgets import (
 )
 from PyQt5.QtCore import Qt, QTimer
 import pyqtgraph as pg
-from pyrpoc.mains import acquisition
+from pyrpoc.old.mains import acquisition
 
 CALIBRATION_PATH = os.path.join(os.path.dirname(__file__), '..', 'metadata', 'spectral_calibration.json')
 

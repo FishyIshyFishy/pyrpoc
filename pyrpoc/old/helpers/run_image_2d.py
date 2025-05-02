@@ -2,7 +2,7 @@ import nidaqmx
 from nidaqmx.constants import AcquisitionType, LineGrouping
 from nidaqmx.errors import DaqWarning
 import numpy as np
-from pyrpoc.helpers.galvo_funcs import Galvo
+from pyrpoc.old.helpers.galvo_funcs import Galvo
 import matplotlib.pyplot as plt
 from PIL import Image, ImageTk, ImageDraw, ImageOps
 import warnings
