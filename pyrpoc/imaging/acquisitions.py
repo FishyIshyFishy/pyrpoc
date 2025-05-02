@@ -65,7 +65,7 @@ things to check in each class
 2. have a flag, self.verified, that confirms that all instruments are safely connected when the first acquisition is done
     if self.verified is verified, then dont perform the check subsequently
 '''
-
+    
 class Confocal(Acquisition):
     def __init__(self):
         super().__init__(self)
