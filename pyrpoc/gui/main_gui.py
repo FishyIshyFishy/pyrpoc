@@ -25,7 +25,14 @@ class StateSignalBus(QObject):
 app_state = AppState()
 signals = StateSignalBus()
 
-######### GUI SUBWIDGETS ###############3
+
+
+
+
+
+########################################
+######### GUI SUBWIDGETS ###############
+########################################
 class ModalitySelector(QWidget):
     def __init__(self):
         super().__init__()
@@ -57,18 +64,38 @@ class StatusBar(QWidget):
     def update_status(self, new_modality):
         self.label.setText(f'Modality changed to {new_modality}')
 
-class GlobalControls(QWidget):
+
+
+
+
+
+########################################
+######### GUI MAIN PANELS ###############
+########################################
+
+class TopPanel(QWidget):
+    def __init__(self):
+        super().__init__()
+        layout = QHBoxLayout()
+
+        self.status = StatusBar()
+        layout.addWidget(self.status)
+        self.setLayout(layout)
+
+class SettingsPanel(QWidget):
     def __init__(self):
         super().__init__()
         layout = QVBoxLayout()
-        layout.addWidget(QLabel('Global Controls Placeholder'))
-        layout.addStretch()
+
+        self.selector = ModalitySelector()
+        layout.addWidget(self.selector)
         self.setLayout(layout)
 
 class DisplayPanel(QWidget):
     def __init__(self):
         super().__init__()
         layout = QVBoxLayout()
+        
         self.label = QLabel('Image Display Here')
         layout.addWidget(self.label)
         self.setLayout(layout)
@@ -81,38 +108,40 @@ class RPOCPanel(QWidget):
     def __init__(self):
         super().__init__()
         layout = QVBoxLayout()
-        layout.addWidget(QLabel('RPOC Control Panel'))
-        layout.addStretch()
+
+        layout.addWidget(QLabel('RPOC Controls placeholder'))
         self.setLayout(layout)
         
 
-########## MAIN GUI WINDOW ##########3
+
+
+
+#####################################
+########## MAIN GUI WINDOW ###########
+#####################################
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle('pyrpoc')
         self.setGeometry(100, 100, 1200, 800)
 
-        top_bar = QHBoxLayout()
-        self.selector = ModalitySelector()
-        self.status = StatusBar()
-        top_bar.addWidget(self.selector)
-        top_bar.addStretch()
-        top_bar.addWidget(self.status)
+        # top bar config
+        top_bar = TopPanel()
 
+        # main section of GUI config
         splitter = QSplitter(Qt.Orientation.Horizontal)
-        self.left_panel = GlobalControls()
-        self.center_display = DisplayPanel()
-        self.right_panel = RPOCPanel()
-
-        splitter.addWidget(self.left_panel)
-        splitter.addWidget(self.center_display)
-        splitter.addWidget(self.right_panel)
+        left_widget = SettingsPanel() 
+        splitter.addWidget(left_widget) # left section of the splitter - global settings
+        mid_layout = DisplayPanel()
+        splitter.addWidget(mid_layout) # mid section of splitter - display stuff
+        right_layout = RPOCPanel()
+        splitter.addWidget(right_layout) # right section of splitter - rpoc settings
         splitter.setSizes([200,800,200])
 
+        # main gui organization - top bar above the splitter
         wrapper = QWidget()
         layout = QVBoxLayout()
-        layout.addLayout(top_bar)
+        layout.addWidget(top_bar)
         layout.addWidget(splitter)
         wrapper.setLayout(layout)
 
