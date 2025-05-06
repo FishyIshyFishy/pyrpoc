@@ -1,41 +1,20 @@
 import numpy as np
-from PyQt6.QtWidgets import (QApplication, QVBoxLayout, QHBoxLayout, QMainWindow,
-                             QLabel, QWidget, QComboBox, QSplitter)
+from PyQt6.QtWidgets import QApplication, QVBoxLayout, QHBoxLayout, QMainWindow, \
+                             QLabel, QWidget, QComboBox, QSplitter
 from PyQt6.QtCore import Qt, QObject, pyqtSignal
+from pyrpoc.gui.gui_handler import AppState, StateSignalBus
 import sys
-
-######### HELPER CLASSES ###############3
-class AppState:
-    '''
-    APP STATE CLASS
-    holds all of the important signaled variables
-    '''
-    def __init__(self):
-        self.modality = 'widefield'
-        self.current_data = None
-
-class StateSignalBus(QObject):
-    '''
-    SIGNAL COMMUNICATION CLASS
-    create all the signals that will be transmitted multi-functionally
-    '''
-    modality_changed = pyqtSignal(str) # emits when the dropdown for the modality is changed
-    data_updated = pyqtSignal(object) # emits when data acquisition is complete
-
-app_state = AppState()
-signals = StateSignalBus()
-
-
-
-
 
 
 ########################################
 ######### GUI SUBWIDGETS ###############
 ########################################
 class ModalitySelector(QWidget):
-    def __init__(self):
+    def __init__(self, app_state, signals):
         super().__init__()
+        self.app_state = app_state
+        self.signals = signals
+
         layout = QHBoxLayout()
         self.label = QLabel('Modality:')
         self.dropdown = QComboBox()
@@ -48,18 +27,21 @@ class ModalitySelector(QWidget):
         self.setLayout(layout)
 
     def on_modality_changed(self, text):
-        app_state.modality = text
-        signals.modality_changed.emit(text)
+        self.signals.modality_changed.emit(text)
 
 class StatusBar(QWidget):
-    def __init__(self):
+    def __init__(self, app_state, signals):
         super().__init__()
+        self.app_state = app_state
+        self.signals = signals
+
         self.label = QLabel('Idle')
         layout = QHBoxLayout()
         layout.addWidget(self.label)
         layout.addStretch()
         self.setLayout(layout)
-        signals.modality_changed.connect(self.update_status)
+
+        self.signals.modality_changed.connect(self.update_status)
 
     def update_status(self, new_modality):
         self.label.setText(f'Modality changed to {new_modality}')
@@ -74,39 +56,52 @@ class StatusBar(QWidget):
 ########################################
 
 class TopPanel(QWidget):
-    def __init__(self):
+    def __init__(self, app_state, signals):
         super().__init__()
+        self.app_state = app_state
+        self.signals = signals
+
         layout = QHBoxLayout()
 
-        self.status = StatusBar()
+        self.status = StatusBar(app_state, signals)
         layout.addWidget(self.status)
         self.setLayout(layout)
 
 class SettingsPanel(QWidget):
-    def __init__(self):
+    def __init__(self, app_state, signals):
         super().__init__()
+        self.app_state = app_state
+        self.signals = signals
+
         layout = QVBoxLayout()
 
-        self.selector = ModalitySelector()
+        self.selector = ModalitySelector(app_state, signals)
         layout.addWidget(self.selector)
         self.setLayout(layout)
 
 class DisplayPanel(QWidget):
-    def __init__(self):
+    def __init__(self, app_state, signals):
         super().__init__()
+        self.app_state = app_state
+        self.signals = signals
+
         layout = QVBoxLayout()
-        
+
         self.label = QLabel('Image Display Here')
         layout.addWidget(self.label)
         self.setLayout(layout)
-        signals.data_updated.connect(self.update_display)
+
+        self.signals.data_updated.connect(self.update_display)
 
     def update_display(self, data):
         self.label.setText('New Data Received')
 
 class RPOCPanel(QWidget):
-    def __init__(self):
+    def __init__(self, app_state, signals):
         super().__init__()
+        self.app_state = app_state
+        self.signals = signals
+        
         layout = QVBoxLayout()
 
         layout.addWidget(QLabel('RPOC Controls placeholder'))
@@ -120,21 +115,23 @@ class RPOCPanel(QWidget):
 ########## MAIN GUI WINDOW ###########
 #####################################
 class MainWindow(QMainWindow):
-    def __init__(self):
+    def __init__(self, app_state, signals):
         super().__init__()
+        self.app_state = app_state
+        self.signals = signals
         self.setWindowTitle('pyrpoc')
         self.setGeometry(100, 100, 1200, 800)
 
         # top bar config
-        top_bar = TopPanel()
+        top_bar = TopPanel(app_state, signals)
 
         # main section of GUI config
         splitter = QSplitter(Qt.Orientation.Horizontal)
-        left_widget = SettingsPanel() 
+        left_widget = SettingsPanel(app_state, signals) 
         splitter.addWidget(left_widget) # left section of the splitter - global settings
-        mid_layout = DisplayPanel()
+        mid_layout = DisplayPanel(app_state, signals)
         splitter.addWidget(mid_layout) # mid section of splitter - display stuff
-        right_layout = RPOCPanel()
+        right_layout = RPOCPanel(app_state, signals)
         splitter.addWidget(right_layout) # right section of splitter - rpoc settings
         splitter.setSizes([200,800,200])
 
@@ -148,7 +145,11 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(wrapper)
 
 if __name__ == '__main__':
+    app_state = AppState() # can initialize GUI configs with this
+    signals = StateSignalBus()
+    signals.bind_controllers()
+
     app = QApplication(sys.argv)
-    win = MainWindow()
+    win = MainWindow(app_state, signals)
     win.show()
     sys.exit(app.exec())

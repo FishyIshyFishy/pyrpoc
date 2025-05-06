@@ -1,20 +1,14 @@
 import sys
-
-from PyQt6.QtWidgets import QVBoxLayout, QApplication, QHBoxLayout, QWidget, QPushButton
-
-class Window(QWidget):
-    def __init__(self):
-        super().__init__()
-        self.setWindowTitle('ex')
-        layout = QVBoxLayout()
-        layout.addWidget(QPushButton('asdasd'))
-        layout.addWidget(QPushButton('center'))
-        layout.addWidget(QPushButton('right'))
-        self.setLayout(layout)
-        print(self.children())
+from gui.gui_handler import AppState, StateSignalBus
+from gui.gui import MainWindow
+from PyQt6.QtWidgets import QApplication
 
 if __name__ == '__main__':
+    app_state = AppState()
+    signals = StateSignalBus()
+    signals.bind_controllers()
+
     app = QApplication(sys.argv)
-    window = Window()
-    window.show()
+    win = MainWindow(app_state, signals)
+    win.show()
     sys.exit(app.exec())
