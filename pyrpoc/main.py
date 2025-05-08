@@ -6,7 +6,7 @@ from PyQt6.QtWidgets import QApplication
 if __name__ == '__main__':
     app_state = AppState()
     signals = StateSignalBus()
-    signals.bind_controllers()
+    signals.bind_controllers(app_state)
 
     app = QApplication(sys.argv)
     win = MainWindow(app_state, signals)
