@@ -15,8 +15,13 @@ class Instrument(abc.ABC):
     def get_instrument_info(self):
         return f'<{self.__class__.__name__}: {self.name} on {self.instr_chan}. \n io_type: {self.instr_io_type} \n instr_chan_type: {self.instr_chan_type}'
 
+class Simulator(Instrument):
+    def __init__(self, name, io_type, chan_type, chan):
+        super().__init__(name, io_type, chan_type, chan)
+        pass
+
 class Galvo(Instrument):
-    def __init__(self):
+    def __init__(self, numsteps_x, numsteps_y, amp_x, amp_y, ):
         super().__init__()
         pass  
 

@@ -1,7 +1,7 @@
 import numpy as np
 import nidaqmx
 import abc
-
+from pyrpoc.imaging.instruments import *
 
 class Acquisition(abc.ABC):
     def __init__(self):
@@ -30,8 +30,6 @@ class Acquisition(abc.ABC):
         '''
         set up widefield or confocal as needed
         '''
-        imaging_object = ConfocalImage() # or WidefieldImage
-        return imaging_object
 
     @abc.abstractmethod
     def perform_acquisition(self):
@@ -47,16 +45,11 @@ class Acquisition(abc.ABC):
         '''
         data = None
         return data
-
-
-class ConfocalImage:
+    
+class RPOCHandler():
     def __init__(self):
-        pass
-
-class WidefieldImage:
-    def __init__(self):
-        pass
-
+        self.script_chans = {'port0/line4': 'line4.py', 'port0/line5': 'line5.py'}
+        self.static_chans = {'port0/line6': 'line4.py', 'port0/line5': 'line5.py'}
 
 
 '''
@@ -65,11 +58,25 @@ things to check in each class
 2. have a flag, self.verified, that confirms that all instruments are safely connected when the first acquisition is done
     if self.verified is verified, then dont perform the check subsequently
 '''
-    
-class Confocal(Acquisition):
-    def __init__(self):
+
+class Simulated(Acquisition):
+    def __init__(self, input_chans: list[str]):
         super().__init__(self)
         pass
+
+    def perform_acquisition(self):
+        return super().perform_acquisition()
+    
+
+
+
+
+
+class Confocal(Acquisition):
+    def __init__(self, galvo: Galvo, input_chans: list[str]):
+        super().__init__(self)
+        pass
+        
 
 class Widefield(Acquisition):
     def __init__(self):
