@@ -7,7 +7,20 @@ class AppState:
     holds all of the important signaled variables
     '''
     def __init__(self):
-        self.modality = 'widefield'
+        self.modality = 'widefield' 
+        self.instruments = { # list of possible instruments, will add as needed
+            'galvo': None,
+            'daq_input': [],
+            'tcspc_input': []
+            } 
+        self.acquisition_parameters = {
+            'num_frames': None,
+        }
+        self.display_parameters = {
+            'overlay': True,
+        }
+            
+
         self.current_data = None
 
 class StateSignalBus(QObject):
@@ -50,8 +63,27 @@ def handle_continuous_acquisition(app_state):
     return 0
 
 def handle_single_acquisition(app_state):
+    # TODO: figure out how i need to handle copying of stuff, use deepcopy?
+    # TODO: make the prints just statusbar updates
     modality = app_state.modality
+    instruments = app_state.instruments
+    parameters = app_state.parameters
+
+    # for each case, the structure is:
+    # try: copy the variables from the current app_state
+    # try: create the acquisition class instance with those variables
     match modality:
+        case 'simulated':
+            try: 
+                x_pixels = parameters.x_pixels
+                y_pixels = parameters.y_pixels
+            except Exception as e:
+                print(f'Error getting parameter values: {e}')    
+            
+            try:
+                acquisition = Simulated()
+            except Exception as e:
+                print(f'Error in instantiating Simulated(): {e}')
         case 'widefield':
             acquisition = Widefield()
         case 'confocal':
@@ -60,8 +92,6 @@ def handle_single_acquisition(app_state):
             acquisition = Mosaic()
         case 'zscan':
             acquisition = ZScan()
-        case 'simulated':
-            acquisition = Simulated()
         case 'custom':
             acquisition = Custom()
         case _:

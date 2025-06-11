@@ -6,10 +6,15 @@ from PyQt6.QtCore import Qt
 from pyrpoc.gui.gui_handler import AppState, StateSignalBus
 import sys
 
+# DEV_BORDER_STYLE = """
+#     QWidget {
+#         border: 2px solid #FF0000;
+#         border-radius: 4px;
+#         margin: 2px;
+#     }
+# """
 DEV_BORDER_STYLE = """
     QWidget {
-        border: 2px solid #FF0000;
-        border-radius: 4px;
         margin: 2px;
     }
 """
@@ -26,7 +31,7 @@ class TopBar(QWidget):
         self.setStyleSheet(DEV_BORDER_STYLE)
         self.setFixedHeight(100)  # Set a fixed height for the top bar
         layout = QHBoxLayout()
-        layout.setContentsMargins(5, 5, 5, 5)  # Reduce margins to make it more compact
+        layout.setContentsMargins(5, 5, 5, 5) 
 
         # two buttons for loading exisitng AppState configs from .json, and saving
         config_widget = QWidget()
@@ -66,9 +71,9 @@ class TopBar(QWidget):
         stop_btn.clicked.connect(signals.stop_btn_clicked.emit)
         controls_layout.addWidget(stop_btn)
 
-        # Set fixed size for icon buttons to make them square
-        for btn in [continuous_btn, single_btn, stop_btn]:
-            btn.setFixedSize(32, 32)
+        # # Set fixed size for icon buttons to make them square
+        # for btn in [continuous_btn, single_btn, stop_btn]:
+        #     btn.setFixedSize(32, 32)
 
         controls_widget.setLayout(controls_layout)
         layout.addWidget(controls_widget)
@@ -83,7 +88,7 @@ class TopBar(QWidget):
 
         console_layout.addWidget(console)
         console_widget.setLayout(console_layout)
-        layout.addWidget(console_widget, stretch=1)  # Give console widget stretch to take remaining space
+        layout.addWidget(console_widget, stretch=1) 
 
         self.setLayout(layout)
 
@@ -115,37 +120,30 @@ class InstrumentControls(QWidget):
         self.app_state = app_state
         self.signals = signals
         
-        # Create the group box
         self.group = QGroupBox('Instrument Settings')
         self.group.setCheckable(True)
         self.group.setChecked(True)
         
-        # Create container for the contents
         self.container = QWidget()
         layout = QVBoxLayout()
         
-        # List for instruments
         self.instrument_list = QWidget()
         instrument_list_layout = QVBoxLayout()
         self.instrument_list.setLayout(instrument_list_layout)
         layout.addWidget(self.instrument_list)
 
-        # Add instrument button
         add_btn = QPushButton('Add Instrument')
         add_btn.clicked.connect(signals.add_instrument_btn_clicked.emit)
         layout.addWidget(add_btn)
 
         self.container.setLayout(layout)
         
-        # Set up the group box layout
         group_layout = QVBoxLayout()
         group_layout.addWidget(self.container)
         self.group.setLayout(group_layout)
         
-        # Connect toggle signal
         self.group.toggled.connect(self.container.setVisible)
-        
-        # Main layout for this widget
+
         main_layout = QVBoxLayout()
         main_layout.addWidget(self.group)
         self.setLayout(main_layout)
