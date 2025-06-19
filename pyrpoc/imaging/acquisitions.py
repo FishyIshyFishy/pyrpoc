@@ -11,7 +11,7 @@ class Acquisition(abc.ABC):
         pass
 
     @abc.abstractmethod
-    def verify_acquisition(self):
+    def configure_acquisition(self):
         '''
         check self.verified, and make sure all instruments are safely connected if not yet verified
         '''
@@ -26,12 +26,6 @@ class Acquisition(abc.ABC):
         '''
 
     @abc.abstractmethod
-    def configure_imaging(self, imaging_mode):
-        '''
-        set up widefield or confocal as needed
-        '''
-
-    @abc.abstractmethod
     def perform_acquisition(self):
         '''
         this will be the one that varies a lot between acquisition types
@@ -42,6 +36,7 @@ class Acquisition(abc.ABC):
     def finalize_acquisition(self):
         '''
         prep the data output for whatever format the GUI ends up wanting
+        maybe this can just go in perform_acquisition
         '''
         data = None
         return data

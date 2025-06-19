@@ -10,11 +10,13 @@ class AppState:
         self.modality = 'widefield' 
         self.instruments = { # list of possible instruments, will add as needed
             'galvo': None,
-            'daq_input': [],
-            'tcspc_input': []
+            'daq_inputs': [],
+            'tcspc_inputs': []
             } 
         self.acquisition_parameters = {
             'num_frames': None,
+            'x_pixels': 512,
+            'y_pixels': 512,
         }
         self.display_parameters = {
             'overlay': True,
@@ -84,7 +86,17 @@ def handle_single_acquisition(app_state):
                 acquisition = Simulated()
             except Exception as e:
                 print(f'Error in instantiating Simulated(): {e}')
+
+
         case 'widefield':
+            try:
+                x_pixels = parameters.x_pixels
+                y_pixels = parameters.y_pixels
+                daq_inputs = instruments['daq_inputs']
+                tcspc_inputs = instruments['tcspc_inputs']
+            except Exception as e:
+                print(f'Error getting parameter values: {e}')
+                
             acquisition = Widefield()
         case 'confocal':
             acquisition = Confocal()
@@ -98,14 +110,14 @@ def handle_single_acquisition(app_state):
             print('Warning: invalid modality, defaulting to simulation')
             acquisition = Simulated()
 
-    acquisition.verify_acquisition()
+    acquisition.configure_acquisition()
     acquisition.configure_rpoc()
-    acquisition.configure_imaging()
     acquisition.perform_acquisition()
     StateSignalBus.data_updated.emit(acquisition.finalize_acquisition()) # emits the data
     pass
 
 def handle_stop_acquisition(app_state):
+    # this needs to stop all processes except the main thread i guess
     return 0
 
 def handle_modality_changed(text, app_state):
@@ -113,7 +125,9 @@ def handle_modality_changed(text, app_state):
     return 0
 
 def handle_data_updated(data, app_state):
+    # show new data for display
     return 0
 
 def handle_add_instrument(app_state):
+    # open the add instrument popout in a side thread and record the necessary params
     return 0
