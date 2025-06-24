@@ -46,15 +46,10 @@ class StateSignalBus(QObject):
     rpoc_enabled_changed = pyqtSignal(bool) # emits when RPOC enabled checkbox is toggled
     acquisition_parameter_changed = pyqtSignal(str, object) # emits when acquisition parameters change (param_name, new_value)
     
-    # Frame-by-frame acquisition signals
+    # frame-by-frame acquisition signals
     frame_acquired = pyqtSignal(object, int, int) # frame_data, frame_number, total_frames
     acquisition_started = pyqtSignal(int) # total_frames
     acquisition_finished = pyqtSignal()
-    
-    # Zoom control signals
-    # zoom_in = pyqtSignal()
-    # zoom_out = pyqtSignal()
-    # fit_to_view = pyqtSignal()
 
     def bind_controllers(self, app_state, main_window):
         self.load_config_btn_clicked.connect(lambda: handle_load_config(app_state))
@@ -73,17 +68,11 @@ class StateSignalBus(QObject):
         self.rpoc_enabled_changed.connect(lambda enabled: handle_rpoc_enabled_changed(enabled, app_state))
         self.acquisition_parameter_changed.connect(lambda param_name, value: handle_acquisition_parameter_changed(param_name, value, app_state))
         
-        # Bind frame acquisition signals
         self.frame_acquired.connect(lambda frame_data, frame_num, total_frames: handle_frame_acquired(frame_data, frame_num, total_frames, app_state, main_window))
         self.acquisition_started.connect(lambda total_frames: handle_acquisition_started(total_frames, app_state, main_window))
         self.acquisition_finished.connect(lambda: handle_acquisition_finished(app_state, main_window))
-        
-        # Bind zoom control signals
-        # self.zoom_in.connect(lambda: handle_zoom_in(app_state, main_window))
-        # self.zoom_out.connect(lambda: handle_zoom_out(app_state, main_window))
-        # self.fit_to_view.connect(lambda: handle_fit_to_view(app_state, main_window))
 
-# Add a worker for threaded acquisition
+
 class AcquisitionWorker(QObject):
     frame_acquired = pyqtSignal(object, int, int)
     acquisition_started = pyqtSignal(int)
@@ -96,11 +85,10 @@ class AcquisitionWorker(QObject):
 
     def run(self):
         self.acquisition.signal_bus = self
-        # The acquisition class should handle frame emission and delays
-        # If it yields frames, we handle them here; if not, we emit only at the end
+
+        # some acquisitions may not yield frames
         self.acquisition_started.emit(getattr(self.acquisition, 'num_frames', 1))
         result = self.acquisition.perform_acquisition()
-        # If perform_acquisition yields frames, collect them
         if hasattr(result, '__iter__') and not isinstance(result, np.ndarray):
             frames = []
             for i, frame in enumerate(result):
@@ -176,17 +164,17 @@ def handle_single_acquisition(app_state, signal_bus):
             acquisition = Simulated()
 
     if acquisition is not None:
-        # Use QThread for all modalities
         worker = AcquisitionWorker(acquisition)
         thread = QThread()
         worker.moveToThread(thread)
-        # Connect signals
+
         worker.frame_acquired.connect(signal_bus.frame_acquired)
         worker.acquisition_started.connect(signal_bus.acquisition_started)
         worker.acquisition_finished.connect(lambda data: _on_acquisition_finished(data, signal_bus))
         thread.started.connect(worker.run)
         thread.start()
-        # Store thread/worker to prevent garbage collection
+
+        # garbage collection
         signal_bus._acq_thread = thread
         signal_bus._acq_worker = worker
     else:
@@ -194,7 +182,7 @@ def handle_single_acquisition(app_state, signal_bus):
     pass
 
 def _on_acquisition_finished(data, signal_bus):
-    # Clean up QThread and worker
+    # clean up garbage collection
     if hasattr(signal_bus, '_acq_thread'):
         thread = signal_bus._acq_thread
         worker = signal_bus._acq_worker
@@ -223,6 +211,8 @@ def handle_modality_changed(text, app_state, main_window):
     return 0
 
 def handle_data_updated(data, app_state, main_window):
+    # TODO: fix the signaling to have the general display be compatible with all modalities
+    # as of right now its only for multiframe 2D data
     app_state.current_data = data
     # main_window.mid_layout.update_display(data)  # No longer needed, handled in MiddlePanel
     return 0
@@ -256,8 +246,6 @@ def handle_acquisition_started(total_frames, app_state, main_window):
     return 0
 
 def handle_acquisition_finished(app_state, main_window):
-    """Handle acquisition completion"""
-    # Combine all frames into final data
     if hasattr(app_state, 'frame_data') and app_state.frame_data:
         frames = sorted(app_state.frame_data.keys())
         app_state.current_data = np.stack([app_state.frame_data[frame] for frame in frames])
