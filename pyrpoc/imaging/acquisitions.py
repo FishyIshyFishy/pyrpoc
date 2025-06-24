@@ -2,21 +2,12 @@ import numpy as np
 import nidaqmx
 import abc
 from pyrpoc.imaging.instruments import *
+import time
 
 class Acquisition(abc.ABC):
     def __init__(self):
-        self.acquisition_type = 'something'
-        self.rpoc_something = 'something'
-        self.verified = False
         pass
 
-    @abc.abstractmethod
-    def configure_acquisition(self):
-        '''
-        check self.verified, and make sure all instruments are safely connected if not yet verified
-        '''
-        self.verified = True
-        return self.verified
     
     @abc.abstractmethod
     def configure_rpoc(self, rpoc_enabled, **kwargs):
@@ -26,20 +17,12 @@ class Acquisition(abc.ABC):
         '''
 
     @abc.abstractmethod
-    def perform_acquisition(self):
+    def perform_acquisition(self): 
         '''
         this will be the one that varies a lot between acquisition types
         '''
         pass    
 
-    @abc.abstractmethod
-    def finalize_acquisition(self):
-        '''
-        prep the data output for whatever format the GUI ends up wanting
-        maybe this can just go in perform_acquisition
-        '''
-        data = None
-        return data
     
 class RPOCHandler():
     def __init__(self):
@@ -55,12 +38,30 @@ things to check in each class
 '''
 
 class Simulated(Acquisition):
-    def __init__(self, input_chans: list[str]):
-        super().__init__(self)
+    def __init__(self, x_pixels: int, y_pixels: int, num_frames: int, signal_bus=None):
+        self.x_pixels = x_pixels
+        self.y_pixels = y_pixels
+        self.num_frames = num_frames
+        self.signal_bus = signal_bus
+        pass
+
+    def configure_rpoc(self, rpoc_enabled, **kwargs):
         pass
 
     def perform_acquisition(self):
-        return super().perform_acquisition()
+        self.data = np.zeros((self.num_frames, self.y_pixels, self.x_pixels))
+        for frame in range(self.num_frames):
+            frame_data = np.zeros((self.y_pixels, self.x_pixels))
+            for y in range(self.y_pixels):
+                for x in range(self.x_pixels):
+                    frame_data[y, x] = np.random.rand()
+            self.data[frame] = frame_data
+            if self.signal_bus:
+                self.signal_bus.frame_acquired.emit(frame_data, frame, self.num_frames)
+            time.sleep(1)
+            yield frame_data
+        # After all frames, return the full stack
+        return self.data
     
 
 
@@ -69,31 +70,25 @@ class Simulated(Acquisition):
 
 class Confocal(Acquisition):
     def __init__(self, galvo: Galvo, input_chans: list[str]):
-        super().__init__(self)
         pass
         
 
 class Widefield(Acquisition):
     def __init__(self):
-        super().__init__(self)
         pass
 
 class Hyperspectral(Acquisition):
     def __init__(self):
-        super().__init__(self)
         pass
 
 class ZScan(Acquisition):
     def __init__(self):
-        super().__init__(self)
         pass
 
 class Mosaic(Acquisition):
     def __init__(self):
-        super().__init__(self)
         pass
 
 class Custom(Acquisition):
     def __init__(self):
-        super().__init__(self)
         pass
