@@ -9,20 +9,22 @@ from PyQt6.QtGui import QPixmap, QImage, QPen, QBrush, QColor, QPainter, QFont
 from pyrpoc.gui.gui_handler import AppState, StateSignalBus
 import sys
 import pyqtgraph as pg
+from pyrpoc.gui.image_widgets import ImageDisplayWidget
+from pyrpoc.gui.dockable_widgets import LinesWidget
 
-# ugly red border for outlines
-DEV_BORDER_STYLE = """ 
-    QWidget {
-        border: 2px solid #FF0000;
-        border-radius: 4px;
-        margin: 2px;
-    }
-"""
-# DEV_BORDER_STYLE = """
+# # ugly red border for outlines
+# DEV_BORDER_STYLE = """ 
 #     QWidget {
+#         border: 2px solid #FF0000;
+#         border-radius: 4px;
 #         margin: 2px;
 #     }
 # """
+DEV_BORDER_STYLE = """
+    QWidget {
+        margin: 2px;
+    }
+"""
 
 class TopBar(QWidget):
     '''
@@ -92,9 +94,11 @@ class TopBar(QWidget):
         self.tool_buttons_widget = QWidget()
         tool_buttons_layout = QHBoxLayout()
         tool_buttons_layout.setContentsMargins(0, 0, 0, 0)
-        self.crosshairs_btn = QPushButton('Crosshairs')
-        self.crosshairs_btn.setCheckable(True)
-        tool_buttons_layout.addWidget(self.crosshairs_btn)
+        self.lines_btn = QPushButton('Lines')
+        self.lines_btn.setCheckable(True)
+        self.lines_btn.setChecked(app_state.ui_state['lines_enabled'])
+        self.lines_btn.toggled.connect(signals.lines_toggled.emit)
+        tool_buttons_layout.addWidget(self.lines_btn)
         tool_buttons_layout.addStretch()
         self.tool_buttons_widget.setLayout(tool_buttons_layout)
         console_layout.addWidget(self.tool_buttons_widget)
@@ -119,7 +123,8 @@ class AcquisitionParameters(QWidget):
         main_layout = QVBoxLayout()
         self.group = QGroupBox('Acquisition Parameters')
         self.group.setCheckable(True)
-        self.group.setChecked(True)
+        self.group.setChecked(app_state.ui_state['acquisition_parameters_visible'])
+        self.group.toggled.connect(lambda checked: signals.ui_state_changed.emit('acquisition_parameters_visible', checked))
         
         self.container = QWidget()
         layout = QVBoxLayout()
@@ -196,7 +201,8 @@ class InstrumentControls(QWidget):
         main_layout = QVBoxLayout()
         self.group = QGroupBox('Instrument Settings')
         self.group.setCheckable(True)
-        self.group.setChecked(True)
+        self.group.setChecked(app_state.ui_state['instrument_controls_visible'])
+        self.group.toggled.connect(lambda checked: signals.ui_state_changed.emit('instrument_controls_visible', checked))
         self.container = QWidget()
         layout = QVBoxLayout()
 
@@ -225,7 +231,8 @@ class DisplayControls(QWidget):
         main_layout = QVBoxLayout()
         self.group = QGroupBox('Display Settings')
         self.group.setCheckable(True)
-        self.group.setChecked(True)
+        self.group.setChecked(app_state.ui_state['display_controls_visible'])
+        self.group.toggled.connect(lambda checked: signals.ui_state_changed.emit('display_controls_visible', checked))
         self.container = QWidget()
         layout = QVBoxLayout()
         self.container.setLayout(layout)
@@ -243,20 +250,72 @@ class RightPanel(QWidget):
         self.app_state = app_state
         self.signals = signals
         self.setStyleSheet(DEV_BORDER_STYLE)
+        
+        self.rebuild()
+
+    def rebuild(self):
+        if self.layout():
+            while self.layout().count():
+                child = self.layout().takeAt(0)
+                if child.widget():
+                    child.widget().deleteLater()
+        
         layout = QVBoxLayout()
         
-        # RPOC controls
+        self.add_modality_specific_controls(layout)
+        self.add_common_controls(layout)
+        
+        self.setLayout(layout)
+
+    def add_modality_specific_controls(self, layout):
+        modality = self.app_state.modality.lower()
+        
+        if modality == 'simulated':
+            group = QGroupBox('Simulation Mode')
+            group_layout = QVBoxLayout()
+            group_layout.addWidget(QLabel('Simulation Mode Active'))
+            group.setLayout(group_layout)
+            layout.addWidget(group)
+        elif modality == 'widefield':
+            group = QGroupBox('Widefield Mode')
+            group_layout = QVBoxLayout()
+            group_layout.addWidget(QLabel('Widefield Mode Active'))
+            group.setLayout(group_layout)
+            layout.addWidget(group)
+        elif modality == 'confocal':
+            group = QGroupBox('Confocal Mode')
+            group_layout = QVBoxLayout()
+            group_layout.addWidget(QLabel('Confocal Mode Active'))
+            group.setLayout(group_layout)
+            layout.addWidget(group)
+        elif modality == 'mosaic':
+            group = QGroupBox('Mosaic Mode')
+            group_layout = QVBoxLayout()
+            group_layout.addWidget(QLabel('Mosaic Mode Active'))
+            group.setLayout(group_layout)
+            layout.addWidget(group)
+        elif modality == 'zscan':
+            group = QGroupBox('ZScan Mode')
+            group_layout = QVBoxLayout()
+            group_layout.addWidget(QLabel('ZScan Mode Active'))
+            group.setLayout(group_layout)
+            layout.addWidget(group)
+
+    def add_common_controls(self, layout):
         rpoc_group = QGroupBox('RPOC Controls')
         rpoc_layout = QVBoxLayout()
+        
+        rpoc_enabled_checkbox = QCheckBox('RPOC Enabled')
+        rpoc_enabled_checkbox.setChecked(self.app_state.rpoc_enabled)
+        rpoc_enabled_checkbox.toggled.connect(self.signals.rpoc_enabled_changed.emit)
+        rpoc_layout.addWidget(rpoc_enabled_checkbox)
+        
         rpoc_layout.addWidget(QPushButton('Load Mask'))
         rpoc_layout.addWidget(QPushButton('Save Mask'))
         rpoc_group.setLayout(rpoc_layout)
         layout.addWidget(rpoc_group)
         
-        # push it to top for now, this will be easy to work with later ill take the code from the old pyqt gui
         layout.addStretch()
-        
-        self.setLayout(layout)
 
 
 class LeftPanel(QWidget):
@@ -269,7 +328,6 @@ class LeftPanel(QWidget):
         self.setLayout(self.layout)
         self.rebuild()
 
-    # necessary for modality changes
     def rebuild(self):
         while self.layout.count():
             child = self.layout.takeAt(0)
@@ -290,155 +348,57 @@ class LeftPanel(QWidget):
         self.layout.addStretch()
 
 
-########################################################
-######### MIDDLE (DISPLAY) PANEL STUFF #################
-########################################################
-
-class DockableMiddlePanel(QMainWindow): # needs to be a QMainWindow for the dock widget to work
-    def __init__(self, app_state: AppState, signals: StateSignalBus, topbar: TopBar):
+class DockableMiddlePanel(QMainWindow):
+    def __init__(self, app_state: AppState, signals: StateSignalBus):
         super().__init__()
         self.app_state = app_state
         self.signals = signals
         self.setStyleSheet(DEV_BORDER_STYLE)
-       
+        
+        self.rebuild()
+
+    def rebuild(self):
+        if self.centralWidget():
+            self.centralWidget().deleteLater()
+
         central_widget = QWidget()
         layout = QVBoxLayout()
-
-        self.graphics_view = QGraphicsView()
-        self.graphics_scene = QGraphicsScene()
-        self.graphics_view.setScene(self.graphics_scene)
-        self.graphics_view.setMinimumSize(400, 300)
-        self.graphics_view.setStyleSheet("""
-            QGraphicsView {
-                border: 2px dashed #cccccc;
-                background-color: #f0f0f0;
-            }
-        """)
-        layout.addWidget(self.graphics_view)
-
-        frame_controls_layout = QHBoxLayout()
-        self.frame_label = QLabel('Frame: 0/0')
-        frame_controls_layout.addWidget(self.frame_label)
-        self.frame_slider = QSlider(Qt.Orientation.Horizontal)
-        self.frame_slider.setMinimum(0)
-        self.frame_slider.setMaximum(0)
-        self.frame_slider.setValue(0)
-        self.frame_slider.setEnabled(False)
-        self.frame_slider.valueChanged.connect(self.on_frame_slider_changed)
-        frame_controls_layout.addWidget(self.frame_slider)
-        layout.addLayout(frame_controls_layout)
         central_widget.setLayout(layout)
+
+        self.image_display_widget = self.create_image_display_widget()
+        layout.addWidget(self.image_display_widget)
+
         self.setCentralWidget(central_widget)
 
-        self.frame_data = {}
-        self.current_frame = 0
-        self.total_frames = 0
-        self.current_image_item = None
-        self.signals.data_updated.connect(self.handle_data_updated)
+        self.lines_dock = QDockWidget('Lines', self)
+        self.lines_widget = LinesWidget(self.app_state, self.signals)
+        self.lines_dock.setWidget(self.lines_widget)
+        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.lines_dock)
+        self.lines_dock.hide()
+        
+        self.signals.lines_toggled.connect(self.on_lines_toggled)
+        self.on_lines_toggled(self.app_state.ui_state['lines_enabled'])
 
-        self.crosshairs_dock = QDockWidget('Crosshairs', self)
-        self.crosshairs_widget = QLabel('Crosshairs controls and display here')
-        self.crosshairs_dock.setWidget(self.crosshairs_widget)
-        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.crosshairs_dock)
-        self.crosshairs_dock.hide()
+    def create_image_display_widget(self):
+        return ImageDisplayWidget(self.app_state, self.signals)
 
-        topbar.crosshairs_btn.toggled.connect(self.toggle_crosshairs_dock)
-
-    def toggle_crosshairs_dock(self, checked):
-        if checked:
-            self.crosshairs_dock.show()
+    def on_lines_toggled(self, enabled):
+        if enabled:
+            self.lines_dock.show()
+            self.lines_widget.update_status(True)
         else:
-            self.crosshairs_dock.hide()
+            self.lines_dock.hide()
+            self.lines_widget.update_status(False)
 
-    def setup_frame_controls(self, total_frames):
-        self.total_frames = total_frames
-        self.frame_data = {}
-        self.current_frame = 0
-        self.frame_slider.setMaximum(max(0, total_frames - 1))
-        self.frame_slider.setValue(0)
-        self.frame_slider.setEnabled(total_frames > 1)
-        self.update_frame_label()
-        self.graphics_scene.clear()
-        self.current_image_item = None
-
-    def update_frame_label(self):
-        self.frame_label.setText(f'Frame: {self.current_frame + 1}/{self.total_frames}')
-
-    def on_frame_slider_changed(self, value):
-        self.current_frame = value
-        self.update_frame_label()
-        if self.current_frame in self.frame_data:
-            self.display_frame(self.frame_data[self.current_frame])
-
-    def update_frame_display(self, frame_data, frame_num, total_frames):
-        self.frame_data[frame_num] = frame_data
-        if frame_num >= self.current_frame:
-            self.current_frame = frame_num
-            self.frame_slider.setValue(frame_num)
-            self.update_frame_label()
-            self.display_frame(frame_data)
-
-    def display_frame(self, frame_data):
-        if frame_data is None:
-            self.graphics_scene.clear()
-            self.current_image_item = None
-            return
-        try:
-            if isinstance(frame_data, np.ndarray):
-                if frame_data.ndim == 2:
-                    height, width = frame_data.shape
-                    data_norm = ((frame_data - frame_data.min()) / (frame_data.max() - frame_data.min() + 1e-9) * 255).astype(np.uint8)
-                    qimage = QImage(data_norm.data, width, height, width, QImage.Format.Format_Grayscale8)
-                else:
-                    return
-                pixmap = QPixmap.fromImage(qimage)
-                self.graphics_scene.clear()
-                self.current_image_item = self.graphics_scene.addPixmap(pixmap)
-                scene_rect = QRectF(pixmap.rect())
-                self.graphics_scene.setSceneRect(scene_rect)
-                self.graphics_view.fitInView(self.graphics_scene.sceneRect(), Qt.AspectRatioMode.KeepAspectRatio)
-            else:
-                self.graphics_scene.clear()
-                self.current_image_item = None
-        except Exception as e:
-            print(f"Display error: {e}")
-            self.graphics_scene.clear()
-            self.current_image_item = None
-
-    def handle_data_updated(self, data):
-        if isinstance(data, np.ndarray) and data.ndim == 3:
-            last_frame = data.shape[0] - 1
-            self.frame_data = {i: data[i] for i in range(data.shape[0])}
-            self.total_frames = data.shape[0]
-            self.frame_slider.setMaximum(max(0, self.total_frames - 1))
-            self.frame_slider.setValue(last_frame)
-            self.current_frame = last_frame
-            self.update_frame_label()
-            self.display_frame(data[last_frame])
-
-        elif isinstance(data, np.ndarray) and data.ndim == 2:
-            self.frame_data = {0: data}
-            self.total_frames = 1
-            self.frame_slider.setMaximum(0)
-            self.frame_slider.setValue(0)
-            self.current_frame = 0
-            self.update_frame_label()
-            self.display_frame(data)
-
-        else:
-            self.graphics_scene.clear()
-            self.current_image_item = None
-
-    def resizeEvent(self, event):
-        super().resizeEvent(event)
-        if self.current_image_item:
-            self.graphics_view.fitInView(self.graphics_scene.sceneRect(), Qt.AspectRatioMode.KeepAspectRatio)
+    def set_image_display_widget(self, widget):
+        layout = self.centralWidget().layout()
+        if self.image_display_widget is not None:
+            layout.removeWidget(self.image_display_widget)
+            self.image_display_widget.deleteLater()
+        self.image_display_widget = widget
+        layout.addWidget(self.image_display_widget)
 
 
-
-#########################################
-######### MAIN WINDOW #################
-#########################################
 class MainWindow(QMainWindow):
     def __init__(self, app_state: AppState, signals: StateSignalBus):
         super().__init__()
@@ -446,43 +406,83 @@ class MainWindow(QMainWindow):
         self.signals = signals
         self.setWindowTitle('pyrpoc - Development Mode')
         self.setGeometry(100, 100, 1400, 900)
-
         
-
-        central_widget = QWidget()
-        central_layout = QVBoxLayout()
-        central_layout.setContentsMargins(5, 5, 5, 5)
-        central_layout.setSpacing(5)
+        self.central_widget = None
+        self.central_layout = None
+        self.main_splitter = None
+        self.left_widget = None
+        self.mid_layout = None
+        self.right_layout = None
+        self.top_bar = None
         
-        self.top_bar = TopBar(app_state, signals)
-        central_layout.addWidget(self.top_bar, stretch=0)
-        
-        # Create main splitter for left panel and middle panel
-        self.main_splitter = QSplitter(Qt.Orientation.Horizontal)
-        self.left_widget = LeftPanel(app_state, signals)
-        self.main_splitter.addWidget(self.left_widget)
-        
-        # Middle panel (dockable)
-        self.mid_layout = DockableMiddlePanel(app_state, signals, self.top_bar)
-        self.main_splitter.addWidget(self.mid_layout)
-        
-        # Right panel
-        self.right_layout = RightPanel(app_state, signals)
-        self.main_splitter.addWidget(self.right_layout)
-        
-        self.main_splitter.setSizes([200, 800, 200])
-        central_layout.addWidget(self.main_splitter, stretch=1)
-        
-        central_widget.setLayout(central_layout)
-        self.setCentralWidget(central_widget)
+        self.build_gui()
 
         self.signals.modality_dropdown_changed.connect(self.on_modality_changed)
 
+    def build_gui(self):
+        self._clear_existing_gui()
+        self._create_central_widget()
+        self._create_top_bar()
+        self._create_main_splitter()
+        self._setup_splitter_sizes()
+        self._finalize_gui()
+
+    def _clear_existing_gui(self):
+        if self.centralWidget():
+            self.centralWidget().deleteLater()
+
+    def _create_central_widget(self):
+        self.central_widget = QWidget()
+        self.central_layout = QVBoxLayout()
+        self.central_layout.setContentsMargins(5, 5, 5, 5)
+        self.central_layout.setSpacing(5)
+
+    def _create_top_bar(self):
+        self.top_bar = TopBar(self.app_state, self.signals)
+        self.central_layout.addWidget(self.top_bar, stretch=0)
+
+    def _create_main_splitter(self):
+        self.main_splitter = QSplitter(Qt.Orientation.Horizontal)
+        
+        self.left_widget = LeftPanel(self.app_state, self.signals)
+        self.mid_layout = DockableMiddlePanel(self.app_state, self.signals)
+        self.right_layout = RightPanel(self.app_state, self.signals)
+        
+        self.main_splitter.addWidget(self.left_widget)
+        self.main_splitter.addWidget(self.mid_layout)
+        self.main_splitter.addWidget(self.right_layout)
+
+    def _setup_splitter_sizes(self):
+        self.main_splitter.setSizes([200, 800, 200])
+        if 'main_splitter_sizes' in self.app_state.ui_state:
+            self.main_splitter.setSizes(self.app_state.ui_state['main_splitter_sizes'])
+        self.main_splitter.splitterMoved.connect(lambda: self.save_splitter_sizes())
+
+    def _finalize_gui(self):
+        self.central_layout.addWidget(self.main_splitter, stretch=1)
+        self.central_widget.setLayout(self.central_layout)
+        self.setCentralWidget(self.central_widget)
+
+    def rebuild_gui(self):
+        if self.main_splitter:
+            sizes = self.main_splitter.sizes()
+            self.app_state.ui_state['main_splitter_sizes'] = sizes
+        
+        self.build_gui()
+        
+        self.signals.console_message.emit(f"GUI rebuilt for {self.app_state.modality} modality")
+
     def on_modality_changed(self, new_modality):
-        self.left_widget.rebuild()
+        self.app_state.modality = new_modality.lower()
+        self.rebuild_gui()
+
+    def save_splitter_sizes(self):
+        if self.main_splitter:
+            sizes = self.main_splitter.sizes()
+            self.signals.ui_state_changed.emit('main_splitter_sizes', sizes)
 
 if __name__ == '__main__':
-    app_state = AppState() # can initialize GUI configs with this
+    app_state = AppState()
     signals = StateSignalBus()
 
     app = QApplication(sys.argv)

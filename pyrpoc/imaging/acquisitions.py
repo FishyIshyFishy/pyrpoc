@@ -6,9 +6,14 @@ import time
 
 class Acquisition(abc.ABC):
     def __init__(self):
-        pass
+        self._stop_flag = None
 
-    
+    def set_stop_flag(self, stop_flag_func):
+        '''
+        stop button in main gui for in any given acquisition sets this flag
+        '''
+        self._stop_flag = stop_flag_func
+
     @abc.abstractmethod
     def configure_rpoc(self, rpoc_enabled, **kwargs):
         '''
@@ -19,7 +24,7 @@ class Acquisition(abc.ABC):
     @abc.abstractmethod
     def perform_acquisition(self): 
         '''
-        this will be the one that varies a lot between acquisition types
+        yield each lowest-level data unit (e.g., a single image, a single tile, etc.) as it is acquired, and finally return a list or array of all such data units
         '''
         pass    
 
@@ -43,25 +48,27 @@ class Simulated(Acquisition):
         self.y_pixels = y_pixels
         self.num_frames = num_frames
         self.signal_bus = signal_bus
-        pass
 
     def configure_rpoc(self, rpoc_enabled, **kwargs):
         pass
 
     def perform_acquisition(self):
-        self.data = np.zeros((self.num_frames, self.y_pixels, self.x_pixels))
+        frames = []
         for frame in range(self.num_frames):
-            frame_data = np.zeros((self.y_pixels, self.x_pixels))
-            for y in range(self.y_pixels):
-                for x in range(self.x_pixels):
-                    frame_data[y, x] = np.random.rand()
-            self.data[frame] = frame_data
+            # Check if we should stop
+            if self._stop_flag and self._stop_flag():
+                break
+                
+            frame_data = np.random.rand(self.y_pixels, self.x_pixels)
+            frames.append(frame_data)
             if self.signal_bus:
                 self.signal_bus.frame_acquired.emit(frame_data, frame, self.num_frames)
             time.sleep(1)
-            yield frame_data
-        # After all frames, return the full stack
-        return self.data
+        
+        if frames:
+            return np.stack(frames)
+        else:
+            return None
     
 
 

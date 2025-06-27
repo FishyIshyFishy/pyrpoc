@@ -8,7 +8,7 @@ class AppState:
     holds all of the important signaled variables
     '''
     def __init__(self):
-        self.modality = 'widefield' 
+        self.modality = 'simulated' 
         self.instruments = { # list of possible instruments, will add as needed
             'galvo': None,
             'daq_inputs': [],
@@ -20,10 +20,19 @@ class AppState:
             'y_pixels': 512,
         }
         self.display_parameters = {
-            'overlay': True,
+            # overlay parameter removed - not implemented yet
         }
         self.rpoc_enabled = False  # Add RPOC enabled state
         self.current_data = None
+        
+        # UI state parameters
+        self.ui_state = {
+            'acquisition_parameters_visible': True,
+            'instrument_controls_visible': True,
+            'display_controls_visible': True,
+            'lines_enabled': False,
+            'main_splitter_sizes': [200, 800, 200],  # left, middle, right panel sizes
+        }
 
 class StateSignalBus(QObject):
     '''
@@ -46,12 +55,27 @@ class StateSignalBus(QObject):
     rpoc_enabled_changed = pyqtSignal(bool) # emits when RPOC enabled checkbox is toggled
     acquisition_parameter_changed = pyqtSignal(str, object) # emits when acquisition parameters change (param_name, new_value)
     
-    # frame-by-frame acquisition signals
-    frame_acquired = pyqtSignal(object, int, int) # frame_data, frame_number, total_frames
-    acquisition_started = pyqtSignal(int) # total_frames
-    acquisition_finished = pyqtSignal()
+    # UI state signals
+    ui_state_changed = pyqtSignal(str, object) # emits when UI state changes (param_name, new_value)
+    lines_toggled = pyqtSignal(bool) # emits when lines are toggled
+    
+    # acquisition signals (agnostic)
+    frame_acquired = pyqtSignal(object, int, int) # data_unit, index, total
+
+    def __init__(self):
+        super().__init__()
+        self._connected = False
+
+    def disconnect_all(self):
+        if self._connected:
+            self.disconnect()
+            self._connected = False
 
     def bind_controllers(self, app_state, main_window):
+        # recalls when gui is rebuilt on modality changes
+        # need to disconnect the old connections
+        self.disconnect_all()
+        
         self.load_config_btn_clicked.connect(lambda: handle_load_config(app_state))
         self.save_config_btn_clicked.connect(lambda: handle_save_config(app_state))
 
@@ -68,14 +92,22 @@ class StateSignalBus(QObject):
         self.rpoc_enabled_changed.connect(lambda enabled: handle_rpoc_enabled_changed(enabled, app_state))
         self.acquisition_parameter_changed.connect(lambda param_name, value: handle_acquisition_parameter_changed(param_name, value, app_state))
         
-        self.frame_acquired.connect(lambda frame_data, frame_num, total_frames: handle_frame_acquired(frame_data, frame_num, total_frames, app_state, main_window))
-        self.acquisition_started.connect(lambda total_frames: handle_acquisition_started(total_frames, app_state, main_window))
-        self.acquisition_finished.connect(lambda: handle_acquisition_finished(app_state, main_window))
+        self.ui_state_changed.connect(lambda param_name, value: handle_ui_state_changed(param_name, value, app_state))
+        self.lines_toggled.connect(lambda enabled: handle_lines_toggled(enabled, app_state))
+        
+        self.frame_acquired.connect(lambda data_unit, idx, total: handle_frame_acquired(data_unit, idx, total, app_state, main_window))
 
+        # Lines <-> Image Display signal wiring
+        image_display = main_window.mid_layout.image_display_widget
+        lines = main_window.mid_layout.lines_widget
+
+        # Use the base class method to handle all signal connections
+        image_display.connect_lines_widget(lines)
+        
+        self._connected = True
 
 class AcquisitionWorker(QObject):
     frame_acquired = pyqtSignal(object, int, int)
-    acquisition_started = pyqtSignal(int)
     acquisition_finished = pyqtSignal(object)
 
     def __init__(self, acquisition):
@@ -84,22 +116,13 @@ class AcquisitionWorker(QObject):
         self._is_running = True
 
     def run(self):
-        self.acquisition.signal_bus = self
-
-        # some acquisitions may not yield frames
-        self.acquisition_started.emit(getattr(self.acquisition, 'num_frames', 1))
+        # Pass the stop flag to the acquisition
+        self.acquisition.set_stop_flag(lambda: not self._is_running)
+        
+        # The acquisition should emit frame_acquired as it acquires data
         result = self.acquisition.perform_acquisition()
-        if hasattr(result, '__iter__') and not isinstance(result, np.ndarray):
-            frames = []
-            for i, frame in enumerate(result):
-                if not self._is_running:
-                    break
-                frames.append(frame)
-                self.frame_acquired.emit(frame, i, len(frames))
-            data = np.stack(frames)
-        else:
-            data = result
-        self.acquisition_finished.emit(data)
+        if self._is_running:  # Only emit if not stopped
+            self.acquisition_finished.emit(result)
 
     def stop(self):
         self._is_running = False
@@ -169,8 +192,7 @@ def handle_single_acquisition(app_state, signal_bus):
         worker.moveToThread(thread)
 
         worker.frame_acquired.connect(signal_bus.frame_acquired)
-        worker.acquisition_started.connect(signal_bus.acquisition_started)
-        worker.acquisition_finished.connect(lambda data: _on_acquisition_finished(data, signal_bus))
+        worker.acquisition_finished.connect(lambda data: handle_acquisition_thread_finished(data, signal_bus, thread, worker))
         thread.started.connect(worker.run)
         thread.start()
 
@@ -181,8 +203,8 @@ def handle_single_acquisition(app_state, signal_bus):
         signal_bus.console_message.emit("Error: Failed to create acquisition object")
     pass
 
-def _on_acquisition_finished(data, signal_bus):
-    # clean up garbage collection
+def handle_acquisition_thread_finished(data, signal_bus, thread, worker):
+    # Clean up thread and worker after acquisition is finished
     if hasattr(signal_bus, '_acq_thread'):
         thread = signal_bus._acq_thread
         worker = signal_bus._acq_worker
@@ -193,13 +215,61 @@ def _on_acquisition_finished(data, signal_bus):
         thread.deleteLater()
         del signal_bus._acq_thread
         del signal_bus._acq_worker
-    signal_bus.acquisition_finished.emit()
     signal_bus.console_message.emit("Acquisition complete!")
     signal_bus.data_updated.emit(data)
 
-def handle_stop_acquisition(app_state):
-    # this needs to stop all processes except the main thread i guess
+def handle_stop_acquisition(app_state, signal_bus):
+    """Stop any running acquisition threads"""
+    if hasattr(signal_bus, '_acq_thread') and hasattr(signal_bus, '_acq_worker'):
+        thread = signal_bus._acq_thread
+        worker = signal_bus._acq_worker
+        
+        # Stop the worker
+        worker.stop()
+        
+        # Quit and wait for thread to finish
+        thread.quit()
+        if thread.wait(5000):  # Wait up to 5 seconds
+            thread.deleteLater()
+            worker.deleteLater()
+        else:
+            # Force termination if thread doesn't quit gracefully
+            thread.terminate()
+            thread.wait()
+            thread.deleteLater()
+            worker.deleteLater()
+        
+        # Clean up references
+        del signal_bus._acq_thread
+        del signal_bus._acq_worker
+        
+        signal_bus.console_message.emit("Acquisition stopped")
     return 0
+
+def cleanup_acquisition_threads(signal_bus):
+    """Clean up any running acquisition threads"""
+    if hasattr(signal_bus, '_acq_thread') and hasattr(signal_bus, '_acq_worker'):
+        thread = signal_bus._acq_thread
+        worker = signal_bus._acq_worker
+        
+        # Stop the worker
+        worker.stop()
+        
+        # Quit and wait for thread to finish
+        thread.quit()
+        if thread.wait(1000):  # Wait up to 1 second
+            thread.deleteLater()
+            worker.deleteLater()
+        else:
+            # Force termination if thread doesn't quit gracefully
+            thread.terminate()
+            thread.wait()
+            thread.deleteLater()
+            worker.deleteLater()
+        
+        # Clean up references
+        del signal_bus._acq_thread
+        del signal_bus._acq_worker
 
 def handle_console_message(message, app_state, main_window):
     main_window.top_bar.add_console_message(message)
@@ -207,7 +277,19 @@ def handle_console_message(message, app_state, main_window):
 
 def handle_modality_changed(text, app_state, main_window):
     app_state.modality = text.lower()
-    main_window.on_modality_changed(app_state.modality)
+    
+    # Clean up any running acquisition threads before rebuilding
+    cleanup_acquisition_threads(main_window.signals)
+    
+    # Clear current data to prevent stale data from showing
+    app_state.current_data = None
+    
+    # Rebuild the entire GUI
+    main_window.rebuild_gui()
+    
+    # Reconnect all signals after rebuild
+    main_window.signals.bind_controllers(app_state, main_window)
+    
     return 0
 
 def handle_data_updated(data, app_state, main_window):
@@ -230,26 +312,21 @@ def handle_acquisition_parameter_changed(param_name, value, app_state):
         app_state.acquisition_parameters[param_name] = value
     return 0
 
-def handle_frame_acquired(frame_data, frame_num, total_frames, app_state, main_window):
-    if not hasattr(app_state, 'frame_data'):
-        app_state.frame_data = {}
-    app_state.frame_data[frame_num] = frame_data
-    
-    main_window.mid_layout.update_frame_display(frame_data, frame_num, total_frames)
+def handle_ui_state_changed(param_name, value, app_state):
+    if param_name in app_state.ui_state:
+        app_state.ui_state[param_name] = value
     return 0
 
-def handle_acquisition_started(total_frames, app_state, main_window):
-    app_state.frame_data = {}
-    app_state.current_frame = 0
-
-    main_window.mid_layout.setup_frame_controls(total_frames)
+def handle_lines_toggled(enabled, app_state):
+    app_state.ui_state['lines_enabled'] = enabled
     return 0
 
-def handle_acquisition_finished(app_state, main_window):
-    if hasattr(app_state, 'frame_data') and app_state.frame_data:
-        frames = sorted(app_state.frame_data.keys())
-        app_state.current_data = np.stack([app_state.frame_data[frame] for frame in frames])
-        # main_window.mid_layout.update_display(app_state.current_data)  # Do not overwrite frame-by-frame display
+def handle_frame_acquired(data_unit, idx, total, app_state, main_window):
+    # Just route the data to the widget, don't interpret it
+    if hasattr(main_window, 'mid_layout') and hasattr(main_window.mid_layout, 'image_display_widget'):
+        widget = main_window.mid_layout.image_display_widget
+        if hasattr(widget, 'handle_frame_acquired'):
+            widget.handle_frame_acquired(data_unit, idx, total)
     return 0
 
 def handle_zoom_in(app_state, main_window):
