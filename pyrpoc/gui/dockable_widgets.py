@@ -77,18 +77,28 @@ class LinesWidget(QWidget):
         self.add_btn.clicked.disconnect()
         self.add_btn.clicked.connect(self._emit_add_mode_requested)
 
-    @pyqtSlot(int, int, int, int, object)
-    def add_line(self, x1, y1, x2, y2, image_data=None):
+    @pyqtSlot(int, int, int, int, object, list)
+    def add_line(self, x1, y1, x2, y2, image_data=None, channel_names=None):
         if not self.add_mode:
             return
-        color = random.choice(self.color_palette)
+        
+        print(f"LinesWidget.add_line called with coordinates ({x1}, {y1}) to ({x2}, {y2})")
+        if image_data is not None:
+            print(f"Image data shape: {image_data.shape if hasattr(image_data, 'shape') else 'No shape'}")
+            print(f"Image data type: {type(image_data)}")
+        if channel_names is not None:
+            print(f"Channel names: {channel_names}")
+        
+        # Assign unique color to each line by cycling through palette
+        color = self.color_palette[len(self.lines) % len(self.color_palette)]
         line_data = {
             'x1': x1,
             'y1': y1,
             'x2': x2,
             'y2': y2,
             'color': color,
-            'index': len(self.lines)
+            'index': len(self.lines),
+            'channel_names': channel_names or ['Channel 1']
         }
         self.lines.append(line_data)
         self.add_line_ui(line_data)
@@ -124,8 +134,12 @@ class LinesWidget(QWidget):
                 widget.deleteLater()
                 self.lines_layout.removeItem(self.lines_layout.itemAt(index))
             self.lines.pop(index)
+            
+            # Reassign colors to maintain unique colors for remaining lines
             for i, line in enumerate(self.lines):
                 line['index'] = i
+                line['color'] = self.color_palette[i % len(self.color_palette)]
+            
             self.remove_line_requested.emit(index)
             # update remaining line uis
             for i, line in enumerate(self.lines):
@@ -133,6 +147,8 @@ class LinesWidget(QWidget):
                 if group:
                     pos_label = group.layout().itemAt(0).layout().itemAt(0).widget()
                     pos_label.setText(f"Line {i + 1}: ({line['x1']:.1f},{line['y1']:.1f}) to ({line['x2']:.1f},{line['y2']:.1f})")
+                    # Update the group border color
+                    group.setStyleSheet(f"QGroupBox {{ border: 2px solid {line['color']}; }}")
             
             # update the plot to remove the trace
             self.update_all_traces(self.app_state.current_data)
@@ -144,13 +160,73 @@ class LinesWidget(QWidget):
         
         self.trace_plot.clear()
         
-        for line_data in self.lines:
-            trace = self.get_line_trace(line_data, image_data)
-            if trace is not None:
-                positions = np.arange(len(trace))
-                self.trace_plot.plot(positions, trace, 
-                                   pen=pg.mkPen(line_data['color'], width=2),
-                                   name=f"Line {line_data['index'] + 1}")
+        if isinstance(image_data, np.ndarray) and image_data.ndim == 3 and image_data.shape[0] > 1:
+            # Multi-channel data: channels x height x width
+            num_channels = image_data.shape[0]
+            print(f"update_all_traces: Multi-channel data detected with {num_channels} channels")
+            
+            for line_data in self.lines:
+                channel_names = line_data.get('channel_names', [f'Ch{i+1}' for i in range(num_channels)])
+                for ch_idx in range(num_channels):
+                    channel_data = image_data[ch_idx]
+                    trace = self.get_line_trace(line_data, channel_data)
+                    if trace is not None:
+                        positions = np.arange(len(trace))
+                        
+                        # Use different line styles for different lines and channels
+                        # Cycle through styles: Solid, Dash, Dot, DashDot
+                        style_cycle = [
+                            pg.QtCore.Qt.PenStyle.SolidLine,
+                            pg.QtCore.Qt.PenStyle.DashLine,
+                            pg.QtCore.Qt.PenStyle.DotLine,
+                            pg.QtCore.Qt.PenStyle.DashDotLine
+                        ]
+                        line_style = style_cycle[line_data['index'] % len(style_cycle)]
+                        
+                        # Use different line styles for different channels within the same line
+                        if ch_idx > 0:  # Additional channels get different style
+                            # Shift the style for additional channels
+                            style_index = (line_data['index'] + ch_idx) % len(style_cycle)
+                            line_style = style_cycle[style_index]
+                        
+                        pen = pg.mkPen(line_data['color'], width=2, style=line_style)
+                        
+                        # Use actual channel name if available, otherwise fallback
+                        channel_name = channel_names[ch_idx] if ch_idx < len(channel_names) else f'Ch{ch_idx+1}'
+                        self.trace_plot.plot(positions, trace, 
+                                           pen=pen,
+                                           name=f"Line {line_data['index'] + 1} {channel_name}")
+        else:
+            # Single channel data (simulated mode)
+            print("update_all_traces: Single channel data detected")
+            for line_data in self.lines:
+                trace = self.get_line_trace(line_data, image_data)
+                if trace is not None:
+                    positions = np.arange(len(trace))
+                    channel_names = line_data.get('channel_names', ['Channel 1'])
+                    channel_name = channel_names[0] if channel_names else 'Channel 1'
+                    
+                    # Use different line styles for different lines
+                    # Cycle through styles: Solid, Dash, Dot, DashDot
+                    style_cycle = [
+                        pg.QtCore.Qt.PenStyle.SolidLine,
+                        pg.QtCore.Qt.PenStyle.DashLine,
+                        pg.QtCore.Qt.PenStyle.DotLine,
+                        pg.QtCore.Qt.PenStyle.DashDotLine
+                    ]
+                    line_style = style_cycle[line_data['index'] % len(style_cycle)]
+                    
+                    self.trace_plot.plot(positions, trace, 
+                                       pen=pg.mkPen(line_data['color'], width=2, style=line_style),
+                                       name=f"Line {line_data['index'] + 1} {channel_name}")
+        
+        # Show legend
+        self.trace_plot.addLegend()
+        
+        # Configure legend for better visibility
+        if hasattr(self.trace_plot, 'legend'):
+            self.trace_plot.legend.setBrush(pg.mkBrush('w'))
+            self.trace_plot.legend.setPen(pg.mkPen('k'))
 
     def get_line_trace(self, line_data, image_data):
         """extract intensity values along a line using bresenham's algorithm"""

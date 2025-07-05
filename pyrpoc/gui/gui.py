@@ -9,7 +9,7 @@ from PyQt6.QtGui import QPixmap, QImage, QPen, QBrush, QColor, QPainter, QFont
 from pyrpoc.gui.gui_handler import AppState, StateSignalBus
 import sys
 import pyqtgraph as pg
-from pyrpoc.gui.image_widgets import ImageDisplayWidget
+from pyrpoc.gui.image_widgets import ImageDisplayWidget, ConfocalImageDisplayWidget
 from pyrpoc.gui.dockable_widgets import LinesWidget
 from pyrpoc.gui.rpoc_mask_editor import RPOCMaskEditor
 
@@ -30,7 +30,16 @@ DEV_BORDER_STYLE = """
 class TopBar(QWidget):
     '''
     horizontal orientation with the important control widgets, most space given to SystemConsole
-    AppConfigButtons | AcquisitionControls | SystemStatus
+    AppConfigButtons | AcquisitionControls | SystemStatus/imageJ-like controls
+    
+    relevant signals:
+    - load_config_btn_clicked --> gui_handler.handle_load_config() TODO: verify app_state format of data is good
+    - save_config_btn_clicked --> gui_handler.handle_save_config()
+    - single_btn_clicked --> gui_handler.handle_single_acquisition()
+    - continuous_btn_clicked
+    - stop_btn_clicked
+    - lines_toggled
+    - console_message --> TopBar.add_console_message()
     '''
     def __init__(self, app_state: AppState, signals: StateSignalBus):
         super().__init__()
@@ -98,6 +107,7 @@ class TopBar(QWidget):
         self.lines_btn = QPushButton('Lines')
         self.lines_btn.setCheckable(True)
         self.lines_btn.setChecked(app_state.ui_state['lines_enabled'])
+
         self.lines_btn.toggled.connect(signals.lines_toggled.emit)
         tool_buttons_layout.addWidget(self.lines_btn)
         tool_buttons_layout.addStretch()
@@ -128,7 +138,7 @@ class AcquisitionParameters(QWidget):
         self.group.toggled.connect(lambda checked: signals.ui_state_changed.emit('acquisition_parameters_visible', checked))
         
         self.container = QWidget()
-        layout = QVBoxLayout()
+        self.layout = QVBoxLayout()
         
         frames_layout = QHBoxLayout()
         frames_layout.addWidget(QLabel('Number of Frames:'))
@@ -138,8 +148,9 @@ class AcquisitionParameters(QWidget):
         self.frames_spinbox.valueChanged.connect(
             lambda value: self.signals.acquisition_parameter_changed.emit('num_frames', value))
         frames_layout.addWidget(self.frames_spinbox)
-        layout.addLayout(frames_layout)
+        self.layout.addLayout(frames_layout)
         
+        # Pixel controls (hidden for confocal modality)
         x_pixels_layout = QHBoxLayout()
         x_pixels_layout.addWidget(QLabel('X Pixels:'))
         self.x_pixels_spinbox = QSpinBox()
@@ -148,7 +159,9 @@ class AcquisitionParameters(QWidget):
         self.x_pixels_spinbox.valueChanged.connect(
             lambda value: self.signals.acquisition_parameter_changed.emit('x_pixels', value))
         x_pixels_layout.addWidget(self.x_pixels_spinbox)
-        layout.addLayout(x_pixels_layout)
+        self.x_pixels_widget = QWidget()
+        self.x_pixels_widget.setLayout(x_pixels_layout)
+        self.layout.addWidget(self.x_pixels_widget)
         
         y_pixels_layout = QHBoxLayout()
         y_pixels_layout.addWidget(QLabel('Y Pixels:'))
@@ -158,9 +171,11 @@ class AcquisitionParameters(QWidget):
         self.y_pixels_spinbox.valueChanged.connect(
             lambda value: self.signals.acquisition_parameter_changed.emit('y_pixels', value))
         y_pixels_layout.addWidget(self.y_pixels_spinbox)
-        layout.addLayout(y_pixels_layout)
+        self.y_pixels_widget = QWidget()
+        self.y_pixels_widget.setLayout(y_pixels_layout)
+        self.layout.addWidget(self.y_pixels_widget)
         
-        self.container.setLayout(layout)
+        self.container.setLayout(self.layout)
         
         group_layout = QVBoxLayout()
         group_layout.addWidget(self.container)
@@ -170,6 +185,19 @@ class AcquisitionParameters(QWidget):
         
         main_layout.addWidget(self.group)
         self.setLayout(main_layout)
+        
+        # Update visibility based on current modality
+        self.update_pixel_visibility()
+    
+    def update_pixel_visibility(self):
+        """Show/hide pixel controls based on modality"""
+        modality = self.app_state.modality.lower()
+        if modality == 'confocal':
+            self.x_pixels_widget.hide()
+            self.y_pixels_widget.hide()
+        else:
+            self.x_pixels_widget.show()
+            self.y_pixels_widget.show()
 
 
 class ModalityControls(QWidget):
@@ -199,8 +227,7 @@ class InstrumentControls(QWidget):
         self.app_state = app_state
         self.signals = signals
         self.setStyleSheet(DEV_BORDER_STYLE)
-        self.instrument_widgets = {}  # instrument_id -> widget
-        self.next_instrument_id = 1
+        self.instrument_widgets = {}  # instrument -> widget
         
         main_layout = QVBoxLayout()
         self.group = QGroupBox('Instruments')
@@ -282,7 +309,7 @@ class InstrumentControls(QWidget):
     def has_instrument_type(self, instrument_type):
         """Check if we already have an instrument of the given type"""
         if hasattr(self.app_state, 'instruments'):
-            for instrument in self.app_state.instruments.values():
+            for instrument in self.app_state.instruments:
                 if instrument.instrument_type == instrument_type:
                     return True
         return False
@@ -300,21 +327,21 @@ class InstrumentControls(QWidget):
         
         # Recreate widgets for existing instruments
         if hasattr(self.app_state, 'instruments'):
-            for instrument_id, instrument in self.app_state.instruments.items():
-                widget = InstrumentWidget(instrument_id, instrument, self.app_state, self.signals)
-                self.instrument_widgets[instrument_id] = widget
+            for instrument in self.app_state.instruments:
+                widget = InstrumentWidget(instrument, self.app_state, self.signals)
+                self.instrument_widgets[instrument] = widget
                 self.instrument_list_layout.addWidget(widget)
     
-    def add_instrument(self, instrument_id, instrument):
-        widget = InstrumentWidget(instrument_id, instrument, self.app_state, self.signals)
-        self.instrument_widgets[instrument_id] = widget
+    def add_instrument(self, instrument):
+        widget = InstrumentWidget(instrument, self.app_state, self.signals)
+        self.instrument_widgets[instrument] = widget
         self.instrument_list_layout.addWidget(widget)
     
-    def remove_instrument(self, instrument_id):
-        if instrument_id in self.instrument_widgets:
-            widget = self.instrument_widgets[instrument_id]
+    def remove_instrument(self, instrument):
+        if instrument in self.instrument_widgets:
+            widget = self.instrument_widgets[instrument]
             self.instrument_list_layout.removeWidget(widget)
-            del self.instrument_widgets[instrument_id]
+            del self.instrument_widgets[instrument]
             widget.deleteLater()
             
             # Update modality buttons after removal
@@ -333,17 +360,21 @@ class InstrumentControls(QWidget):
         # Update instrument list
         self.rebuild_instrument_list()
     
-    def handle_instrument_connection_change(self, instrument_id, connected):
+    def handle_instrument_connection_change(self, instrument, connected):
         """Handle instrument connection status changes"""
-        if instrument_id in self.instrument_widgets:
-            widget = self.instrument_widgets[instrument_id]
+        if instrument in self.instrument_widgets:
+            widget = self.instrument_widgets[instrument]
+            widget.update_status()
+    
+    def refresh_all_instruments(self):
+        """Refresh all instrument widgets to update parameter summaries"""
+        for widget in self.instrument_widgets.values():
             widget.update_status()
 
 
 class InstrumentWidget(QWidget):
-    def __init__(self, instrument_id, instrument, app_state, signals, parent=None):
+    def __init__(self, instrument, app_state, signals, parent=None):
         super().__init__(parent)
-        self.instrument_id = instrument_id
         self.instrument = instrument
         self.app_state = app_state
         self.signals = signals
@@ -370,6 +401,12 @@ class InstrumentWidget(QWidget):
         self.status_label.setStyleSheet('color: #666; font-size: 10px;')
         layout.addWidget(self.status_label)
         
+        # Parameter summary
+        self.param_summary = QLabel()
+        self.param_summary.setStyleSheet('color: #333; font-size: 9px; background-color: #f5f5f5; padding: 2px; border-radius: 2px;')
+        self.param_summary.setWordWrap(True)
+        layout.addWidget(self.param_summary)
+        
         # Control/Edit button
         self.control_btn = QPushButton('Edit/Control')
         self.control_btn.clicked.connect(self.edit_control_instrument)
@@ -391,14 +428,63 @@ class InstrumentWidget(QWidget):
             self.name_label.setText(self.instrument.name)
         else:
             self.name_label.setText('Unknown Instrument')
+        
+        # Update parameter summary
+        self.update_parameter_summary()
+    
+    def update_parameter_summary(self):
+        """Update the parameter summary display based on instrument type"""
+        if not hasattr(self.instrument, 'parameters'):
+            self.param_summary.setText('No parameters available')
+            return
+        
+        params = self.instrument.parameters
+        summary_lines = []
+        
+        if self.instrument.instrument_type == "Galvo":
+            summary_lines.append(f"Ch: {params.get('slow_axis_channel', '?')}/{params.get('fast_axis_channel', '?')}")
+            summary_lines.append(f"Pixels: {params.get('numsteps_x', 0)}x{params.get('numsteps_y', 0)}")
+            summary_lines.append(f"Dwell: {params.get('dwell_time', 0)*1e6:.1f}μs")
+            summary_lines.append(f"Extra: {params.get('extrasteps_left', 0)}/{params.get('extrasteps_right', 0)}")
+            summary_lines.append(f"Amp: {params.get('amplitude_x', 0):.2f}/{params.get('amplitude_y', 0):.2f}V")
+            summary_lines.append(f"Rate: {params.get('sample_rate', 0)/1000:.0f}kHz")
+        
+        elif self.instrument.instrument_type == "Data Input":
+            channels = params.get('input_channels', [])
+            if isinstance(channels, list):
+                summary_lines.append(f"Channels: {', '.join(map(str, channels))}")
+            summary_lines.append(f"Range: ±{params.get('voltage_range', 0):.1f}V")
+            summary_lines.append(f"Rate: {params.get('sample_rate', 0)/1000:.0f}kHz")
+        
+        elif self.instrument.instrument_type == "Delay Stage":
+            summary_lines.append(f"Port: {params.get('com_port', '?')}")
+            summary_lines.append(f"Baud: {params.get('baud_rate', 0)}")
+            summary_lines.append(f"Timeout: {params.get('timeout', 0):.1f}s")
+        
+        elif self.instrument.instrument_type == "Zaber Stage":
+            summary_lines.append(f"Port: {params.get('com_port', '?')}")
+            summary_lines.append(f"Baud: {params.get('baud_rate', 0)}")
+            summary_lines.append(f"Timeout: {params.get('timeout', 0):.1f}s")
+        
+        else:
+            summary_lines.append(f"Type: {self.instrument.instrument_type}")
+            # Show first few parameters for unknown types
+            param_items = list(params.items())[:3]
+            for key, value in param_items:
+                if isinstance(value, (int, float)):
+                    summary_lines.append(f"{key}: {value}")
+                else:
+                    summary_lines.append(f"{key}: {str(value)[:10]}")
+        
+        self.param_summary.setText(' | '.join(summary_lines))
     
     def remove_instrument(self):
         # Remove from app_state
-        if hasattr(self.app_state, 'instruments') and self.instrument_id in self.app_state.instruments:
-            del self.app_state.instruments[self.instrument_id]
+        if hasattr(self.app_state, 'instruments') and self.instrument in self.app_state.instruments:
+            self.app_state.instruments.remove(self.instrument)
         
         # Emit signal to remove this widget
-        self.signals.instrument_removed.emit(self.instrument_id)
+        self.signals.instrument_removed.emit(self.instrument)
         
         # Update modality buttons to show the button for the removed instrument type
         parent = self.parent()
@@ -429,6 +515,7 @@ class InstrumentWidget(QWidget):
                     new_name = parameters.get('name', 'Unknown Instrument')
                     self.instrument.name = new_name
                     self.name_label.setText(new_name)
+                    self.update_status()  # Refresh parameter summary
                     self.signals.console_message.emit(f"Updated {new_name} parameters")
                 else:
                     current_name = getattr(self.instrument, 'name', 'Unknown Instrument')
@@ -465,6 +552,7 @@ class InstrumentWidget(QWidget):
                         new_name = parameters.get('name', 'Unknown Instrument')
                         self.instrument.name = new_name
                         self.name_label.setText(new_name)
+                        self.update_status()  # Refresh parameter summary
                         self.signals.console_message.emit(f"Updated {new_name} parameters")
                     else:
                         current_name = getattr(self.instrument, 'name', 'Unknown Instrument')
@@ -756,6 +844,11 @@ class LeftPanel(QWidget):
         self.layout.addWidget(self.display_controls)
         
         self.layout.addStretch()
+    
+    def update_acquisition_parameters_visibility(self):
+        """Update acquisition parameters visibility based on modality"""
+        if hasattr(self, 'acquisition_parameters'):
+            self.acquisition_parameters.update_pixel_visibility()
 
 
 class DockableMiddlePanel(QMainWindow):
@@ -780,19 +873,25 @@ class DockableMiddlePanel(QMainWindow):
 
         self.setCentralWidget(central_widget)
 
+
         self.lines_dock = QDockWidget('Lines', self)
         self.lines_widget = LinesWidget(self.app_state, self.signals)
         self.lines_dock.setWidget(self.lines_widget)
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.lines_dock)
         self.lines_dock.hide()
         
-        self.signals.lines_toggled.connect(self.on_lines_toggled)
         self.on_lines_toggled(self.app_state.ui_state['lines_enabled'])
 
-    def create_image_display_widget(self):
-        return ImageDisplayWidget(self.app_state, self.signals)
 
-    def on_lines_toggled(self, enabled):
+    def create_image_display_widget(self):
+        modality = self.app_state.modality.lower()
+        
+        if modality == 'confocal':
+            return ConfocalImageDisplayWidget(self.app_state, self.signals)
+        else:
+            return ImageDisplayWidget(self.app_state, self.signals)
+
+    def on_lines_toggled(self, enabled):        
         if enabled:
             self.lines_dock.show()
             self.lines_widget.update_status(True)
@@ -885,6 +984,8 @@ class MainWindow(QMainWindow):
     def on_modality_changed(self, new_modality):
         self.app_state.modality = new_modality.lower()
         self.rebuild_gui()
+        if hasattr(self, 'left_widget'):
+            self.left_widget.update_acquisition_parameters_visibility()
 
     def save_splitter_sizes(self):
         if self.main_splitter:

@@ -1,7 +1,7 @@
 {
   "modality": "confocal",
   "acquisition_parameters": {
-    "num_frames": 1,
+    "num_frames": 7,
     "x_pixels": 512,
     "y_pixels": 512
   },
@@ -18,8 +18,8 @@
       169
     ]
   },
-  "instruments": {
-    "1": {
+  "instruments": [
+    {
       "name": "Galvo Scanner",
       "instrument_type": "Galvo",
       "parameters": {
@@ -28,36 +28,36 @@
         "voltage_range": 10.0,
         "sample_rate": 1000000,
         "device_name": "Dev1",
+        "dwell_time": 1e-09,
+        "extrasteps_left": 50,
+        "extrasteps_right": 50,
+        "amplitude_x": 0.5,
+        "amplitude_y": 0.5,
+        "offset_x": 0.0,
+        "offset_y": 0.0,
+        "numsteps_x": 300,
+        "numsteps_y": 300,
         "name": "Galvo Scanner"
       },
       "connected": true
     },
-    "2": {
-      "name": "sfaowgerf",
+    {
+      "name": "Data Input",
       "instrument_type": "Data Input",
       "parameters": {
         "input_channels": [
           0,
-          1
+          1,
+          2,
+          3
         ],
         "voltage_range": 10.0,
         "sample_rate": 1000000,
         "device_name": "Dev1",
-        "name": "sfaowgerf"
-      },
-      "connected": true
-    },
-    "3": {
-      "name": "Delay StageALSFKDJ",
-      "instrument_type": "Delay Stage",
-      "parameters": {
-        "com_port": "COM1",
-        "baud_rate": 9600,
-        "timeout": 1.0,
-        "name": "Delay StageALSFKDJ"
+        "name": "Data Input"
       },
       "connected": true
     }
-  },
+  ],
   "rpoc_masks": {}
 }

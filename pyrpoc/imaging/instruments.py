@@ -41,7 +41,16 @@ class Galvo(Instrument):
             'fast_axis_channel': 1,
             'voltage_range': 10.0,
             'sample_rate': 1000000,
-            'device_name': 'Dev1'
+            'device_name': 'Dev1',
+            'dwell_time': 10e-6,  # Per pixel dwell time in seconds
+            'extrasteps_left': 50,  # Extra steps left in fast direction
+            'extrasteps_right': 50,  # Extra steps right in fast direction
+            'amplitude_x': 0.5,  # Amplitude for X axis
+            'amplitude_y': 0.5,  # Amplitude for Y axis
+            'offset_x': 0.0,  # Offset for X axis
+            'offset_y': 0.0,  # Offset for Y axis
+            'numsteps_x': 512,  # Number of X pixels/steps
+            'numsteps_y': 512   # Number of Y pixels/steps
         }
 
     def initialize(self):
@@ -57,6 +66,149 @@ class Galvo(Instrument):
     def get_control_widget(self):
         """Return galvo control widget"""
         return GalvoControlWidget(self)
+    
+    def generate_raster_waveform(self, numsteps_x=None, numsteps_y=None):
+        """
+        Generate raster scan waveform based on current parameters
+        
+        Args:
+            numsteps_x: Override X steps from parameters
+            numsteps_y: Override Y steps from parameters
+            
+        Returns:
+            numpy.ndarray: 2xN array with X and Y waveforms
+        """
+        import numpy as np
+        
+        # Use provided values or fall back to parameters
+        x_steps = numsteps_x if numsteps_x is not None else self.parameters['numsteps_x']
+        y_steps = numsteps_y if numsteps_y is not None else self.parameters['numsteps_y']
+        
+        # Extract parameters
+        dwell = self.parameters['dwell_time']
+        rate = self.parameters['sample_rate']
+        extra_left = self.parameters['extrasteps_left']
+        extra_right = self.parameters['extrasteps_right']
+        amp_x = self.parameters['amplitude_x']
+        amp_y = self.parameters['amplitude_y']
+        offset_x = self.parameters['offset_x']
+        offset_y = self.parameters['offset_y']
+        
+        # Calculate samples per pixel and total samples
+        pixel_samples = max(1, int(dwell * rate))
+        total_x = x_steps + extra_left + extra_right
+        total_y = y_steps
+        
+        # Calculate step size and boundaries
+        contained_rowsamples = pixel_samples * x_steps
+        total_rowsamples = pixel_samples * total_x
+        
+        step_size = (2 * amp_x) / contained_rowsamples
+        bottom = offset_x - amp_x - (step_size * extra_left)
+        top = offset_x + amp_x + (step_size * extra_right)
+        
+        # Generate X waveform (fast axis)
+        single_row_ramp = np.linspace(bottom, top, total_rowsamples, endpoint=False)
+        x_waveform = np.tile(single_row_ramp, total_y)
+        
+        # Generate Y waveform (slow axis)
+        y_steps_positions = np.linspace(
+            offset_y + amp_y,
+            offset_y - amp_y,
+            total_y
+        )
+        y_waveform = np.repeat(y_steps_positions, total_rowsamples)
+        
+        # Create composite waveform
+        composite = np.vstack([x_waveform, y_waveform])
+        
+        # Ensure correct size
+        total_samples = total_x * total_y * pixel_samples
+        if x_waveform.size < total_samples:
+            x_waveform = np.pad(
+                x_waveform,
+                (0, total_samples - x_waveform.size),
+                constant_values=x_waveform[-1]
+            )
+        else:
+            x_waveform = x_waveform[:total_samples]
+        composite[0] = x_waveform
+        
+        return composite
+    
+    def generate_variable_waveform(self, mask, dwell_multiplier=2.0, numsteps_x=None, numsteps_y=None):
+        """
+        Generate variable dwell waveform based on RPOC mask
+        
+        Args:
+            mask: 2D numpy array representing the RPOC mask
+            dwell_multiplier: Multiplier for dwell time in masked regions
+            numsteps_x: Override X steps from parameters
+            numsteps_y: Override Y steps from parameters
+            
+        Returns:
+            tuple: (x_waveform, y_waveform, pixel_map)
+        """
+        import numpy as np
+        
+        # Use provided values or fall back to parameters
+        x_steps = numsteps_x if numsteps_x is not None else self.parameters['numsteps_x']
+        y_steps = numsteps_y if numsteps_y is not None else self.parameters['numsteps_y']
+        
+        # Extract parameters
+        dwell = self.parameters['dwell_time']
+        rate = self.parameters['sample_rate']
+        extra_left = self.parameters['extrasteps_left']
+        extra_right = self.parameters['extrasteps_right']
+        amp_x = self.parameters['amplitude_x']
+        amp_y = self.parameters['amplitude_y']
+        offset_x = self.parameters['offset_x']
+        offset_y = self.parameters['offset_y']
+        
+        total_x = x_steps + extra_left + extra_right
+        
+        # Validate mask dimensions
+        mask_shape = np.shape(mask)
+        if mask_shape[1] != y_steps or mask_shape[0] != (total_x - extra_left - extra_right):
+            raise ValueError(f'Mask dimensions {mask_shape} do not match expected dimensions {(total_x - extra_left - extra_right)}x{y_steps}')
+        
+        dwell_on = dwell * dwell_multiplier
+        dwell_off = dwell
+        
+        # Generate position arrays
+        x_min = offset_x - amp_x
+        x_max = offset_x + amp_x
+        x_positions = np.linspace(x_min, x_max, total_x, endpoint=False)
+        y_positions = np.linspace(offset_y + amp_y, offset_y - amp_y, y_steps)
+        
+        x_wave_list = []
+        y_wave_list = []
+        pixel_map = np.zeros((y_steps, total_x), dtype=int)
+        
+        for row_idx in range(y_steps):
+            row_y = y_positions[row_idx]
+            for col_idx in range(total_x):
+                if col_idx < extra_left or col_idx >= (total_x - extra_right):
+                    this_dwell = dwell_off
+                elif mask[row_idx, col_idx - extra_left]:
+                    this_dwell = dwell_on
+                else:
+                    this_dwell = dwell_off
+                
+                pixel_samps = max(1, int(this_dwell * rate))
+                
+                x_val = x_positions[col_idx]
+                x_wave_list.append(np.full(pixel_samps, x_val))
+                y_wave_list.append(np.full(pixel_samps, row_y))
+                
+                pixel_map[row_idx, col_idx] = pixel_samps
+        
+        x_wave = np.concatenate(x_wave_list)
+        y_wave = np.concatenate(y_wave_list)
+        
+        return x_wave, y_wave, pixel_map
+    
+
 
 
 class DataInput(Instrument):
@@ -219,6 +371,59 @@ class GalvoConfigWidget(QWidget):
         self.sample_rate_spin.setSuffix(" Hz")
         layout.addRow("Sample Rate:", self.sample_rate_spin)
         
+        # Galvo-specific parameters
+        self.dwell_time_spin = QDoubleSpinBox()
+        self.dwell_time_spin.setRange(1e-9, 1e-3)
+        self.dwell_time_spin.setValue(10e-6)
+        self.dwell_time_spin.setSuffix(" s")
+        self.dwell_time_spin.setDecimals(9)
+        layout.addRow("Dwell Time:", self.dwell_time_spin)
+        
+        self.extrasteps_left_spin = QSpinBox()
+        self.extrasteps_left_spin.setRange(0, 1000)
+        self.extrasteps_left_spin.setValue(50)
+        layout.addRow("Extra Steps Left:", self.extrasteps_left_spin)
+        
+        self.extrasteps_right_spin = QSpinBox()
+        self.extrasteps_right_spin.setRange(0, 1000)
+        self.extrasteps_right_spin.setValue(50)
+        layout.addRow("Extra Steps Right:", self.extrasteps_right_spin)
+        
+        self.amplitude_x_spin = QDoubleSpinBox()
+        self.amplitude_x_spin.setRange(0.1, 10.0)
+        self.amplitude_x_spin.setValue(0.5)
+        self.amplitude_x_spin.setSuffix(" V")
+        layout.addRow("Amplitude X:", self.amplitude_x_spin)
+        
+        self.amplitude_y_spin = QDoubleSpinBox()
+        self.amplitude_y_spin.setRange(0.1, 10.0)
+        self.amplitude_y_spin.setValue(0.5)
+        self.amplitude_y_spin.setSuffix(" V")
+        layout.addRow("Amplitude Y:", self.amplitude_y_spin)
+        
+        self.offset_x_spin = QDoubleSpinBox()
+        self.offset_x_spin.setRange(-10.0, 10.0)
+        self.offset_x_spin.setValue(0.0)
+        self.offset_x_spin.setSuffix(" V")
+        layout.addRow("Offset X:", self.offset_x_spin)
+        
+        self.offset_y_spin = QDoubleSpinBox()
+        self.offset_y_spin.setRange(-10.0, 10.0)
+        self.offset_y_spin.setValue(0.0)
+        self.offset_y_spin.setSuffix(" V")
+        layout.addRow("Offset Y:", self.offset_y_spin)
+        
+        # Pixel/step parameters
+        self.numsteps_x_spin = QSpinBox()
+        self.numsteps_x_spin.setRange(64, 4096)
+        self.numsteps_x_spin.setValue(512)
+        layout.addRow("X Pixels:", self.numsteps_x_spin)
+        
+        self.numsteps_y_spin = QSpinBox()
+        self.numsteps_y_spin.setRange(64, 4096)
+        self.numsteps_y_spin.setValue(512)
+        layout.addRow("Y Pixels:", self.numsteps_y_spin)
+        
         self.setLayout(layout)
 
     def set_parameters(self, parameters):
@@ -237,6 +442,24 @@ class GalvoConfigWidget(QWidget):
             self.voltage_spin.setValue(parameters['voltage_range'])
         if 'sample_rate' in parameters:
             self.sample_rate_spin.setValue(parameters['sample_rate'])
+        if 'dwell_time' in parameters:
+            self.dwell_time_spin.setValue(parameters['dwell_time'])
+        if 'extrasteps_left' in parameters:
+            self.extrasteps_left_spin.setValue(parameters['extrasteps_left'])
+        if 'extrasteps_right' in parameters:
+            self.extrasteps_right_spin.setValue(parameters['extrasteps_right'])
+        if 'amplitude_x' in parameters:
+            self.amplitude_x_spin.setValue(parameters['amplitude_x'])
+        if 'amplitude_y' in parameters:
+            self.amplitude_y_spin.setValue(parameters['amplitude_y'])
+        if 'offset_x' in parameters:
+            self.offset_x_spin.setValue(parameters['offset_x'])
+        if 'offset_y' in parameters:
+            self.offset_y_spin.setValue(parameters['offset_y'])
+        if 'numsteps_x' in parameters:
+            self.numsteps_x_spin.setValue(parameters['numsteps_x'])
+        if 'numsteps_y' in parameters:
+            self.numsteps_y_spin.setValue(parameters['numsteps_y'])
 
     def get_parameters(self):
         parameters = {
@@ -245,7 +468,16 @@ class GalvoConfigWidget(QWidget):
             'slow_axis_channel': self.slow_channel_spin.value(),
             'fast_axis_channel': self.fast_channel_spin.value(),
             'voltage_range': self.voltage_spin.value(),
-            'sample_rate': self.sample_rate_spin.value()
+            'sample_rate': self.sample_rate_spin.value(),
+            'dwell_time': self.dwell_time_spin.value(),
+            'extrasteps_left': self.extrasteps_left_spin.value(),
+            'extrasteps_right': self.extrasteps_right_spin.value(),
+            'amplitude_x': self.amplitude_x_spin.value(),
+            'amplitude_y': self.amplitude_y_spin.value(),
+            'offset_x': self.offset_x_spin.value(),
+            'offset_y': self.offset_y_spin.value(),
+            'numsteps_x': self.numsteps_x_spin.value(),
+            'numsteps_y': self.numsteps_y_spin.value()
         }
         
         # Validate parameters before returning
@@ -599,15 +831,17 @@ def create_instrument(instrument_type, name, parameters=None):
     
     return instrument
 
-def get_instruments_by_type(instruments_dict, instrument_type):
-    """Get all instruments of a specific type from the instruments dictionary"""
-    return [instrument for instrument in instruments_dict.values() 
+def get_instruments_by_type(instruments_list, instrument_type):
+    """Get all instruments of a specific type from the instruments list"""
+    return [instrument for instrument in instruments_list 
             if instrument.instrument_type == instrument_type]
 
 def validate_instrument_parameters(instrument_type, parameters):
     """Validate instrument parameters before creating or updating an instrument"""
     if instrument_type == "Galvo":
-        required_params = ['slow_axis_channel', 'fast_axis_channel', 'voltage_range', 'sample_rate', 'device_name']
+        required_params = ['slow_axis_channel', 'fast_axis_channel', 'voltage_range', 'sample_rate', 'device_name',
+                          'dwell_time', 'extrasteps_left', 'extrasteps_right', 'amplitude_x', 'amplitude_y', 
+                          'offset_x', 'offset_y', 'numsteps_x', 'numsteps_y']
         for param in required_params:
             if param not in parameters:
                 raise ValueError(f"Missing required parameter for Galvo: {param}")
@@ -619,6 +853,16 @@ def validate_instrument_parameters(instrument_type, parameters):
             raise ValueError("Voltage range must be positive")
         if parameters['sample_rate'] <= 0:
             raise ValueError("Sample rate must be positive")
+        if parameters['dwell_time'] <= 0:
+            raise ValueError("Dwell time must be positive")
+        if parameters['extrasteps_left'] < 0 or parameters['extrasteps_right'] < 0:
+            raise ValueError("Extra steps must be non-negative")
+        if parameters['amplitude_x'] <= 0 or parameters['amplitude_y'] <= 0:
+            raise ValueError("Amplitudes must be positive")
+        if parameters['numsteps_x'] <= 0 or parameters['numsteps_x'] > 10000:
+            raise ValueError("X pixels must be between 1 and 10000")
+        if parameters['numsteps_y'] <= 0 or parameters['numsteps_y'] > 10000:
+            raise ValueError("Y pixels must be between 1 and 10000")
             
     elif instrument_type == "Data Input":
         required_params = ['input_channels', 'voltage_range', 'sample_rate', 'device_name']
