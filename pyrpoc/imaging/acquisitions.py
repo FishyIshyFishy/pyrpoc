@@ -76,26 +76,84 @@ class Simulated(Acquisition):
 
 
 class Confocal(Acquisition):
-    def __init__(self, galvo: Galvo, input_chans: list[str]):
+    def __init__(self, galvos=None, data_inputs=None, **kwargs):
+        super().__init__()
+        self.galvos = galvos or []
+        self.data_inputs = data_inputs or []
+        self.verified = False
+
+    def configure_rpoc(self, rpoc_enabled, **kwargs):
         pass
-        
+
+    def perform_acquisition(self):
+        # TODO: Implement confocal acquisition
+        # For now, return simulated data
+        return np.random.rand(512, 512)
 
 class Widefield(Acquisition):
-    def __init__(self):
+    def __init__(self, data_inputs=None, **kwargs):
+        super().__init__()
+        self.data_inputs = data_inputs or []
+        self.verified = False
+
+    def configure_rpoc(self, rpoc_enabled, **kwargs):
         pass
+
+    def perform_acquisition(self):
+        # TODO: Implement widefield acquisition
+        # For now, return simulated data
+        return np.random.rand(512, 512)
 
 class Hyperspectral(Acquisition):
-    def __init__(self):
+    def __init__(self, **kwargs):
+        super().__init__()
+        self.verified = False
+
+    def configure_rpoc(self, rpoc_enabled, **kwargs):
         pass
+
+    def perform_acquisition(self):
+        # TODO: Implement hyperspectral acquisition
+        # For now, return simulated data
+        return np.random.rand(512, 512)
 
 class ZScan(Acquisition):
-    def __init__(self):
+    def __init__(self, stages=None, **kwargs):
+        super().__init__()
+        self.stages = stages or []
+        self.verified = False
+
+    def configure_rpoc(self, rpoc_enabled, **kwargs):
         pass
+
+    def perform_acquisition(self):
+        # TODO: Implement ZScan acquisition
+        # For now, return simulated data
+        return np.random.rand(512, 512)
 
 class Mosaic(Acquisition):
-    def __init__(self):
+    def __init__(self, stages=None, **kwargs):
+        super().__init__()
+        self.stages = stages or []
+        self.verified = False
+
+    def configure_rpoc(self, rpoc_enabled, **kwargs):
         pass
 
+    def perform_acquisition(self):
+        # TODO: Implement mosaic acquisition
+        # For now, return simulated data
+        return np.random.rand(512, 512)
+
 class Custom(Acquisition):
-    def __init__(self):
+    def __init__(self, **kwargs):
+        super().__init__()
+        self.verified = False
+
+    def configure_rpoc(self, rpoc_enabled, **kwargs):
         pass
+
+    def perform_acquisition(self):
+        # TODO: Implement custom acquisition
+        # For now, return simulated data
+        return np.random.rand(512, 512)

@@ -135,8 +135,7 @@ class LinesWidget(QWidget):
                     pos_label.setText(f"Line {i + 1}: ({line['x1']:.1f},{line['y1']:.1f}) to ({line['x2']:.1f},{line['y2']:.1f})")
             
             # update the plot to remove the trace
-            if hasattr(self, 'app_state') and self.app_state.current_data is not None:
-                self.update_all_traces(self.app_state.current_data)
+            self.update_all_traces(self.app_state.current_data)
 
     @pyqtSlot(object)
     def update_all_traces(self, image_data):

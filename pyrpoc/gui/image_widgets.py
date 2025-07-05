@@ -59,6 +59,25 @@ class BaseImageDisplayWidget(QWidget):
         '''
         raise NotImplementedError("Subclasses must implement get_current_frame_data")
     
+    def get_image_data_for_rpoc(self):
+        '''
+        get image data in a format suitable for RPOC mask creation
+        
+        returns: numpy.ndarray or None: array of 2D images (channels x height x width) or None if no data
+        '''
+        current_data = self.get_current_frame_data()
+        if current_data is None:
+            return None
+            
+        # if it's already 3D (channels x height x width), return as is
+        if current_data.ndim == 3:
+            return current_data
+        # if it's 2D, add a channel dimension
+        elif current_data.ndim == 2:
+            return current_data[np.newaxis, :, :]
+        else:
+            return None
+    
     def get_current_frame_index(self):
         '''
         get the current displayed unit of data index.
@@ -444,16 +463,35 @@ class ImageDisplayWidget(BaseImageDisplayWidget):
         return self.current_frame
 
     def get_current_frame_data(self):
-        data = self._acq_buffer if self._acq_buffer is not None else self.app_state.current_data
-        if data is None:
+        if self._acq_buffer is None:
             return None
-        if isinstance(data, np.ndarray):
-            if data.ndim == 3:
-                if 0 <= self.current_frame < data.shape[0]:
-                    return data[self.current_frame]
-            elif data.ndim == 2:
-                return data
-        return None
+        
+        if self._acq_buffer.ndim == 3:
+            if 0 <= self.current_frame < self._acq_buffer.shape[0]:
+                return self._acq_buffer[self.current_frame]
+            else:
+                return None
+        else:
+            return self._acq_buffer
+    
+    def get_image_data_for_rpoc(self):
+        '''
+        get image data in a format suitable for RPOC mask creation
+        '''
+        if self._acq_buffer is None:
+            return None
+            
+        # if we have 3D data (frames x height x width), return the current frame as a single channel
+        if self._acq_buffer.ndim == 3:
+            if 0 <= self.current_frame < self._acq_buffer.shape[0]:
+                return self._acq_buffer[self.current_frame][np.newaxis, :, :]
+            else:
+                return None
+        # if we have 2D data, return it as a single channel
+        elif self._acq_buffer.ndim == 2:
+            return self._acq_buffer[np.newaxis, :, :]
+        else:
+            return None
 
     def get_lines(self):
         if hasattr(self, '_lines_widget'):
