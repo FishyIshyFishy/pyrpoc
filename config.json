@@ -1,9 +1,11 @@
 {
   "modality": "confocal",
   "acquisition_parameters": {
-    "num_frames": 7,
+    "num_frames": 1,
     "x_pixels": 512,
-    "y_pixels": 512
+    "y_pixels": 512,
+    "save_enabled": false,
+    "save_path": ""
   },
   "display_parameters": {},
   "rpoc_enabled": false,
@@ -35,8 +37,8 @@
         "amplitude_y": 0.5,
         "offset_x": 0.0,
         "offset_y": 0.0,
-        "numsteps_x": 300,
-        "numsteps_y": 300,
+        "numsteps_x": 512,
+        "numsteps_y": 512,
         "name": "Galvo Scanner"
       },
       "connected": true
@@ -47,9 +49,7 @@
       "parameters": {
         "input_channels": [
           0,
-          1,
-          2,
-          3
+          1
         ],
         "voltage_range": 10.0,
         "sample_rate": 1000000,

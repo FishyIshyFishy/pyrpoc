@@ -2,7 +2,6 @@ from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButt
 from PyQt6.QtCore import Qt, pyqtSignal, pyqtSlot
 import pyqtgraph as pg
 import numpy as np
-import random
 
 class LinesWidget(QWidget):
     add_mode_requested = pyqtSignal()
@@ -82,14 +81,7 @@ class LinesWidget(QWidget):
         if not self.add_mode:
             return
         
-        print(f"LinesWidget.add_line called with coordinates ({x1}, {y1}) to ({x2}, {y2})")
-        if image_data is not None:
-            print(f"Image data shape: {image_data.shape if hasattr(image_data, 'shape') else 'No shape'}")
-            print(f"Image data type: {type(image_data)}")
-        if channel_names is not None:
-            print(f"Channel names: {channel_names}")
-        
-        # Assign unique color to each line by cycling through palette
+        # assign unique color to each line by cycling through palette
         color = self.color_palette[len(self.lines) % len(self.color_palette)]
         line_data = {
             'x1': x1,
@@ -135,19 +127,19 @@ class LinesWidget(QWidget):
                 self.lines_layout.removeItem(self.lines_layout.itemAt(index))
             self.lines.pop(index)
             
-            # Reassign colors to maintain unique colors for remaining lines
             for i, line in enumerate(self.lines):
                 line['index'] = i
                 line['color'] = self.color_palette[i % len(self.color_palette)]
             
             self.remove_line_requested.emit(index)
+
             # update remaining line uis
             for i, line in enumerate(self.lines):
                 group = self.lines_layout.itemAt(i).widget()
                 if group:
                     pos_label = group.layout().itemAt(0).layout().itemAt(0).widget()
                     pos_label.setText(f"Line {i + 1}: ({line['x1']:.1f},{line['y1']:.1f}) to ({line['x2']:.1f},{line['y2']:.1f})")
-                    # Update the group border color
+
                     group.setStyleSheet(f"QGroupBox {{ border: 2px solid {line['color']}; }}")
             
             # update the plot to remove the trace
@@ -161,9 +153,7 @@ class LinesWidget(QWidget):
         self.trace_plot.clear()
         
         if isinstance(image_data, np.ndarray) and image_data.ndim == 3 and image_data.shape[0] > 1:
-            # Multi-channel data: channels x height x width
             num_channels = image_data.shape[0]
-            print(f"update_all_traces: Multi-channel data detected with {num_channels} channels")
             
             for line_data in self.lines:
                 channel_names = line_data.get('channel_names', [f'Ch{i+1}' for i in range(num_channels)])
@@ -197,8 +187,6 @@ class LinesWidget(QWidget):
                                            pen=pen,
                                            name=f"Line {line_data['index'] + 1} {channel_name}")
         else:
-            # Single channel data (simulated mode)
-            print("update_all_traces: Single channel data detected")
             for line_data in self.lines:
                 trace = self.get_line_trace(line_data, image_data)
                 if trace is not None:

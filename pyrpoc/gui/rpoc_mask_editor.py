@@ -214,8 +214,16 @@ class ImageViewer(QGraphicsView):
         coords_str = ', '.join([f'({p.x():.1f}, {p.y():.1f})' for p in points])
         self.roi_table.setItem(row, 1, QTableWidgetItem(coords_str))
 
-        low_item = QTableWidgetItem(str(self.params.low))
-        high_item = QTableWidgetItem(str(self.params.high))
+        # Get current threshold values from the main window's slider
+        low, high = self.main_window.threshold_slider.value()
+        max_slider = self.main_window.threshold_slider.maximum()
+        if max_slider == 1000:
+            # Data is in [0,1] range, convert from [0,1000] back to [0,1]
+            low = low / 1000.0
+            high = high / 1000.0
+        
+        low_item = QTableWidgetItem(f"{low:.3f}")
+        high_item = QTableWidgetItem(f"{high:.3f}")
         self.roi_table.setItem(row, 2, low_item)
         self.roi_table.setItem(row, 3, high_item)
 
@@ -268,8 +276,8 @@ class RPOCMaskEditor(QMainWindow):
 
         self.threshold_slider = QRangeSlider(Qt.Horizontal)
         self.threshold_slider.setMinimum(0)
-        self.threshold_slider.setMaximum(255)
-        self.threshold_slider.setValue((20, 80))
+        self.threshold_slider.setMaximum(1000)  # Will be adjusted based on data range
+        self.threshold_slider.setValue((200, 800))  # Will be adjusted based on data range
         self.threshold_slider.valueChanged.connect(self.on_threshold_changed)
 
         self.save_button = QPushButton("Save Mask")
@@ -293,9 +301,6 @@ class RPOCMaskEditor(QMainWindow):
         self.channel_checkboxes = []
         self.image_colors = [(255, 0, 0), (0, 255, 0), (0, 0, 255), (255, 255, 0), (0, 255, 255), (255, 0, 255)]
 
-        if image_data is not None:
-            self.set_image_data(image_data)
-
         self.image_scene = QGraphicsScene()
         self.image_item = self.image_scene.addPixmap(QPixmap())
         self.image_view = ImageViewer(self.image_scene, self.roi_table, self.params, self)
@@ -314,7 +319,10 @@ class RPOCMaskEditor(QMainWindow):
         container.setLayout(layout)
         self.setCentralWidget(container)
 
-        self.update_displayed_image()
+        if image_data is not None:
+            self.set_image_data(image_data)
+        else:
+            self.update_displayed_image()
 
     def set_image_data(self, image_data):
         """set image data from the main application"""
@@ -340,10 +348,56 @@ class RPOCMaskEditor(QMainWindow):
                 checkbox.stateChanged.connect(lambda state, ch=0: self.on_channel_toggle(ch, state))
                 self.channel_checkboxes.append(checkbox)
                 self.toggle_layout.addWidget(checkbox)
+            
+            # Adjust threshold slider based on data range
+            self._adjust_threshold_slider()
+            
+            # Update the display with the new data
+            self.update_displayed_image()
 
     def on_channel_toggle(self, idx, state):
         self.image_visibility[idx] = bool(state)
         self.update_displayed_image()
+    
+    def _adjust_threshold_slider(self):
+        """Adjust threshold slider range and values based on the data range"""
+        if not self.image_layers:
+            return
+        
+        # Find the global min and max across all visible channels
+        global_min = float('inf')
+        global_max = float('-inf')
+        
+        for img in self.image_layers:
+            img_min = np.min(img)
+            img_max = np.max(img)
+            global_min = min(global_min, img_min)
+            global_max = max(global_max, img_max)
+        
+        # Determine if data is in [0,1] range or [0,255] range
+        if global_max <= 1.0:
+            # Data is in [0,1] range, scale to [0,1000] for better precision
+            self.threshold_slider.setMinimum(0)
+            self.threshold_slider.setMaximum(1000)
+            # Set default values to cover most of the range
+            default_low = int(global_min * 1000)
+            default_high = int(global_max * 1000)
+            # Ensure we have a reasonable range
+            if default_high - default_low < 100:
+                default_high = min(1000, default_low + 500)
+            self.threshold_slider.setValue((default_low, default_high))
+        else:
+            # Data is in [0,255] range or higher
+            max_val = int(global_max)
+            self.threshold_slider.setMinimum(0)
+            self.threshold_slider.setMaximum(max_val)
+            # Set default values to cover most of the range
+            default_low = int(global_min)
+            default_high = int(global_max * 0.8)  # Use 80% of max as default
+            # Ensure we have a reasonable range
+            if default_high - default_low < 50:
+                default_high = min(max_val, default_low + 100)
+            self.threshold_slider.setValue((default_low, default_high))
 
     def keyPressEvent(self, event):
         key = event.key()
@@ -398,7 +452,14 @@ class RPOCMaskEditor(QMainWindow):
         if not visible_imgs:
             return
 
-        composite = np.mean(visible_imgs, axis=0).astype(np.uint8)
+        # Normalize the composite image to [0, 255] for cellpose
+        composite = np.mean(visible_imgs, axis=0)
+        if composite.max() <= 1.0:
+            # Data is in [0,1] range, scale to [0,255]
+            composite = (composite * 255).astype(np.uint8)
+        else:
+            # Data is already in [0,255] range or higher, clip to [0,255]
+            composite = np.clip(composite, 0, 255).astype(np.uint8)
 
         model = models.Cellpose(model_type='cyto3')
         masks, _, _, _ = model.eval([composite], diameter=None, channels=[0, 0])
@@ -455,11 +516,21 @@ class RPOCMaskEditor(QMainWindow):
 
     def update_displayed_image(self):
         if not self.image_layers:
+            # Clear the image if no data
+            self.image_item.setPixmap(QPixmap())
             return
 
         height, width = self.image_layers[0].shape
         rgb_overlay = np.zeros((height, width, 3), dtype=np.uint8)
         low, high = self.threshold_slider.value()
+
+        # Convert threshold values back to data range
+        max_slider = self.threshold_slider.maximum()
+        if max_slider == 1000:
+            # Data is in [0,1] range, convert from [0,1000] back to [0,1]
+            low = low / 1000.0
+            high = high / 1000.0
+        # else: data is already in the correct range
 
         for i, (img, visible) in enumerate(zip(self.image_layers, self.image_visibility)):
             if not visible:
@@ -469,7 +540,7 @@ class RPOCMaskEditor(QMainWindow):
             normalized = np.zeros_like(img, dtype=np.float32)
             if np.any(mask):
                 clipped = np.clip(img.astype(np.float32), low, high)
-                normalized[mask] = (clipped[mask] - low) / max((high - low), 1)
+                normalized[mask] = (clipped[mask] - low) / max((high - low), 1e-9)
             channel_img = (normalized[..., None] * color).astype(np.uint8)
             rgb_overlay = np.clip(rgb_overlay + channel_img, 0, 255)
 
@@ -535,6 +606,7 @@ class RPOCMaskEditor(QMainWindow):
 
     def on_threshold_changed(self, values):
         self.update_displayed_image()
+        # Store the raw slider values in params for compatibility
         self.params.low, self.params.high = values
 
     def toggle_mask_visibility(self, visible):
@@ -585,6 +657,7 @@ class RPOCMaskEditor(QMainWindow):
             for i, (img, active) in enumerate(zip(self.image_layers, active_channels)):
                 if not active:
                     continue
+                # The threshold values from the table are already in the correct data range
                 valid_range = (img >= low_val) & (img <= high_val)
                 combined_mask |= valid_range
 

@@ -175,6 +175,37 @@ class AcquisitionParameters(QWidget):
         self.y_pixels_widget.setLayout(y_pixels_layout)
         self.layout.addWidget(self.y_pixels_widget)
         
+        # Save controls
+        save_layout = QVBoxLayout()
+        
+        # Save enabled checkbox
+        save_enabled_layout = QHBoxLayout()
+        self.save_enabled_checkbox = QCheckBox('Save Data')
+        self.save_enabled_checkbox.setChecked(self.app_state.acquisition_parameters.get('save_enabled', False))
+        self.save_enabled_checkbox.toggled.connect(
+            lambda checked: self.signals.acquisition_parameter_changed.emit('save_enabled', checked))
+        save_enabled_layout.addWidget(self.save_enabled_checkbox)
+        save_layout.addLayout(save_enabled_layout)
+        
+        # Save path selection
+        save_path_layout = QHBoxLayout()
+        save_path_layout.addWidget(QLabel('Save Path:'))
+        self.save_path_edit = QLineEdit()
+        self.save_path_edit.setText(self.app_state.acquisition_parameters.get('save_path', ''))
+        self.save_path_edit.setPlaceholderText('Select file path...')
+        self.save_path_edit.textChanged.connect(
+            lambda text: self.signals.save_path_changed.emit(text))
+        save_path_layout.addWidget(self.save_path_edit)
+        
+        self.browse_btn = QPushButton('Browse')
+        self.browse_btn.clicked.connect(self.browse_save_path)
+        save_path_layout.addWidget(self.browse_btn)
+        save_layout.addLayout(save_path_layout)
+        
+        self.save_widget = QWidget()
+        self.save_widget.setLayout(save_layout)
+        self.layout.addWidget(self.save_widget)
+        
         self.container.setLayout(self.layout)
         
         group_layout = QVBoxLayout()
@@ -198,6 +229,17 @@ class AcquisitionParameters(QWidget):
         else:
             self.x_pixels_widget.show()
             self.y_pixels_widget.show()
+    
+    def browse_save_path(self):
+        """Open file dialog to select save path"""
+        from PyQt6.QtWidgets import QFileDialog
+        file_path, _ = QFileDialog.getSaveFileName(
+            self, 'Save Acquisition Data', 'acquisition.tiff', 
+            'Tiff files (*.tiff);;All files (*)'
+        )
+        if file_path:
+            self.save_path_edit.setText(file_path)
+            self.signals.save_path_changed.emit(file_path)
 
 
 class ModalityControls(QWidget):
@@ -605,6 +647,24 @@ class RPOCChannelWidget(QWidget):
         
         layout.addLayout(header_layout)
         
+        # DAQ channel specification
+        daq_layout = QHBoxLayout()
+        daq_layout.addWidget(QLabel('Device:'))
+        self.device_edit = QLineEdit()
+        self.device_edit.setText('Dev1')
+        self.device_edit.setPlaceholderText('Dev1')
+        self.device_edit.textChanged.connect(self.on_daq_channel_changed)
+        daq_layout.addWidget(self.device_edit)
+        
+        daq_layout.addWidget(QLabel('Port/Line:'))
+        self.port_line_edit = QLineEdit()
+        self.port_line_edit.setText(f'port0/line{4+channel_id-1}')
+        self.port_line_edit.setPlaceholderText('port0/line4')
+        self.port_line_edit.textChanged.connect(self.on_daq_channel_changed)
+        daq_layout.addWidget(self.port_line_edit)
+        
+        layout.addLayout(daq_layout)
+        
         # mask status
         self.mask_status = QLabel('No mask loaded')
         self.mask_status.setStyleSheet('color: #666; font-size: 10px;')
@@ -625,14 +685,45 @@ class RPOCChannelWidget(QWidget):
         
         self.setLayout(layout)
         
+        # Store initial DAQ channel values
+        self.on_daq_channel_changed()
+        
         # check if we already have a mask for this channel
         self.update_mask_status()
+    
+    def on_daq_channel_changed(self):
+        """Handle changes to DAQ channel specification"""
+        # Store the DAQ channel info in app_state
+        if not hasattr(self.app_state, 'rpoc_channels'):
+            self.app_state.rpoc_channels = {}
+        
+        device = self.device_edit.text().strip()
+        port_line = self.port_line_edit.text().strip()
+        
+        if device and port_line:
+            self.app_state.rpoc_channels[self.channel_id] = {
+                'device': device,
+                'port_line': port_line
+            }
+            self.signals.console_message.emit(f"RPOC channel {self.channel_id}: {device}/{port_line}")
+            print(f"RPOC channel {self.channel_id} stored: {device}/{port_line}")
+        else:
+            print(f"RPOC channel {self.channel_id} incomplete: device='{device}', port_line='{port_line}'")
+    
+    def get_daq_channel_info(self):
+        """Get the DAQ channel information for this widget"""
+        device = self.device_edit.text().strip()
+        port_line = self.port_line_edit.text().strip()
+        return {
+            'device': device,
+            'port_line': port_line
+        }
     
     def create_mask(self):
         # get current image data from the image display widget
         image_data = self.get_current_image_data()
         if image_data is None:
-            self.signals.console_message.emit("No image data available for mask creation")
+            self.signals.console_message.emit("No image data available for mask creation. Please acquire an image first.")
             return
             
         self.mask_editor = RPOCMaskEditor(image_data=image_data)
@@ -656,6 +747,18 @@ class RPOCChannelWidget(QWidget):
     
     def get_current_image_data(self):
         """get current image data from the main image display widget"""
+        # First, try to get data from the app_state directly
+        if hasattr(self.app_state, 'current_data'):
+            data = self.app_state.current_data
+            if data is not None and isinstance(data, np.ndarray):
+                if data.ndim == 4:  # frames x channels x height x width
+                    return data[0] if data.shape[0] > 0 else None
+                elif data.ndim == 3:
+                    # assume it's frames x height x width, return current frame as single channel
+                    return data[0][np.newaxis, :, :] if data.shape[0] > 0 else None
+                elif data.ndim == 2:
+                    return data[np.newaxis, :, :]
+        
         # traverse up to find the main window and get image data
         parent = self.parent()
         while parent is not None:
@@ -670,13 +773,29 @@ class RPOCChannelWidget(QWidget):
                 if hasattr(parent.app_state, 'current_data'):
                     data = parent.app_state.current_data
                     if data is not None and isinstance(data, np.ndarray):
-                        if data.ndim == 3:
+                        if data.ndim == 4:  # frames x channels x height x width
+                            return data[0] if data.shape[0] > 0 else None
+                        elif data.ndim == 3:
                             # assume it's frames x height x width, return current frame as single channel
                             return data[0][np.newaxis, :, :] if data.shape[0] > 0 else None
                         elif data.ndim == 2:
                             return data[np.newaxis, :, :]
                 return None
             parent = parent.parent()
+        
+        # If we didn't find it through parent traversal, try to find the main window directly
+        # Look for the main window in the widget hierarchy
+        widget = self
+        while widget is not None:
+            if hasattr(widget, 'app_state') and hasattr(widget, 'mid_layout'):
+                # This should be the main window
+                if hasattr(widget.mid_layout, 'image_display_widget'):
+                    image_widget = widget.mid_layout.image_display_widget
+                    if hasattr(image_widget, 'get_image_data_for_rpoc'):
+                        return image_widget.get_image_data_for_rpoc()
+                break
+            widget = widget.parent()
+        
         return None
     
     def handle_mask_created(self, mask):
@@ -689,7 +808,8 @@ class RPOCChannelWidget(QWidget):
             self.app_state.rpoc_masks = {}
         self.app_state.rpoc_masks[self.channel_id] = mask
         self.update_mask_status()
-        self.signals.console_message.emit(f"Mask loaded for channel {self.channel_id}")
+        self.signals.console_message.emit(f"Mask loaded for channel {self.channel_id} - shape: {mask.shape if hasattr(mask, 'shape') else 'unknown'}")
+        print(f"RPOC mask stored for channel {self.channel_id}: {mask.shape if hasattr(mask, 'shape') else 'unknown'}")
     
     def update_mask_status(self):
         if hasattr(self.app_state, 'rpoc_masks') and self.channel_id in self.app_state.rpoc_masks:
@@ -708,6 +828,10 @@ class RPOCChannelWidget(QWidget):
         # remove mask from app_state
         if hasattr(self.app_state, 'rpoc_masks') and self.channel_id in self.app_state.rpoc_masks:
             del self.app_state.rpoc_masks[self.channel_id]
+        
+        # remove DAQ channel info from app_state
+        if hasattr(self.app_state, 'rpoc_channels') and self.channel_id in self.app_state.rpoc_channels:
+            del self.app_state.rpoc_channels[self.channel_id]
         
         # emit signal to remove this widget
         self.signals.rpoc_channel_removed.emit(self.channel_id)
@@ -778,7 +902,7 @@ class RightPanel(QWidget):
         
         rpoc_enabled_checkbox = QCheckBox('RPOC Enabled')
         rpoc_enabled_checkbox.setChecked(self.app_state.rpoc_enabled)
-        rpoc_enabled_checkbox.toggled.connect(self.signals.rpoc_enabled_changed.emit)
+        rpoc_enabled_checkbox.toggled.connect(lambda checked: self.signals.rpoc_enabled_changed.emit(checked))
         rpoc_layout.addWidget(rpoc_enabled_checkbox)
         
         # add rpoc channel button

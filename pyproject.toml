@@ -20,7 +20,8 @@ dependencies = [
   "superqt",    
   "nidaqmx",   
   "pyvisa",      
-  "zaber_motion"
+  "zaber_motion",
+  "tifffile"
 ]
 
 [project.scripts]

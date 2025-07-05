@@ -19,6 +19,8 @@ class AppState:
             'num_frames': 1,
             'x_pixels': 512,  # Only used for non-confocal modalities
             'y_pixels': 512,  # Only used for non-confocal modalities
+            'save_enabled': False,  # Whether to save acquired data
+            'save_path': '',  # File path for saving data
         }
         self.display_parameters = {
             # overlay parameter removed - not implemented yet
@@ -37,6 +39,9 @@ class AppState:
         
         # RPOC masks storage
         self.rpoc_masks = {}
+        
+        # RPOC channels storage (DAQ device and port/line info)
+        self.rpoc_channels = {}
 
     def get_instruments_by_type(self, instrument_type):
         '''wrapper for getting the instruments to verify if all the necessary instruments are connected in each modality'''
@@ -101,6 +106,7 @@ class StateSignalBus(QObject):
 
     rpoc_enabled_changed = pyqtSignal(bool) # emits when RPOC enabled checkbox is toggled
     acquisition_parameter_changed = pyqtSignal(str, object) # emits when acquisition parameters change (param_name, new_value)
+    save_path_changed = pyqtSignal(str) # emits when save path is changed
     
     # UI state signals
     ui_state_changed = pyqtSignal(str, object) # emits when UI state changes (param_name, new_value)
@@ -127,6 +133,9 @@ class StateSignalBus(QObject):
         # need to disconnect the old connections
         self.disconnect_all()
         
+        # Store reference to app_state for data saving
+        self.app_state = app_state
+        
         self.load_config_btn_clicked.connect(lambda: handle_load_config(app_state, main_window))
         self.save_config_btn_clicked.connect(lambda: handle_save_config(app_state))
 
@@ -144,6 +153,7 @@ class StateSignalBus(QObject):
 
         self.rpoc_enabled_changed.connect(lambda enabled: handle_rpoc_enabled_changed(enabled, app_state))
         self.acquisition_parameter_changed.connect(lambda param_name, value: handle_acquisition_parameter_changed(param_name, value, app_state, main_window))
+        self.save_path_changed.connect(lambda path: handle_save_path_changed(path, app_state))
         
         self.ui_state_changed.connect(lambda param_name, value: handle_ui_state_changed(param_name, value, app_state))
         self.lines_toggled.connect(lambda enabled: handle_lines_toggled(enabled, app_state, main_window))
@@ -224,6 +234,8 @@ def handle_load_config(app_state, main_window):
         
         if 'rpoc_masks' in config_data:
             app_state.rpoc_masks = config_data['rpoc_masks']
+        if 'rpoc_channels' in config_data:
+            app_state.rpoc_channels = config_data['rpoc_channels']
         
         print(f"Configuration loaded from {file_path}")
         main_window.rebuild_gui()
@@ -251,7 +263,8 @@ def handle_save_config(app_state):
             'rpoc_enabled': app_state.rpoc_enabled,
             'ui_state': app_state.ui_state.copy(),
             'instruments': app_state.serialize_instruments(),
-            'rpoc_masks': app_state.rpoc_masks.copy()
+            'rpoc_masks': app_state.rpoc_masks.copy(),
+            'rpoc_channels': app_state.rpoc_channels.copy()
         }
         
         with open(file_path, 'w') as f:
@@ -323,12 +336,17 @@ def handle_single_acquisition(app_state, signal_bus, continuous=False):
 
     acquisition = None
     try:
+        # Extract save parameters
+        save_enabled = parameters.get('save_enabled', False)
+        save_path = parameters.get('save_path', '')
+        
         match modality:
             case 'simulated':
                 x_pixels = parameters['x_pixels']
                 y_pixels = parameters['y_pixels']
                 num_frames = parameters['num_frames']
-                acquisition = Simulated(x_pixels, y_pixels, num_frames, signal_bus)
+                acquisition = Simulated(x_pixels, y_pixels, num_frames, signal_bus, 
+                                      save_enabled=save_enabled, save_path=save_path)
                 
             case 'widefield':
                 x_pixels = parameters['x_pixels']
@@ -336,7 +354,8 @@ def handle_single_acquisition(app_state, signal_bus, continuous=False):
 
                 data_inputs = instruments.get('Data Input', [])
                 signal_bus.console_message.emit(f"Widefield acquisition: {x_pixels}x{y_pixels}")
-                acquisition = Widefield(data_inputs=data_inputs, signal_bus=signal_bus)
+                acquisition = Widefield(data_inputs=data_inputs, signal_bus=signal_bus,
+                                      save_enabled=save_enabled, save_path=save_path)
                 
             case 'confocal':
                 signal_bus.console_message.emit("Confocal acquisition started")
@@ -349,28 +368,39 @@ def handle_single_acquisition(app_state, signal_bus, continuous=False):
                     galvo=galvo, 
                     data_inputs=data_inputs,
                     num_frames=parameters['num_frames'],
-                    signal_bus=signal_bus
+                    signal_bus=signal_bus,
+                    save_enabled=save_enabled,
+                    save_path=save_path
                 )
                 
-                # TODO: check if RPOC is being correctly handled here
-                if rpoc_enabled and hasattr(app_state, 'rpoc_masks'):
-                    acquisition.configure_rpoc(rpoc_enabled, rpoc_masks=app_state.rpoc_masks)
+                # Configure RPOC with both masks and channel information
+                if rpoc_enabled:
+                    rpoc_masks = getattr(app_state, 'rpoc_masks', {})
+                    rpoc_channels = getattr(app_state, 'rpoc_channels', {})
+                    signal_bus.console_message.emit(f"Acquisition RPOC - enabled: {rpoc_enabled}, masks: {len(rpoc_masks)}, channels: {len(rpoc_channels)}")
+                    acquisition.configure_rpoc(rpoc_enabled, rpoc_masks=rpoc_masks, rpoc_channels=rpoc_channels)
+                else:
+                    signal_bus.console_message.emit(f"Acquisition RPOC - disabled")
                 
             case 'mosaic':
                 signal_bus.console_message.emit("Mosaic acquisition started")
-                acquisition = Mosaic(signal_bus=signal_bus)
+                acquisition = Mosaic(signal_bus=signal_bus,
+                                   save_enabled=save_enabled, save_path=save_path)
                 
             case 'zscan':
                 signal_bus.console_message.emit("ZScan acquisition started")
-                acquisition = ZScan(signal_bus=signal_bus)
+                acquisition = ZScan(signal_bus=signal_bus,
+                                  save_enabled=save_enabled, save_path=save_path)
                 
             case 'custom':
                 signal_bus.console_message.emit("Custom acquisition started")
-                acquisition = Custom(signal_bus=signal_bus)
+                acquisition = Custom(signal_bus=signal_bus,
+                                   save_enabled=save_enabled, save_path=save_path)
                 
             case _:
                 signal_bus.console_message.emit('Warning: invalid modality, defaulting to simulation')
-                acquisition = Simulated()
+                acquisition = Simulated(512, 512, 1, signal_bus,
+                                      save_enabled=save_enabled, save_path=save_path)
 
     except Exception as e:
         signal_bus.console_message.emit(f'Error creating acquisition object: {e}')
@@ -429,6 +459,7 @@ def handle_acquisition_thread_finished(data, signal_bus, thread, worker):
     if hasattr(worker, 'continuous') and worker.continuous:
         if data is not None:
             # For continuous acquisition, we don't need to emit final signal since acquisition continues
+            # Also, don't save data for continuous acquisition
             pass
         return
     
@@ -565,12 +596,19 @@ def handle_instrument_removed(instrument, app_state):
 
 def handle_rpoc_enabled_changed(enabled, app_state):
     app_state.rpoc_enabled = enabled
+    print(f"RPOC enabled changed to: {enabled}")
     return 0
 
 def handle_acquisition_parameter_changed(param_name, value, app_state, main_window=None):
     if param_name in app_state.acquisition_parameters:
         app_state.acquisition_parameters[param_name] = value
     return 0
+
+def handle_save_path_changed(path, app_state):
+    app_state.acquisition_parameters['save_path'] = path
+    return 0
+
+
 
 def handle_ui_state_changed(param_name, value, app_state):
     if param_name in app_state.ui_state:
@@ -610,5 +648,10 @@ def handle_rpoc_channel_removed(channel_id, app_state, signal_bus):
     # remove the mask from app_state if it exists
     if hasattr(app_state, 'rpoc_masks') and channel_id in app_state.rpoc_masks:
         del app_state.rpoc_masks[channel_id]
+    
+    # remove the DAQ channel info from app_state if it exists
+    if hasattr(app_state, 'rpoc_channels') and channel_id in app_state.rpoc_channels:
+        del app_state.rpoc_channels[channel_id]
+    
     signal_bus.console_message.emit(f"RPOC channel {channel_id} removed.")
     return 0
