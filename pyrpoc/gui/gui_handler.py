@@ -9,18 +9,18 @@ from pathlib import Path
 
 class AppState:
     '''
-    APP STATE CLASS
-    holds all of the important signaled variables
+    holds all of the important signaled variables as well as things for loading/saving configs 
+    TODO: reclaim appstate after closure
     '''
     def __init__(self):
         self.modality = 'simulated' 
         self.instruments = []  # list of instrument objects
         self.acquisition_parameters = {
-            'num_frames': 1,  # Common to all modalities
-            'x_pixels': 512,  # Only used for non-confocal modalities (confocal uses galvo parameters)
-            'y_pixels': 512,  # Only used for non-confocal modalities (confocal uses galvo parameters)
-            'save_enabled': False,  # Whether to save acquired data
-            'save_path': '',  # File path for saving data
+            'num_frames': 1,  # currently common to all modalities (won't be for long)
+            'x_pixels': 512,  # non-confocal modalities (confocal uses galvo parameters)
+            'y_pixels': 512,  # non-confocal modalities (confocal uses galvo parameters)
+            'save_enabled': False,  
+            'save_path': '',  
         }
         self.display_parameters = {
             # overlay parameter removed - not implemented yet
@@ -37,10 +37,7 @@ class AppState:
             'main_splitter_sizes': [200, 800, 200],  # left, middle, right panel sizes
         }
         
-        # RPOC masks storage
         self.rpoc_masks = {}
-        
-        # RPOC channels storage (DAQ device and port/line info)
         self.rpoc_channels = {}
 
     def get_instruments_by_type(self, instrument_type):
@@ -48,7 +45,7 @@ class AppState:
         return get_instruments_by_type(self.instruments, instrument_type)
     
     def serialize_instruments(self):
-        """Convert instruments to serializable format for saving"""
+        '''serialize instrument data types for saving in json'''
         serialized = []
         for instrument in self.instruments:
             serialized.append({
@@ -59,20 +56,15 @@ class AppState:
         return serialized
     
     def deserialize_instruments(self, serialized_instruments):
-        """Recreate instruments from serialized format"""
+        '''undo serialize_instrument()'''
         self.instruments.clear()
         for data in serialized_instruments:
             try:
-                # Ensure name is a string, not a dict
+                # instrument names must be strings
                 instrument_name = data.get('name', 'Unknown Instrument')
-                if isinstance(instrument_name, dict):
-                    # If name is somehow a dict, try to extract a string value
-                    instrument_name = str(instrument_name)
                 
-                # Ensure parameters is a dict
+                # parameters must be a dict
                 parameters = data.get('parameters', {})
-                if not isinstance(parameters, dict):
-                    parameters = {}
                 
                 instrument = create_instrument(
                     data['instrument_type'], 
@@ -85,7 +77,6 @@ class AppState:
 
 class StateSignalBus(QObject):
     '''
-    SIGNAL COMMUNICATION CLASS
     create all the signals that will be transmitted multi-functionally
     '''
     load_config_btn_clicked = pyqtSignal()
@@ -131,7 +122,7 @@ class StateSignalBus(QObject):
         # need to disconnect the old connections
         self.disconnect_all()
         
-        # Store reference to app_state for data saving
+        # store reference to app_state for data saving
         self.app_state = app_state
         
         self.load_config_btn_clicked.connect(lambda: handle_load_config(app_state, main_window))
@@ -334,7 +325,6 @@ def handle_single_acquisition(app_state, signal_bus, continuous=False):
 
     acquisition = None
     try:
-        # Extract save parameters
         save_enabled = parameters.get('save_enabled', False)
         save_path = parameters.get('save_path', '')
         
@@ -371,7 +361,7 @@ def handle_single_acquisition(app_state, signal_bus, continuous=False):
                     save_path=save_path
                 )
                 
-                # Configure RPOC with both masks and channel information
+                # configure RPOC with both masks and channel information
                 if rpoc_enabled:
                     rpoc_masks = getattr(app_state, 'rpoc_masks', {})
                     rpoc_channels = getattr(app_state, 'rpoc_channels', {})
@@ -424,12 +414,11 @@ def handle_single_acquisition(app_state, signal_bus, continuous=False):
         signal_bus.console_message.emit("Error: Failed to create acquisition object")
 
 def validate_acquisition_parameters(parameters, modality):
-    # Validate presence of required parameters for each modality
-    # Note: Confocal modality uses galvo parameters for pixel dimensions, not acquisition parameters
+    # confocal modality uses galvo parameters for pixel dimensions, not acquisition parameters
     required_params = {
         'simulated': ['x_pixels', 'y_pixels', 'num_frames'],
         'widefield': ['x_pixels', 'y_pixels', 'num_frames'],
-        'confocal': ['num_frames'],  # Pixel dimensions come from galvo parameters
+        'confocal': ['num_frames'],  
         'mosaic': ['x_pixels', 'y_pixels', 'num_frames'],
         'zscan': ['x_pixels', 'y_pixels', 'num_frames'],
         'custom': ['x_pixels', 'y_pixels', 'num_frames']
@@ -443,7 +432,6 @@ def validate_acquisition_parameters(parameters, modality):
     if missing_params:
         raise ValueError(f"Missing required parameters for {modality}: {missing_params}")
     
-    # then validate values
     if 'x_pixels' in parameters and (parameters['x_pixels'] <= 0 or parameters['x_pixels'] > 10000):
         raise ValueError("x_pixels must be between 1 and 10000")
     
@@ -455,11 +443,7 @@ def validate_acquisition_parameters(parameters, modality):
 
 def handle_acquisition_thread_finished(data, signal_bus, thread, worker):
     # for continuous acquisition, don't clean up the thread - let it continue
-    if hasattr(worker, 'continuous') and worker.continuous:
-        if data is not None:
-            # For continuous acquisition, we don't need to emit final signal since acquisition continues
-            # Also, don't save data for continuous acquisition
-            pass
+    if worker.continuous:
         return
     
     if hasattr(signal_bus, 'acq_thread'):
@@ -473,7 +457,7 @@ def handle_acquisition_thread_finished(data, signal_bus, thread, worker):
         del signal_bus.acq_thread
         del signal_bus.acq_worker
     signal_bus.console_message.emit("Acquisition complete!")
-    # Note: Final data signal is now emitted by the acquisition classes themselves
+    # final data signal is now emitted by the acquisition classes themselves
 
 def handle_stop_acquisition(app_state, signal_bus):
     if hasattr(signal_bus, 'acq_thread') and hasattr(signal_bus, 'acq_worker'):
@@ -573,13 +557,9 @@ def handle_add_modality_instrument(instrument_type, app_state, main_window):
                 app_state.instruments = []
             
             app_state.instruments.append(instrument)
-            
-            # Add to GUI
-            if hasattr(main_window, 'left_widget') and hasattr(main_window.left_widget, 'instrument_controls'):
-                main_window.left_widget.instrument_controls.add_instrument(instrument)
-                # Update modality buttons to hide the one we just added
-                main_window.left_widget.instrument_controls.rebuild()
-            
+
+            main_window.left_widget.instrument_controls.add_instrument(instrument)
+            main_window.left_widget.instrument_controls.rebuild()
             main_window.signals.console_message.emit(f"Added {display_name} successfully")
         else:
             main_window.signals.console_message.emit(f"Failed to connect to {display_name}")
@@ -621,7 +601,7 @@ def handle_lines_toggled(enabled, app_state, main_window=None):
     return 0
 
 def handle_data_signal(data, idx, total, is_final, app_state, main_window):
-    # Route the unified data signal to the widget
+    # route the unified data signal to the widget
     if hasattr(main_window, 'mid_layout') and hasattr(main_window.mid_layout, 'image_display_widget'):
         widget = main_window.mid_layout.image_display_widget
         if hasattr(widget, 'handle_data_signal'):
