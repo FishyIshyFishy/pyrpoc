@@ -3,16 +3,15 @@ from PyQt6.QtWidgets import QApplication, QVBoxLayout, QHBoxLayout, QMainWindow,
                              QLabel, QWidget, QComboBox, QSplitter, QPushButton, \
                              QPlainTextEdit, QStyle, QGroupBox, QSpinBox, QCheckBox, QLineEdit, QSlider, \
                              QGraphicsView, QGraphicsScene, QGraphicsItem, QGraphicsLineItem, \
-                             QFrame, QSizePolicy, QDockWidget, QFileDialog, QDialog
+                             QFrame, QSizePolicy, QDockWidget, QFileDialog, QDialog, QFormLayout, QDoubleSpinBox
 from PyQt6.QtCore import Qt, QPointF, QRectF, QPropertyAnimation, QEasingCurve
 from PyQt6.QtGui import QPixmap, QImage, QPen, QBrush, QColor, QPainter, QFont
-from pyrpoc.gui.gui_handler import AppState, StateSignalBus
+from pyrpoc.gui_handler import AppState, StateSignalBus
 import sys
 import pyqtgraph as pg
-from pyrpoc.gui.image_widgets import ImageDisplayWidget, ConfocalImageDisplayWidget
-from pyrpoc.gui.dockable_widgets import LinesWidget
-from pyrpoc.gui.rpoc_mask_editor import RPOCMaskEditor
-from pyrpoc.imaging.instruments import InstrumentDialog
+from pyrpoc.image_widgets import ImageDisplayWidget, MultichannelImageDisplayWidget
+from pyrpoc.dockable_widgets import LinesWidget
+from pyrpoc.rpoc_mask_editor import RPOCMaskEditor
 from superqt import QSearchableComboBox
 import cv2
 
@@ -142,7 +141,7 @@ class ModalityControls(QWidget):
         layout.addWidget(ms_label)
 
         ms_dropdown = QComboBox()
-        ms_dropdown.addItems(['Simulated', 'Widefield', 'Confocal', 'Mosaic', 'ZScan'])
+        ms_dropdown.addItems(['Simulated', 'Widefield', 'Confocal', 'Split Data Stream', 'Mosaic', 'ZScan'])
         current_modality = self.app_state.modality.capitalize()
         index = ms_dropdown.findText(current_modality)
         if index >= 0:
@@ -209,7 +208,29 @@ class AcquisitionParameters(QWidget):
         modality = self.app_state.modality.lower()
         
         if modality == 'confocal':
-            pass
+            # Add galvo acquisition parameters for confocal
+            self.add_galvo_parameters()
+        elif modality == 'split data stream':
+            # Split percentage parameter for split data stream modality
+            split_layout = QHBoxLayout()
+            split_layout.addWidget(QLabel('Split Percentage:'))
+            self.split_percentage_spinbox = QSpinBox()
+            self.split_percentage_spinbox.setRange(1, 99)
+            self.split_percentage_spinbox.setValue(self.app_state.acquisition_parameters.get('split_percentage', 50))
+            self.split_percentage_spinbox.setSuffix('%')
+            self.split_percentage_spinbox.valueChanged.connect(
+                lambda value: self.signals.acquisition_parameter_changed.emit('split_percentage', value))
+            split_layout.addWidget(self.split_percentage_spinbox)
+            self.layout.addLayout(split_layout)
+            
+            # Add galvo acquisition parameters for split data stream
+            self.add_galvo_parameters()
+            
+            # Add prior stage acquisition parameters for split data stream
+            self.add_prior_stage_parameters()
+        elif modality == 'mosaic':
+            # Add galvo acquisition parameters for mosaic
+            self.add_galvo_parameters()
         else:
             # explicit pixel controls for non-confocal modalities
             x_pixels_layout = QHBoxLayout()
@@ -230,7 +251,148 @@ class AcquisitionParameters(QWidget):
             self.y_pixels_spinbox.valueChanged.connect(
                 lambda value: self.signals.acquisition_parameter_changed.emit('y_pixels', value))
             y_pixels_layout.addWidget(self.y_pixels_spinbox)
-            self.layout.addLayout(y_pixels_layout)       
+            self.layout.addLayout(y_pixels_layout)
+
+    def add_galvo_parameters(self):
+        """Add galvo acquisition parameters"""
+        # Galvo parameters group
+        galvo_group = QGroupBox("Galvo Parameters")
+        galvo_layout = QFormLayout()
+        
+        # Dwell time
+        self.dwell_time_spin = QDoubleSpinBox()
+        self.dwell_time_spin.setRange(1e-9, 1e-3)
+        self.dwell_time_spin.setValue(self.app_state.acquisition_parameters.get('dwell_time', 10e-6))
+        self.dwell_time_spin.setSuffix(" s")
+        self.dwell_time_spin.setDecimals(9)
+        self.dwell_time_spin.valueChanged.connect(
+            lambda value: self.signals.acquisition_parameter_changed.emit('dwell_time', value))
+        galvo_layout.addRow("Dwell Time:", self.dwell_time_spin)
+        
+        # Extra steps
+        self.extrasteps_left_spin = QSpinBox()
+        self.extrasteps_left_spin.setRange(0, 1000)
+        self.extrasteps_left_spin.setValue(self.app_state.acquisition_parameters.get('extrasteps_left', 50))
+        self.extrasteps_left_spin.valueChanged.connect(
+            lambda value: self.signals.acquisition_parameter_changed.emit('extrasteps_left', value))
+        galvo_layout.addRow("Extra Steps Left:", self.extrasteps_left_spin)
+        
+        self.extrasteps_right_spin = QSpinBox()
+        self.extrasteps_right_spin.setRange(0, 1000)
+        self.extrasteps_right_spin.setValue(self.app_state.acquisition_parameters.get('extrasteps_right', 50))
+        self.extrasteps_right_spin.valueChanged.connect(
+            lambda value: self.signals.acquisition_parameter_changed.emit('extrasteps_right', value))
+        galvo_layout.addRow("Extra Steps Right:", self.extrasteps_right_spin)
+        
+        # Amplitudes
+        self.amplitude_x_spin = QDoubleSpinBox()
+        self.amplitude_x_spin.setRange(0.1, 10.0)
+        self.amplitude_x_spin.setValue(self.app_state.acquisition_parameters.get('amplitude_x', 0.5))
+        self.amplitude_x_spin.setSuffix(" V")
+        self.amplitude_x_spin.valueChanged.connect(
+            lambda value: self.signals.acquisition_parameter_changed.emit('amplitude_x', value))
+        galvo_layout.addRow("Amplitude X:", self.amplitude_x_spin)
+        
+        self.amplitude_y_spin = QDoubleSpinBox()
+        self.amplitude_y_spin.setRange(0.1, 10.0)
+        self.amplitude_y_spin.setValue(self.app_state.acquisition_parameters.get('amplitude_y', 0.5))
+        self.amplitude_y_spin.setSuffix(" V")
+        self.amplitude_y_spin.valueChanged.connect(
+            lambda value: self.signals.acquisition_parameter_changed.emit('amplitude_y', value))
+        galvo_layout.addRow("Amplitude Y:", self.amplitude_y_spin)
+        
+        # Offsets
+        self.offset_x_spin = QDoubleSpinBox()
+        self.offset_x_spin.setRange(-10.0, 10.0)
+        self.offset_x_spin.setValue(self.app_state.acquisition_parameters.get('offset_x', 0.0))
+        self.offset_x_spin.setSuffix(" V")
+        self.offset_x_spin.valueChanged.connect(
+            lambda value: self.signals.acquisition_parameter_changed.emit('offset_x', value))
+        galvo_layout.addRow("Offset X:", self.offset_x_spin)
+        
+        self.offset_y_spin = QDoubleSpinBox()
+        self.offset_y_spin.setRange(-10.0, 10.0)
+        self.offset_y_spin.setValue(self.app_state.acquisition_parameters.get('offset_y', 0.0))
+        self.offset_y_spin.setSuffix(" V")
+        self.offset_y_spin.valueChanged.connect(
+            lambda value: self.signals.acquisition_parameter_changed.emit('offset_y', value))
+        galvo_layout.addRow("Offset Y:", self.offset_y_spin)
+        
+        galvo_group.setLayout(galvo_layout)
+        self.layout.addWidget(galvo_group)
+
+    def add_prior_stage_parameters(self):
+        """Add prior stage acquisition parameters"""
+        # Prior stage parameters group
+        prior_group = QGroupBox("Prior Stage Parameters")
+        prior_layout = QFormLayout()
+        
+        # Number of steps
+        self.numsteps_x_spin = QSpinBox()
+        self.numsteps_x_spin.setRange(1, 100)
+        self.numsteps_x_spin.setValue(self.app_state.acquisition_parameters.get('numsteps_x', 10))
+        self.numsteps_x_spin.valueChanged.connect(
+            lambda value: self.signals.acquisition_parameter_changed.emit('numsteps_x', value))
+        prior_layout.addRow("X Steps:", self.numsteps_x_spin)
+        
+        self.numsteps_y_spin = QSpinBox()
+        self.numsteps_y_spin.setRange(1, 100)
+        self.numsteps_y_spin.setValue(self.app_state.acquisition_parameters.get('numsteps_y', 10))
+        self.numsteps_y_spin.valueChanged.connect(
+            lambda value: self.signals.acquisition_parameter_changed.emit('numsteps_y', value))
+        prior_layout.addRow("Y Steps:", self.numsteps_y_spin)
+        
+        self.numsteps_z_spin = QSpinBox()
+        self.numsteps_z_spin.setRange(1, 100)
+        self.numsteps_z_spin.setValue(self.app_state.acquisition_parameters.get('numsteps_z', 5))
+        self.numsteps_z_spin.valueChanged.connect(
+            lambda value: self.signals.acquisition_parameter_changed.emit('numsteps_z', value))
+        prior_layout.addRow("Z Steps:", self.numsteps_z_spin)
+        
+        # Step sizes
+        self.step_size_x_spin = QDoubleSpinBox()
+        self.step_size_x_spin.setRange(10, 1000)
+        self.step_size_x_spin.setValue(self.app_state.acquisition_parameters.get('step_size_x', 100))
+        self.step_size_x_spin.setSuffix(" µm")
+        self.step_size_x_spin.valueChanged.connect(
+            lambda value: self.signals.acquisition_parameter_changed.emit('step_size_x', value))
+        prior_layout.addRow("X Step Size:", self.step_size_x_spin)
+        
+        self.step_size_y_spin = QDoubleSpinBox()
+        self.step_size_y_spin.setRange(10, 1000)
+        self.step_size_y_spin.setValue(self.app_state.acquisition_parameters.get('step_size_y', 100))
+        self.step_size_y_spin.setSuffix(" µm")
+        self.step_size_y_spin.valueChanged.connect(
+            lambda value: self.signals.acquisition_parameter_changed.emit('step_size_y', value))
+        prior_layout.addRow("Y Step Size:", self.step_size_y_spin)
+        
+        self.step_size_z_spin = QDoubleSpinBox()
+        self.step_size_z_spin.setRange(10, 1000)
+        self.step_size_z_spin.setValue(self.app_state.acquisition_parameters.get('step_size_z', 50))
+        self.step_size_z_spin.setSuffix(" µm")
+        self.step_size_z_spin.valueChanged.connect(
+            lambda value: self.signals.acquisition_parameter_changed.emit('step_size_z', value))
+        prior_layout.addRow("Z Step Size:", self.step_size_z_spin)
+        
+        # Safety parameters
+        self.max_z_height_spin = QDoubleSpinBox()
+        self.max_z_height_spin.setRange(10000, 100000)
+        self.max_z_height_spin.setValue(self.app_state.acquisition_parameters.get('max_z_height', 50000))
+        self.max_z_height_spin.setSuffix(" µm")
+        self.max_z_height_spin.valueChanged.connect(
+            lambda value: self.signals.acquisition_parameter_changed.emit('max_z_height', value))
+        prior_layout.addRow("Max Z Height:", self.max_z_height_spin)
+        
+        self.safe_move_distance_spin = QDoubleSpinBox()
+        self.safe_move_distance_spin.setRange(1000, 100000)
+        self.safe_move_distance_spin.setValue(self.app_state.acquisition_parameters.get('safe_move_distance', 10000))
+        self.safe_move_distance_spin.setSuffix(" µm")
+        self.safe_move_distance_spin.valueChanged.connect(
+            lambda value: self.signals.acquisition_parameter_changed.emit('safe_move_distance', value))
+        prior_layout.addRow("Safe Move Distance:", self.safe_move_distance_spin)
+        
+        prior_group.setLayout(prior_layout)
+        self.layout.addWidget(prior_group)
 
     def add_common_parameters(self):
         frames_layout = QHBoxLayout()
@@ -341,6 +503,21 @@ class InstrumentControls(QWidget):
                 data_input_btn = QPushButton('Add Data Inputs')
                 data_input_btn.clicked.connect(lambda: self.signals.add_modality_instrument.emit('Data Input'))
                 self.modality_buttons_layout.addWidget(data_input_btn)
+        elif modality == 'split data stream':
+            if not self.has_instrument_type('Galvo'):
+                galvo_btn = QPushButton('Add Galvos')
+                galvo_btn.clicked.connect(lambda: self.signals.add_modality_instrument.emit('Galvo'))
+                self.modality_buttons_layout.addWidget(galvo_btn)
+            
+            if not self.has_instrument_type('Data Input'):
+                data_input_btn = QPushButton('Add Data Inputs')
+                data_input_btn.clicked.connect(lambda: self.signals.add_modality_instrument.emit('Data Input'))
+                self.modality_buttons_layout.addWidget(data_input_btn)
+            
+            if not self.has_instrument_type('Prior Stage'):
+                prior_stage_btn = QPushButton('Add Prior Stage')
+                prior_stage_btn.clicked.connect(lambda: self.signals.add_modality_instrument.emit('Prior Stage'))
+                self.modality_buttons_layout.addWidget(prior_stage_btn)
         elif modality == 'widefield':
             if not self.has_instrument_type('Data Input'):
                 data_input_btn = QPushButton('Add Data Inputs')
@@ -445,25 +622,21 @@ class InstrumentWidget(QWidget):
         summary_lines = []
         if self.instrument.instrument_type == "Galvo":
             summary_lines.append(f"Ch: {params.get('slow_axis_channel', '?')}/{params.get('fast_axis_channel', '?')}")
-            summary_lines.append(f"Pixels: {params.get('numsteps_x', 0)}x{params.get('numsteps_y', 0)}")
-            summary_lines.append(f"Dwell: {params.get('dwell_time', 0)*1e6:.1f}μs")
-            summary_lines.append(f"Extra: {params.get('extrasteps_left', 0)}/{params.get('extrasteps_right', 0)}")
-            summary_lines.append(f"Amp: {params.get('amplitude_x', 0):.2f}/{params.get('amplitude_y', 0):.2f}V")
+            summary_lines.append(f"Device: {params.get('device_name', '?')}")
             summary_lines.append(f"Rate: {params.get('sample_rate', 0)/1000:.0f}kHz")
+            summary_lines.append(f"Range: ±{params.get('voltage_range', 0):.1f}V")
         elif self.instrument.instrument_type == "Data Input":
             channels = params.get('input_channels', [])
             if isinstance(channels, list):
                 summary_lines.append(f"Channels: {', '.join(map(str, channels))}")
             summary_lines.append(f"Range: ±{params.get('voltage_range', 0):.1f}V")
             summary_lines.append(f"Rate: {params.get('sample_rate', 0)/1000:.0f}kHz")
-        elif self.instrument.instrument_type == "Delay Stage":
-            summary_lines.append(f"Port: {params.get('com_port', '?')}")
-            summary_lines.append(f"Baud: {params.get('baud_rate', 0)}")
-            summary_lines.append(f"Timeout: {params.get('timeout', 0):.1f}s")
         elif self.instrument.instrument_type == "Zaber Stage":
             summary_lines.append(f"Port: {params.get('com_port', '?')}")
             summary_lines.append(f"Baud: {params.get('baud_rate', 0)}")
             summary_lines.append(f"Timeout: {params.get('timeout', 0):.1f}s")
+        elif self.instrument.instrument_type == "Prior Stage":
+            summary_lines.append(f"Port: COM{params.get('port', '?')}")
         else:
             summary_lines.append(f"Type: {self.instrument.instrument_type}")
             param_items = list(params.items())[:3]
@@ -489,44 +662,52 @@ class InstrumentWidget(QWidget):
         self.deleteLater()
     
     def edit_control_instrument(self):
-        if self.instrument.instrument_type in ['Galvo', 'Data Input']:
-            current_params = self.instrument.parameters.copy()
-            current_params['name'] = self.instrument.name
+        # Use the unified widget approach for all instruments
+        unified_widget = self.instrument.get_widget()
+        if unified_widget:
+            dialog = QDialog(self)
+            dialog.setWindowTitle(f"Configure/Control {self.instrument.name}")
+            dialog.setModal(True)
             
-            dialog = InstrumentDialog(self.instrument.instrument_type, self, current_params)
+            layout = QVBoxLayout()
+            layout.addWidget(unified_widget)
+            
+            # Buttons
+            button_layout = QHBoxLayout()
+            save_btn = QPushButton("Save")
+            save_btn.clicked.connect(self.save_instrument_parameters)
+            cancel_btn = QPushButton("Cancel")
+            cancel_btn.clicked.connect(dialog.reject)
+            
+            button_layout.addWidget(save_btn)
+            button_layout.addWidget(cancel_btn)
+            layout.addLayout(button_layout)
+            
+            dialog.setLayout(layout)
+            dialog.resize(400, 300)
+            
+            # Store reference to widget for saving
+            self.current_unified_widget = unified_widget
             
             if dialog.exec() == QDialog.DialogCode.Accepted:
-                parameters = dialog.get_parameters()
-                if parameters is not None: 
-                    self.instrument.parameters.update(parameters)
-                    new_name = parameters.get('name', 'Unknown Instrument')
-                    self.instrument.name = new_name
-                    self.name_label.setText(new_name)
-                    self.update_status()  # Refresh parameter summary
-                    self.signals.console_message.emit(f"Updated {new_name} parameters")
-                else:
-                    current_name = getattr(self.instrument, 'name', 'Unknown Instrument')
-                    self.signals.console_message.emit(f"Failed to update {current_name} - invalid parameters")
-        
+                self.save_instrument_parameters()
         else:
-            control_widget = self.instrument.get_control_widget()
-            if control_widget:
-                dialog = QDialog(self)
-                dialog.setWindowTitle(f"Control {self.instrument.name}")
-                dialog.setModal(True)
-                
-                layout = QVBoxLayout()
-                layout.addWidget(control_widget)
-                
-                close_btn = QPushButton("Close")
-                close_btn.clicked.connect(dialog.accept)
-                layout.addWidget(close_btn)
-                
-                dialog.setLayout(layout)
-                dialog.resize(300, 200)
-                dialog.exec()
+            self.signals.console_message.emit(f"Failed to get widget for {self.instrument.name}")
+    
+    def save_instrument_parameters(self):
+        """Save parameters from the unified widget"""
+        if hasattr(self, 'current_unified_widget'):
+            parameters = self.current_unified_widget.get_parameters()
+            if parameters is not None:
+                self.instrument.parameters.update(parameters)
+                new_name = parameters.get('name', 'Unknown Instrument')
+                self.instrument.name = new_name
+                self.name_label.setText(new_name)
+                self.update_status()  # Refresh parameter summary
+                self.signals.console_message.emit(f"Updated {new_name} parameters")
             else:
-                self.signals.console_message.emit(f"Failed to update {current_name} - something weird is happening")
+                current_name = getattr(self.instrument, 'name', 'Unknown Instrument')
+                self.signals.console_message.emit(f"Failed to update {current_name} - invalid parameters")
 
 class DisplayControls(QWidget):
     def __init__(self, app_state: AppState, signals: StateSignalBus):
@@ -749,7 +930,6 @@ class RightPanel(QWidget):
         #     group_layout = QVBoxLayout()
         #     group_layout.addWidget(QLabel('Simulation Mode Active'))
         #     group.setLayout(group_layout)
-        #     layout.addWidget(group)
         # elif modality == 'widefield':
         #     group = QGroupBox('Widefield Mode')
         #     group_layout = QVBoxLayout()
@@ -881,8 +1061,8 @@ class DockableMiddlePanel(QMainWindow):
     def create_image_display_widget(self):
         modality = self.app_state.modality.lower()
         
-        if modality == 'confocal':
-            return ConfocalImageDisplayWidget(self.app_state, self.signals)
+        if modality in ['confocal', 'split data stream']:
+            return MultichannelImageDisplayWidget(self.app_state, self.signals)
         else:
             return ImageDisplayWidget(self.app_state, self.signals)
 

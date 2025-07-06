@@ -1,9 +1,9 @@
-from PyQt6.QtCore import QObject, pyqtSignal, QThread
-from PyQt6.QtWidgets import QFileDialog, QMessageBox
-from pyrpoc.imaging.acquisitions import *
-from pyrpoc.imaging.instruments import InstrumentDialog, create_instrument, get_instruments_by_type
-import numpy as np
 import json
+from PyQt6.QtWidgets import QFileDialog, QMessageBox, QDialog, QVBoxLayout, QHBoxLayout, QPushButton, QComboBox, QLabel
+from pyrpoc.instruments.instrument_manager import create_instrument, get_instruments_by_type
+from PyQt6.QtCore import QObject, pyqtSignal, QThread
+from pyrpoc.acquisitions import *
+import numpy as np
 import os
 from pathlib import Path
 
@@ -16,11 +16,31 @@ class AppState:
         self.modality = 'simulated' 
         self.instruments = []  # list of instrument objects
         self.acquisition_parameters = {
-            'num_frames': 1,  # currently common to all modalities (won't be for long)
-            'x_pixels': 512,  # non-confocal modalities (confocal uses galvo parameters)
-            'y_pixels': 512,  # non-confocal modalities (confocal uses galvo parameters)
-            'save_enabled': False,  
-            'save_path': '',  
+            'num_frames': 1,  # Common to all modalities
+            'x_pixels': 512,  # Only used for non-confocal modalities (confocal uses galvo parameters)
+            'y_pixels': 512,  # Only used for non-confocal modalities (confocal uses galvo parameters)
+            'split_percentage': 50,  # Only used for split data stream modality
+            'save_enabled': False,  # Whether to save acquired data
+            'save_path': '',  # File path for saving data
+            
+            # Galvo acquisition parameters (moved from galvo instrument)
+            'dwell_time': 10e-6,  # Per pixel dwell time in seconds
+            'extrasteps_left': 50,  # Extra steps left in fast direction
+            'extrasteps_right': 50,  # Extra steps right in fast direction
+            'amplitude_x': 0.5,  # Amplitude for X axis
+            'amplitude_y': 0.5,  # Amplitude for Y axis
+            'offset_x': 0.0,  # Offset for X axis
+            'offset_y': 0.0,  # Offset for Y axis
+            
+            # Prior stage acquisition parameters (moved from prior stage instrument)
+            'numsteps_x': 10,  # Number of X steps for acquisition
+            'numsteps_y': 10,  # Number of Y steps for acquisition  
+            'numsteps_z': 5,   # Number of Z steps for acquisition
+            'step_size_x': 100,  # Step size in µm for X
+            'step_size_y': 100,  # Step size in µm for Y
+            'step_size_z': 50,   # Step size in µm for Z
+            'max_z_height': 50000,  # Maximum Z height in µm
+            'safe_move_distance': 10000  # Safe movement distance in µm
         }
         self.display_parameters = {
             # overlay parameter removed - not implemented yet
@@ -286,7 +306,7 @@ def handle_single_acquisition(app_state, signal_bus, continuous=False):
         return
 
     instruments = {}
-    for instrument_type in ['Galvo', 'Data Input', 'Delay Stage', 'Zaber Stage']:
+    for instrument_type in ['Galvo', 'Data Input', 'Delay Stage', 'Zaber Stage', 'Prior Stage']:
         instruments[instrument_type] = app_state.get_instruments_by_type(instrument_type)
     
     # check modality parameters (instruments in particular)
@@ -302,7 +322,6 @@ def handle_single_acquisition(app_state, signal_bus, continuous=False):
             signal_bus.console_message.emit("Error: Confocal acquisition requires at least one Data Input instrument. Please add a Data Input.")
             return
     
-
     elif modality == 'widefield':
         data_inputs = instruments.get('Data Input', [])
         
@@ -310,7 +329,23 @@ def handle_single_acquisition(app_state, signal_bus, continuous=False):
             signal_bus.console_message.emit("Error: Widefield acquisition requires at least one Data Input instrument. Please add a Data Input.")
             return
 
-    
+    elif modality == 'split data stream':
+        galvo = instruments.get('Galvo', [])
+        data_inputs = instruments.get('Data Input', [])
+        prior_stage = instruments.get('Prior Stage', [])
+        
+        if not galvo:
+            signal_bus.console_message.emit("Error: Split Data Stream acquisition requires at least one Galvo instrument. Please add a Galvo scanner.")
+            return
+        
+        if not data_inputs:
+            signal_bus.console_message.emit("Error: Split Data Stream acquisition requires at least one Data Input instrument. Please add a Data Input.")
+            return
+        
+        if not prior_stage:
+            signal_bus.console_message.emit("Error: Split Data Stream acquisition requires at least one Prior Stage instrument. Please add a Prior Stage.")
+            return
+
     elif modality == 'mosaic':
         galvo = instruments.get('Galvo', [])
         data_inputs = instruments.get('Data Input', [])
@@ -357,6 +392,37 @@ def handle_single_acquisition(app_state, signal_bus, continuous=False):
                     data_inputs=data_inputs,
                     num_frames=parameters['num_frames'],
                     signal_bus=signal_bus,
+                    acquisition_parameters=parameters,
+                    save_enabled=save_enabled,
+                    save_path=save_path
+                )
+                
+                # configure RPOC with both masks and channel information
+                if rpoc_enabled:
+                    rpoc_masks = getattr(app_state, 'rpoc_masks', {})
+                    rpoc_channels = getattr(app_state, 'rpoc_channels', {})
+                    signal_bus.console_message.emit(f"Acquisition RPOC - enabled: {rpoc_enabled}, masks: {len(rpoc_masks)}, channels: {len(rpoc_channels)}")
+                    acquisition.configure_rpoc(rpoc_enabled, rpoc_masks=rpoc_masks, rpoc_channels=rpoc_channels)
+                else:
+                    signal_bus.console_message.emit(f"Acquisition RPOC - disabled")
+                
+            case 'split data stream':
+                signal_bus.console_message.emit("Split Data Stream acquisition started")
+
+                # have already verified that the instruments exist, no need to .get() here
+                galvo = instruments['Galvo'][0] # returned as a list because there are multiple of each instrument in general
+                data_inputs = instruments['Data Input']
+                prior_stage = instruments['Prior Stage'][0] if 'Prior Stage' in instruments else None
+                split_percentage = parameters.get('split_percentage', 50)
+                
+                acquisition = SplitDataStream(
+                    galvo=galvo, 
+                    data_inputs=data_inputs,
+                    prior_stage=prior_stage,
+                    num_frames=parameters['num_frames'],
+                    split_percentage=split_percentage,
+                    signal_bus=signal_bus,
+                    acquisition_parameters=parameters,
                     save_enabled=save_enabled,
                     save_path=save_path
                 )
@@ -414,11 +480,12 @@ def handle_single_acquisition(app_state, signal_bus, continuous=False):
         signal_bus.console_message.emit("Error: Failed to create acquisition object")
 
 def validate_acquisition_parameters(parameters, modality):
-    # confocal modality uses galvo parameters for pixel dimensions, not acquisition parameters
+    # All modalities now use acquisition parameters for pixel dimensions
     required_params = {
         'simulated': ['x_pixels', 'y_pixels', 'num_frames'],
         'widefield': ['x_pixels', 'y_pixels', 'num_frames'],
-        'confocal': ['num_frames'],  
+        'confocal': ['x_pixels', 'y_pixels', 'num_frames'],  # Now uses acquisition parameters
+        'split data stream': ['x_pixels', 'y_pixels', 'num_frames', 'split_percentage'],  # Now uses acquisition parameters
         'mosaic': ['x_pixels', 'y_pixels', 'num_frames'],
         'zscan': ['x_pixels', 'y_pixels', 'num_frames'],
         'custom': ['x_pixels', 'y_pixels', 'num_frames']
@@ -440,6 +507,9 @@ def validate_acquisition_parameters(parameters, modality):
     
     if 'num_frames' in parameters and (parameters['num_frames'] <= 0 or parameters['num_frames'] > 10000):
         raise ValueError("num_frames must be between 1 and 10000")
+    
+    if 'split_percentage' in parameters and (parameters['split_percentage'] <= 0 or parameters['split_percentage'] >= 100):
+        raise ValueError("split_percentage must be between 1 and 99")
 
 def handle_acquisition_thread_finished(data, signal_bus, thread, worker):
     # for continuous acquisition, don't clean up the thread - let it continue
@@ -513,7 +583,7 @@ def handle_add_instrument(app_state, main_window):
     layout.addWidget(QLabel("Select instrument type:"))
     
     combo = QComboBox()
-    combo.addItems(['Delay Stage', 'Zaber Stage'])
+    combo.addItems(['Delay Stage', 'Zaber Stage', 'Prior Stage'])
     layout.addWidget(combo)
     
     button_layout = QHBoxLayout()
@@ -536,33 +606,62 @@ def handle_add_instrument(app_state, main_window):
     return 0
 
 def handle_add_modality_instrument(instrument_type, app_state, main_window):
-    dialog = InstrumentDialog(instrument_type, main_window)
-    if dialog.exec() == QDialog.DialogCode.Accepted:
-        parameters = dialog.get_parameters()
+    # Create instrument with default parameters
+    instrument = create_instrument(instrument_type, instrument_type)
+    
+    # Get the unified widget for configuration
+    unified_widget = instrument.get_widget()
+    if unified_widget:
+        dialog = QDialog(main_window)
+        dialog.setWindowTitle(f"Configure {instrument_type}")
+        dialog.setModal(True)
         
-        if parameters is not None:  
-            instrument_name = parameters.get('name', f'{instrument_type}')
-            instrument = create_instrument(instrument_type, instrument_name, parameters)
+        layout = QVBoxLayout()
+        layout.addWidget(unified_widget)
+        
+        # Buttons
+        button_layout = QHBoxLayout()
+        ok_btn = QPushButton("OK")
+        cancel_btn = QPushButton("Cancel")
+        
+        ok_btn.clicked.connect(dialog.accept)
+        cancel_btn.clicked.connect(dialog.reject)
+        
+        button_layout.addWidget(ok_btn)
+        button_layout.addWidget(cancel_btn)
+        layout.addLayout(button_layout)
+        
+        dialog.setLayout(layout)
+        dialog.resize(400, 300)
+        
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            parameters = unified_widget.get_parameters()
             
-            if hasattr(instrument, 'name') and instrument.name:
-                display_name = instrument.name
+            if parameters is not None:  
+                instrument_name = parameters.get('name', f'{instrument_type}')
+                instrument = create_instrument(instrument_type, instrument_name, parameters)
+                
+                if hasattr(instrument, 'name') and instrument.name:
+                    display_name = instrument.name
+                else:
+                    display_name = instrument_name
             else:
-                display_name = instrument_name
-        else:
-            main_window.signals.console_message.emit(f"Failed to create {instrument_type} - invalid parameters")
-            return 0
-        
-        if instrument.initialize():
-            if not hasattr(app_state, 'instruments'):
-                app_state.instruments = []
+                main_window.signals.console_message.emit(f"Failed to create {instrument_type} - invalid parameters")
+                return 0
             
-            app_state.instruments.append(instrument)
+            if instrument.initialize():
+                if not hasattr(app_state, 'instruments'):
+                    app_state.instruments = []
+                
+                app_state.instruments.append(instrument)
 
-            main_window.left_widget.instrument_controls.add_instrument(instrument)
-            main_window.left_widget.instrument_controls.rebuild()
-            main_window.signals.console_message.emit(f"Added {display_name} successfully")
-        else:
-            main_window.signals.console_message.emit(f"Failed to connect to {display_name}")
+                main_window.left_widget.instrument_controls.add_instrument(instrument)
+                main_window.left_widget.instrument_controls.rebuild()
+                main_window.signals.console_message.emit(f"Added {display_name} successfully")
+            else:
+                main_window.signals.console_message.emit(f"Failed to connect to {display_name}")
+    else:
+        main_window.signals.console_message.emit(f"Failed to get configuration widget for {instrument_type}")
     
     return 0
 

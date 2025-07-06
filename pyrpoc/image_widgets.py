@@ -544,22 +544,56 @@ class ImageDisplayWidget(BaseImageDisplayWidget):
             return self._acq_buffer[np.newaxis, :, :]  # Add channel dimension
 
 
-class ConfocalImageDisplayWidget(BaseImageDisplayWidget):
-    """
-    Image display widget specifically for confocal data with multi-channel support
-    Displays channels in a grid layout
-    """
+class MultichannelImageDisplayWidget(BaseImageDisplayWidget):
     def __init__(self, app_state, signals):
         super().__init__(app_state, signals)
-        self.setMinimumSize(600, 400)
-        
-        # Multi-channel data handling
         self.num_channels = 1
         self.channel_names = ['Channel 1']
+        self.channel_scenes = []
+        self.channel_views = []
         
+        # Line drawing state
+        self._add_mode = False
+        self._temp_line_start = None
+        self._dragging_endpoint = None
+        
+        # Lines widget reference
+        self._lines_widget = None
+        
+        self.setup_ui()
+        self.update_channel_names()
+    
+    def update_channel_names(self):
+        """Update channel names based on modality"""
+        modality = self.app_state.modality.lower()
+        if modality == 'confocal':
+            # For confocal, use generic channel names
+            self.channel_names = [f'Channel {i+1}' for i in range(self.num_channels)]
+        elif modality == 'split data stream':
+            # For split data stream, use descriptive channel names
+            # Each input channel creates 3 output channels
+            input_channels = self.num_channels // 3
+            self.channel_names = []
+            for input_ch in range(input_channels):
+                base_name = f'Input {input_ch + 1}'
+                self.channel_names.extend([
+                    f'{base_name} - First Portion',
+                    f'{base_name} - Second Portion', 
+                    f'{base_name} - Full Data'
+                ])
+            # Handle any remaining channels (in case num_channels is not divisible by 3)
+            remaining = self.num_channels % 3
+            if remaining > 0:
+                for i in range(remaining):
+                    self.channel_names.append(f'Channel {input_channels * 3 + i + 1}')
+        else:
+            # Default fallback
+            self.channel_names = [f'Channel {i+1}' for i in range(self.num_channels)]
+
+    def setup_ui(self):
         layout = QVBoxLayout()
         self.setLayout(layout)
-        
+
         # Frame controls
         frame_controls = QHBoxLayout()
         frame_controls.addWidget(QLabel('Frame:'))
@@ -581,11 +615,6 @@ class ConfocalImageDisplayWidget(BaseImageDisplayWidget):
         # Graphics views for each channel
         self.channel_views = []
         self.channel_scenes = []
-        
-        # Line drawing state
-        self._add_mode = False
-        self._temp_line_start = None
-        self._lines_widget = None
         
         # Initialize with single channel
         self._setup_channel_display(1)
@@ -714,26 +743,23 @@ class ConfocalImageDisplayWidget(BaseImageDisplayWidget):
         if isinstance(data, np.ndarray):
             if data.ndim == 4:  # frames x channels x height x width
                 self.num_channels = data.shape[1]
-                self.channel_names = [f'Channel {i+1}' for i in range(self.num_channels)]
                 self.total_frames = data.shape[0]
                 self.current_frame = 0
             elif data.ndim == 3:  # frames x height x width (single channel)
                 self.num_channels = 1
-                self.channel_names = ['Channel 1']
                 self.total_frames = data.shape[0]
                 self.current_frame = 0
             else:
                 self.num_channels = 1
-                self.channel_names = ['Channel 1']
                 self.total_frames = 1
                 self.current_frame = 0
         else:
             self.num_channels = 1
-            self.channel_names = ['Channel 1']
             self.total_frames = 0
             self.current_frame = 0
         
-        # Update channel display
+        # Update channel names and display
+        self.update_channel_names()
         self._setup_channel_display(self.num_channels)
         
         # Update frame controls consistently with ImageDisplayWidget
