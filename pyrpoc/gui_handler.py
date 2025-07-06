@@ -241,8 +241,12 @@ def handle_load_config(app_state, main_window):
         if 'instruments' in config_data:
             app_state.deserialize_instruments(config_data['instruments'])
         
+        # Handle rpoc_masks - clear actual mask data but preserve channel structure
         if 'rpoc_masks' in config_data:
-            app_state.rpoc_masks = config_data['rpoc_masks']
+            # Clear existing masks and set up structure for new ones
+            app_state.rpoc_masks = {}
+            # Note: Actual mask data is not loaded from config, users need to reload masks
+        
         if 'rpoc_channels' in config_data:
             app_state.rpoc_channels = config_data['rpoc_channels']
         
@@ -265,6 +269,22 @@ def handle_save_config(app_state):
         if not file_path:
             return 0
         
+        # Create a serializable version of rpoc_masks that excludes the actual mask data
+        serializable_rpoc_masks = {}
+        if hasattr(app_state, 'rpoc_masks'):
+            for channel_id, mask in app_state.rpoc_masks.items():
+                if mask is not None:
+                    # Store metadata about the mask instead of the actual mask data
+                    serializable_rpoc_masks[str(channel_id)] = {
+                        'shape': mask.shape if hasattr(mask, 'shape') else None,
+                        'dtype': str(mask.dtype) if hasattr(mask, 'dtype') else None,
+                        'has_mask': True
+                    }
+                else:
+                    serializable_rpoc_masks[str(channel_id)] = {
+                        'has_mask': False
+                    }
+        
         config_data = {
             'modality': app_state.modality,
             'acquisition_parameters': app_state.acquisition_parameters.copy(),
@@ -272,8 +292,9 @@ def handle_save_config(app_state):
             'rpoc_enabled': app_state.rpoc_enabled,
             'ui_state': app_state.ui_state.copy(),
             'instruments': app_state.serialize_instruments(),
-            'rpoc_masks': app_state.rpoc_masks.copy(),
+            'rpoc_masks': serializable_rpoc_masks,
             'rpoc_channels': app_state.rpoc_channels.copy()
+            # Note: current_data is intentionally excluded as it may contain numpy arrays
         }
         
         with open(file_path, 'w') as f:
@@ -306,7 +327,7 @@ def handle_single_acquisition(app_state, signal_bus, continuous=False):
         return
 
     instruments = {}
-    for instrument_type in ['Galvo', 'Data Input', 'Delay Stage', 'Zaber Stage', 'Prior Stage']:
+    for instrument_type in ['Galvo', 'Data Input', 'Delay Stage', 'Prior Stage']:
         instruments[instrument_type] = app_state.get_instruments_by_type(instrument_type)
     
     # check modality parameters (instruments in particular)
@@ -322,13 +343,6 @@ def handle_single_acquisition(app_state, signal_bus, continuous=False):
             signal_bus.console_message.emit("Error: Confocal acquisition requires at least one Data Input instrument. Please add a Data Input.")
             return
     
-    elif modality == 'widefield':
-        data_inputs = instruments.get('Data Input', [])
-        
-        if not data_inputs:
-            signal_bus.console_message.emit("Error: Widefield acquisition requires at least one Data Input instrument. Please add a Data Input.")
-            return
-
     elif modality == 'split data stream':
         galvo = instruments.get('Galvo', [])
         data_inputs = instruments.get('Data Input', [])
@@ -346,18 +360,6 @@ def handle_single_acquisition(app_state, signal_bus, continuous=False):
             signal_bus.console_message.emit("Error: Split Data Stream acquisition requires at least one Prior Stage instrument. Please add a Prior Stage.")
             return
 
-    elif modality == 'mosaic':
-        galvo = instruments.get('Galvo', [])
-        data_inputs = instruments.get('Data Input', [])
-        
-        if not galvo:
-            signal_bus.console_message.emit("Error: Mosaic acquisition requires at least one Galvo instrument. Please add a Galvo scanner.")
-            return
-        
-        if not data_inputs:
-            signal_bus.console_message.emit("Error: Mosaic acquisition requires at least one Data Input instrument. Please add a Data Input.")
-            return
-
     acquisition = None
     try:
         save_enabled = parameters.get('save_enabled', False)
@@ -366,13 +368,6 @@ def handle_single_acquisition(app_state, signal_bus, continuous=False):
         match modality:
             case 'simulated':
                 acquisition = Simulated(signal_bus=signal_bus, 
-                                      acquisition_parameters=parameters,
-                                      save_enabled=save_enabled, save_path=save_path)
-                
-            case 'widefield':
-                data_inputs = instruments.get('Data Input', [])
-                signal_bus.console_message.emit(f"Widefield acquisition: {parameters['x_pixels']}x{parameters['y_pixels']}")
-                acquisition = Widefield(data_inputs=data_inputs, signal_bus=signal_bus,
                                       acquisition_parameters=parameters,
                                       save_enabled=save_enabled, save_path=save_path)
                 
@@ -432,24 +427,6 @@ def handle_single_acquisition(app_state, signal_bus, continuous=False):
                 else:
                     signal_bus.console_message.emit(f"Acquisition RPOC - disabled")
                 
-            case 'mosaic':
-                signal_bus.console_message.emit("Mosaic acquisition started")
-                acquisition = Mosaic(signal_bus=signal_bus,
-                                   acquisition_parameters=parameters,
-                                   save_enabled=save_enabled, save_path=save_path)
-                
-            case 'zscan':
-                signal_bus.console_message.emit("ZScan acquisition started")
-                acquisition = ZScan(signal_bus=signal_bus,
-                                  acquisition_parameters=parameters,
-                                  save_enabled=save_enabled, save_path=save_path)
-                
-            case 'hyperspectral':
-                signal_bus.console_message.emit("Hyperspectral acquisition started")
-                acquisition = Hyperspectral(signal_bus=signal_bus,
-                                          acquisition_parameters=parameters,
-                                          save_enabled=save_enabled, save_path=save_path)
-                
             case _:
                 signal_bus.console_message.emit('Warning: invalid modality, defaulting to simulation')
                 default_params = {'x_pixels': 512, 'y_pixels': 512, 'num_frames': 1}
@@ -484,7 +461,6 @@ def validate_acquisition_parameters(parameters, modality):
     # All modalities now use acquisition parameters for pixel dimensions
     required_params = {
         'simulated': ['x_pixels', 'y_pixels', 'num_frames'],
-        'widefield': ['x_pixels', 'y_pixels', 'num_frames'],
         'confocal': [
             'x_pixels', 'y_pixels', 'num_frames',
             'dwell_time', 'extrasteps_left', 'extrasteps_right',
@@ -497,15 +473,6 @@ def validate_acquisition_parameters(parameters, modality):
             'numtiles_x', 'numtiles_y', 'numtiles_z',
             'tile_size_x', 'tile_size_y', 'tile_size_z'
         ],
-        'mosaic': [
-            'x_pixels', 'y_pixels', 'num_frames',
-            'dwell_time', 'extrasteps_left', 'extrasteps_right',
-            'amplitude_x', 'amplitude_y', 'offset_x', 'offset_y',
-            'numtiles_x', 'numtiles_y', 'numtiles_z',
-            'tile_size_x', 'tile_size_y', 'tile_size_z'
-        ],
-        'zscan': ['x_pixels', 'y_pixels', 'num_frames'],
-        'hyperspectral': ['x_pixels', 'y_pixels', 'num_frames'],
         'custom': ['x_pixels', 'y_pixels', 'num_frames']
     }
     
@@ -617,7 +584,7 @@ def handle_add_instrument(app_state, main_window):
     layout.addWidget(QLabel("Select instrument type:"))
     
     combo = QComboBox()
-    combo.addItems(['Delay Stage', 'Zaber Stage', 'Prior Stage'])
+    combo.addItems(['Delay Stage', 'Prior Stage'])
     layout.addWidget(combo)
     
     button_layout = QHBoxLayout()

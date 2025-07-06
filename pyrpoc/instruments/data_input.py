@@ -13,7 +13,6 @@ class DataInput(Instrument):
         self.parameters = {
             'input_channels': [0, 1],  # List of AI channels
             'channel_names': {'0': 'ch0', '1': 'ch1'},  # Channel names mapping
-            'voltage_range': 10.0,
             'sample_rate': 1000000,
             'device_name': 'Dev1'
         }
@@ -89,11 +88,7 @@ class DataInputConfigWidget(QWidget):
         self.channel_names_edit = QLineEdit("ch0,ch1")
         layout.addRow("Channel Names (comma-separated):", self.channel_names_edit)
         
-        self.voltage_spin = QDoubleSpinBox()
-        self.voltage_spin.setRange(1.0, 20.0)
-        self.voltage_spin.setValue(10.0)
-        self.voltage_spin.setSuffix(" V")
-        layout.addRow("Voltage Range:", self.voltage_spin)
+
         
         self.sample_rate_spin = QSpinBox()
         self.sample_rate_spin.setRange(1000, 10000000)
@@ -122,8 +117,6 @@ class DataInputConfigWidget(QWidget):
                 channels = parameters.get('input_channels', [])
                 names_list = [channel_names.get(str(ch), f'ch{ch}') for ch in channels]
                 self.channel_names_edit.setText(','.join(names_list))
-        if 'voltage_range' in parameters:
-            self.voltage_spin.setValue(parameters['voltage_range'])
         if 'sample_rate' in parameters:
             self.sample_rate_spin.setValue(parameters['sample_rate'])
 
@@ -147,7 +140,6 @@ class DataInputConfigWidget(QWidget):
             'device_name': self.device_combo.currentText(),
             'input_channels': channels,
             'channel_names': channel_names,
-            'voltage_range': self.voltage_spin.value(),
             'sample_rate': self.sample_rate_spin.value()
         }
         

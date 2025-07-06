@@ -6,11 +6,13 @@ from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel,
                              QCheckBox, QDoubleSpinBox, QTabWidget)
 from PyQt6.QtCore import Qt, pyqtSignal
 from pyrpoc.instruments.base_instrument import Instrument
+from ctypes import create_string_buffer, WinDLL
+import os
 
 class PriorStage(Instrument):
     def __init__(self, name="Prior Stage"):
         super().__init__(name, "Prior Stage")
-        # Connection and safety parameters
+
         self.parameters = {
             'port': 4,  # COM port number
             'max_z_height': 50000,  # Maximum Z height in µm
@@ -21,15 +23,12 @@ class PriorStage(Instrument):
         self._session_id = None
 
     def initialize(self):
-        """Initialize Prior stage connection"""
-        try:
-            from ctypes import WinDLL, create_string_buffer
-            import os
+        try:            
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            dll_path = os.path.join(current_dir, "..", "old", "helpers", "prior_stage", "PriorScientificSDK.dll")
             
-            # Load DLL
-            dll_path = os.path.join(os.path.dirname(__file__), "..", "old", "helpers", "prior_stage", "PriorScientificSDK.dll")
             if not os.path.exists(dll_path):
-                raise RuntimeError(f"PriorScientificSDK.dll not found at {dll_path}")
+                raise RuntimeError(f"PriorScientificSDK.dll not found. Searched at: {dll_path}")
             
             self._sdk_prior = WinDLL(dll_path)
             
@@ -58,12 +57,6 @@ class PriorStage(Instrument):
             return False
 
     def _send_command(self, command):
-        """Send command to Prior stage"""
-        if not self._connected or self._sdk_prior is None:
-            raise RuntimeError("Prior stage not initialized")
-        
-        from ctypes import create_string_buffer
-        
         rx = create_string_buffer(1000)
         ret = self._sdk_prior.PriorScientificSDK_cmd(
             self._session_id, create_string_buffer(command.encode()), rx
@@ -138,6 +131,34 @@ class PriorStage(Instrument):
             return int(response)
         except ValueError:
             raise RuntimeError(f"Invalid Z position response: '{response}'")
+
+    def test_connection(self):
+        """Test if the Prior stage is responding correctly"""
+        try:
+            # Try to get current position
+            x, y = self.get_xy()
+            z = self.get_z()
+            print(f"Prior stage test successful - Current position: X={x}, Y={y}, Z={z}")
+            return True
+        except Exception as e:
+            print(f"Prior stage test failed: {e}")
+            return False
+
+    def cleanup(self):
+        """Clean up Prior stage connection"""
+        try:
+            if self._connected and self._sdk_prior is not None and self._session_id is not None:
+                # Close session
+                self._sdk_prior.PriorScientificSDK_CloseSession(self._session_id)
+                self._session_id = None
+                self._connected = False
+                print("Prior stage connection closed")
+        except Exception as e:
+            print(f"Error during Prior stage cleanup: {e}")
+
+    def __del__(self):
+        """Destructor to ensure cleanup"""
+        self.cleanup()
 
     def get_widget(self):
         """Return unified Prior stage widget"""

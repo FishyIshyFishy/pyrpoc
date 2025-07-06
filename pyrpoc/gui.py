@@ -143,7 +143,7 @@ class ModalityControls(QWidget):
         layout.addWidget(ms_label)
 
         ms_dropdown = QComboBox()
-        ms_dropdown.addItems(['Simulated', 'Widefield', 'Confocal', 'Split Data Stream', 'Mosaic', 'ZScan'])
+        ms_dropdown.addItems(['Simulated', 'Confocal', 'Split Data Stream'])
         current_modality = self.app_state.modality.capitalize()
         index = ms_dropdown.findText(current_modality)
         if index >= 0:
@@ -229,20 +229,7 @@ class AcquisitionParameters(QWidget):
             self.add_galvo_parameters()
             self.add_prior_stage_parameters()
 
-        elif modality == 'mosaic':
-            self.add_galvo_parameters()
-            self.add_prior_stage_parameters()
-
-        elif modality == 'widefield':
-            self.add_pixel_parameters()
-
         elif modality == 'simulated':
-            self.add_pixel_parameters()
-
-        elif modality == 'zscan':
-            self.add_pixel_parameters()
-
-        elif modality == 'hyperspectral':
             self.add_pixel_parameters()
 
         else:
@@ -523,22 +510,6 @@ class InstrumentControls(QWidget):
                 prior_stage_btn = QPushButton('Add Prior Stage')
                 prior_stage_btn.clicked.connect(lambda: self.signals.add_modality_instrument.emit('Prior Stage'))
                 self.modality_buttons_layout.addWidget(prior_stage_btn)
-        elif modality == 'widefield':
-            if not self.has_instrument_type('Data Input'):
-                data_input_btn = QPushButton('Add Data Inputs')
-                data_input_btn.clicked.connect(lambda: self.signals.add_modality_instrument.emit('Data Input'))
-                self.modality_buttons_layout.addWidget(data_input_btn)
-        elif modality == 'mosaic':
-            if not self.has_instrument_type('Galvo'):
-                galvo_btn = QPushButton('Add Galvos')
-                galvo_btn.clicked.connect(lambda: self.signals.add_modality_instrument.emit('Galvo'))
-                self.modality_buttons_layout.addWidget(galvo_btn)
-            
-            if not self.has_instrument_type('Data Input'):
-                data_input_btn = QPushButton('Add Data Inputs')
-                data_input_btn.clicked.connect(lambda: self.signals.add_modality_instrument.emit('Data Input'))
-                self.modality_buttons_layout.addWidget(data_input_btn)
-
         self.rebuild_instrument_list()
     
     def has_instrument_type(self, instrument_type):
@@ -629,7 +600,6 @@ class InstrumentWidget(QWidget):
             summary_lines.append(f"Ch: {params.get('slow_axis_channel', '?')}/{params.get('fast_axis_channel', '?')}")
             summary_lines.append(f"Device: {params.get('device_name', '?')}")
             summary_lines.append(f"Rate: {params.get('sample_rate', 0)/1000:.0f}kHz")
-            summary_lines.append(f"Range: ±{params.get('voltage_range', 0):.1f}V")
         elif self.instrument.instrument_type == "Data Input":
             channels = params.get('input_channels', [])
             channel_names = params.get('channel_names', {})
@@ -639,12 +609,7 @@ class InstrumentWidget(QWidget):
                     ch_name = channel_names.get(str(ch), f'ch{ch}')
                     channel_display.append(f"{ch_name}(AI{ch})")
                 summary_lines.append(f"Channels: {' | '.join(channel_display)}")
-            summary_lines.append(f"Range: ±{params.get('voltage_range', 0):.1f}V")
             summary_lines.append(f"Rate: {params.get('sample_rate', 0)/1000:.0f}kHz")
-        elif self.instrument.instrument_type == "Zaber Stage":
-            summary_lines.append(f"Port: {params.get('com_port', '?')}")
-            summary_lines.append(f"Baud: {params.get('baud_rate', 0)}")
-            summary_lines.append(f"Timeout: {params.get('timeout', 0):.1f}s")
         elif self.instrument.instrument_type == "Prior Stage":
             summary_lines.append(f"Port: COM{params.get('port', '?')}")
         else:

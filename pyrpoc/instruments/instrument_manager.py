@@ -9,7 +9,6 @@ from PyQt6.QtCore import Qt, pyqtSignal
 # Import the actual instrument classes
 from pyrpoc.instruments.galvo import Galvo
 from pyrpoc.instruments.data_input import DataInput
-from pyrpoc.instruments.zaber_stage import ZaberStage
 from pyrpoc.instruments.prior_stage import PriorStage
 
 # Factory function to create instruments
@@ -23,9 +22,6 @@ def create_instrument(instrument_type, name, parameters=None):
         instrument.parameters.update(parameters)
     elif instrument_type == "Data Input":
         instrument = DataInput(name)
-        instrument.parameters.update(parameters)
-    elif instrument_type == "Zaber Stage":
-        instrument = ZaberStage(name)
         instrument.parameters.update(parameters)
     elif instrument_type == "Prior Stage":
         instrument = PriorStage(name)
@@ -43,7 +39,7 @@ def get_instruments_by_type(instruments_list, instrument_type):
 def validate_instrument_parameters(instrument_type, parameters):
     """Validate instrument parameters before creating or updating an instrument"""
     if instrument_type == "Galvo":
-        required_params = ['slow_axis_channel', 'fast_axis_channel', 'voltage_range', 'sample_rate', 'device_name']
+        required_params = ['slow_axis_channel', 'fast_axis_channel', 'sample_rate', 'device_name']
         for param in required_params:
             if param not in parameters:
                 raise ValueError(f"Missing required parameter for Galvo: {param}")
@@ -51,13 +47,11 @@ def validate_instrument_parameters(instrument_type, parameters):
         # Validate parameter values
         if parameters['slow_axis_channel'] < 0 or parameters['fast_axis_channel'] < 0:
             raise ValueError("Channel numbers must be non-negative")
-        if parameters['voltage_range'] <= 0:
-            raise ValueError("Voltage range must be positive")
         if parameters['sample_rate'] <= 0:
             raise ValueError("Sample rate must be positive")
             
     elif instrument_type == "Data Input":
-        required_params = ['input_channels', 'voltage_range', 'sample_rate', 'device_name']
+        required_params = ['input_channels', 'sample_rate', 'device_name']
         for param in required_params:
             if param not in parameters:
                 raise ValueError(f"Missing required parameter for Data Input: {param}")
@@ -67,25 +61,9 @@ def validate_instrument_parameters(instrument_type, parameters):
             raise ValueError("Input channels must be a non-empty list")
         if any(ch < 0 for ch in parameters['input_channels']):
             raise ValueError("Channel numbers must be non-negative")
-        if parameters['voltage_range'] <= 0:
-            raise ValueError("Voltage range must be positive")
         if parameters['sample_rate'] <= 0:
             raise ValueError("Sample rate must be positive")
             
-    elif instrument_type == "Zaber Stage":
-        required_params = ['com_port', 'baud_rate', 'timeout']
-        for param in required_params:
-            if param not in parameters:
-                raise ValueError(f"Missing required parameter for Zaber Stage: {param}")
-        
-        # Validate parameter values
-        if not parameters['com_port'].startswith('COM'):
-            raise ValueError("COM port must start with 'COM'")
-        if parameters['baud_rate'] not in [9600, 19200, 38400, 57600, 115200]:
-            raise ValueError("Invalid baud rate")
-        if parameters['timeout'] <= 0:
-            raise ValueError("Timeout must be positive")
-    
     elif instrument_type == "Prior Stage":
         required_params = ['port']
         for param in required_params:

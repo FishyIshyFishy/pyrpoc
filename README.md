@@ -2,7 +2,7 @@
 
 Author: Ishaan Singh, Zhang Group (https://sites.google.com/view/zhangresearchgroup)
 
-This software was written for the Zhang group's RPOC and SRS microscopy system, see https://www.nature.com/articles/s41467-022-32071-z. It is meant to serve as a general software for microscopy that seamlessly integrates RPOC, to enable more widespread adoption of the technique.  Functionalities include full flexibility of galvo mirror scanning, multi-channel imaging, multi-channel RPOC mask design and application, hyperspectral/z-stack imaging via a Zaber delay/Prior stage, mosaic imaging, and more. 
+This software was written for the Zhang group's RPOC and SRS microscopy system, see https://www.nature.com/articles/s41467-022-32071-z. It is meant to serve as a general software for microscopy that seamlessly integrates RPOC, to enable more widespread adoption of the technique.  Functionalities include full flexibility of galvo mirror scanning, multi-channel imaging, multi-channel RPOC mask design and application, and more. 
 With any feedback or suggestions, please reach out to sing1125@purdue.edu.
 
 ## Basic Installation

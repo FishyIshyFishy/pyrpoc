@@ -14,7 +14,6 @@ class Galvo(Instrument):
         self.parameters = {
             'slow_axis_channel': 0,
             'fast_axis_channel': 1,
-            'voltage_range': 10.0,
             'sample_rate': 1000000,
             'device_name': 'Dev1'
         }
@@ -161,11 +160,7 @@ class GalvoConfigWidget(QWidget):
         self.fast_channel_spin.setValue(1)
         layout.addRow("Fast Axis Channel:", self.fast_channel_spin)
         
-        self.voltage_spin = QDoubleSpinBox()
-        self.voltage_spin.setRange(1.0, 20.0)
-        self.voltage_spin.setValue(10.0)
-        self.voltage_spin.setSuffix(" V")
-        layout.addRow("Voltage Range:", self.voltage_spin)
+
         
         self.sample_rate_spin = QSpinBox()
         self.sample_rate_spin.setRange(1000, 10000000)
@@ -187,8 +182,6 @@ class GalvoConfigWidget(QWidget):
             self.slow_channel_spin.setValue(parameters['slow_axis_channel'])
         if 'fast_axis_channel' in parameters:
             self.fast_channel_spin.setValue(parameters['fast_axis_channel'])
-        if 'voltage_range' in parameters:
-            self.voltage_spin.setValue(parameters['voltage_range'])
         if 'sample_rate' in parameters:
             self.sample_rate_spin.setValue(parameters['sample_rate'])
 
@@ -198,7 +191,6 @@ class GalvoConfigWidget(QWidget):
             'device_name': self.device_combo.currentText(),
             'slow_axis_channel': self.slow_channel_spin.value(),
             'fast_axis_channel': self.fast_channel_spin.value(),
-            'voltage_range': self.voltage_spin.value(),
             'sample_rate': self.sample_rate_spin.value()
         }
         
