@@ -1,6 +1,6 @@
 import numpy as np
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QSlider, QGraphicsView, QGraphicsScene, QGraphicsSimpleTextItem, QGridLayout
-from PyQt6.QtCore import Qt, QRectF, QPointF, pyqtSignal, pyqtSlot
+from PyQt6.QtCore import Qt, QRectF, QPointF, pyqtSignal, pyqtSlot, QTimer
 from PyQt6.QtGui import QPixmap, QImage, QPainter, QColor, QPen, QBrush, QFont
 from .base_display import BaseImageDisplayWidget
 
@@ -25,31 +25,58 @@ class MultichannelImageDisplayWidget(BaseImageDisplayWidget):
         self.update_channel_names()
     
     def update_channel_names(self):
-        """Update channel names based on modality"""
+        """Update channel names based on modality and data input instruments"""
         modality = self.app_state.modality.lower()
-        if modality == 'confocal':
-            # For confocal, use generic channel names
-            self.channel_names = [f'Channel {i+1}' for i in range(self.num_channels)]
-        elif modality == 'split data stream':
-            # For split data stream, use descriptive channel names
-            # Each input channel creates 3 output channels
-            input_channels = self.num_channels // 3
-            self.channel_names = []
-            for input_ch in range(input_channels):
-                base_name = f'Input {input_ch + 1}'
-                self.channel_names.extend([
-                    f'{base_name} - First Portion',
-                    f'{base_name} - Second Portion', 
-                    f'{base_name} - Full Data'
-                ])
-            # Handle any remaining channels (in case num_channels is not divisible by 3)
-            remaining = self.num_channels % 3
-            if remaining > 0:
-                for i in range(remaining):
-                    self.channel_names.append(f'Channel {input_channels * 3 + i + 1}')
+        
+        # Try to get channel names from data input instruments first
+        channel_names = self._get_channel_names_from_instruments()
+        
+        if channel_names and len(channel_names) >= self.num_channels:
+            # Use the actual channel names from instruments
+            self.channel_names = channel_names[:self.num_channels]
         else:
-            # Default fallback
-            self.channel_names = [f'Channel {i+1}' for i in range(self.num_channels)]
+            # Fallback to modality-specific naming
+            if modality == 'confocal':
+                # For confocal, use generic channel names
+                self.channel_names = [f'Channel {i+1}' for i in range(self.num_channels)]
+            elif modality == 'split data stream':
+                # For split data stream, use descriptive channel names
+                # Each input channel creates 3 output channels
+                input_channels = self.num_channels // 3
+                self.channel_names = []
+                for input_ch in range(input_channels):
+                    base_name = f'Input {input_ch + 1}'
+                    self.channel_names.extend([
+                        f'{base_name} - First Portion',
+                        f'{base_name} - Second Portion', 
+                        f'{base_name} - Full Data'
+                    ])
+                # Handle any remaining channels (in case num_channels is not divisible by 3)
+                remaining = self.num_channels % 3
+                if remaining > 0:
+                    for i in range(remaining):
+                        self.channel_names.append(f'Channel {input_channels * 3 + i + 1}')
+            else:
+                # Default fallback
+                self.channel_names = [f'Channel {i+1}' for i in range(self.num_channels)]
+    
+    def _get_channel_names_from_instruments(self):
+        """Get channel names from data input instruments in the app state"""
+        channel_names = []
+        
+        if hasattr(self.app_state, 'instruments'):
+            for instrument in self.app_state.instruments:
+                if instrument.instrument_type == "Data Input" and hasattr(instrument, 'parameters'):
+                    # Get channel names from the instrument parameters
+                    input_channels = instrument.parameters.get('input_channels', [])
+                    channel_names_param = instrument.parameters.get('channel_names', {})
+                    
+                    for ch in input_channels:
+                        # Use the channel name if available, otherwise use default
+                        channel_name = channel_names_param.get(str(ch), f"ch{ch}")
+                        channel_names.append(channel_name)
+        
+        return channel_names
 
     def setup_ui(self):
         layout = QVBoxLayout()
@@ -79,6 +106,11 @@ class MultichannelImageDisplayWidget(BaseImageDisplayWidget):
         
         # Initialize with single channel
         self._setup_channel_display(1)
+        
+        # Timer for delayed viewport updates to fix sizing issues
+        self._resize_timer = QTimer()
+        self._resize_timer.setSingleShot(True)
+        self._resize_timer.timeout.connect(self._delayed_viewport_update)
     
     def _setup_channel_display(self, num_channels):
         """Setup the channel grid display"""
@@ -93,6 +125,9 @@ class MultichannelImageDisplayWidget(BaseImageDisplayWidget):
             child = self.channel_layout.takeAt(0)
             if child.widget():
                 child.widget().deleteLater()
+        
+        # Update channel names before creating display
+        self.update_channel_names()
         
         # Calculate grid dimensions
         cols = min(3, num_channels)  # Max 3 columns
@@ -128,6 +163,9 @@ class MultichannelImageDisplayWidget(BaseImageDisplayWidget):
             
             # Install event filter for mouse interaction
             view.viewport().installEventFilter(self)
+            
+            # Connect resize event to ensure proper sizing
+            view.resizeEvent = lambda event, v=view: self.on_channel_view_resize(v, event)
     
     def handle_frame_acquired(self, data_unit, idx, total):
         """Handle frame acquired signal for confocal multi-channel data"""
@@ -142,22 +180,22 @@ class MultichannelImageDisplayWidget(BaseImageDisplayWidget):
                 if data_unit.ndim == 3:  # channels x height x width
                     self._acq_buffer = np.zeros((total, data_unit.shape[0], data_unit.shape[1], data_unit.shape[2]))
                     self.num_channels = data_unit.shape[0]
-                    self.channel_names = [f'Channel {i+1}' for i in range(self.num_channels)]
-                    # Update channel display
+                    # Update channel names and display
+                    self.update_channel_names()
                     self._setup_channel_display(self.num_channels)
                 elif data_unit.ndim == 2:  # height x width (single channel)
                     self._acq_buffer = np.zeros((total, 1, data_unit.shape[0], data_unit.shape[1]))
                     self.num_channels = 1
-                    self.channel_names = ['Channel 1']
+                    self.update_channel_names()
                 else:
                     self._acq_buffer = np.zeros((total, 1, data_unit.shape[0], data_unit.shape[1]))
                     self.num_channels = 1
-                    self.channel_names = ['Channel 1']
+                    self.update_channel_names()
             else:
                 # Fallback for non-array data
                 self._acq_buffer = np.zeros((total, 1, 512, 512))
                 self.num_channels = 1
-                self.channel_names = ['Channel 1']
+                self.update_channel_names()
         
         # Store the frame data
         if isinstance(data_unit, np.ndarray):
@@ -186,6 +224,10 @@ class MultichannelImageDisplayWidget(BaseImageDisplayWidget):
         # Update frame controls if this is the first frame
         if idx == 0:
             self.update_frame_controls(total, 0)
+        
+        # Schedule delayed viewport update on first frame to fix sizing issues
+        if idx == 0:
+            self._resize_timer.start(100)  # 100ms delay
         
         # Update overlays and display consistently with ImageDisplayWidget
         self.update_overlays()
@@ -232,6 +274,9 @@ class MultichannelImageDisplayWidget(BaseImageDisplayWidget):
         # Update display
         self.display_frame(self.current_frame)
         self.update_display()
+        
+        # Schedule delayed viewport update to fix sizing issues
+        self._resize_timer.start(100)  # 100ms delay
         
         # Emit traces update signal consistently with ImageDisplayWidget
         self.traces_update_requested.emit(self.get_all_channel_data())
@@ -528,3 +573,30 @@ class MultichannelImageDisplayWidget(BaseImageDisplayWidget):
     def get_channel_names(self):
         """Get channel names for legend display in lines widget"""
         return self.channel_names
+    
+    def on_channel_view_resize(self, view, event):
+        """Handle channel view resize to maintain proper sizing"""
+        super(view.__class__, view).resizeEvent(event)
+        if view.scene() and view.scene().sceneRect().isValid():
+            view.fitInView(view.scene().sceneRect(), Qt.AspectRatioMode.KeepAspectRatio)
+    
+    def _delayed_viewport_update(self):
+        """Delayed viewport update to fix sizing issues after GUI updates"""
+        for view in self.channel_views:
+            if view.scene() and view.scene().sceneRect().isValid():
+                view.viewport().update()
+                view.fitInView(view.scene().sceneRect(), Qt.AspectRatioMode.KeepAspectRatio)
+    
+    def refresh_channel_labels(self):
+        """Refresh channel labels when instruments are updated"""
+        if hasattr(self, 'channel_layout'):
+            # Find all QLabel widgets in the channel layout and update them
+            for i in range(self.channel_layout.count()):
+                item = self.channel_layout.itemAt(i)
+                if item.widget() and isinstance(item.widget(), QLabel):
+                    # This is a channel label, update it
+                    row = i // 6  # 6 items per row (label + view for 3 columns)
+                    col = (i % 6) // 2  # Every other item is a label
+                    channel_idx = row * 3 + col
+                    if channel_idx < len(self.channel_names):
+                        item.widget().setText(self.channel_names[channel_idx])

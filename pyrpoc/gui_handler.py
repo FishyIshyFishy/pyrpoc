@@ -19,7 +19,7 @@ class AppState:
             'num_frames': 1,  # Common to all modalities
             'split_percentage': 50,  # Only used for split data stream modality
             'save_enabled': False,  # Whether to save acquired data
-            'save_path': '',  # File path for saving data
+            'save_path': '',  # Full path to base filename for saving data
             
             # Galvo acquisition parameters (moved from galvo instrument)
             'dwell_time': 10e-6,  # Per pixel dwell time in seconds
@@ -108,6 +108,7 @@ class StateSignalBus(QObject):
     add_instrument_btn_clicked = pyqtSignal()
     add_modality_instrument = pyqtSignal(str) # emits when adding a modality-specific instrument (instrument_type)
     instrument_removed = pyqtSignal(object) # emits when an instrument is removed (instrument_object)
+    instrument_updated = pyqtSignal(object) # emits when an instrument is updated (instrument_object)
 
     console_message = pyqtSignal(str) # emits console status messages
 
@@ -154,6 +155,7 @@ class StateSignalBus(QObject):
         self.add_instrument_btn_clicked.connect(lambda: handle_add_instrument(app_state, main_window))
         self.add_modality_instrument.connect(lambda instrument_type: handle_add_modality_instrument(instrument_type, app_state, main_window))
         self.instrument_removed.connect(lambda instrument: handle_instrument_removed(instrument, app_state))
+        self.instrument_updated.connect(lambda instrument: handle_instrument_updated(instrument, app_state, main_window))
 
         self.data_signal.connect(lambda data, idx, total, is_final: handle_data_signal(data, idx, total, is_final, app_state, main_window))
         self.console_message.connect(lambda message: handle_console_message(message, app_state, main_window))
@@ -363,19 +365,15 @@ def handle_single_acquisition(app_state, signal_bus, continuous=False):
         
         match modality:
             case 'simulated':
-                x_pixels = parameters['x_pixels']
-                y_pixels = parameters['y_pixels']
-                num_frames = parameters['num_frames']
-                acquisition = Simulated(x_pixels, y_pixels, num_frames, signal_bus, 
+                acquisition = Simulated(signal_bus=signal_bus, 
+                                      acquisition_parameters=parameters,
                                       save_enabled=save_enabled, save_path=save_path)
                 
             case 'widefield':
-                x_pixels = parameters['x_pixels']
-                y_pixels = parameters['y_pixels']
-
                 data_inputs = instruments.get('Data Input', [])
-                signal_bus.console_message.emit(f"Widefield acquisition: {x_pixels}x{y_pixels}")
+                signal_bus.console_message.emit(f"Widefield acquisition: {parameters['x_pixels']}x{parameters['y_pixels']}")
                 acquisition = Widefield(data_inputs=data_inputs, signal_bus=signal_bus,
+                                      acquisition_parameters=parameters,
                                       save_enabled=save_enabled, save_path=save_path)
                 
             case 'confocal':
@@ -437,16 +435,26 @@ def handle_single_acquisition(app_state, signal_bus, continuous=False):
             case 'mosaic':
                 signal_bus.console_message.emit("Mosaic acquisition started")
                 acquisition = Mosaic(signal_bus=signal_bus,
+                                   acquisition_parameters=parameters,
                                    save_enabled=save_enabled, save_path=save_path)
                 
             case 'zscan':
                 signal_bus.console_message.emit("ZScan acquisition started")
                 acquisition = ZScan(signal_bus=signal_bus,
+                                  acquisition_parameters=parameters,
                                   save_enabled=save_enabled, save_path=save_path)
+                
+            case 'hyperspectral':
+                signal_bus.console_message.emit("Hyperspectral acquisition started")
+                acquisition = Hyperspectral(signal_bus=signal_bus,
+                                          acquisition_parameters=parameters,
+                                          save_enabled=save_enabled, save_path=save_path)
                 
             case _:
                 signal_bus.console_message.emit('Warning: invalid modality, defaulting to simulation')
-                acquisition = Simulated(512, 512, 1, signal_bus,
+                default_params = {'x_pixels': 512, 'y_pixels': 512, 'num_frames': 1}
+                acquisition = Simulated(signal_bus=signal_bus,
+                                      acquisition_parameters=default_params,
                                       save_enabled=save_enabled, save_path=save_path)
 
     except Exception as e:
@@ -477,10 +485,27 @@ def validate_acquisition_parameters(parameters, modality):
     required_params = {
         'simulated': ['x_pixels', 'y_pixels', 'num_frames'],
         'widefield': ['x_pixels', 'y_pixels', 'num_frames'],
-        'confocal': ['x_pixels', 'y_pixels', 'num_frames'],  # Now uses acquisition parameters
-        'split data stream': ['x_pixels', 'y_pixels', 'num_frames', 'split_percentage'],  # Now uses acquisition parameters
-        'mosaic': ['x_pixels', 'y_pixels', 'num_frames'],
+        'confocal': [
+            'x_pixels', 'y_pixels', 'num_frames',
+            'dwell_time', 'extrasteps_left', 'extrasteps_right',
+            'amplitude_x', 'amplitude_y', 'offset_x', 'offset_y'
+        ],
+        'split data stream': [
+            'x_pixels', 'y_pixels', 'num_frames', 'split_percentage',
+            'dwell_time', 'extrasteps_left', 'extrasteps_right',
+            'amplitude_x', 'amplitude_y', 'offset_x', 'offset_y',
+            'numtiles_x', 'numtiles_y', 'numtiles_z',
+            'tile_size_x', 'tile_size_y', 'tile_size_z'
+        ],
+        'mosaic': [
+            'x_pixels', 'y_pixels', 'num_frames',
+            'dwell_time', 'extrasteps_left', 'extrasteps_right',
+            'amplitude_x', 'amplitude_y', 'offset_x', 'offset_y',
+            'numtiles_x', 'numtiles_y', 'numtiles_z',
+            'tile_size_x', 'tile_size_y', 'tile_size_z'
+        ],
         'zscan': ['x_pixels', 'y_pixels', 'num_frames'],
+        'hyperspectral': ['x_pixels', 'y_pixels', 'num_frames'],
         'custom': ['x_pixels', 'y_pixels', 'num_frames']
     }
     
@@ -492,17 +517,33 @@ def validate_acquisition_parameters(parameters, modality):
     if missing_params:
         raise ValueError(f"Missing required parameters for {modality}: {missing_params}")
     
-    if 'x_pixels' in parameters and (parameters['x_pixels'] <= 0 or parameters['x_pixels'] > 10000):
-        raise ValueError("x_pixels must be between 1 and 10000")
+    # Validate parameter ranges for all parameters that are present
+    validation_rules = {
+        'x_pixels': (1, 10000, "x_pixels must be between 1 and 10000"),
+        'y_pixels': (1, 10000, "y_pixels must be between 1 and 10000"),
+        'num_frames': (1, 10000, "num_frames must be between 1 and 10000"),
+        'split_percentage': (1, 99, "split_percentage must be between 1 and 99"),
+        'dwell_time': (1e-6, 1e-3, "dwell_time must be between 1µs and 1ms"),
+        'extrasteps_left': (0, 10000, "extrasteps_left must be between 0 and 10000"),
+        'extrasteps_right': (0, 10000, "extrasteps_right must be between 0 and 10000"),
+        'amplitude_x': (0.01, 10.0, "amplitude_x must be between 0.01V and 10V"),
+        'amplitude_y': (0.01, 10.0, "amplitude_y must be between 0.01V and 10V"),
+        'offset_x': (-10.0, 10.0, "offset_x must be between -10V and 10V"),
+        'offset_y': (-10.0, 10.0, "offset_y must be between -10V and 10V"),
+        'numtiles_x': (1, 1000, "numtiles_x must be between 1 and 1000"),
+        'numtiles_y': (1, 1000, "numtiles_y must be between 1 and 1000"),
+        'numtiles_z': (1, 1000, "numtiles_z must be between 1 and 1000"),
+        'tile_size_x': (0.1, 10000, "tile_size_x must be between 0.1µm and 10000µm"),
+        'tile_size_y': (0.1, 10000, "tile_size_y must be between 0.1µm and 10000µm"),
+        'tile_size_z': (0.1, 10000, "tile_size_z must be between 0.1µm and 10000µm")
+    }
     
-    if 'y_pixels' in parameters and (parameters['y_pixels'] <= 0 or parameters['y_pixels'] > 10000):
-        raise ValueError("y_pixels must be between 1 and 10000")
-    
-    if 'num_frames' in parameters and (parameters['num_frames'] <= 0 or parameters['num_frames'] > 10000):
-        raise ValueError("num_frames must be between 1 and 10000")
-    
-    if 'split_percentage' in parameters and (parameters['split_percentage'] <= 0 or parameters['split_percentage'] >= 100):
-        raise ValueError("split_percentage must be between 1 and 99")
+    # Validate each parameter that is present in the parameters dict
+    for param_name, param_value in parameters.items():
+        if param_name in validation_rules:
+            min_val, max_val, error_msg = validation_rules[param_name]
+            if param_value < min_val or param_value > max_val:
+                raise ValueError(error_msg)
 
 def handle_acquisition_thread_finished(data, signal_bus, thread, worker):
     # for continuous acquisition, don't clean up the thread - let it continue
@@ -665,6 +706,17 @@ def handle_instrument_removed(instrument, app_state):
         # This will be handled by the GUI when it rebuilds
     return 0
 
+def handle_instrument_updated(instrument, app_state, main_window):
+    """Handle instrument parameter updates"""
+    print(f"Updated instrument: {instrument.name}")
+    # Refresh channel labels in multichannel display if it exists
+    if hasattr(main_window, 'mid_layout') and hasattr(main_window.mid_layout, 'image_display_widget'):
+        display_widget = main_window.mid_layout.image_display_widget
+        if hasattr(display_widget, 'refresh_channel_labels'):
+            display_widget.update_channel_names()
+            display_widget.refresh_channel_labels()
+    return 0
+
 def handle_rpoc_enabled_changed(enabled, app_state):
     app_state.rpoc_enabled = enabled
     print(f"RPOC enabled changed to: {enabled}")
@@ -676,7 +728,7 @@ def handle_acquisition_parameter_changed(param_name, value, app_state, main_wind
     return 0
 
 def handle_save_path_changed(path, app_state):
-    app_state.acquisition_parameters['save_path'] = path
+    app_state.acquisition_parameters['save_path'] = path  # Full path to base filename for saving data
     return 0
 
 

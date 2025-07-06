@@ -8,6 +8,7 @@ from nidaqmx.constants import AcquisitionType
 import tifffile
 from pathlib import Path
 from .base_acquisition import Acquisition
+from datetime import datetime
 
 
 class SplitDataStream(Acquisition):
@@ -50,6 +51,9 @@ class SplitDataStream(Acquisition):
             self.signal_bus.console_message.emit(f"RPOC Configured - enabled: {rpoc_enabled}, masks: {len(rpoc_masks) if rpoc_masks else 0}, channels: {len(rpoc_channels) if rpoc_channels else 0}")
 
     def perform_acquisition(self):     
+        # Save metadata before starting acquisition
+        self.save_metadata()
+        
         # Get pixel dimensions from acquisition parameters
         x_pixels = self.acquisition_parameters.get('x_pixels', 512)
         y_pixels = self.acquisition_parameters.get('y_pixels', 512)
@@ -443,3 +447,78 @@ class SplitDataStream(Acquisition):
         except Exception as e:
             print(f"Error in DAQ acquisition: {e}")
             return self.generate_simulated_split_data()
+    
+    def save_data(self, data):
+        """
+        Save split stream data: each channel as a separate 3D TIFF file
+        data shape: (num_frames, num_channels, height, width)
+        """
+        if not self.save_enabled or not self.save_path:
+            return
+        
+        try:
+            save_dir = Path(self.save_path).parent
+            if not save_dir.is_dir():
+                save_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Get number of channels from data shape
+            if len(data.shape) == 4:  # (num_frames, num_channels, height, width)
+                num_frames, num_channels, height, width = data.shape
+            elif len(data.shape) == 3:  # (num_frames, height, width) - single channel
+                num_frames, height, width = data.shape
+                num_channels = 1
+                data = data.reshape(num_frames, 1, height, width)
+            else:
+                raise ValueError(f"Unexpected data shape: {data.shape}")
+            
+            # Get channel names from data input instruments
+            channel_names = self._get_channel_names()
+            
+            # Save each channel as a separate 3D TIFF file
+            for ch in range(num_channels):
+                channel_data = data[:, ch, :, :]  # Shape: (num_frames, height, width)
+                
+                # Create filename for this channel
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                channel_name = channel_names.get(ch, f"ch{ch:02d}")
+                filename = f"{Path(self.save_path).stem}_{channel_name}_{timestamp}.tiff"
+                filepath = save_dir / filename
+                
+                # Save as 3D TIFF
+                tifffile.imwrite(filepath, channel_data)
+                
+                if self.signal_bus:
+                    self.signal_bus.console_message.emit(f"Saved split stream channel {channel_name} to {filepath}")
+            
+        except Exception as e:
+            if self.signal_bus:
+                self.signal_bus.console_message.emit(f"Error saving split stream data: {e}")
+            else:
+                print(f"Error saving split stream data: {e}")
+    
+    def _get_channel_names(self):
+        """
+        Get channel names from data input instruments
+        """
+        channel_names = {}
+        channel_idx = 0
+        
+        if hasattr(self, 'data_inputs') and self.data_inputs:
+            for data_input in self.data_inputs:
+                if hasattr(data_input, 'parameters'):
+                    # Get channel names from the instrument parameters
+                    input_channels = data_input.parameters.get('input_channels', [])
+                    channel_names_param = data_input.parameters.get('channel_names', {})
+                    
+                    for ch in input_channels:
+                        # Use the channel name if available, otherwise use default
+                        channel_name = channel_names_param.get(str(ch), f"ch{ch}")
+                        channel_names[channel_idx] = channel_name
+                        channel_idx += 1
+        
+        # If no channel names found, use default numbering
+        if not channel_names:
+            for ch in range(channel_idx):
+                channel_names[ch] = f"ch{ch:02d}"
+        
+        return channel_names

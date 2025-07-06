@@ -1,6 +1,6 @@
 import numpy as np
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QSlider, QGraphicsView, QGraphicsScene, QGraphicsSimpleTextItem, QGridLayout
-from PyQt6.QtCore import Qt, QRectF, QPointF, pyqtSignal, pyqtSlot
+from PyQt6.QtCore import Qt, QRectF, QPointF, pyqtSignal, pyqtSlot, QTimer
 from PyQt6.QtGui import QPixmap, QImage, QPainter, QColor, QPen, QBrush, QFont
 from .base_display import BaseImageDisplayWidget
 
@@ -41,6 +41,14 @@ class ImageDisplayWidget(BaseImageDisplayWidget):
         self._lines = []  # [(x1, y1, x2, y2, color)]
 
         self.graphics_view.viewport().installEventFilter(self)
+        
+        # Connect resize event to ensure proper sizing
+        self.graphics_view.resizeEvent = self.on_graphics_view_resize
+        
+        # Timer for delayed viewport updates to fix sizing issues
+        self._resize_timer = QTimer()
+        self._resize_timer.setSingleShot(True)
+        self._resize_timer.timeout.connect(self._delayed_viewport_update)
 
     def connect_lines_widget(self, lines_widget):
         super().connect_lines_widget(lines_widget)
@@ -145,6 +153,11 @@ class ImageDisplayWidget(BaseImageDisplayWidget):
         self.frame_slider.setValue(idx)
         self.update_frame_label()
         self.display_frame(idx)
+        
+        # Schedule delayed viewport update on first frame to fix sizing issues
+        if idx == 0:
+            self._resize_timer.start(100)  # 100ms delay
+        
         self.update_overlays()
         self.update_display()
 
@@ -179,6 +192,10 @@ class ImageDisplayWidget(BaseImageDisplayWidget):
             self.total_frames = 0
             self.current_frame = 0
             self.update_frame_label()
+        
+        # Schedule delayed viewport update to fix sizing issues
+        self._resize_timer.start(100)  # 100ms delay
+        
         self.update_display()
         self.traces_update_requested.emit(self.get_all_channel_data())
 
@@ -335,3 +352,15 @@ class ImageDisplayWidget(BaseImageDisplayWidget):
                 return None
         else:
             return self._acq_buffer[np.newaxis, :, :]  # Add channel dimension
+    
+    def on_graphics_view_resize(self, event):
+        """Handle graphics view resize to maintain proper sizing"""
+        super(self.graphics_view.__class__, self.graphics_view).resizeEvent(event)
+        if self.graphics_scene.sceneRect().isValid():
+            self.graphics_view.fitInView(self.graphics_scene.sceneRect(), Qt.AspectRatioMode.KeepAspectRatio)
+    
+    def _delayed_viewport_update(self):
+        """Delayed viewport update to fix sizing issues after GUI updates"""
+        if self.graphics_scene.sceneRect().isValid():
+            self.graphics_view.viewport().update()
+            self.graphics_view.fitInView(self.graphics_scene.sceneRect(), Qt.AspectRatioMode.KeepAspectRatio)

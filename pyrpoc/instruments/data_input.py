@@ -12,6 +12,7 @@ class DataInput(Instrument):
         super().__init__(name, "Data Input")
         self.parameters = {
             'input_channels': [0, 1],  # List of AI channels
+            'channel_names': {'0': 'ch0', '1': 'ch1'},  # Channel names mapping
             'voltage_range': 10.0,
             'sample_rate': 1000000,
             'device_name': 'Dev1'
@@ -85,6 +86,9 @@ class DataInputConfigWidget(QWidget):
         self.channels_edit = QLineEdit("0,1")
         layout.addRow("Input Channels (comma-separated):", self.channels_edit)
         
+        self.channel_names_edit = QLineEdit("ch0,ch1")
+        layout.addRow("Channel Names (comma-separated):", self.channel_names_edit)
+        
         self.voltage_spin = QDoubleSpinBox()
         self.voltage_spin.setRange(1.0, 20.0)
         self.voltage_spin.setValue(10.0)
@@ -111,6 +115,13 @@ class DataInputConfigWidget(QWidget):
             channels = parameters['input_channels']
             if isinstance(channels, list):
                 self.channels_edit.setText(','.join(map(str, channels)))
+        if 'channel_names' in parameters:
+            channel_names = parameters['channel_names']
+            if isinstance(channel_names, dict):
+                # Get names in the same order as channels
+                channels = parameters.get('input_channels', [])
+                names_list = [channel_names.get(str(ch), f'ch{ch}') for ch in channels]
+                self.channel_names_edit.setText(','.join(names_list))
         if 'voltage_range' in parameters:
             self.voltage_spin.setValue(parameters['voltage_range'])
         if 'sample_rate' in parameters:
@@ -120,10 +131,22 @@ class DataInputConfigWidget(QWidget):
         channels_text = self.channels_edit.text()
         channels = [int(x.strip()) for x in channels_text.split(',') if x.strip().isdigit()]
         
+        channel_names_text = self.channel_names_edit.text()
+        channel_names_list = [x.strip() for x in channel_names_text.split(',') if x.strip()]
+        
+        # Create channel names mapping
+        channel_names = {}
+        for i, ch in enumerate(channels):
+            if i < len(channel_names_list):
+                channel_names[str(ch)] = channel_names_list[i]
+            else:
+                channel_names[str(ch)] = f'ch{ch}'
+        
         parameters = {
             'name': self.name_edit.text(),
             'device_name': self.device_combo.currentText(),
             'input_channels': channels,
+            'channel_names': channel_names,
             'voltage_range': self.voltage_spin.value(),
             'sample_rate': self.sample_rate_spin.value()
         }
@@ -146,9 +169,16 @@ class DataInputControlWidget(QWidget):
     def setup_ui(self):
         layout = QVBoxLayout()
         
-        # Display current channels
+        # Display current channels with names
         channels = self.data_input.parameters.get('input_channels', [])
-        channels_text = ', '.join(map(str, channels))
+        channel_names = self.data_input.parameters.get('channel_names', {})
+        
+        channels_info = []
+        for ch in channels:
+            ch_name = channel_names.get(str(ch), f'ch{ch}')
+            channels_info.append(f"{ch_name} (AI{ch})")
+        
+        channels_text = ', '.join(channels_info)
         layout.addWidget(QLabel(f"Active Channels: {channels_text}"))
         
         # Status display

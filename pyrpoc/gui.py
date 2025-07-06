@@ -15,6 +15,7 @@ from pyrpoc.dockable_widgets import LinesWidget
 from pyrpoc.rpoc_mask_editor import RPOCMaskEditor
 from superqt import QSearchableComboBox
 import cv2
+from pathlib import Path
 
 
 # # ugly red border for outlines
@@ -31,20 +32,20 @@ DEV_BORDER_STYLE = """
     }
 """
 
+SPLITTER_STYLE = """
+    QSplitter::handle {
+        background-color: #666666;
+        border: 1px solid #444444;
+    }
+    QSplitter::handle:hover {
+        background-color: #888888;
+    }
+    QSplitter::handle:pressed {
+        background-color: #aaaaaa;
+    }
+"""
+
 class TopBar(QWidget):
-    '''
-    horizontal orientation with the important control widgets, most space given to SystemConsole
-    AppConfigButtons | AcquisitionControls | SystemStatus/imageJ-like controls
-    
-    relevant signals:
-    - load_config_btn_clicked --> gui_handler.handle_load_config() TODO: verify app_state format of data is good
-    - save_config_btn_clicked --> gui_handler.handle_save_config()
-    - single_btn_clicked --> gui_handler.handle_single_acquisition()
-    - continuous_btn_clicked
-    - stop_btn_clicked
-    - lines_toggled
-    - console_message --> TopBar.add_console_message()
-    '''
     def __init__(self, app_state: AppState, signals: StateSignalBus):
         super().__init__()
         self.app_state = app_state
@@ -209,7 +210,6 @@ class AcquisitionParameters(QWidget):
         modality = self.app_state.modality.lower()
         
         if modality == 'confocal':
-            # Add galvo acquisition parameters for confocal
             self.add_galvo_parameters()
 
         elif modality == 'split data stream':
@@ -233,8 +233,19 @@ class AcquisitionParameters(QWidget):
             self.add_galvo_parameters()
             self.add_prior_stage_parameters()
 
+        elif modality == 'widefield':
+            self.add_pixel_parameters()
+
+        elif modality == 'simulated':
+            self.add_pixel_parameters()
+
+        elif modality == 'zscan':
+            self.add_pixel_parameters()
+
+        elif modality == 'hyperspectral':
+            self.add_pixel_parameters()
+
         else:
-            # For non-confocal modalities, still need galvo parameters for scanning
             self.add_galvo_parameters()
 
     def add_galvo_parameters(self):
@@ -251,21 +262,21 @@ class AcquisitionParameters(QWidget):
         galvo_layout.addRow("Dwell Time:", self.dwell_time_spin)
         
         self.extrasteps_left_spin = QSpinBox()
-        self.extrasteps_left_spin.setRange(0, 1000)
+        self.extrasteps_left_spin.setRange(0, 10000)
         self.extrasteps_left_spin.setValue(self.app_state.acquisition_parameters.get('extrasteps_left', 50))
         self.extrasteps_left_spin.valueChanged.connect(
             lambda value: self.signals.acquisition_parameter_changed.emit('extrasteps_left', value))
         galvo_layout.addRow("Extra Steps Left:", self.extrasteps_left_spin)
         
         self.extrasteps_right_spin = QSpinBox()
-        self.extrasteps_right_spin.setRange(0, 1000)
+        self.extrasteps_right_spin.setRange(0, 10000)
         self.extrasteps_right_spin.setValue(self.app_state.acquisition_parameters.get('extrasteps_right', 50))
         self.extrasteps_right_spin.valueChanged.connect(
             lambda value: self.signals.acquisition_parameter_changed.emit('extrasteps_right', value))
         galvo_layout.addRow("Extra Steps Right:", self.extrasteps_right_spin)
 
         self.amplitude_x_spin = QDoubleSpinBox()
-        self.amplitude_x_spin.setRange(0.1, 5)
+        self.amplitude_x_spin.setRange(0.01, 10.0)
         self.amplitude_x_spin.setValue(self.app_state.acquisition_parameters.get('amplitude_x', 0.5))
         self.amplitude_x_spin.setSuffix(" V")
         self.amplitude_x_spin.valueChanged.connect(
@@ -273,7 +284,7 @@ class AcquisitionParameters(QWidget):
         galvo_layout.addRow("Amplitude X:", self.amplitude_x_spin)
         
         self.amplitude_y_spin = QDoubleSpinBox()
-        self.amplitude_y_spin.setRange(0.1, 5)
+        self.amplitude_y_spin.setRange(0.01, 10.0)
         self.amplitude_y_spin.setValue(self.app_state.acquisition_parameters.get('amplitude_y', 0.5))
         self.amplitude_y_spin.setSuffix(" V")
         self.amplitude_y_spin.valueChanged.connect(
@@ -281,7 +292,7 @@ class AcquisitionParameters(QWidget):
         galvo_layout.addRow("Amplitude Y:", self.amplitude_y_spin)
 
         self.offset_x_spin = QDoubleSpinBox()
-        self.offset_x_spin.setRange(-2, 2)
+        self.offset_x_spin.setRange(-10.0, 10.0)
         self.offset_x_spin.setValue(self.app_state.acquisition_parameters.get('offset_x', 0.0))
         self.offset_x_spin.setSuffix(" V")
         self.offset_x_spin.valueChanged.connect(
@@ -289,14 +300,13 @@ class AcquisitionParameters(QWidget):
         galvo_layout.addRow("Offset X:", self.offset_x_spin)
         
         self.offset_y_spin = QDoubleSpinBox()
-        self.offset_y_spin.setRange(-2, 2)
+        self.offset_y_spin.setRange(-10.0, 10.0)
         self.offset_y_spin.setValue(self.app_state.acquisition_parameters.get('offset_y', 0.0))
         self.offset_y_spin.setSuffix(" V")
         self.offset_y_spin.valueChanged.connect(
             lambda value: self.signals.acquisition_parameter_changed.emit('offset_y', value))
         galvo_layout.addRow("Offset Y:", self.offset_y_spin)
         
-        # Galvo scanning parameters (x_pixels and y_pixels)
         self.x_pixels_spin = QSpinBox()
         self.x_pixels_spin.setRange(64, 4096)
         self.x_pixels_spin.setValue(self.app_state.acquisition_parameters.get('x_pixels', 512))
@@ -314,34 +324,55 @@ class AcquisitionParameters(QWidget):
         galvo_group.setLayout(galvo_layout)
         self.layout.addWidget(galvo_group)
 
+    def add_pixel_parameters(self):
+        """Add pixel parameters for modalities that don't use galvo scanning"""
+        pixel_group = QGroupBox("Image Parameters")
+        pixel_layout = QFormLayout()
+        
+        self.x_pixels_spin = QSpinBox()
+        self.x_pixels_spin.setRange(64, 4096)
+        self.x_pixels_spin.setValue(self.app_state.acquisition_parameters.get('x_pixels', 512))
+        self.x_pixels_spin.valueChanged.connect(
+            lambda value: self.signals.acquisition_parameter_changed.emit('x_pixels', value))
+        pixel_layout.addRow("X Pixels:", self.x_pixels_spin)
+        
+        self.y_pixels_spin = QSpinBox()
+        self.y_pixels_spin.setRange(64, 4096)
+        self.y_pixels_spin.setValue(self.app_state.acquisition_parameters.get('y_pixels', 512))
+        self.y_pixels_spin.valueChanged.connect(
+            lambda value: self.signals.acquisition_parameter_changed.emit('y_pixels', value))
+        pixel_layout.addRow("Y Pixels:", self.y_pixels_spin)
+        
+        pixel_group.setLayout(pixel_layout)
+        self.layout.addWidget(pixel_group)
+
     def add_prior_stage_parameters(self):
         prior_group = QGroupBox("Prior Stage Parameters")
         prior_layout = QFormLayout()
 
         self.numtiles_x_spin = QSpinBox()
-        self.numtiles_x_spin.setRange(1, 100)
+        self.numtiles_x_spin.setRange(1, 1000)
         self.numtiles_x_spin.setValue(self.app_state.acquisition_parameters.get('numtiles_x', 10))
         self.numtiles_x_spin.valueChanged.connect(
             lambda value: self.signals.acquisition_parameter_changed.emit('numtiles_x', value))
         prior_layout.addRow("X Tiles:", self.numtiles_x_spin)
         
         self.numtiles_y_spin = QSpinBox()
-        self.numtiles_y_spin.setRange(1, 100)
+        self.numtiles_y_spin.setRange(1, 1000)
         self.numtiles_y_spin.setValue(self.app_state.acquisition_parameters.get('numtiles_y', 10))
         self.numtiles_y_spin.valueChanged.connect(
             lambda value: self.signals.acquisition_parameter_changed.emit('numtiles_y', value))
         prior_layout.addRow("Y Tiles:", self.numtiles_y_spin)
         
         self.numtiles_z_spin = QSpinBox()
-        self.numtiles_z_spin.setRange(1, 100)
+        self.numtiles_z_spin.setRange(1, 1000)
         self.numtiles_z_spin.setValue(self.app_state.acquisition_parameters.get('numtiles_z', 5))
         self.numtiles_z_spin.valueChanged.connect(
             lambda value: self.signals.acquisition_parameter_changed.emit('numtiles_z', value))
         prior_layout.addRow("Z Tiles:", self.numtiles_z_spin)
         
-        # Tile sizes
         self.tile_size_x_spin = QDoubleSpinBox()
-        self.tile_size_x_spin.setRange(10, 1000)
+        self.tile_size_x_spin.setRange(0.1, 10000)
         self.tile_size_x_spin.setValue(self.app_state.acquisition_parameters.get('tile_size_x', 100))
         self.tile_size_x_spin.setSuffix(" µm")
         self.tile_size_x_spin.valueChanged.connect(
@@ -349,7 +380,7 @@ class AcquisitionParameters(QWidget):
         prior_layout.addRow("X Tile Size:", self.tile_size_x_spin)
         
         self.tile_size_y_spin = QDoubleSpinBox()
-        self.tile_size_y_spin.setRange(10, 1000)
+        self.tile_size_y_spin.setRange(0.1, 10000)
         self.tile_size_y_spin.setValue(self.app_state.acquisition_parameters.get('tile_size_y', 100))
         self.tile_size_y_spin.setSuffix(" µm")
         self.tile_size_y_spin.valueChanged.connect(
@@ -357,7 +388,7 @@ class AcquisitionParameters(QWidget):
         prior_layout.addRow("Y Tile Size:", self.tile_size_y_spin)
         
         self.tile_size_z_spin = QDoubleSpinBox()
-        self.tile_size_z_spin.setRange(10, 1000)
+        self.tile_size_z_spin.setRange(0.1, 10000)
         self.tile_size_z_spin.setValue(self.app_state.acquisition_parameters.get('tile_size_z', 50))
         self.tile_size_z_spin.setSuffix(" µm")
         self.tile_size_z_spin.valueChanged.connect(
@@ -378,7 +409,6 @@ class AcquisitionParameters(QWidget):
         frames_layout.addWidget(self.frames_spinbox)
         self.layout.addLayout(frames_layout)
         
-
         save_layout = QVBoxLayout()
         
         save_enabled_layout = QHBoxLayout()
@@ -393,7 +423,7 @@ class AcquisitionParameters(QWidget):
         save_path_layout.addWidget(QLabel('Save Path:'))
         self.save_path_edit = QLineEdit()
         self.save_path_edit.setText(self.app_state.acquisition_parameters.get('save_path', ''))
-        self.save_path_edit.setPlaceholderText('Select file path...')
+        self.save_path_edit.setPlaceholderText('Select save location and filename...')
         self.save_path_edit.textChanged.connect(
             lambda text: self.signals.save_path_changed.emit(text))
         save_path_layout.addWidget(self.save_path_edit)
@@ -407,12 +437,14 @@ class AcquisitionParameters(QWidget):
     
     def browse_save_path(self):
         file_path, _ = QFileDialog.getSaveFileName(
-            self, 'Save Acquisition Data', 'acquisition.tiff', 
-            'Tiff files (*.tiff);;All files (*)'
+            self, 'Select Save Location', 'acquisition', 
+            'All files (*)'
         )
         if file_path:
-            self.save_path_edit.setText(file_path)
-            self.signals.save_path_changed.emit(file_path)
+            base_filename = Path(file_path).stem
+            full_path = Path(file_path).parent / base_filename
+            self.save_path_edit.setText(str(full_path))
+            self.signals.save_path_changed.emit(str(full_path))
 
 
 class InstrumentControls(QWidget):
@@ -600,8 +632,13 @@ class InstrumentWidget(QWidget):
             summary_lines.append(f"Range: ±{params.get('voltage_range', 0):.1f}V")
         elif self.instrument.instrument_type == "Data Input":
             channels = params.get('input_channels', [])
+            channel_names = params.get('channel_names', {})
             if isinstance(channels, list):
-                summary_lines.append(f"Channels: {', '.join(map(str, channels))}")
+                channel_display = []
+                for ch in channels:
+                    ch_name = channel_names.get(str(ch), f'ch{ch}')
+                    channel_display.append(f"{ch_name}(AI{ch})")
+                summary_lines.append(f"Channels: {' | '.join(channel_display)}")
             summary_lines.append(f"Range: ±{params.get('voltage_range', 0):.1f}V")
             summary_lines.append(f"Rate: {params.get('sample_rate', 0)/1000:.0f}kHz")
         elif self.instrument.instrument_type == "Zaber Stage":
@@ -635,7 +672,6 @@ class InstrumentWidget(QWidget):
         self.deleteLater()
     
     def edit_control_instrument(self):
-        # Use the unified widget approach for all instruments
         unified_widget = self.instrument.get_widget()
         if unified_widget:
             dialog = QDialog(self)
@@ -644,8 +680,7 @@ class InstrumentWidget(QWidget):
             
             layout = QVBoxLayout()
             layout.addWidget(unified_widget)
-            
-            # Buttons
+
             button_layout = QHBoxLayout()
             save_btn = QPushButton("Save")
             save_btn.clicked.connect(self.save_instrument_parameters)
@@ -658,8 +693,7 @@ class InstrumentWidget(QWidget):
             
             dialog.setLayout(layout)
             dialog.resize(400, 300)
-            
-            # Store reference to widget for saving
+
             self.current_unified_widget = unified_widget
             
             if dialog.exec() == QDialog.DialogCode.Accepted:
@@ -668,7 +702,6 @@ class InstrumentWidget(QWidget):
             self.signals.console_message.emit(f"Failed to get widget for {self.instrument.name}")
     
     def save_instrument_parameters(self):
-        """Save parameters from the unified widget"""
         if hasattr(self, 'current_unified_widget'):
             parameters = self.current_unified_widget.get_parameters()
             if parameters is not None:
@@ -676,8 +709,9 @@ class InstrumentWidget(QWidget):
                 new_name = parameters.get('name', 'Unknown Instrument')
                 self.instrument.name = new_name
                 self.name_label.setText(new_name)
-                self.update_status()  # Refresh parameter summary
+                self.update_status() 
                 self.signals.console_message.emit(f"Updated {new_name} parameters")
+                self.signals.instrument_updated.emit(self.instrument)
             else:
                 current_name = getattr(self.instrument, 'name', 'Unknown Instrument')
                 self.signals.console_message.emit(f"Failed to update {current_name} - invalid parameters")
@@ -878,21 +912,17 @@ class RightPanel(QWidget):
         self.rpoc_channels = {}  # channel_id -> widget
         self.next_channel_id = 1
         
-        # Create scroll area
         self.scroll_area = QScrollArea()
         self.scroll_area.setWidgetResizable(True)
         self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self.scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        
-        # Create content widget
+
         self.content_widget = QWidget()
         self.content_layout = QVBoxLayout()
         self.content_widget.setLayout(self.content_layout)
-        
-        # Set content widget to scroll area
+
         self.scroll_area.setWidget(self.content_widget)
-        
-        # Main layout
+
         main_layout = QVBoxLayout()
         main_layout.addWidget(self.scroll_area)
         self.setLayout(main_layout)
@@ -900,7 +930,6 @@ class RightPanel(QWidget):
         self.rebuild()
 
     def rebuild(self):
-        # Clear existing content
         while self.content_layout.count():
             child = self.content_layout.takeAt(0)
             if child.widget():
@@ -911,37 +940,6 @@ class RightPanel(QWidget):
 
     def add_modality_specific_controls(self, layout):
         pass
-        # modality = self.app_state.modality.lower()
-        
-        # if modality == 'simulated':
-        #     group = QGroupBox('Simulation Mode')
-        #     group_layout = QVBoxLayout()
-        #     group_layout.addWidget(QLabel('Simulation Mode Active'))
-        #     group.setLayout(group_layout)
-        # elif modality == 'widefield':
-        #     group = QGroupBox('Widefield Mode')
-        #     group_layout = QVBoxLayout()
-        #     group_layout.addWidget(QLabel('Widefield Mode Active'))
-        #     group.setLayout(group_layout)
-        #     layout.addWidget(group)
-        # elif modality == 'confocal':
-        #     group = QGroupBox('Confocal Mode')
-        #     group_layout = QVBoxLayout()
-        #     group_layout.addWidget(QLabel('Confocal Mode Active'))
-        #     group.setLayout(group_layout)
-        #     layout.addWidget(group)
-        # elif modality == 'mosaic':
-        #     group = QGroupBox('Mosaic Mode')
-        #     group_layout = QVBoxLayout()
-        #     group_layout.addWidget(QLabel('Mosaic Mode Active'))
-        #     group.setLayout(group_layout)
-        #     layout.addWidget(group)
-        # elif modality == 'zscan':
-        #     group = QGroupBox('ZScan Mode')
-        #     group_layout = QVBoxLayout()
-        #     group_layout.addWidget(QLabel('ZScan Mode Active'))
-        #     group.setLayout(group_layout)
-        #     layout.addWidget(group)
 
     def add_common_controls(self, layout):
         rpoc_group = QGroupBox('RPOC Controls')
@@ -991,21 +989,17 @@ class LeftPanel(QWidget):
         self.signals = signals
         self.setStyleSheet(DEV_BORDER_STYLE)
         
-        # Create scroll area
         self.scroll_area = QScrollArea()
         self.scroll_area.setWidgetResizable(True)
         self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self.scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         
-        # Create content widget
         self.content_widget = QWidget()
         self.content_layout = QVBoxLayout()
         self.content_widget.setLayout(self.content_layout)
         
-        # Set content widget to scroll area
         self.scroll_area.setWidget(self.content_widget)
         
-        # Main layout
         main_layout = QVBoxLayout()
         main_layout.addWidget(self.scroll_area)
         self.setLayout(main_layout)
@@ -1013,7 +1007,6 @@ class LeftPanel(QWidget):
         self.rebuild()
 
     def rebuild(self):
-        # Clear existing content
         while self.content_layout.count():
             child = self.content_layout.takeAt(0)
             if child.widget():
@@ -1135,6 +1128,7 @@ class MainWindow(QMainWindow):
 
     def create_main_splitter(self):
         self.main_splitter = QSplitter(Qt.Orientation.Horizontal)
+        self.main_splitter.setStyleSheet(SPLITTER_STYLE)
         
         self.left_widget = LeftPanel(self.app_state, self.signals)
         self.mid_layout = DockableMiddlePanel(self.app_state, self.signals)
