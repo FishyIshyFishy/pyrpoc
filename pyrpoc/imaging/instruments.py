@@ -10,7 +10,6 @@ class Instrument(abc.ABC):
     def __init__(self, name, instrument_type):
         self.name = name
         self.instrument_type = instrument_type
-        self.connected = False
         self.parameters = {}
 
     @abc.abstractmethod
@@ -25,9 +24,6 @@ class Instrument(abc.ABC):
 
     def get_instrument_info(self):
         return f'{self.instrument_type}: {self.name}'
-
-    def is_connected(self):
-        return self.connected
 
     def get_parameters(self):
         return self.parameters.copy()
@@ -54,10 +50,9 @@ class Galvo(Instrument):
         }
 
     def initialize(self):
-        """Initialize galvo connection - for now just mark as connected"""
+        """Initialize galvo connection - for now just return True"""
         try:
             # TODO: Add actual DAQ initialization here
-            self.connected = True
             return True
         except Exception as e:
             print(f"Failed to initialize galvo: {e}")
@@ -225,7 +220,6 @@ class DataInput(Instrument):
         """Initialize data input connection"""
         try:
             # TODO: Add actual DAQ initialization here
-            self.connected = True
             return True
         except Exception as e:
             print(f"Failed to initialize data input: {e}")
@@ -249,7 +243,6 @@ class DelayStage(Instrument):
         """Initialize delay stage connection"""
         try:
             # TODO: Add actual serial connection here
-            self.connected = True
             return True
         except Exception as e:
             print(f"Failed to initialize delay stage: {e}")
@@ -273,7 +266,6 @@ class ZaberStage(Instrument):
         """Initialize Zaber stage connection"""
         try:
             # TODO: Add actual serial connection here
-            self.connected = True
             return True
         except Exception as e:
             print(f"Failed to initialize Zaber stage: {e}")
@@ -678,26 +670,15 @@ class GalvoControlWidget(QWidget):
 
     def setup_ui(self):
         layout = QVBoxLayout()
-        
-        # Status
-        status_layout = QHBoxLayout()
-        status_layout.addWidget(QLabel("Status:"))
-        self.status_label = QLabel("Connected" if self.galvo.connected else "Disconnected")
-        status_layout.addWidget(self.status_label)
-        layout.addLayout(status_layout)
-        
         # Control buttons
         control_layout = QHBoxLayout()
         self.home_btn = QPushButton("Home")
         self.home_btn.clicked.connect(self.home_galvo)
         control_layout.addWidget(self.home_btn)
-        
         self.stop_btn = QPushButton("Stop")
         self.stop_btn.clicked.connect(self.stop_galvo)
         control_layout.addWidget(self.stop_btn)
-        
         layout.addLayout(control_layout)
-        
         self.setLayout(layout)
 
     def home_galvo(self):
@@ -717,18 +698,8 @@ class DataInputControlWidget(QWidget):
 
     def setup_ui(self):
         layout = QVBoxLayout()
-        
-        # Status
-        status_layout = QHBoxLayout()
-        status_layout.addWidget(QLabel("Status:"))
-        self.status_label = QLabel("Connected" if self.data_input.connected else "Disconnected")
-        status_layout.addWidget(self.status_label)
-        layout.addLayout(status_layout)
-        
-        # Channel info
         channels = self.data_input.parameters.get('input_channels', [])
         layout.addWidget(QLabel(f"Channels: {', '.join(map(str, channels))}"))
-        
         self.setLayout(layout)
 
 
@@ -740,28 +711,16 @@ class DelayStageControlWidget(QWidget):
 
     def setup_ui(self):
         layout = QVBoxLayout()
-        
-        # Status
-        status_layout = QHBoxLayout()
-        status_layout.addWidget(QLabel("Status:"))
-        self.status_label = QLabel("Connected" if self.delay_stage.connected else "Disconnected")
-        status_layout.addWidget(self.status_label)
-        layout.addLayout(status_layout)
-        
-        # Position control
         pos_layout = QHBoxLayout()
         pos_layout.addWidget(QLabel("Position:"))
         self.pos_spin = QDoubleSpinBox()
         self.pos_spin.setRange(-1000, 1000)
         self.pos_spin.setSuffix(" mm")
         pos_layout.addWidget(self.pos_spin)
-        
         self.move_btn = QPushButton("Move")
         self.move_btn.clicked.connect(self.move_stage)
         pos_layout.addWidget(self.move_btn)
-        
         layout.addLayout(pos_layout)
-        
         self.setLayout(layout)
 
     def move_stage(self):
@@ -778,28 +737,16 @@ class ZaberStageControlWidget(QWidget):
 
     def setup_ui(self):
         layout = QVBoxLayout()
-        
-        # Status
-        status_layout = QHBoxLayout()
-        status_layout.addWidget(QLabel("Status:"))
-        self.status_label = QLabel("Connected" if self.zaber_stage.connected else "Disconnected")
-        status_layout.addWidget(self.status_label)
-        layout.addLayout(status_layout)
-        
-        # Position control
         pos_layout = QHBoxLayout()
         pos_layout.addWidget(QLabel("Position:"))
         self.pos_spin = QDoubleSpinBox()
         self.pos_spin.setRange(-1000, 1000)
         self.pos_spin.setSuffix(" mm")
         pos_layout.addWidget(self.pos_spin)
-        
         self.move_btn = QPushButton("Move")
         self.move_btn.clicked.connect(self.move_stage)
         pos_layout.addWidget(self.move_btn)
-        
         layout.addLayout(pos_layout)
-        
         self.setLayout(layout)
 
     def move_stage(self):

@@ -15,7 +15,7 @@ dependencies = [
   "opencv-python",
   "pillow",
   "matplotlib",
-  "pyqt5",       
+  "pyqt6",       
   "pyqtgraph",
   "superqt",    
   "nidaqmx",   

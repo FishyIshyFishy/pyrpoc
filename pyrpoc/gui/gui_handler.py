@@ -16,9 +16,9 @@ class AppState:
         self.modality = 'simulated' 
         self.instruments = []  # list of instrument objects
         self.acquisition_parameters = {
-            'num_frames': 1,
-            'x_pixels': 512,  # Only used for non-confocal modalities
-            'y_pixels': 512,  # Only used for non-confocal modalities
+            'num_frames': 1,  # Common to all modalities
+            'x_pixels': 512,  # Only used for non-confocal modalities (confocal uses galvo parameters)
+            'y_pixels': 512,  # Only used for non-confocal modalities (confocal uses galvo parameters)
             'save_enabled': False,  # Whether to save acquired data
             'save_path': '',  # File path for saving data
         }
@@ -54,8 +54,7 @@ class AppState:
             serialized.append({
                 'name': instrument.name,
                 'instrument_type': instrument.instrument_type,
-                'parameters': instrument.parameters.copy(),
-                'connected': instrument.connected
+                'parameters': instrument.parameters.copy()
             })
         return serialized
     
@@ -80,7 +79,6 @@ class AppState:
                     instrument_name, 
                     parameters
                 )
-                instrument.connected = data.get('connected', False)
                 self.instruments.append(instrument)
             except Exception as e:
                 print(f"Failed to recreate instrument {data.get('name', 'Unknown')}: {e}")
@@ -426,11 +424,12 @@ def handle_single_acquisition(app_state, signal_bus, continuous=False):
         signal_bus.console_message.emit("Error: Failed to create acquisition object")
 
 def validate_acquisition_parameters(parameters, modality):
-    # first validate presence
+    # Validate presence of required parameters for each modality
+    # Note: Confocal modality uses galvo parameters for pixel dimensions, not acquisition parameters
     required_params = {
         'simulated': ['x_pixels', 'y_pixels', 'num_frames'],
         'widefield': ['x_pixels', 'y_pixels', 'num_frames'],
-        'confocal': ['num_frames'],
+        'confocal': ['num_frames'],  # Pixel dimensions come from galvo parameters
         'mosaic': ['x_pixels', 'y_pixels', 'num_frames'],
         'zscan': ['x_pixels', 'y_pixels', 'num_frames'],
         'custom': ['x_pixels', 'y_pixels', 'num_frames']
@@ -579,7 +578,7 @@ def handle_add_modality_instrument(instrument_type, app_state, main_window):
             if hasattr(main_window, 'left_widget') and hasattr(main_window.left_widget, 'instrument_controls'):
                 main_window.left_widget.instrument_controls.add_instrument(instrument)
                 # Update modality buttons to hide the one we just added
-                main_window.left_widget.instrument_controls.update_modality_buttons()
+                main_window.left_widget.instrument_controls.rebuild()
             
             main_window.signals.console_message.emit(f"Added {display_name} successfully")
         else:

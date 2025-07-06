@@ -12,6 +12,10 @@ import pyqtgraph as pg
 from pyrpoc.gui.image_widgets import ImageDisplayWidget, ConfocalImageDisplayWidget
 from pyrpoc.gui.dockable_widgets import LinesWidget
 from pyrpoc.gui.rpoc_mask_editor import RPOCMaskEditor
+from pyrpoc.imaging.instruments import InstrumentDialog
+from superqt import QSearchableComboBox
+import cv2
+
 
 # # ugly red border for outlines
 # DEV_BORDER_STYLE = """ 
@@ -124,22 +128,111 @@ class TopBar(QWidget):
         self.console.appendPlainText(message)
         self.console.verticalScrollBar().setValue(self.console.verticalScrollBar().maximum())
 
-class AcquisitionParameters(QWidget):
+
+class ModalityControls(QWidget):
     def __init__(self, app_state: AppState, signals: StateSignalBus):
         super().__init__()
         self.app_state = app_state
         self.signals = signals
         self.setStyleSheet(DEV_BORDER_STYLE)
+
+        layout = QHBoxLayout()
+    
+        ms_label = QLabel('Modality:')
+        layout.addWidget(ms_label)
+
+        ms_dropdown = QComboBox()
+        ms_dropdown.addItems(['Simulated', 'Widefield', 'Confocal', 'Mosaic', 'ZScan'])
+        current_modality = self.app_state.modality.capitalize()
+        index = ms_dropdown.findText(current_modality)
+        if index >= 0:
+            ms_dropdown.setCurrentIndex(index)
+        ms_dropdown.currentTextChanged.connect(self.signals.modality_dropdown_changed)
+        layout.addWidget(ms_dropdown)
+
+        self.setLayout(layout)
+
+'''
+all subwidgets other than topbar in general get rebuilt upon modality changes
+the widget needs to be built with a rebuild() method, which uses data from AppState to build
+then within rebuild() there is an add_common_parameters() for universal settings and an add_specific_parameters() for modality-specific settings
+
+TODO: make sure that handling of the parameters is done correctly prior to acquisition startup
+'''
+
+class AcquisitionParameters(QWidget):
+    def __init__(self, app_state: AppState, signals: StateSignalBus):
+        '''
+        acquisition parameters, contained in acquisition parameters dict in AppState
+        signals.acquisition_parameter_changed.emit('param key', value)
+        '''
+        super().__init__()
+        self.app_state = app_state
+        self.signals = signals
+        self.setStyleSheet(DEV_BORDER_STYLE)
+        
+        self.rebuild() 
+
+    def rebuild(self):
+        # clear existing layout
+        if self.layout():
+            while self.layout().count():
+                child = self.layout().takeAt(0)
+                if child.widget():
+                    child.widget().deleteLater()
         
         main_layout = QVBoxLayout()
+
         self.group = QGroupBox('Acquisition Parameters')
         self.group.setCheckable(True)
-        self.group.setChecked(app_state.ui_state['acquisition_parameters_visible'])
-        self.group.toggled.connect(lambda checked: signals.ui_state_changed.emit('acquisition_parameters_visible', checked))
+        self.group.setChecked(self.app_state.ui_state['acquisition_parameters_visible'])
+        self.group.toggled.connect(lambda checked: self.signals.ui_state_changed.emit('acquisition_parameters_visible', checked))
         
         self.container = QWidget()
         self.layout = QVBoxLayout()
         
+        self.add_specific_parameters()
+        self.add_common_parameters()
+        
+        self.container.setLayout(self.layout)
+        
+        group_layout = QVBoxLayout()
+        group_layout.addWidget(self.container)
+        self.group.setLayout(group_layout)
+        
+        self.group.toggled.connect(self.container.setVisible)
+        
+        main_layout.addWidget(self.group)
+        self.setLayout(main_layout)
+
+    def add_specific_parameters(self):
+        modality = self.app_state.modality.lower()
+        
+        if modality == 'confocal':
+            pass
+        else:
+            # explicit pixel controls for non-confocal modalities
+            x_pixels_layout = QHBoxLayout()
+            x_pixels_layout.addWidget(QLabel('X Pixels:'))
+            self.x_pixels_spinbox = QSpinBox()
+            self.x_pixels_spinbox.setRange(64, 4096)
+            self.x_pixels_spinbox.setValue(self.app_state.acquisition_parameters['x_pixels'])
+            self.x_pixels_spinbox.valueChanged.connect(
+                lambda value: self.signals.acquisition_parameter_changed.emit('x_pixels', value))
+            x_pixels_layout.addWidget(self.x_pixels_spinbox)
+            self.layout.addLayout(x_pixels_layout)
+            
+            y_pixels_layout = QHBoxLayout()
+            y_pixels_layout.addWidget(QLabel('Y Pixels:'))
+            self.y_pixels_spinbox = QSpinBox()
+            self.y_pixels_spinbox.setRange(64, 4096)
+            self.y_pixels_spinbox.setValue(self.app_state.acquisition_parameters['y_pixels'])
+            self.y_pixels_spinbox.valueChanged.connect(
+                lambda value: self.signals.acquisition_parameter_changed.emit('y_pixels', value))
+            y_pixels_layout.addWidget(self.y_pixels_spinbox)
+            self.layout.addLayout(y_pixels_layout)       
+
+    def add_common_parameters(self):
         frames_layout = QHBoxLayout()
         frames_layout.addWidget(QLabel('Number of Frames:'))
         self.frames_spinbox = QSpinBox()
@@ -150,35 +243,9 @@ class AcquisitionParameters(QWidget):
         frames_layout.addWidget(self.frames_spinbox)
         self.layout.addLayout(frames_layout)
         
-        # Pixel controls (hidden for confocal modality)
-        x_pixels_layout = QHBoxLayout()
-        x_pixels_layout.addWidget(QLabel('X Pixels:'))
-        self.x_pixels_spinbox = QSpinBox()
-        self.x_pixels_spinbox.setRange(64, 4096)
-        self.x_pixels_spinbox.setValue(self.app_state.acquisition_parameters['x_pixels'])
-        self.x_pixels_spinbox.valueChanged.connect(
-            lambda value: self.signals.acquisition_parameter_changed.emit('x_pixels', value))
-        x_pixels_layout.addWidget(self.x_pixels_spinbox)
-        self.x_pixels_widget = QWidget()
-        self.x_pixels_widget.setLayout(x_pixels_layout)
-        self.layout.addWidget(self.x_pixels_widget)
-        
-        y_pixels_layout = QHBoxLayout()
-        y_pixels_layout.addWidget(QLabel('Y Pixels:'))
-        self.y_pixels_spinbox = QSpinBox()
-        self.y_pixels_spinbox.setRange(64, 4096)
-        self.y_pixels_spinbox.setValue(self.app_state.acquisition_parameters['y_pixels'])
-        self.y_pixels_spinbox.valueChanged.connect(
-            lambda value: self.signals.acquisition_parameter_changed.emit('y_pixels', value))
-        y_pixels_layout.addWidget(self.y_pixels_spinbox)
-        self.y_pixels_widget = QWidget()
-        self.y_pixels_widget.setLayout(y_pixels_layout)
-        self.layout.addWidget(self.y_pixels_widget)
-        
-        # Save controls
+
         save_layout = QVBoxLayout()
         
-        # Save enabled checkbox
         save_enabled_layout = QHBoxLayout()
         self.save_enabled_checkbox = QCheckBox('Save Data')
         self.save_enabled_checkbox.setChecked(self.app_state.acquisition_parameters.get('save_enabled', False))
@@ -187,7 +254,6 @@ class AcquisitionParameters(QWidget):
         save_enabled_layout.addWidget(self.save_enabled_checkbox)
         save_layout.addLayout(save_enabled_layout)
         
-        # Save path selection
         save_path_layout = QHBoxLayout()
         save_path_layout.addWidget(QLabel('Save Path:'))
         self.save_path_edit = QLineEdit()
@@ -201,38 +267,10 @@ class AcquisitionParameters(QWidget):
         self.browse_btn.clicked.connect(self.browse_save_path)
         save_path_layout.addWidget(self.browse_btn)
         save_layout.addLayout(save_path_layout)
-        
-        self.save_widget = QWidget()
-        self.save_widget.setLayout(save_layout)
-        self.layout.addWidget(self.save_widget)
-        
-        self.container.setLayout(self.layout)
-        
-        group_layout = QVBoxLayout()
-        group_layout.addWidget(self.container)
-        self.group.setLayout(group_layout)
-        
-        self.group.toggled.connect(self.container.setVisible)
-        
-        main_layout.addWidget(self.group)
-        self.setLayout(main_layout)
-        
-        # Update visibility based on current modality
-        self.update_pixel_visibility()
-    
-    def update_pixel_visibility(self):
-        """Show/hide pixel controls based on modality"""
-        modality = self.app_state.modality.lower()
-        if modality == 'confocal':
-            self.x_pixels_widget.hide()
-            self.y_pixels_widget.hide()
-        else:
-            self.x_pixels_widget.show()
-            self.y_pixels_widget.show()
+
+        self.layout.addLayout(save_layout)
     
     def browse_save_path(self):
-        """Open file dialog to select save path"""
-        from PyQt6.QtWidgets import QFileDialog
         file_path, _ = QFileDialog.getSaveFileName(
             self, 'Save Acquisition Data', 'acquisition.tiff', 
             'Tiff files (*.tiff);;All files (*)'
@@ -240,27 +278,6 @@ class AcquisitionParameters(QWidget):
         if file_path:
             self.save_path_edit.setText(file_path)
             self.signals.save_path_changed.emit(file_path)
-
-
-class ModalityControls(QWidget):
-    def __init__(self, app_state: AppState, signals: StateSignalBus):
-        super().__init__()
-        self.app_state = app_state
-        self.signals = signals
-        self.setStyleSheet(DEV_BORDER_STYLE)
-        layout = QHBoxLayout()
-        layout.setContentsMargins(5, 5, 5, 5)
-        ms_label = QLabel('Modality:')
-        layout.addWidget(ms_label)
-        ms_dropdown = QComboBox()
-        ms_dropdown.addItems(['Simulated', 'Widefield', 'Confocal', 'Mosaic', 'ZScan'])
-        current_modality = self.app_state.modality.capitalize()
-        index = ms_dropdown.findText(current_modality)
-        if index >= 0:
-            ms_dropdown.setCurrentIndex(index)
-        ms_dropdown.currentTextChanged.connect(self.signals.modality_dropdown_changed)
-        layout.addWidget(ms_dropdown)
-        self.setLayout(layout)
 
 
 class InstrumentControls(QWidget):
@@ -280,18 +297,15 @@ class InstrumentControls(QWidget):
         self.container = QWidget()
         layout = QVBoxLayout()
         
-        # Modality-specific instrument buttons
         self.modality_buttons_widget = QWidget()
         self.modality_buttons_layout = QVBoxLayout()
         self.modality_buttons_widget.setLayout(self.modality_buttons_layout)
         layout.addWidget(self.modality_buttons_widget)
         
-        # Generic add instrument button
         add_btn = QPushButton('Add Instrument')
         add_btn.clicked.connect(self.signals.add_instrument_btn_clicked.emit)
         layout.addWidget(add_btn)
         
-        # Instrument list
         self.instrument_list = QWidget()
         self.instrument_list_layout = QVBoxLayout()
         self.instrument_list.setLayout(self.instrument_list_layout)
@@ -306,18 +320,16 @@ class InstrumentControls(QWidget):
         self.setLayout(main_layout)
         
         self.rebuild()
-        
-        # Connect signals
+
         self.signals.instrument_removed.connect(self.remove_instrument)
     
     def rebuild(self):
-        # Clear modality-specific buttons
+        # clear any existing modality specific instrument buttons
         while self.modality_buttons_layout.count():
             child = self.modality_buttons_layout.takeAt(0)
             if child.widget():
                 child.widget().deleteLater()
-        
-        # Add modality-specific buttons (only if not already added)
+
         modality = self.app_state.modality.lower()
         if modality == 'confocal':
             if not self.has_instrument_type('Galvo'):
@@ -344,35 +356,26 @@ class InstrumentControls(QWidget):
                 data_input_btn = QPushButton('Add Data Inputs')
                 data_input_btn.clicked.connect(lambda: self.signals.add_modality_instrument.emit('Data Input'))
                 self.modality_buttons_layout.addWidget(data_input_btn)
-        
-        # Rebuild instrument list
+
         self.rebuild_instrument_list()
     
     def has_instrument_type(self, instrument_type):
-        """Check if we already have an instrument of the given type"""
         if hasattr(self.app_state, 'instruments'):
             for instrument in self.app_state.instruments:
                 if instrument.instrument_type == instrument_type:
                     return True
         return False
     
-    def update_modality_buttons(self):
-        """Update modality-specific buttons based on current instruments"""
-        self.rebuild()
-    
     def rebuild_instrument_list(self):
-        # Clear existing instrument widgets
         for widget in self.instrument_widgets.values():
             self.instrument_list_layout.removeWidget(widget)
             widget.deleteLater()
         self.instrument_widgets.clear()
         
-        # Recreate widgets for existing instruments
-        if hasattr(self.app_state, 'instruments'):
-            for instrument in self.app_state.instruments:
-                widget = InstrumentWidget(instrument, self.app_state, self.signals)
-                self.instrument_widgets[instrument] = widget
-                self.instrument_list_layout.addWidget(widget)
+        for instrument in self.app_state.instruments:
+            widget = InstrumentWidget(instrument, self.app_state, self.signals)
+            self.instrument_widgets[instrument] = widget
+            self.instrument_list_layout.addWidget(widget)
     
     def add_instrument(self, instrument):
         widget = InstrumentWidget(instrument, self.app_state, self.signals)
@@ -385,33 +388,12 @@ class InstrumentControls(QWidget):
             self.instrument_list_layout.removeWidget(widget)
             del self.instrument_widgets[instrument]
             widget.deleteLater()
-            
-            # Update modality buttons after removal
-            self.update_modality_buttons()
-    
-    def sync_ui_state(self):
-        """Synchronize UI state with app_state"""
-        # Update visibility based on app_state
-        if hasattr(self.app_state, 'ui_state'):
-            visible = self.app_state.ui_state.get('instrument_controls_visible', True)
-            self.group.setChecked(visible)
-        
-        # Update modality buttons
-        self.update_modality_buttons()
-        
-        # Update instrument list
-        self.rebuild_instrument_list()
-    
-    def handle_instrument_connection_change(self, instrument, connected):
-        """Handle instrument connection status changes"""
-        if instrument in self.instrument_widgets:
-            widget = self.instrument_widgets[instrument]
-            widget.update_status()
-    
-    def refresh_all_instruments(self):
-        """Refresh all instrument widgets to update parameter summaries"""
-        for widget in self.instrument_widgets.values():
-            widget.update_status()
+
+
+            parent = self.parent()
+            while parent is not None and not hasattr(parent, 'rebuild'):
+                parent = parent.parent()
+            parent.rebuild()
 
 
 class InstrumentWidget(QWidget):
@@ -424,9 +406,7 @@ class InstrumentWidget(QWidget):
         layout = QVBoxLayout()
         layout.setContentsMargins(5, 5, 5, 5)
         
-        # Header with name and remove button
         header_layout = QHBoxLayout()
-        # Ensure instrument name is a string
         instrument_name = instrument.name if hasattr(instrument, 'name') and isinstance(instrument.name, str) else 'Unknown Instrument'
         self.name_label = QLabel(instrument_name)
         header_layout.addWidget(self.name_label)
@@ -438,18 +418,11 @@ class InstrumentWidget(QWidget):
         
         layout.addLayout(header_layout)
         
-        # Status
-        self.status_label = QLabel('Disconnected')
-        self.status_label.setStyleSheet('color: #666; font-size: 10px;')
-        layout.addWidget(self.status_label)
-        
-        # Parameter summary
         self.param_summary = QLabel()
-        self.param_summary.setStyleSheet('color: #333; font-size: 9px; background-color: #f5f5f5; padding: 2px; border-radius: 2px;')
+        self.param_summary.setStyleSheet('color: #E0E0E0; font-size: 9px; background-color: #3F3F3F; padding: 2px; border-radius: 2px;')
         self.param_summary.setWordWrap(True)
         layout.addWidget(self.param_summary)
         
-        # Control/Edit button
         self.control_btn = QPushButton('Edit/Control')
         self.control_btn.clicked.connect(self.edit_control_instrument)
         layout.addWidget(self.control_btn)
@@ -458,31 +431,18 @@ class InstrumentWidget(QWidget):
         self.update_status()
     
     def update_status(self):
-        if self.instrument.connected:
-            self.status_label.setText('Connected')
-            self.status_label.setStyleSheet('color: #4CAF50; font-size: 10px;')
-        else:
-            self.status_label.setText('Disconnected')
-            self.status_label.setStyleSheet('color: #666; font-size: 10px;')
-        
-        # Update name label if needed
         if hasattr(self.instrument, 'name') and isinstance(self.instrument.name, str):
             self.name_label.setText(self.instrument.name)
         else:
             self.name_label.setText('Unknown Instrument')
-        
-        # Update parameter summary
         self.update_parameter_summary()
     
     def update_parameter_summary(self):
-        """Update the parameter summary display based on instrument type"""
         if not hasattr(self.instrument, 'parameters'):
             self.param_summary.setText('No parameters available')
             return
-        
         params = self.instrument.parameters
         summary_lines = []
-        
         if self.instrument.instrument_type == "Galvo":
             summary_lines.append(f"Ch: {params.get('slow_axis_channel', '?')}/{params.get('fast_axis_channel', '?')}")
             summary_lines.append(f"Pixels: {params.get('numsteps_x', 0)}x{params.get('numsteps_y', 0)}")
@@ -490,60 +450,46 @@ class InstrumentWidget(QWidget):
             summary_lines.append(f"Extra: {params.get('extrasteps_left', 0)}/{params.get('extrasteps_right', 0)}")
             summary_lines.append(f"Amp: {params.get('amplitude_x', 0):.2f}/{params.get('amplitude_y', 0):.2f}V")
             summary_lines.append(f"Rate: {params.get('sample_rate', 0)/1000:.0f}kHz")
-        
         elif self.instrument.instrument_type == "Data Input":
             channels = params.get('input_channels', [])
             if isinstance(channels, list):
                 summary_lines.append(f"Channels: {', '.join(map(str, channels))}")
             summary_lines.append(f"Range: ±{params.get('voltage_range', 0):.1f}V")
             summary_lines.append(f"Rate: {params.get('sample_rate', 0)/1000:.0f}kHz")
-        
         elif self.instrument.instrument_type == "Delay Stage":
             summary_lines.append(f"Port: {params.get('com_port', '?')}")
             summary_lines.append(f"Baud: {params.get('baud_rate', 0)}")
             summary_lines.append(f"Timeout: {params.get('timeout', 0):.1f}s")
-        
         elif self.instrument.instrument_type == "Zaber Stage":
             summary_lines.append(f"Port: {params.get('com_port', '?')}")
             summary_lines.append(f"Baud: {params.get('baud_rate', 0)}")
             summary_lines.append(f"Timeout: {params.get('timeout', 0):.1f}s")
-        
         else:
             summary_lines.append(f"Type: {self.instrument.instrument_type}")
-            # Show first few parameters for unknown types
             param_items = list(params.items())[:3]
             for key, value in param_items:
                 if isinstance(value, (int, float)):
                     summary_lines.append(f"{key}: {value}")
                 else:
                     summary_lines.append(f"{key}: {str(value)[:10]}")
-        
         self.param_summary.setText(' | '.join(summary_lines))
     
     def remove_instrument(self):
-        # Remove from app_state
-        if hasattr(self.app_state, 'instruments') and self.instrument in self.app_state.instruments:
+        if self.instrument in self.app_state.instruments:
             self.app_state.instruments.remove(self.instrument)
         
-        # Emit signal to remove this widget
         self.signals.instrument_removed.emit(self.instrument)
         
-        # Update modality buttons to show the button for the removed instrument type
         parent = self.parent()
-        while parent is not None:
-            if hasattr(parent, 'update_modality_buttons'):
-                parent.update_modality_buttons()
-                break
+        while parent is not None and not hasattr(parent, 'rebuild'):
             parent = parent.parent()
+        if parent is not None and hasattr(parent, 'rebuild'):
+            parent.rebuild()
         
         self.deleteLater()
     
     def edit_control_instrument(self):
-        # For galvos and data inputs, show configuration dialog to edit parameters
         if self.instrument.instrument_type in ['Galvo', 'Data Input']:
-            from pyrpoc.imaging.instruments import InstrumentDialog
-            
-            # Prepare current parameters including the name
             current_params = self.instrument.parameters.copy()
             current_params['name'] = self.instrument.name
             
@@ -551,8 +497,7 @@ class InstrumentWidget(QWidget):
             
             if dialog.exec() == QDialog.DialogCode.Accepted:
                 parameters = dialog.get_parameters()
-                if parameters is not None:  # Check if validation passed
-                    # Update instrument parameters
+                if parameters is not None: 
                     self.instrument.parameters.update(parameters)
                     new_name = parameters.get('name', 'Unknown Instrument')
                     self.instrument.name = new_name
@@ -564,10 +509,8 @@ class InstrumentWidget(QWidget):
                     self.signals.console_message.emit(f"Failed to update {current_name} - invalid parameters")
         
         else:
-            # For other instruments, check if they have a control widget
             control_widget = self.instrument.get_control_widget()
             if control_widget:
-                # Show control widget in a dialog
                 dialog = QDialog(self)
                 dialog.setWindowTitle(f"Control {self.instrument.name}")
                 dialog.setModal(True)
@@ -583,23 +526,7 @@ class InstrumentWidget(QWidget):
                 dialog.resize(300, 200)
                 dialog.exec()
             else:
-                # Reopen configuration dialog for other instruments
-                from pyrpoc.imaging.instruments import InstrumentDialog
-                dialog = InstrumentDialog(self.instrument.instrument_type, self)
-                if dialog.exec() == QDialog.DialogCode.Accepted:
-                    parameters = dialog.get_parameters()
-                    if parameters is not None:  # Check if validation passed
-                        # Update instrument parameters
-                        self.instrument.parameters.update(parameters)
-                        new_name = parameters.get('name', 'Unknown Instrument')
-                        self.instrument.name = new_name
-                        self.name_label.setText(new_name)
-                        self.update_status()  # Refresh parameter summary
-                        self.signals.console_message.emit(f"Updated {new_name} parameters")
-                    else:
-                        current_name = getattr(self.instrument, 'name', 'Unknown Instrument')
-                        self.signals.console_message.emit(f"Failed to update {current_name} - invalid parameters")
-
+                self.signals.console_message.emit(f"Failed to update {current_name} - something weird is happening")
 
 class DisplayControls(QWidget):
     def __init__(self, app_state: AppState, signals: StateSignalBus):
@@ -633,44 +560,45 @@ class RPOCChannelWidget(QWidget):
         
         layout = QVBoxLayout()
         layout.setContentsMargins(5, 5, 5, 5)
-        
-        # channel header
+
         header_layout = QHBoxLayout()
         self.channel_label = QLabel(f'Channel {channel_id}')
         header_layout.addWidget(self.channel_label)
-        
-        # remove channel button
+
         remove_btn = QPushButton('×')
         remove_btn.setMaximumWidth(20)
         remove_btn.clicked.connect(self.remove_channel)
         header_layout.addWidget(remove_btn)
         
         layout.addLayout(header_layout)
-        
-        # DAQ channel specification
+
         daq_layout = QHBoxLayout()
         daq_layout.addWidget(QLabel('Device:'))
-        self.device_edit = QLineEdit()
-        self.device_edit.setText('Dev1')
-        self.device_edit.setPlaceholderText('Dev1')
-        self.device_edit.textChanged.connect(self.on_daq_channel_changed)
+        self.device_edit = QSearchableComboBox()
+
+        default_device = self.app_state.rpoc_channels.get(self.channel_id, {}).get('device', 'Dev1')
+        self.device_edit.setCurrentText(default_device)
+        self.device_edit.currentTextChanged.connect(self.on_daq_channel_changed)
         daq_layout.addWidget(self.device_edit)
         
-        daq_layout.addWidget(QLabel('Port/Line:'))
-        self.port_line_edit = QLineEdit()
-        self.port_line_edit.setText(f'port0/line{4+channel_id-1}')
-        self.port_line_edit.setPlaceholderText('port0/line4')
-        self.port_line_edit.textChanged.connect(self.on_daq_channel_changed)
+        daq_layout.addWidget(QLabel('port#/line#:'))
+        self.port_line_edit = QSearchableComboBox()
+        self.port_line_edit.addItems(['port0/line0', 'port0/line1', 'port0/line2', 'port0/line3', 'port0/line4', 'port0/line5', 'port0/line6', 'port0/line7', 
+                                      'port0/line8', 'port0/line9', 'port0/line10', 'port0/line11', 'port0/line12', 'port0/line13', 'port0/line14', 'port0/line15', 
+                                      'port1/line0', 'port1/line1', 'port1/line2', 'port1/line3', 'port1/line4', 'port1/line5', 'port1/line6', 'port1/line7', 
+                                      'port1/line8', 'port1/line9', 'port1/line10', 'port1/line11', 'port1/line12', 'port1/line13', 'port1/line14', 'port1/line15'])
+        
+        default_port_line = self.app_state.rpoc_channels.get(self.channel_id, {}).get('port_line', f'port0/line{3+channel_id}')
+        self.port_line_edit.setCurrentText(default_port_line)
+        self.port_line_edit.currentTextChanged.connect(self.on_daq_channel_changed)
         daq_layout.addWidget(self.port_line_edit)
         
         layout.addLayout(daq_layout)
-        
-        # mask status
+
         self.mask_status = QLabel('No mask loaded')
         self.mask_status.setStyleSheet('color: #666; font-size: 10px;')
         layout.addWidget(self.mask_status)
         
-        # mask buttons
         buttons_layout = QHBoxLayout()
         
         self.create_mask_btn = QPushButton('Create Mask')
@@ -684,46 +612,36 @@ class RPOCChannelWidget(QWidget):
         layout.addLayout(buttons_layout)
         
         self.setLayout(layout)
-        
-        # Store initial DAQ channel values
+
         self.on_daq_channel_changed()
-        
-        # check if we already have a mask for this channel
+
         self.update_mask_status()
     
     def on_daq_channel_changed(self):
-        """Handle changes to DAQ channel specification"""
-        # Store the DAQ channel info in app_state
         if not hasattr(self.app_state, 'rpoc_channels'):
             self.app_state.rpoc_channels = {}
         
-        device = self.device_edit.text().strip()
-        port_line = self.port_line_edit.text().strip()
+        device = self.device_edit.currentText().strip()
+        port_line = self.port_line_edit.currentText().strip()
         
-        if device and port_line:
-            self.app_state.rpoc_channels[self.channel_id] = {
-                'device': device,
-                'port_line': port_line
-            }
-            self.signals.console_message.emit(f"RPOC channel {self.channel_id}: {device}/{port_line}")
-            print(f"RPOC channel {self.channel_id} stored: {device}/{port_line}")
-        else:
-            print(f"RPOC channel {self.channel_id} incomplete: device='{device}', port_line='{port_line}'")
+        self.app_state.rpoc_channels[self.channel_id] = {
+            'device': device,
+            'port_line': port_line
+        }
+        self.signals.console_message.emit(f'RPOC channel {self.channel_id} set on {device}/{port_line}')
     
     def get_daq_channel_info(self):
-        """Get the DAQ channel information for this widget"""
-        device = self.device_edit.text().strip()
-        port_line = self.port_line_edit.text().strip()
+        device = self.device_edit.currentText().strip()
+        port_line = self.port_line_edit.currentText().strip()
         return {
             'device': device,
             'port_line': port_line
         }
     
     def create_mask(self):
-        # get current image data from the image display widget
         image_data = self.get_current_image_data()
         if image_data is None:
-            self.signals.console_message.emit("No image data available for mask creation. Please acquire an image first.")
+            self.signals.console_message.emit('No image data available for mask creation. Please acquire an image first.')
             return
             
         self.mask_editor = RPOCMaskEditor(image_data=image_data)
@@ -736,7 +654,6 @@ class RPOCChannelWidget(QWidget):
         )
         if file_path:
             try:
-                import cv2
                 mask = cv2.imread(file_path, cv2.IMREAD_GRAYSCALE)
                 if mask is not None:
                     self.handle_mask_loaded(mask)
@@ -746,49 +663,10 @@ class RPOCChannelWidget(QWidget):
                 self.signals.console_message.emit(f"Error loading mask: {e}")
     
     def get_current_image_data(self):
-        """get current image data from the main image display widget"""
-        # First, try to get data from the app_state directly
-        if hasattr(self.app_state, 'current_data'):
-            data = self.app_state.current_data
-            if data is not None and isinstance(data, np.ndarray):
-                if data.ndim == 4:  # frames x channels x height x width
-                    return data[0] if data.shape[0] > 0 else None
-                elif data.ndim == 3:
-                    # assume it's frames x height x width, return current frame as single channel
-                    return data[0][np.newaxis, :, :] if data.shape[0] > 0 else None
-                elif data.ndim == 2:
-                    return data[np.newaxis, :, :]
-        
-        # traverse up to find the main window and get image data
-        parent = self.parent()
-        while parent is not None:
-            if hasattr(parent, 'app_state'):
-                # try to get data from the image display widget first
-                if hasattr(parent, 'mid_layout') and hasattr(parent.mid_layout, 'image_display_widget'):
-                    image_widget = parent.mid_layout.image_display_widget
-                    if hasattr(image_widget, 'get_image_data_for_rpoc'):
-                        return image_widget.get_image_data_for_rpoc()
-                
-                # fallback to app_state current_data
-                if hasattr(parent.app_state, 'current_data'):
-                    data = parent.app_state.current_data
-                    if data is not None and isinstance(data, np.ndarray):
-                        if data.ndim == 4:  # frames x channels x height x width
-                            return data[0] if data.shape[0] > 0 else None
-                        elif data.ndim == 3:
-                            # assume it's frames x height x width, return current frame as single channel
-                            return data[0][np.newaxis, :, :] if data.shape[0] > 0 else None
-                        elif data.ndim == 2:
-                            return data[np.newaxis, :, :]
-                return None
-            parent = parent.parent()
-        
-        # If we didn't find it through parent traversal, try to find the main window directly
-        # Look for the main window in the widget hierarchy
         widget = self
         while widget is not None:
             if hasattr(widget, 'app_state') and hasattr(widget, 'mid_layout'):
-                # This should be the main window
+                # should be traversed up to main_window by here
                 if hasattr(widget.mid_layout, 'image_display_widget'):
                     image_widget = widget.mid_layout.image_display_widget
                     if hasattr(image_widget, 'get_image_data_for_rpoc'):
@@ -809,7 +687,7 @@ class RPOCChannelWidget(QWidget):
         self.app_state.rpoc_masks[self.channel_id] = mask
         self.update_mask_status()
         self.signals.console_message.emit(f"Mask loaded for channel {self.channel_id} - shape: {mask.shape if hasattr(mask, 'shape') else 'unknown'}")
-        print(f"RPOC mask stored for channel {self.channel_id}: {mask.shape if hasattr(mask, 'shape') else 'unknown'}")
+        print(f"RPOC mask stored for channel {self.channel_id}: {mask.shape if hasattr(mask, 'shape') else 'check file type'}")
     
     def update_mask_status(self):
         if hasattr(self.app_state, 'rpoc_masks') and self.channel_id in self.app_state.rpoc_masks:
@@ -863,38 +741,39 @@ class RightPanel(QWidget):
         self.setLayout(layout)
 
     def add_modality_specific_controls(self, layout):
-        modality = self.app_state.modality.lower()
+        pass
+        # modality = self.app_state.modality.lower()
         
-        if modality == 'simulated':
-            group = QGroupBox('Simulation Mode')
-            group_layout = QVBoxLayout()
-            group_layout.addWidget(QLabel('Simulation Mode Active'))
-            group.setLayout(group_layout)
-            layout.addWidget(group)
-        elif modality == 'widefield':
-            group = QGroupBox('Widefield Mode')
-            group_layout = QVBoxLayout()
-            group_layout.addWidget(QLabel('Widefield Mode Active'))
-            group.setLayout(group_layout)
-            layout.addWidget(group)
-        elif modality == 'confocal':
-            group = QGroupBox('Confocal Mode')
-            group_layout = QVBoxLayout()
-            group_layout.addWidget(QLabel('Confocal Mode Active'))
-            group.setLayout(group_layout)
-            layout.addWidget(group)
-        elif modality == 'mosaic':
-            group = QGroupBox('Mosaic Mode')
-            group_layout = QVBoxLayout()
-            group_layout.addWidget(QLabel('Mosaic Mode Active'))
-            group.setLayout(group_layout)
-            layout.addWidget(group)
-        elif modality == 'zscan':
-            group = QGroupBox('ZScan Mode')
-            group_layout = QVBoxLayout()
-            group_layout.addWidget(QLabel('ZScan Mode Active'))
-            group.setLayout(group_layout)
-            layout.addWidget(group)
+        # if modality == 'simulated':
+        #     group = QGroupBox('Simulation Mode')
+        #     group_layout = QVBoxLayout()
+        #     group_layout.addWidget(QLabel('Simulation Mode Active'))
+        #     group.setLayout(group_layout)
+        #     layout.addWidget(group)
+        # elif modality == 'widefield':
+        #     group = QGroupBox('Widefield Mode')
+        #     group_layout = QVBoxLayout()
+        #     group_layout.addWidget(QLabel('Widefield Mode Active'))
+        #     group.setLayout(group_layout)
+        #     layout.addWidget(group)
+        # elif modality == 'confocal':
+        #     group = QGroupBox('Confocal Mode')
+        #     group_layout = QVBoxLayout()
+        #     group_layout.addWidget(QLabel('Confocal Mode Active'))
+        #     group.setLayout(group_layout)
+        #     layout.addWidget(group)
+        # elif modality == 'mosaic':
+        #     group = QGroupBox('Mosaic Mode')
+        #     group_layout = QVBoxLayout()
+        #     group_layout.addWidget(QLabel('Mosaic Mode Active'))
+        #     group.setLayout(group_layout)
+        #     layout.addWidget(group)
+        # elif modality == 'zscan':
+        #     group = QGroupBox('ZScan Mode')
+        #     group_layout = QVBoxLayout()
+        #     group_layout.addWidget(QLabel('ZScan Mode Active'))
+        #     group.setLayout(group_layout)
+        #     layout.addWidget(group)
 
     def add_common_controls(self, layout):
         rpoc_group = QGroupBox('RPOC Controls')
@@ -905,12 +784,10 @@ class RightPanel(QWidget):
         rpoc_enabled_checkbox.toggled.connect(lambda checked: self.signals.rpoc_enabled_changed.emit(checked))
         rpoc_layout.addWidget(rpoc_enabled_checkbox)
         
-        # add rpoc channel button
         add_channel_btn = QPushButton('Add RPOC Channel')
         add_channel_btn.clicked.connect(self.add_rpoc_channel)
         rpoc_layout.addWidget(add_channel_btn)
         
-        # container for rpoc channel widgets
         self.channels_container = QWidget()
         self.channels_layout = QVBoxLayout()
         self.channels_layout.setSpacing(5)
@@ -922,7 +799,6 @@ class RightPanel(QWidget):
         
         layout.addStretch()
         
-        # connect signals
         self.signals.rpoc_channel_removed.connect(self.remove_rpoc_channel)
     
     def add_rpoc_channel(self):
@@ -968,11 +844,6 @@ class LeftPanel(QWidget):
         self.layout.addWidget(self.display_controls)
         
         self.layout.addStretch()
-    
-    def update_acquisition_parameters_visibility(self):
-        """Update acquisition parameters visibility based on modality"""
-        if hasattr(self, 'acquisition_parameters'):
-            self.acquisition_parameters.update_pixel_visibility()
 
 
 class DockableMiddlePanel(QMainWindow):
@@ -1053,28 +924,28 @@ class MainWindow(QMainWindow):
         self.signals.modality_dropdown_changed.connect(self.on_modality_changed)
 
     def build_gui(self):
-        self._clear_existing_gui()
-        self._create_central_widget()
-        self._create_top_bar()
-        self._create_main_splitter()
-        self._setup_splitter_sizes()
-        self._finalize_gui()
+        self.clear_existing_gui()
+        self.create_central_widget()
+        self.create_top_bar()
+        self.create_main_splitter()
+        self.setup_splitter_sizes()
+        self.finalize_gui()
 
-    def _clear_existing_gui(self):
+    def clear_existing_gui(self):
         if self.centralWidget():
             self.centralWidget().deleteLater()
 
-    def _create_central_widget(self):
+    def create_central_widget(self):
         self.central_widget = QWidget()
         self.central_layout = QVBoxLayout()
         self.central_layout.setContentsMargins(5, 5, 5, 5)
         self.central_layout.setSpacing(5)
 
-    def _create_top_bar(self):
+    def create_top_bar(self):
         self.top_bar = TopBar(self.app_state, self.signals)
         self.central_layout.addWidget(self.top_bar, stretch=0)
 
-    def _create_main_splitter(self):
+    def create_main_splitter(self):
         self.main_splitter = QSplitter(Qt.Orientation.Horizontal)
         
         self.left_widget = LeftPanel(self.app_state, self.signals)
@@ -1085,13 +956,13 @@ class MainWindow(QMainWindow):
         self.main_splitter.addWidget(self.mid_layout)
         self.main_splitter.addWidget(self.right_layout)
 
-    def _setup_splitter_sizes(self):
+    def setup_splitter_sizes(self):
         self.main_splitter.setSizes([200, 800, 200])
         if 'main_splitter_sizes' in self.app_state.ui_state:
             self.main_splitter.setSizes(self.app_state.ui_state['main_splitter_sizes'])
         self.main_splitter.splitterMoved.connect(lambda: self.save_splitter_sizes())
 
-    def _finalize_gui(self):
+    def finalize_gui(self):
         self.central_layout.addWidget(self.main_splitter, stretch=1)
         self.central_widget.setLayout(self.central_layout)
         self.setCentralWidget(self.central_widget)
@@ -1108,8 +979,6 @@ class MainWindow(QMainWindow):
     def on_modality_changed(self, new_modality):
         self.app_state.modality = new_modality.lower()
         self.rebuild_gui()
-        if hasattr(self, 'left_widget'):
-            self.left_widget.update_acquisition_parameters_visibility()
 
     def save_splitter_sizes(self):
         if self.main_splitter:
