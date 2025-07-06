@@ -1,6 +1,6 @@
 import sys
-from pyrpoc.gui.gui_handler import AppState, StateSignalBus
-from pyrpoc.gui.gui import MainWindow
+from pyrpoc.gui_handler import AppState, StateSignalBus
+from pyrpoc.gui import MainWindow
 from PyQt6.QtWidgets import QApplication
 
 if __name__ == '__main__':

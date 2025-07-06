@@ -10,9 +10,11 @@ from pyrpoc.instruments.base_instrument import Instrument
 class PriorStage(Instrument):
     def __init__(self, name="Prior Stage"):
         super().__init__(name, "Prior Stage")
-        # Only connection parameters - acquisition parameters moved to GUI
+        # Connection and safety parameters
         self.parameters = {
-            'port': 4  # COM port number
+            'port': 4,  # COM port number
+            'max_z_height': 50000,  # Maximum Z height in µm
+            'safe_move_distance': 10000  # Safe movement distance in µm
         }
         self._connected = False
         self._sdk_prior = None
@@ -94,7 +96,7 @@ class PriorStage(Instrument):
     def move_z(self, z_height, max_z_height=None):
         """Move Z stage to specified height in µm"""
         if max_z_height is None:
-            max_z_height = 50000  # Default max height
+            max_z_height = self.parameters.get('max_z_height', 50000)
         if not (0 <= z_height <= max_z_height):
             raise ValueError(f"Z height must be between 0 and {max_z_height} µm.")
         
@@ -107,7 +109,7 @@ class PriorStage(Instrument):
         """Move XY stage to specified position in µm"""
         current_x, current_y = self.get_xy()
         if safe_move_distance is None:
-            safe_move_distance = 10000  # Default safe distance
+            safe_move_distance = self.parameters.get('safe_move_distance', 10000)
         
         if not (current_x - safe_move_distance <= x <= current_x + safe_move_distance) or \
            not (current_y - safe_move_distance <= y <= current_y + safe_move_distance):
@@ -195,6 +197,19 @@ class PriorStageConfigWidget(QWidget):
         self.port_spin.setValue(4)
         layout.addRow("COM Port:", self.port_spin)
         
+        # Safety parameters
+        self.max_z_height_spin = QDoubleSpinBox()
+        self.max_z_height_spin.setRange(10000, 100000)
+        self.max_z_height_spin.setValue(50000)
+        self.max_z_height_spin.setSuffix(" µm")
+        layout.addRow("Max Z Height:", self.max_z_height_spin)
+        
+        self.safe_move_distance_spin = QDoubleSpinBox()
+        self.safe_move_distance_spin.setRange(1000, 100000)
+        self.safe_move_distance_spin.setValue(10000)
+        self.safe_move_distance_spin.setSuffix(" µm")
+        layout.addRow("Safe Move Distance:", self.safe_move_distance_spin)
+        
         self.setLayout(layout)
 
     def set_parameters(self, parameters):
@@ -203,11 +218,17 @@ class PriorStageConfigWidget(QWidget):
             self.name_edit.setText(parameters['name'])
         if 'port' in parameters:
             self.port_spin.setValue(parameters['port'])
+        if 'max_z_height' in parameters:
+            self.max_z_height_spin.setValue(parameters['max_z_height'])
+        if 'safe_move_distance' in parameters:
+            self.safe_move_distance_spin.setValue(parameters['safe_move_distance'])
 
     def get_parameters(self):
         parameters = {
             'name': self.name_edit.text(),
-            'port': self.port_spin.value()
+            'port': self.port_spin.value(),
+            'max_z_height': self.max_z_height_spin.value(),
+            'safe_move_distance': self.safe_move_distance_spin.value()
         }
         
         # Validate parameters before returning

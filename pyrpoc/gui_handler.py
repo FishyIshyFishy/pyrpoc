@@ -1,8 +1,8 @@
 import json
 from PyQt6.QtWidgets import QFileDialog, QMessageBox, QDialog, QVBoxLayout, QHBoxLayout, QPushButton, QComboBox, QLabel
 from pyrpoc.instruments.instrument_manager import create_instrument, get_instruments_by_type
-from PyQt6.QtCore import QObject, pyqtSignal, QThread
 from pyrpoc.acquisitions import *
+from PyQt6.QtCore import QObject, pyqtSignal, QThread
 import numpy as np
 import os
 from pathlib import Path
@@ -17,8 +17,6 @@ class AppState:
         self.instruments = []  # list of instrument objects
         self.acquisition_parameters = {
             'num_frames': 1,  # Common to all modalities
-            'x_pixels': 512,  # Only used for non-confocal modalities (confocal uses galvo parameters)
-            'y_pixels': 512,  # Only used for non-confocal modalities (confocal uses galvo parameters)
             'split_percentage': 50,  # Only used for split data stream modality
             'save_enabled': False,  # Whether to save acquired data
             'save_path': '',  # File path for saving data
@@ -31,16 +29,16 @@ class AppState:
             'amplitude_y': 0.5,  # Amplitude for Y axis
             'offset_x': 0.0,  # Offset for X axis
             'offset_y': 0.0,  # Offset for Y axis
+            'x_pixels': 512,  # Number of X pixels for galvo scanning
+            'y_pixels': 512,  # Number of Y pixels for galvo scanning
             
             # Prior stage acquisition parameters (moved from prior stage instrument)
-            'numsteps_x': 10,  # Number of X steps for acquisition
-            'numsteps_y': 10,  # Number of Y steps for acquisition  
-            'numsteps_z': 5,   # Number of Z steps for acquisition
-            'step_size_x': 100,  # Step size in µm for X
-            'step_size_y': 100,  # Step size in µm for Y
-            'step_size_z': 50,   # Step size in µm for Z
-            'max_z_height': 50000,  # Maximum Z height in µm
-            'safe_move_distance': 10000  # Safe movement distance in µm
+            'numtiles_x': 10,  # Number of X tiles for acquisition
+            'numtiles_y': 10,  # Number of Y tiles for acquisition  
+            'numtiles_z': 5,   # Number of Z tiles for acquisition
+            'tile_size_x': 100,  # Tile size in µm for X
+            'tile_size_y': 100,  # Tile size in µm for Y
+            'tile_size_z': 50,   # Tile size in µm for Z
         }
         self.display_parameters = {
             # overlay parameter removed - not implemented yet
@@ -445,11 +443,6 @@ def handle_single_acquisition(app_state, signal_bus, continuous=False):
                 signal_bus.console_message.emit("ZScan acquisition started")
                 acquisition = ZScan(signal_bus=signal_bus,
                                   save_enabled=save_enabled, save_path=save_path)
-                
-            case 'custom':
-                signal_bus.console_message.emit("Custom acquisition started")
-                acquisition = Custom(signal_bus=signal_bus,
-                                   save_enabled=save_enabled, save_path=save_path)
                 
             case _:
                 signal_bus.console_message.emit('Warning: invalid modality, defaulting to simulation')

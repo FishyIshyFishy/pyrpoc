@@ -37,8 +37,8 @@
         "amplitude_y": 0.5,
         "offset_x": 0.0,
         "offset_y": 0.0,
-        "numsteps_x": 512,
-        "numsteps_y": 512,
+        "x_pixels": 512,
+        "y_pixels": 512,
         "name": "Galvo Scanner"
       },
       "connected": true
@@ -57,6 +57,17 @@
         "name": "Data Input"
       },
       "connected": true
+    },
+    {
+      "name": "Prior Stage",
+      "instrument_type": "Prior Stage",
+      "parameters": {
+        "port": 4,
+        "max_z_height": 50000,
+        "safe_move_distance": 10000,
+        "name": "Prior Stage"
+      },
+      "connected": false
     }
   ],
   "rpoc_masks": {}

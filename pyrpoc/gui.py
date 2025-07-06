@@ -3,13 +3,14 @@ from PyQt6.QtWidgets import QApplication, QVBoxLayout, QHBoxLayout, QMainWindow,
                              QLabel, QWidget, QComboBox, QSplitter, QPushButton, \
                              QPlainTextEdit, QStyle, QGroupBox, QSpinBox, QCheckBox, QLineEdit, QSlider, \
                              QGraphicsView, QGraphicsScene, QGraphicsItem, QGraphicsLineItem, \
-                             QFrame, QSizePolicy, QDockWidget, QFileDialog, QDialog, QFormLayout, QDoubleSpinBox
+                             QFrame, QSizePolicy, QDockWidget, QFileDialog, QDialog, QFormLayout, QDoubleSpinBox, \
+                             QScrollArea
 from PyQt6.QtCore import Qt, QPointF, QRectF, QPropertyAnimation, QEasingCurve
 from PyQt6.QtGui import QPixmap, QImage, QPen, QBrush, QColor, QPainter, QFont
 from pyrpoc.gui_handler import AppState, StateSignalBus
 import sys
 import pyqtgraph as pg
-from pyrpoc.image_widgets import ImageDisplayWidget, MultichannelImageDisplayWidget
+from pyrpoc.displays import *
 from pyrpoc.dockable_widgets import LinesWidget
 from pyrpoc.rpoc_mask_editor import RPOCMaskEditor
 from superqt import QSearchableComboBox
@@ -210,6 +211,7 @@ class AcquisitionParameters(QWidget):
         if modality == 'confocal':
             # Add galvo acquisition parameters for confocal
             self.add_galvo_parameters()
+
         elif modality == 'split data stream':
             # Split percentage parameter for split data stream modality
             split_layout = QHBoxLayout()
@@ -223,53 +225,31 @@ class AcquisitionParameters(QWidget):
             split_layout.addWidget(self.split_percentage_spinbox)
             self.layout.addLayout(split_layout)
             
-            # Add galvo acquisition parameters for split data stream
+
             self.add_galvo_parameters()
-            
-            # Add prior stage acquisition parameters for split data stream
             self.add_prior_stage_parameters()
+
         elif modality == 'mosaic':
-            # Add galvo acquisition parameters for mosaic
             self.add_galvo_parameters()
+            self.add_prior_stage_parameters()
+
         else:
-            # explicit pixel controls for non-confocal modalities
-            x_pixels_layout = QHBoxLayout()
-            x_pixels_layout.addWidget(QLabel('X Pixels:'))
-            self.x_pixels_spinbox = QSpinBox()
-            self.x_pixels_spinbox.setRange(64, 4096)
-            self.x_pixels_spinbox.setValue(self.app_state.acquisition_parameters['x_pixels'])
-            self.x_pixels_spinbox.valueChanged.connect(
-                lambda value: self.signals.acquisition_parameter_changed.emit('x_pixels', value))
-            x_pixels_layout.addWidget(self.x_pixels_spinbox)
-            self.layout.addLayout(x_pixels_layout)
-            
-            y_pixels_layout = QHBoxLayout()
-            y_pixels_layout.addWidget(QLabel('Y Pixels:'))
-            self.y_pixels_spinbox = QSpinBox()
-            self.y_pixels_spinbox.setRange(64, 4096)
-            self.y_pixels_spinbox.setValue(self.app_state.acquisition_parameters['y_pixels'])
-            self.y_pixels_spinbox.valueChanged.connect(
-                lambda value: self.signals.acquisition_parameter_changed.emit('y_pixels', value))
-            y_pixels_layout.addWidget(self.y_pixels_spinbox)
-            self.layout.addLayout(y_pixels_layout)
+            # For non-confocal modalities, still need galvo parameters for scanning
+            self.add_galvo_parameters()
 
     def add_galvo_parameters(self):
-        """Add galvo acquisition parameters"""
-        # Galvo parameters group
         galvo_group = QGroupBox("Galvo Parameters")
         galvo_layout = QFormLayout()
         
-        # Dwell time
         self.dwell_time_spin = QDoubleSpinBox()
-        self.dwell_time_spin.setRange(1e-9, 1e-3)
+        self.dwell_time_spin.setRange(1e-6, 1e-3)
         self.dwell_time_spin.setValue(self.app_state.acquisition_parameters.get('dwell_time', 10e-6))
         self.dwell_time_spin.setSuffix(" s")
-        self.dwell_time_spin.setDecimals(9)
+        self.dwell_time_spin.setDecimals(6)
         self.dwell_time_spin.valueChanged.connect(
             lambda value: self.signals.acquisition_parameter_changed.emit('dwell_time', value))
         galvo_layout.addRow("Dwell Time:", self.dwell_time_spin)
         
-        # Extra steps
         self.extrasteps_left_spin = QSpinBox()
         self.extrasteps_left_spin.setRange(0, 1000)
         self.extrasteps_left_spin.setValue(self.app_state.acquisition_parameters.get('extrasteps_left', 50))
@@ -283,10 +263,9 @@ class AcquisitionParameters(QWidget):
         self.extrasteps_right_spin.valueChanged.connect(
             lambda value: self.signals.acquisition_parameter_changed.emit('extrasteps_right', value))
         galvo_layout.addRow("Extra Steps Right:", self.extrasteps_right_spin)
-        
-        # Amplitudes
+
         self.amplitude_x_spin = QDoubleSpinBox()
-        self.amplitude_x_spin.setRange(0.1, 10.0)
+        self.amplitude_x_spin.setRange(0.1, 5)
         self.amplitude_x_spin.setValue(self.app_state.acquisition_parameters.get('amplitude_x', 0.5))
         self.amplitude_x_spin.setSuffix(" V")
         self.amplitude_x_spin.valueChanged.connect(
@@ -294,16 +273,15 @@ class AcquisitionParameters(QWidget):
         galvo_layout.addRow("Amplitude X:", self.amplitude_x_spin)
         
         self.amplitude_y_spin = QDoubleSpinBox()
-        self.amplitude_y_spin.setRange(0.1, 10.0)
+        self.amplitude_y_spin.setRange(0.1, 5)
         self.amplitude_y_spin.setValue(self.app_state.acquisition_parameters.get('amplitude_y', 0.5))
         self.amplitude_y_spin.setSuffix(" V")
         self.amplitude_y_spin.valueChanged.connect(
             lambda value: self.signals.acquisition_parameter_changed.emit('amplitude_y', value))
         galvo_layout.addRow("Amplitude Y:", self.amplitude_y_spin)
-        
-        # Offsets
+
         self.offset_x_spin = QDoubleSpinBox()
-        self.offset_x_spin.setRange(-10.0, 10.0)
+        self.offset_x_spin.setRange(-2, 2)
         self.offset_x_spin.setValue(self.app_state.acquisition_parameters.get('offset_x', 0.0))
         self.offset_x_spin.setSuffix(" V")
         self.offset_x_spin.valueChanged.connect(
@@ -311,85 +289,80 @@ class AcquisitionParameters(QWidget):
         galvo_layout.addRow("Offset X:", self.offset_x_spin)
         
         self.offset_y_spin = QDoubleSpinBox()
-        self.offset_y_spin.setRange(-10.0, 10.0)
+        self.offset_y_spin.setRange(-2, 2)
         self.offset_y_spin.setValue(self.app_state.acquisition_parameters.get('offset_y', 0.0))
         self.offset_y_spin.setSuffix(" V")
         self.offset_y_spin.valueChanged.connect(
             lambda value: self.signals.acquisition_parameter_changed.emit('offset_y', value))
         galvo_layout.addRow("Offset Y:", self.offset_y_spin)
         
+        # Galvo scanning parameters (x_pixels and y_pixels)
+        self.x_pixels_spin = QSpinBox()
+        self.x_pixels_spin.setRange(64, 4096)
+        self.x_pixels_spin.setValue(self.app_state.acquisition_parameters.get('x_pixels', 512))
+        self.x_pixels_spin.valueChanged.connect(
+            lambda value: self.signals.acquisition_parameter_changed.emit('x_pixels', value))
+        galvo_layout.addRow("X Pixels:", self.x_pixels_spin)
+        
+        self.y_pixels_spin = QSpinBox()
+        self.y_pixels_spin.setRange(64, 4096)
+        self.y_pixels_spin.setValue(self.app_state.acquisition_parameters.get('y_pixels', 512))
+        self.y_pixels_spin.valueChanged.connect(
+            lambda value: self.signals.acquisition_parameter_changed.emit('y_pixels', value))
+        galvo_layout.addRow("Y Pixels:", self.y_pixels_spin)
+        
         galvo_group.setLayout(galvo_layout)
         self.layout.addWidget(galvo_group)
 
     def add_prior_stage_parameters(self):
-        """Add prior stage acquisition parameters"""
-        # Prior stage parameters group
         prior_group = QGroupBox("Prior Stage Parameters")
         prior_layout = QFormLayout()
+
+        self.numtiles_x_spin = QSpinBox()
+        self.numtiles_x_spin.setRange(1, 100)
+        self.numtiles_x_spin.setValue(self.app_state.acquisition_parameters.get('numtiles_x', 10))
+        self.numtiles_x_spin.valueChanged.connect(
+            lambda value: self.signals.acquisition_parameter_changed.emit('numtiles_x', value))
+        prior_layout.addRow("X Tiles:", self.numtiles_x_spin)
         
-        # Number of steps
-        self.numsteps_x_spin = QSpinBox()
-        self.numsteps_x_spin.setRange(1, 100)
-        self.numsteps_x_spin.setValue(self.app_state.acquisition_parameters.get('numsteps_x', 10))
-        self.numsteps_x_spin.valueChanged.connect(
-            lambda value: self.signals.acquisition_parameter_changed.emit('numsteps_x', value))
-        prior_layout.addRow("X Steps:", self.numsteps_x_spin)
+        self.numtiles_y_spin = QSpinBox()
+        self.numtiles_y_spin.setRange(1, 100)
+        self.numtiles_y_spin.setValue(self.app_state.acquisition_parameters.get('numtiles_y', 10))
+        self.numtiles_y_spin.valueChanged.connect(
+            lambda value: self.signals.acquisition_parameter_changed.emit('numtiles_y', value))
+        prior_layout.addRow("Y Tiles:", self.numtiles_y_spin)
         
-        self.numsteps_y_spin = QSpinBox()
-        self.numsteps_y_spin.setRange(1, 100)
-        self.numsteps_y_spin.setValue(self.app_state.acquisition_parameters.get('numsteps_y', 10))
-        self.numsteps_y_spin.valueChanged.connect(
-            lambda value: self.signals.acquisition_parameter_changed.emit('numsteps_y', value))
-        prior_layout.addRow("Y Steps:", self.numsteps_y_spin)
+        self.numtiles_z_spin = QSpinBox()
+        self.numtiles_z_spin.setRange(1, 100)
+        self.numtiles_z_spin.setValue(self.app_state.acquisition_parameters.get('numtiles_z', 5))
+        self.numtiles_z_spin.valueChanged.connect(
+            lambda value: self.signals.acquisition_parameter_changed.emit('numtiles_z', value))
+        prior_layout.addRow("Z Tiles:", self.numtiles_z_spin)
         
-        self.numsteps_z_spin = QSpinBox()
-        self.numsteps_z_spin.setRange(1, 100)
-        self.numsteps_z_spin.setValue(self.app_state.acquisition_parameters.get('numsteps_z', 5))
-        self.numsteps_z_spin.valueChanged.connect(
-            lambda value: self.signals.acquisition_parameter_changed.emit('numsteps_z', value))
-        prior_layout.addRow("Z Steps:", self.numsteps_z_spin)
+        # Tile sizes
+        self.tile_size_x_spin = QDoubleSpinBox()
+        self.tile_size_x_spin.setRange(10, 1000)
+        self.tile_size_x_spin.setValue(self.app_state.acquisition_parameters.get('tile_size_x', 100))
+        self.tile_size_x_spin.setSuffix(" µm")
+        self.tile_size_x_spin.valueChanged.connect(
+            lambda value: self.signals.acquisition_parameter_changed.emit('tile_size_x', value))
+        prior_layout.addRow("X Tile Size:", self.tile_size_x_spin)
         
-        # Step sizes
-        self.step_size_x_spin = QDoubleSpinBox()
-        self.step_size_x_spin.setRange(10, 1000)
-        self.step_size_x_spin.setValue(self.app_state.acquisition_parameters.get('step_size_x', 100))
-        self.step_size_x_spin.setSuffix(" µm")
-        self.step_size_x_spin.valueChanged.connect(
-            lambda value: self.signals.acquisition_parameter_changed.emit('step_size_x', value))
-        prior_layout.addRow("X Step Size:", self.step_size_x_spin)
+        self.tile_size_y_spin = QDoubleSpinBox()
+        self.tile_size_y_spin.setRange(10, 1000)
+        self.tile_size_y_spin.setValue(self.app_state.acquisition_parameters.get('tile_size_y', 100))
+        self.tile_size_y_spin.setSuffix(" µm")
+        self.tile_size_y_spin.valueChanged.connect(
+            lambda value: self.signals.acquisition_parameter_changed.emit('tile_size_y', value))
+        prior_layout.addRow("Y Tile Size:", self.tile_size_y_spin)
         
-        self.step_size_y_spin = QDoubleSpinBox()
-        self.step_size_y_spin.setRange(10, 1000)
-        self.step_size_y_spin.setValue(self.app_state.acquisition_parameters.get('step_size_y', 100))
-        self.step_size_y_spin.setSuffix(" µm")
-        self.step_size_y_spin.valueChanged.connect(
-            lambda value: self.signals.acquisition_parameter_changed.emit('step_size_y', value))
-        prior_layout.addRow("Y Step Size:", self.step_size_y_spin)
-        
-        self.step_size_z_spin = QDoubleSpinBox()
-        self.step_size_z_spin.setRange(10, 1000)
-        self.step_size_z_spin.setValue(self.app_state.acquisition_parameters.get('step_size_z', 50))
-        self.step_size_z_spin.setSuffix(" µm")
-        self.step_size_z_spin.valueChanged.connect(
-            lambda value: self.signals.acquisition_parameter_changed.emit('step_size_z', value))
-        prior_layout.addRow("Z Step Size:", self.step_size_z_spin)
-        
-        # Safety parameters
-        self.max_z_height_spin = QDoubleSpinBox()
-        self.max_z_height_spin.setRange(10000, 100000)
-        self.max_z_height_spin.setValue(self.app_state.acquisition_parameters.get('max_z_height', 50000))
-        self.max_z_height_spin.setSuffix(" µm")
-        self.max_z_height_spin.valueChanged.connect(
-            lambda value: self.signals.acquisition_parameter_changed.emit('max_z_height', value))
-        prior_layout.addRow("Max Z Height:", self.max_z_height_spin)
-        
-        self.safe_move_distance_spin = QDoubleSpinBox()
-        self.safe_move_distance_spin.setRange(1000, 100000)
-        self.safe_move_distance_spin.setValue(self.app_state.acquisition_parameters.get('safe_move_distance', 10000))
-        self.safe_move_distance_spin.setSuffix(" µm")
-        self.safe_move_distance_spin.valueChanged.connect(
-            lambda value: self.signals.acquisition_parameter_changed.emit('safe_move_distance', value))
-        prior_layout.addRow("Safe Move Distance:", self.safe_move_distance_spin)
+        self.tile_size_z_spin = QDoubleSpinBox()
+        self.tile_size_z_spin.setRange(10, 1000)
+        self.tile_size_z_spin.setValue(self.app_state.acquisition_parameters.get('tile_size_z', 50))
+        self.tile_size_z_spin.setSuffix(" µm")
+        self.tile_size_z_spin.valueChanged.connect(
+            lambda value: self.signals.acquisition_parameter_changed.emit('tile_size_z', value))
+        prior_layout.addRow("Z Tile Size:", self.tile_size_z_spin)
         
         prior_group.setLayout(prior_layout)
         self.layout.addWidget(prior_group)
@@ -905,21 +878,36 @@ class RightPanel(QWidget):
         self.rpoc_channels = {}  # channel_id -> widget
         self.next_channel_id = 1
         
+        # Create scroll area
+        self.scroll_area = QScrollArea()
+        self.scroll_area.setWidgetResizable(True)
+        self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        
+        # Create content widget
+        self.content_widget = QWidget()
+        self.content_layout = QVBoxLayout()
+        self.content_widget.setLayout(self.content_layout)
+        
+        # Set content widget to scroll area
+        self.scroll_area.setWidget(self.content_widget)
+        
+        # Main layout
+        main_layout = QVBoxLayout()
+        main_layout.addWidget(self.scroll_area)
+        self.setLayout(main_layout)
+        
         self.rebuild()
 
     def rebuild(self):
-        if self.layout():
-            while self.layout().count():
-                child = self.layout().takeAt(0)
-                if child.widget():
-                    child.widget().deleteLater()
+        # Clear existing content
+        while self.content_layout.count():
+            child = self.content_layout.takeAt(0)
+            if child.widget():
+                child.widget().deleteLater()
         
-        layout = QVBoxLayout()
-        
-        self.add_modality_specific_controls(layout)
-        self.add_common_controls(layout)
-        
-        self.setLayout(layout)
+        self.add_modality_specific_controls(self.content_layout)
+        self.add_common_controls(self.content_layout)
 
     def add_modality_specific_controls(self, layout):
         pass
@@ -1002,28 +990,48 @@ class LeftPanel(QWidget):
         self.app_state = app_state
         self.signals = signals
         self.setStyleSheet(DEV_BORDER_STYLE)
-        self.layout = QVBoxLayout()
-        self.setLayout(self.layout)
+        
+        # Create scroll area
+        self.scroll_area = QScrollArea()
+        self.scroll_area.setWidgetResizable(True)
+        self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        
+        # Create content widget
+        self.content_widget = QWidget()
+        self.content_layout = QVBoxLayout()
+        self.content_widget.setLayout(self.content_layout)
+        
+        # Set content widget to scroll area
+        self.scroll_area.setWidget(self.content_widget)
+        
+        # Main layout
+        main_layout = QVBoxLayout()
+        main_layout.addWidget(self.scroll_area)
+        self.setLayout(main_layout)
+        
         self.rebuild()
 
     def rebuild(self):
-        while self.layout.count():
-            child = self.layout.takeAt(0)
+        # Clear existing content
+        while self.content_layout.count():
+            child = self.content_layout.takeAt(0)
             if child.widget():
                 child.widget().deleteLater()
+        
         self.modality_controls = ModalityControls(self.app_state, self.signals)
-        self.layout.addWidget(self.modality_controls)
+        self.content_layout.addWidget(self.modality_controls)
         
         self.acquisition_parameters = AcquisitionParameters(self.app_state, self.signals)
-        self.layout.addWidget(self.acquisition_parameters)
+        self.content_layout.addWidget(self.acquisition_parameters)
         
         self.instrument_controls = InstrumentControls(self.app_state, self.signals)
-        self.layout.addWidget(self.instrument_controls)
+        self.content_layout.addWidget(self.instrument_controls)
         
         self.display_controls = DisplayControls(self.app_state, self.signals)
-        self.layout.addWidget(self.display_controls)
+        self.content_layout.addWidget(self.display_controls)
         
-        self.layout.addStretch()
+        self.content_layout.addStretch()
 
 
 class DockableMiddlePanel(QMainWindow):

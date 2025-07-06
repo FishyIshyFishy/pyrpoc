@@ -39,7 +39,7 @@ class Galvo(Instrument):
         Args:
             acquisition_parameters: Dict containing acquisition parameters like
                 dwell_time, extrasteps_left, extrasteps_right, amplitude_x, 
-                amplitude_y, offset_x, offset_y, numsteps_x, numsteps_y
+                amplitude_y, offset_x, offset_y, x_pixels, y_pixels
             
         Returns:
             numpy.ndarray: 2xN array with X and Y waveforms
@@ -55,8 +55,8 @@ class Galvo(Instrument):
         amp_y = acquisition_parameters['amplitude_y']
         offset_x = acquisition_parameters['offset_x']
         offset_y = acquisition_parameters['offset_y']
-        x_steps = acquisition_parameters['numsteps_x']
-        y_steps = acquisition_parameters['numsteps_y']
+        x_steps = acquisition_parameters['x_pixels']
+        y_steps = acquisition_parameters['y_pixels']
         
         # Calculate samples per pixel and total samples
         pixel_samples = max(1, int(dwell * rate))
