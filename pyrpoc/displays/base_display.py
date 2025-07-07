@@ -24,8 +24,8 @@ class BaseImageDisplayWidget(QWidget):
         self.total_frames = 0
         
         # Buffer for incoming data units during acquisition
-        self._acq_buffer = None
-        self._acq_total = None
+        self.acq_buffer = None
+        self.acq_total = None
         
         # Overlay callbacks for future extensibility
         self.overlay_callbacks = []
@@ -123,8 +123,6 @@ class BaseImageDisplayWidget(QWidget):
         
         lines_widget: The lines widget to connect to
         '''
-        print(f"Connecting lines widget to {self.__class__.__name__}")
-        
         # lines --> image display
         lines_widget.add_mode_requested.connect(self.enter_add_mode)
         lines_widget.remove_line_requested.connect(self.remove_line_overlay)
@@ -137,9 +135,7 @@ class BaseImageDisplayWidget(QWidget):
         self.traces_update_requested.connect(lines_widget.update_all_traces)
         
         # for drawing overlays
-        self._lines_widget = lines_widget
-        
-        print(f"Lines widget connection completed for {self.__class__.__name__}")
+        self.lines_widget = lines_widget
     
     def enter_add_mode(self):
         '''

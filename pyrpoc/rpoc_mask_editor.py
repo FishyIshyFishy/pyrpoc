@@ -436,7 +436,6 @@ class RPOCMaskEditor(QMainWindow):
         try:
             from cellpose import models
         except ImportError:
-            print("Cellpose not available. Please install cellpose to use this feature.")
             return
 
         if not self.image_layers:
@@ -619,7 +618,6 @@ class RPOCMaskEditor(QMainWindow):
 
     def generate_final_mask(self):
         if not self.image_layers:
-            print("No image data.")
             return None
 
         height, width = self.image_layers[0].shape
@@ -698,7 +696,6 @@ class RPOCMaskEditor(QMainWindow):
             return
 
         cv2.imwrite(save_path, mask)
-        print("Mask saved to:", save_path)
 
     def create_and_close(self):
         """create the mask and emit it, then close the window"""

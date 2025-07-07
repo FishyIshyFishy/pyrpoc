@@ -35,10 +35,10 @@ class ImageDisplayWidget(BaseImageDisplayWidget):
         frame_controls_layout.addWidget(self.frame_slider)
         layout.addLayout(frame_controls_layout)
 
-        self._dragging_endpoint = None  # (line_index, endpoint_idx, offset_x, offset_y)
-        self._add_mode = False
-        self._temp_line_start = None  # (x, y) for temporary line during creation
-        self._lines = []  # [(x1, y1, x2, y2, color)]
+        self.dragging_endpoint = None
+        self.add_mode = False
+        self.temp_line_start = None
+        self.lines = []
 
         self.graphics_view.viewport().installEventFilter(self)
         
@@ -46,9 +46,9 @@ class ImageDisplayWidget(BaseImageDisplayWidget):
         self.graphics_view.resizeEvent = self.on_graphics_view_resize
         
         # Timer for delayed viewport updates to fix sizing issues
-        self._resize_timer = QTimer()
-        self._resize_timer.setSingleShot(True)
-        self._resize_timer.timeout.connect(self._delayed_viewport_update)
+        self.resize_timer = QTimer()
+        self.resize_timer.setSingleShot(True)
+        self.resize_timer.timeout.connect(self.delayed_viewport_update)
 
     def connect_lines_widget(self, lines_widget):
         super().connect_lines_widget(lines_widget)
@@ -68,19 +68,19 @@ class ImageDisplayWidget(BaseImageDisplayWidget):
         scene_pos = self.graphics_view.mapToScene(int(pos.x()), int(pos.y()))
         x, y = int(scene_pos.x()), int(scene_pos.y())
         
-        if self._add_mode:
-            if self._temp_line_start is None:
+        if self.add_mode:
+            if self.temp_line_start is None:
                 # First click - start the line
-                self._temp_line_start = (x, y)
+                self.temp_line_start = (x, y)
                 return True
             else:
                 # Second click - complete the line
-                x1, y1 = self._temp_line_start
+                x1, y1 = self.temp_line_start
                 # Send all channel data for proper trace plotting
                 all_channel_data = self.get_all_channel_data()
                 self.line_add_requested.emit(x1, y1, x, y, all_channel_data, self.get_channel_names())
-                self._add_mode = False
-                self._temp_line_start = None
+                self.add_mode = False
+                self.temp_line_start = None
                 self.update_display()
                 return True
         
@@ -88,34 +88,32 @@ class ImageDisplayWidget(BaseImageDisplayWidget):
         for idx, (x1, y1, x2, y2, color) in enumerate(self.get_lines()):
             # Check first endpoint
             if abs(x - x1) < 8 and abs(y - y1) < 8:
-                self._dragging_endpoint = (idx, 0, x - x1, y - y1)
+                self.dragging_endpoint = (idx, 0, x - x1, y - y1)
                 return True
             # Check second endpoint
             if abs(x - x2) < 8 and abs(y - y2) < 8:
-                self._dragging_endpoint = (idx, 1, x - x2, y - y2)
+                self.dragging_endpoint = (idx, 1, x - x2, y - y2)
                 return True
         return False
 
     def handle_mouse_move(self, event):
         """Handle mouse move for line drawing"""
-        if self._add_mode and self._temp_line_start is not None:
+        if self.add_mode and self.temp_line_start is not None:
             # Force a redraw to show the temporary line
             self.update_display()
             return True
         return False
 
     def handle_mouse_release(self, event):
-        if self._dragging_endpoint is not None:
-            self._dragging_endpoint = None
+        if self.dragging_endpoint is not None:
+            self.dragging_endpoint = None
             return True
         return False
 
     @pyqtSlot()
     def enter_add_mode(self):
-        print(f"ImageDisplayWidget.enter_add_mode called")
-        self._add_mode = True
-        self._temp_line_start = None
-        print(f"ImageDisplayWidget._add_mode set to {self._add_mode}")
+        self.add_mode = True
+        self.temp_line_start = None
 
     @pyqtSlot(int)
     def remove_line_overlay(self, index):
@@ -133,19 +131,19 @@ class ImageDisplayWidget(BaseImageDisplayWidget):
         self.update_display()
 
     def handle_frame_acquired(self, data_unit, idx, total):
-        if self._acq_buffer is None or self._acq_total != total:
+        if self.acq_buffer is None or self.acq_total != total:
             # allocate buffer for the expected number of data units
             if isinstance(data_unit, np.ndarray):
                 shape = (total,) + data_unit.shape
-                self._acq_buffer = np.zeros(shape, dtype=data_unit.dtype)
+                self.acq_buffer = np.zeros(shape, dtype=data_unit.dtype)
             else:
-                self._acq_buffer = [None] * total
-            self._acq_total = total
+                self.acq_buffer = [None] * total
+            self.acq_total = total
         # store data unit
-        if isinstance(self._acq_buffer, np.ndarray):
-            self._acq_buffer[idx] = data_unit
+        if isinstance(self.acq_buffer, np.ndarray):
+            self.acq_buffer[idx] = data_unit
         else:
-            self._acq_buffer[idx] = data_unit
+            self.acq_buffer[idx] = data_unit
         self.total_frames = total
         self.current_frame = idx
         self.frame_slider.setMaximum(max(0, self.total_frames - 1))
@@ -156,7 +154,7 @@ class ImageDisplayWidget(BaseImageDisplayWidget):
         
         # Schedule delayed viewport update on first frame to fix sizing issues
         if idx == 0:
-            self._resize_timer.start(100)  # 100ms delay
+            self.resize_timer.start(100)  # 100ms delay
         
         self.update_overlays()
         self.update_display()
@@ -167,8 +165,8 @@ class ImageDisplayWidget(BaseImageDisplayWidget):
         '''
 
         # Store the data in the buffer instead of setting it to None
-        self._acq_buffer = data
-        self._acq_total = None
+        self.acq_buffer = data
+        self.acq_total = None
         self.app_state.current_data = data
        
         if isinstance(data, np.ndarray) and data.ndim == 3:
@@ -194,7 +192,7 @@ class ImageDisplayWidget(BaseImageDisplayWidget):
             self.update_frame_label()
         
         # Schedule delayed viewport update to fix sizing issues
-        self._resize_timer.start(100)  # 100ms delay
+        self.resize_timer.start(100)  # 100ms delay
         
         self.update_display()
         self.traces_update_requested.emit(self.get_all_channel_data())
@@ -213,8 +211,8 @@ class ImageDisplayWidget(BaseImageDisplayWidget):
     def display_frame(self, frame_idx):
         data = self.app_state.current_data
         # if acquisition is ongoing, use buffer
-        if self._acq_buffer is not None:
-            data = self._acq_buffer
+        if self.acq_buffer is not None:
+            data = self.acq_buffer
         if data is None:
             self.graphics_scene.clear()
             return
@@ -280,12 +278,12 @@ class ImageDisplayWidget(BaseImageDisplayWidget):
             self.graphics_scene.addItem(text)
         
         # Draw temporary line during creation
-        if self._add_mode and self._temp_line_start is not None:
+        if self.add_mode and self.temp_line_start is not None:
             # Get current mouse position for temporary line
             cursor_pos = self.graphics_view.mapFromGlobal(self.graphics_view.cursor().pos())
             scene_pos = self.graphics_view.mapToScene(cursor_pos)
             temp_x, temp_y = int(scene_pos.x()), int(scene_pos.y())
-            x1, y1 = self._temp_line_start
+            x1, y1 = self.temp_line_start
             
             # Draw temporary line
             temp_pen = QPen(QColor('#FF6B6B'), 2, Qt.PenStyle.DashLine)
@@ -300,67 +298,63 @@ class ImageDisplayWidget(BaseImageDisplayWidget):
         return self.current_frame
 
     def get_current_frame_data(self):
-        if self._acq_buffer is None:
+        if self.acq_buffer is None:
             return None
         
-        if self._acq_buffer.ndim == 3:
-            if 0 <= self.current_frame < self._acq_buffer.shape[0]:
-                return self._acq_buffer[self.current_frame]
+        if self.acq_buffer.ndim == 3:
+            if 0 <= self.current_frame < self.acq_buffer.shape[0]:
+                return self.acq_buffer[self.current_frame]
             else:
                 return None
         else:
-            return self._acq_buffer
+            return self.acq_buffer
     
     def get_image_data_for_rpoc(self):
         '''
         get image data in a format suitable for RPOC mask creation
         '''
-        if self._acq_buffer is None:
+        if self.acq_buffer is None:
             return None
             
         # if we have 3D data (frames x height x width), return the current frame as a single channel
-        if self._acq_buffer.ndim == 3:
-            if 0 <= self.current_frame < self._acq_buffer.shape[0]:
-                return self._acq_buffer[self.current_frame][np.newaxis, :, :]
+        if self.acq_buffer.ndim == 3:
+            if 0 <= self.current_frame < self.acq_buffer.shape[0]:
+                return self.acq_buffer[self.current_frame][np.newaxis, :, :]
             else:
                 return None
         # if we have 2D data, return it as a single channel
-        elif self._acq_buffer.ndim == 2:
-            return self._acq_buffer[np.newaxis, :, :]
+        elif self.acq_buffer.ndim == 2:
+            return self.acq_buffer[np.newaxis, :, :]
         else:
             return None
 
     def get_lines(self):
         if hasattr(self, '_lines_widget'):
             return self._lines_widget.get_lines()
-        return self._lines
+        return self.lines
 
     def get_all_channel_data(self):
         """Get all channel data for the current frame - for confocal mode"""
-        if self._acq_buffer is None:
+        if self.acq_buffer is None:
             return None
         
-        if self._acq_buffer.ndim == 4:  # frames x channels x height x width
-            if 0 <= self.current_frame < self._acq_buffer.shape[0]:
-                return self._acq_buffer[self.current_frame]  # Return all channels
+        if self.acq_buffer.ndim == 4:  # frames x channels x height x width
+            if 0 <= self.current_frame < self.acq_buffer.shape[0]:
+                return self.acq_buffer[self.current_frame]  # Return all channels
             else:
                 return None
-        elif self._acq_buffer.ndim == 3:  # frames x height x width (single channel)
-            if 0 <= self.current_frame < self._acq_buffer.shape[0]:
-                return self._acq_buffer[self.current_frame][np.newaxis, :, :]  # Add channel dimension
+        elif self.acq_buffer.ndim == 3:  # frames x height x width (single channel)
+            if 0 <= self.current_frame < self.acq_buffer.shape[0]:
+                return self.acq_buffer[self.current_frame][np.newaxis, :, :]  # Add channel dimension
             else:
                 return None
         else:
-            return self._acq_buffer[np.newaxis, :, :]  # Add channel dimension
+            return self.acq_buffer[np.newaxis, :, :]  # Add channel dimension
     
     def on_graphics_view_resize(self, event):
         """Handle graphics view resize to maintain proper sizing"""
-        super(self.graphics_view.__class__, self.graphics_view).resizeEvent(event)
-        if self.graphics_scene.sceneRect().isValid():
-            self.graphics_view.fitInView(self.graphics_scene.sceneRect(), Qt.AspectRatioMode.KeepAspectRatio)
+        self.graphics_view.fitInView(self.graphics_scene.sceneRect(), Qt.AspectRatioMode.KeepAspectRatio)
     
-    def _delayed_viewport_update(self):
+    def delayed_viewport_update(self):
         """Delayed viewport update to fix sizing issues after GUI updates"""
-        if self.graphics_scene.sceneRect().isValid():
-            self.graphics_view.viewport().update()
-            self.graphics_view.fitInView(self.graphics_scene.sceneRect(), Qt.AspectRatioMode.KeepAspectRatio)
+        self.graphics_view.fitInView(self.graphics_scene.sceneRect(), Qt.AspectRatioMode.KeepAspectRatio)

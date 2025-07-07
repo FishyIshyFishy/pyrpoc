@@ -30,19 +30,17 @@ class Acquisition(abc.ABC):
         self.worker = worker
 
     def save_metadata(self):
-        """
+        '''
         Save metadata JSON file to the folder determined by the base filename
-        """
+        '''
         if not self.save_enabled or not self.save_path:
             return
         
         try:
-            # Get the directory from the save_path
             save_dir = Path(self.save_path).parent
             if not save_dir.is_dir():
                 save_dir.mkdir(parents=True, exist_ok=True)
             
-            # Create metadata with ALL acquisition parameters
             metadata = {
                 'acquisition_type': self.__class__.__name__,
                 'timestamp': datetime.now().isoformat(),
@@ -53,7 +51,6 @@ class Acquisition(abc.ABC):
                 'custom_metadata': self.metadata
             }
             
-            # Save metadata to JSON file
             metadata_path = save_dir / f"{Path(self.save_path).stem}_metadata.json"
             with open(metadata_path, 'w') as f:
                 json.dump(metadata, f, indent=2, default=str)
@@ -83,7 +80,7 @@ class Acquisition(abc.ABC):
     
     @abc.abstractmethod
     def save_data(self, data):
-        """
-        Save data in modality-specific format. Each modality should implement this method.
-        """
+        '''
+        save data in modality-specific format
+        '''
         pass    

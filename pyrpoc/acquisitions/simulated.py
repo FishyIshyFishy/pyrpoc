@@ -76,6 +76,4 @@ class Simulated(Acquisition):
         except Exception as e:
             if self.signal_bus:
                 self.signal_bus.console_message.emit(f"Error saving simulated data: {e}")
-            else:
-                print(f"Error saving simulated data: {e}")
     

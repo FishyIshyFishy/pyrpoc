@@ -240,10 +240,11 @@ class AcquisitionParameters(QWidget):
         galvo_layout = QFormLayout()
         
         self.dwell_time_spin = QDoubleSpinBox()
-        self.dwell_time_spin.setRange(1e-6, 1e-3)
-        self.dwell_time_spin.setValue(self.app_state.acquisition_parameters.get('dwell_time', 10e-6))
-        self.dwell_time_spin.setSuffix(" s")
-        self.dwell_time_spin.setDecimals(6)
+        self.dwell_time_spin.setRange(1, 1000)
+        self.dwell_time_spin.setValue(self.app_state.acquisition_parameters.get('dwell_time', 10))
+        self.dwell_time_spin.setSuffix(" \u03BCs")
+        self.dwell_time_spin.setDecimals(0)
+        self.dwell_time_spin.setSingleStep(1)
         self.dwell_time_spin.valueChanged.connect(
             lambda value: self.signals.acquisition_parameter_changed.emit('dwell_time', value))
         galvo_layout.addRow("Dwell Time:", self.dwell_time_spin)
@@ -263,7 +264,9 @@ class AcquisitionParameters(QWidget):
         galvo_layout.addRow("Extra Steps Right:", self.extrasteps_right_spin)
 
         self.amplitude_x_spin = QDoubleSpinBox()
-        self.amplitude_x_spin.setRange(0.01, 10.0)
+        self.amplitude_x_spin.setRange(0.0, 10.0)
+        self.amplitude_x_spin.setDecimals(1)
+        self.amplitude_x_spin.setSingleStep(0.1)
         self.amplitude_x_spin.setValue(self.app_state.acquisition_parameters.get('amplitude_x', 0.5))
         self.amplitude_x_spin.setSuffix(" V")
         self.amplitude_x_spin.valueChanged.connect(
@@ -271,7 +274,9 @@ class AcquisitionParameters(QWidget):
         galvo_layout.addRow("Amplitude X:", self.amplitude_x_spin)
         
         self.amplitude_y_spin = QDoubleSpinBox()
-        self.amplitude_y_spin.setRange(0.01, 10.0)
+        self.amplitude_y_spin.setRange(0.0, 10.0)
+        self.amplitude_y_spin.setDecimals(1)
+        self.amplitude_y_spin.setSingleStep(0.1)
         self.amplitude_y_spin.setValue(self.app_state.acquisition_parameters.get('amplitude_y', 0.5))
         self.amplitude_y_spin.setSuffix(" V")
         self.amplitude_y_spin.valueChanged.connect(
@@ -280,6 +285,8 @@ class AcquisitionParameters(QWidget):
 
         self.offset_x_spin = QDoubleSpinBox()
         self.offset_x_spin.setRange(-10.0, 10.0)
+        self.offset_x_spin.setDecimals(1)
+        self.offset_x_spin.setSingleStep(0.1)
         self.offset_x_spin.setValue(self.app_state.acquisition_parameters.get('offset_x', 0.0))
         self.offset_x_spin.setSuffix(" V")
         self.offset_x_spin.valueChanged.connect(
@@ -288,6 +295,8 @@ class AcquisitionParameters(QWidget):
         
         self.offset_y_spin = QDoubleSpinBox()
         self.offset_y_spin.setRange(-10.0, 10.0)
+        self.offset_y_spin.setDecimals(1)
+        self.offset_y_spin.setSingleStep(0.1)
         self.offset_y_spin.setValue(self.app_state.acquisition_parameters.get('offset_y', 0.0))
         self.offset_y_spin.setSuffix(" V")
         self.offset_y_spin.valueChanged.connect(
@@ -311,8 +320,7 @@ class AcquisitionParameters(QWidget):
         galvo_group.setLayout(galvo_layout)
         self.layout.addWidget(galvo_group)
 
-    def add_pixel_parameters(self):
-        """Add pixel parameters for modalities that don't use galvo scanning"""
+    def add_pixel_parameters(self): # not used if galvo parameters are used
         pixel_group = QGroupBox("Image Parameters")
         pixel_layout = QFormLayout()
         
@@ -486,29 +494,29 @@ class InstrumentControls(QWidget):
 
         modality = self.app_state.modality.lower()
         if modality == 'confocal':
-            if not self.has_instrument_type('Galvo'):
+            if not self.has_instrument_type('galvo'):
                 galvo_btn = QPushButton('Add Galvos')
-                galvo_btn.clicked.connect(lambda: self.signals.add_modality_instrument.emit('Galvo'))
+                galvo_btn.clicked.connect(lambda: self.signals.add_modality_instrument.emit('galvo'))
                 self.modality_buttons_layout.addWidget(galvo_btn)
             
-            if not self.has_instrument_type('Data Input'):
+            if not self.has_instrument_type('data input'):
                 data_input_btn = QPushButton('Add Data Inputs')
-                data_input_btn.clicked.connect(lambda: self.signals.add_modality_instrument.emit('Data Input'))
+                data_input_btn.clicked.connect(lambda: self.signals.add_modality_instrument.emit('data input'))
                 self.modality_buttons_layout.addWidget(data_input_btn)
         elif modality == 'split data stream':
-            if not self.has_instrument_type('Galvo'):
+            if not self.has_instrument_type('galvo'):
                 galvo_btn = QPushButton('Add Galvos')
-                galvo_btn.clicked.connect(lambda: self.signals.add_modality_instrument.emit('Galvo'))
+                galvo_btn.clicked.connect(lambda: self.signals.add_modality_instrument.emit('galvo'))
                 self.modality_buttons_layout.addWidget(galvo_btn)
             
-            if not self.has_instrument_type('Data Input'):
+            if not self.has_instrument_type('data input'):
                 data_input_btn = QPushButton('Add Data Inputs')
-                data_input_btn.clicked.connect(lambda: self.signals.add_modality_instrument.emit('Data Input'))
+                data_input_btn.clicked.connect(lambda: self.signals.add_modality_instrument.emit('data input'))
                 self.modality_buttons_layout.addWidget(data_input_btn)
             
-            if not self.has_instrument_type('Prior Stage'):
+            if not self.has_instrument_type('prior stage'):
                 prior_stage_btn = QPushButton('Add Prior Stage')
-                prior_stage_btn.clicked.connect(lambda: self.signals.add_modality_instrument.emit('Prior Stage'))
+                prior_stage_btn.clicked.connect(lambda: self.signals.add_modality_instrument.emit('prior stage'))
                 self.modality_buttons_layout.addWidget(prior_stage_btn)
         self.rebuild_instrument_list()
     
@@ -519,7 +527,7 @@ class InstrumentControls(QWidget):
                     return True
         return False
     
-    def rebuild_instrument_list(self):
+    def rebuild_instrument_list(self): # TODO: verify if this is useless or not
         for widget in self.instrument_widgets.values():
             self.instrument_list_layout.removeWidget(widget)
             widget.deleteLater()
@@ -596,11 +604,11 @@ class InstrumentWidget(QWidget):
             return
         params = self.instrument.parameters
         summary_lines = []
-        if self.instrument.instrument_type == "Galvo":
+        if self.instrument.instrument_type == "galvo":
             summary_lines.append(f"Ch: {params.get('slow_axis_channel', '?')}/{params.get('fast_axis_channel', '?')}")
             summary_lines.append(f"Device: {params.get('device_name', '?')}")
             summary_lines.append(f"Rate: {params.get('sample_rate', 0)/1000:.0f}kHz")
-        elif self.instrument.instrument_type == "Data Input":
+        elif self.instrument.instrument_type == "data input":
             channels = params.get('input_channels', [])
             channel_names = params.get('channel_names', {})
             if isinstance(channels, list):
@@ -610,7 +618,7 @@ class InstrumentWidget(QWidget):
                     channel_display.append(f"{ch_name}(AI{ch})")
                 summary_lines.append(f"Channels: {' | '.join(channel_display)}")
             summary_lines.append(f"Rate: {params.get('sample_rate', 0)/1000:.0f}kHz")
-        elif self.instrument.instrument_type == "Prior Stage":
+        elif self.instrument.instrument_type == "prior stage":
             summary_lines.append(f"Port: COM{params.get('port', '?')}")
         else:
             summary_lines.append(f"Type: {self.instrument.instrument_type}")
@@ -840,7 +848,6 @@ class RPOCChannelWidget(QWidget):
         self.app_state.rpoc_masks[self.channel_id] = mask
         self.update_mask_status()
         self.signals.console_message.emit(f"Mask loaded for channel {self.channel_id} - shape: {mask.shape if hasattr(mask, 'shape') else 'unknown'}")
-        print(f"RPOC mask stored for channel {self.channel_id}: {mask.shape if hasattr(mask, 'shape') else 'check file type'}")
     
     def update_mask_status(self):
         if hasattr(self.app_state, 'rpoc_masks') and self.channel_id in self.app_state.rpoc_masks:

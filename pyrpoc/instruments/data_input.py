@@ -3,32 +3,38 @@ import abc
 from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, 
                              QLineEdit, QComboBox, QSpinBox, QPushButton, 
                              QGroupBox, QFormLayout, QMessageBox, QWidget,
-                             QCheckBox, QDoubleSpinBox, QTabWidget)
+                             QCheckBox, QDoubleSpinBox)
 from PyQt6.QtCore import Qt, pyqtSignal
 from pyrpoc.instruments.base_instrument import Instrument
 
 class DataInput(Instrument):
-    def __init__(self, name="Data Input"):
-        super().__init__(name, "Data Input")
+    def __init__(self, name="Data Input", console_callback=None):
+        super().__init__(name, "data input", console_callback=console_callback)
         self.parameters = {
-            'input_channels': [0, 1],  # List of AI channels
-            'channel_names': {'0': 'ch0', '1': 'ch1'},  # Channel names mapping
+            'input_channels': [0, 1],
+            'channel_names': {'0': 'ch0', '1': 'ch1'},  
             'sample_rate': 1000000,
             'device_name': 'Dev1'
         }
 
     def initialize(self):
-        """Initialize data input connection"""
-        try:
-            # TODO: Add actual DAQ initialization here
-            return True
-        except Exception as e:
-            print(f"Failed to initialize data input: {e}")
-            return False
+        return True
 
     def get_widget(self):
-        """Return unified data input widget"""
         return DataInputWidget(self)
+    
+    def validate_parameters(self, parameters):
+        required_params = ['input_channels', 'sample_rate', 'device_name']
+        for param in required_params:
+            if param not in parameters:
+                raise ValueError(f"Missing required parameter for data input: {param}")
+
+        if not isinstance(parameters['input_channels'], list) or len(parameters['input_channels']) == 0:
+            raise ValueError("Input channels must be a non-empty list")
+        if any(ch < 0 for ch in parameters['input_channels']):
+            raise ValueError("Channel numbers must be non-negative")
+        if parameters['sample_rate'] <= 0:
+            raise ValueError("Sample rate must be positive")
     
 
 class DataInputWidget(QWidget):
@@ -40,36 +46,24 @@ class DataInputWidget(QWidget):
     def setup_ui(self):
         layout = QVBoxLayout()
         
-        # Create tab widget for config and control
-        self.tab_widget = QTabWidget()
-        
-        # Configuration tab
-        self.config_widget = DataInputConfigWidget()
-        self.tab_widget.addTab(self.config_widget, "Configuration")
-        
-        # Control tab
-        self.control_widget = DataInputControlWidget(self.data_input)
-        self.tab_widget.addTab(self.control_widget, "Control")
-        
-        layout.addWidget(self.tab_widget)
-        
-        # Set current parameters
+        self.config_widget = DataInputConfigWidget(self.data_input)
+        layout.addWidget(self.config_widget)
+
         if self.data_input.parameters:
             self.config_widget.set_parameters(self.data_input.parameters)
         
         self.setLayout(layout)
     
     def get_parameters(self):
-        """Get parameters from config widget"""
         return self.config_widget.get_parameters()
     
     def set_parameters(self, parameters):
-        """Set parameters in config widget"""
         self.config_widget.set_parameters(parameters)
 
 class DataInputConfigWidget(QWidget):
-    def __init__(self):
+    def __init__(self, data_input):
         super().__init__()
+        self.data_input = data_input
         self.setup_ui()
 
     def setup_ui(self):
@@ -88,18 +82,26 @@ class DataInputConfigWidget(QWidget):
         self.channel_names_edit = QLineEdit("ch0,ch1")
         layout.addRow("Channel Names (comma-separated):", self.channel_names_edit)
         
-
-        
         self.sample_rate_spin = QSpinBox()
         self.sample_rate_spin.setRange(1000, 10000000)
         self.sample_rate_spin.setValue(1000000)
         self.sample_rate_spin.setSuffix(" Hz")
         layout.addRow("Sample Rate:", self.sample_rate_spin)
         
+        channels = self.data_input.parameters.get('input_channels', [])
+        channel_names = self.data_input.parameters.get('channel_names', {})
+        
+        channels_info = []
+        for ch in channels:
+            ch_name = channel_names.get(str(ch), f'ch{ch}')
+            channels_info.append(f"{ch_name} (AI{ch})")
+        
+        channels_text = ', '.join(channels_info)
+        layout.addRow("Active Channels:", QLabel(channels_text))
+        
         self.setLayout(layout)
 
     def set_parameters(self, parameters):
-        """Set the widget values from parameters"""
         if 'name' in parameters:
             self.name_edit.setText(parameters['name'])
         if 'device_name' in parameters:
@@ -113,7 +115,6 @@ class DataInputConfigWidget(QWidget):
         if 'channel_names' in parameters:
             channel_names = parameters['channel_names']
             if isinstance(channel_names, dict):
-                # Get names in the same order as channels
                 channels = parameters.get('input_channels', [])
                 names_list = [channel_names.get(str(ch), f'ch{ch}') for ch in channels]
                 self.channel_names_edit.setText(','.join(names_list))
@@ -127,7 +128,6 @@ class DataInputConfigWidget(QWidget):
         channel_names_text = self.channel_names_edit.text()
         channel_names_list = [x.strip() for x in channel_names_text.split(',') if x.strip()]
         
-        # Create channel names mapping
         channel_names = {}
         for i, ch in enumerate(channels):
             if i < len(channel_names_list):
@@ -142,39 +142,10 @@ class DataInputConfigWidget(QWidget):
             'channel_names': channel_names,
             'sample_rate': self.sample_rate_spin.value()
         }
-        
-        # Validate parameters before returning
+
         try:
-            from pyrpoc.instruments.instrument_manager import validate_instrument_parameters
-            validate_instrument_parameters("Data Input", parameters)
+            self.data_input.validate_parameters(parameters)
             return parameters
         except ValueError as e:
             QMessageBox.warning(self, "Parameter Error", str(e))
             return None
-
-class DataInputControlWidget(QWidget):
-    def __init__(self, data_input):
-        super().__init__()
-        self.data_input = data_input
-        self.setup_ui()
-
-    def setup_ui(self):
-        layout = QVBoxLayout()
-        
-        # Display current channels with names
-        channels = self.data_input.parameters.get('input_channels', [])
-        channel_names = self.data_input.parameters.get('channel_names', {})
-        
-        channels_info = []
-        for ch in channels:
-            ch_name = channel_names.get(str(ch), f'ch{ch}')
-            channels_info.append(f"{ch_name} (AI{ch})")
-        
-        channels_text = ', '.join(channels_info)
-        layout.addWidget(QLabel(f"Active Channels: {channels_text}"))
-        
-        # Status display
-        self.status_label = QLabel("Status: Ready")
-        layout.addWidget(self.status_label)
-        
-        self.setLayout(layout)

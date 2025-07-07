@@ -13,23 +13,20 @@ class MultichannelImageDisplayWidget(BaseImageDisplayWidget):
         self.channel_scenes = []
         self.channel_views = []
         
-        # Line drawing state
-        self._add_mode = False
-        self._temp_line_start = None
-        self._dragging_endpoint = None
-        
-        # Lines widget reference
-        self._lines_widget = None
+        self.add_mode = False
+        self.temp_line_start = None
+        self.dragging_endpoint = None
+
+        self.lines_widget = None
         
         self.setup_ui()
         self.update_channel_names()
     
     def update_channel_names(self):
-        """Update channel names based on modality and data input instruments"""
         modality = self.app_state.modality.lower()
         
         # Try to get channel names from data input instruments first
-        channel_names = self._get_channel_names_from_instruments()
+        channel_names = self.get_channel_names_from_instruments()
         
         if channel_names and len(channel_names) >= self.num_channels:
             # Use the actual channel names from instruments
@@ -60,13 +57,12 @@ class MultichannelImageDisplayWidget(BaseImageDisplayWidget):
                 # Default fallback
                 self.channel_names = [f'Channel {i+1}' for i in range(self.num_channels)]
     
-    def _get_channel_names_from_instruments(self):
-        """Get channel names from data input instruments in the app state"""
+    def get_channel_names_from_instruments(self):
         channel_names = []
         
         if hasattr(self.app_state, 'instruments'):
             for instrument in self.app_state.instruments:
-                if instrument.instrument_type == "Data Input" and hasattr(instrument, 'parameters'):
+                if instrument.instrument_type == "data input" and hasattr(instrument, 'parameters'):
                     # Get channel names from the instrument parameters
                     input_channels = instrument.parameters.get('input_channels', [])
                     channel_names_param = instrument.parameters.get('channel_names', {})
@@ -105,16 +101,14 @@ class MultichannelImageDisplayWidget(BaseImageDisplayWidget):
         self.channel_scenes = []
         
         # Initialize with single channel
-        self._setup_channel_display(1)
+        self.setup_channel_display(1)
         
         # Timer for delayed viewport updates to fix sizing issues
-        self._resize_timer = QTimer()
-        self._resize_timer.setSingleShot(True)
-        self._resize_timer.timeout.connect(self._delayed_viewport_update)
+        self.resize_timer = QTimer()
+        self.resize_timer.setSingleShot(True)
+        self.resize_timer.timeout.connect(self.delayed_viewport_update)
     
-    def _setup_channel_display(self, num_channels):
-        """Setup the channel grid display"""
-        # Clear existing views
+    def setup_channel_display(self, num_channels):
         for view in self.channel_views:
             view.deleteLater()
         self.channel_views.clear()
@@ -171,43 +165,43 @@ class MultichannelImageDisplayWidget(BaseImageDisplayWidget):
         """Handle frame acquired signal for confocal multi-channel data"""
         # Reset buffer if this is the first frame of a new acquisition
         if idx == 0:
-            self._acq_buffer = None
+            self.acq_buffer = None
         
         # Store the acquired frame in the buffer
-        if self._acq_buffer is None:
+        if self.acq_buffer is None:
             # Initialize buffer based on data shape
             if isinstance(data_unit, np.ndarray):
                 if data_unit.ndim == 3:  # channels x height x width
-                    self._acq_buffer = np.zeros((total, data_unit.shape[0], data_unit.shape[1], data_unit.shape[2]))
+                    self.acq_buffer = np.zeros((total, data_unit.shape[0], data_unit.shape[1], data_unit.shape[2]))
                     self.num_channels = data_unit.shape[0]
                     # Update channel names and display
                     self.update_channel_names()
-                    self._setup_channel_display(self.num_channels)
+                    self.setup_channel_display(self.num_channels)
                 elif data_unit.ndim == 2:  # height x width (single channel)
-                    self._acq_buffer = np.zeros((total, 1, data_unit.shape[0], data_unit.shape[1]))
+                    self.acq_buffer = np.zeros((total, 1, data_unit.shape[0], data_unit.shape[1]))
                     self.num_channels = 1
                     self.update_channel_names()
                 else:
-                    self._acq_buffer = np.zeros((total, 1, data_unit.shape[0], data_unit.shape[1]))
+                    self.acq_buffer = np.zeros((total, 1, data_unit.shape[0], data_unit.shape[1]))
                     self.num_channels = 1
                     self.update_channel_names()
             else:
                 # Fallback for non-array data
-                self._acq_buffer = np.zeros((total, 1, 512, 512))
+                self.acq_buffer = np.zeros((total, 1, 512, 512))
                 self.num_channels = 1
                 self.update_channel_names()
         
         # Store the frame data
         if isinstance(data_unit, np.ndarray):
             if data_unit.ndim == 3:  # channels x height x width
-                if idx < self._acq_buffer.shape[0]:  # Safety check
-                    self._acq_buffer[idx] = data_unit
+                if idx < self.acq_buffer.shape[0]:  # Safety check
+                    self.acq_buffer[idx] = data_unit
             elif data_unit.ndim == 2:  # height x width (single channel)
-                if idx < self._acq_buffer.shape[0]:  # Safety check
-                    self._acq_buffer[idx, 0] = data_unit
+                if idx < self.acq_buffer.shape[0]:  # Safety check
+                    self.acq_buffer[idx, 0] = data_unit
             else:
-                if idx < self._acq_buffer.shape[0]:  # Safety check
-                    self._acq_buffer[idx, 0] = data_unit
+                if idx < self.acq_buffer.shape[0]:  # Safety check
+                    self.acq_buffer[idx, 0] = data_unit
         
         # Update current frame and frame controls
         self.current_frame = idx
@@ -227,7 +221,7 @@ class MultichannelImageDisplayWidget(BaseImageDisplayWidget):
         
         # Schedule delayed viewport update on first frame to fix sizing issues
         if idx == 0:
-            self._resize_timer.start(100)  # 100ms delay
+            self.resize_timer.start(100)  # 100ms delay
         
         # Update overlays and display consistently with ImageDisplayWidget
         self.update_overlays()
@@ -239,7 +233,7 @@ class MultichannelImageDisplayWidget(BaseImageDisplayWidget):
     def handle_data_updated(self, data):
         """Handle data updated signal - determine number of channels and update display"""
         # Store the complete dataset
-        self._acq_buffer = data
+        self.acq_buffer = data
         self.app_state.current_data = data
         
         # Determine number of channels from data
@@ -263,7 +257,7 @@ class MultichannelImageDisplayWidget(BaseImageDisplayWidget):
         
         # Update channel names and display
         self.update_channel_names()
-        self._setup_channel_display(self.num_channels)
+        self.setup_channel_display(self.num_channels)
         
         # Update frame controls consistently with ImageDisplayWidget
         self.frame_slider.setMaximum(max(0, self.total_frames - 1))
@@ -276,7 +270,7 @@ class MultichannelImageDisplayWidget(BaseImageDisplayWidget):
         self.update_display()
         
         # Schedule delayed viewport update to fix sizing issues
-        self._resize_timer.start(100)  # 100ms delay
+        self.resize_timer.start(100)  # 100ms delay
         
         # Emit traces update signal consistently with ImageDisplayWidget
         self.traces_update_requested.emit(self.get_all_channel_data())
@@ -299,8 +293,8 @@ class MultichannelImageDisplayWidget(BaseImageDisplayWidget):
         data = self.app_state.current_data
         
         # If acquisition is ongoing, use buffer
-        if self._acq_buffer is not None:
-            data = self._acq_buffer
+        if self.acq_buffer is not None:
+            data = self.acq_buffer
         
         if data is None:
             for scene in self.channel_scenes:
@@ -368,13 +362,13 @@ class MultichannelImageDisplayWidget(BaseImageDisplayWidget):
             self._draw_line_overlays(scene)
         
         # Draw temporary line during creation on all channels
-        if self._add_mode and self._temp_line_start is not None:
+        if self.add_mode and self.temp_line_start is not None:
             # Get current mouse position for temporary line
             if self.channel_views:
                 cursor_pos = self.channel_views[0].mapFromGlobal(self.channel_views[0].cursor().pos())
                 scene_pos = self.channel_views[0].mapToScene(cursor_pos)
                 temp_x, temp_y = int(scene_pos.x()), int(scene_pos.y())
-                x1, y1 = self._temp_line_start
+                x1, y1 = self.temp_line_start
                 
                 # Draw temporary line on all channels
                 for scene in self.channel_scenes:
@@ -410,57 +404,57 @@ class MultichannelImageDisplayWidget(BaseImageDisplayWidget):
 
     def get_current_frame_data(self):
         """Get current frame data - return first channel for compatibility"""
-        if self._acq_buffer is None:
+        if self.acq_buffer is None:
             return None
         
-        if self._acq_buffer.ndim == 4:  # frames x channels x height x width
-            if 0 <= self.current_frame < self._acq_buffer.shape[0]:
-                return self._acq_buffer[self.current_frame, 0]  # Return first channel
+        if self.acq_buffer.ndim == 4:  # frames x channels x height x width
+            if 0 <= self.current_frame < self.acq_buffer.shape[0]:
+                return self.acq_buffer[self.current_frame, 0]  # Return first channel
             else:
                 return None
-        elif self._acq_buffer.ndim == 3:  # frames x height x width
-            if 0 <= self.current_frame < self._acq_buffer.shape[0]:
-                return self._acq_buffer[self.current_frame]
+        elif self.acq_buffer.ndim == 3:  # frames x height x width
+            if 0 <= self.current_frame < self.acq_buffer.shape[0]:
+                return self.acq_buffer[self.current_frame]
             else:
                 return None
         else:
-            return self._acq_buffer
+            return self.acq_buffer
     
     def get_all_channel_data(self):
         """Get all channel data for the current frame - for confocal mode"""
-        if self._acq_buffer is None:
+        if self.acq_buffer is None:
             return None
         
-        if self._acq_buffer.ndim == 4:  # frames x channels x height x width
-            if 0 <= self.current_frame < self._acq_buffer.shape[0]:
-                return self._acq_buffer[self.current_frame]  # Return all channels
+        if self.acq_buffer.ndim == 4:  # frames x channels x height x width
+            if 0 <= self.current_frame < self.acq_buffer.shape[0]:
+                return self.acq_buffer[self.current_frame]  # Return all channels
             else:
                 return None
-        elif self._acq_buffer.ndim == 3:  # frames x height x width (single channel)
-            if 0 <= self.current_frame < self._acq_buffer.shape[0]:
-                return self._acq_buffer[self.current_frame][np.newaxis, :, :]  # Add channel dimension
+        elif self.acq_buffer.ndim == 3:  # frames x height x width (single channel)
+            if 0 <= self.current_frame < self.acq_buffer.shape[0]:
+                return self.acq_buffer[self.current_frame][np.newaxis, :, :]  # Add channel dimension
             else:
                 return None
         else:
-            return self._acq_buffer[np.newaxis, :, :]  # Add channel dimension
+            return self.acq_buffer[np.newaxis, :, :]  # Add channel dimension
     
     def get_image_data_for_rpoc(self):
         """Get image data for RPOC - return all channels"""
-        if self._acq_buffer is None:
+        if self.acq_buffer is None:
             return None
         
-        if self._acq_buffer.ndim == 4:  # frames x channels x height x width
-            if 0 <= self.current_frame < self._acq_buffer.shape[0]:
-                return self._acq_buffer[self.current_frame]  # Return all channels
+        if self.acq_buffer.ndim == 4:  # frames x channels x height x width
+            if 0 <= self.current_frame < self.acq_buffer.shape[0]:
+                return self.acq_buffer[self.current_frame]  # Return all channels
             else:
                 return None
-        elif self._acq_buffer.ndim == 3:  # frames x height x width
-            if 0 <= self.current_frame < self._acq_buffer.shape[0]:
-                return self._acq_buffer[self.current_frame][np.newaxis, :, :]  # Add channel dimension
+        elif self.acq_buffer.ndim == 3:  # frames x height x width
+            if 0 <= self.current_frame < self.acq_buffer.shape[0]:
+                return self.acq_buffer[self.current_frame][np.newaxis, :, :]  # Add channel dimension
             else:
                 return None
         else:
-            return self._acq_buffer[np.newaxis, :, :]  # Add channel dimension
+            return self.acq_buffer[np.newaxis, :, :]  # Add channel dimension
     
     def get_current_frame_index(self):
         """Get current frame index"""
@@ -481,7 +475,7 @@ class MultichannelImageDisplayWidget(BaseImageDisplayWidget):
         if obj not in [view.viewport() for view in self.channel_views]:
             return False
         
-        if not self._add_mode:
+        if not self.add_mode:
             return False
         
         if event.type() == event.Type.MouseButtonPress:
@@ -495,7 +489,7 @@ class MultichannelImageDisplayWidget(BaseImageDisplayWidget):
     
     def handle_mouse_press(self, viewport_obj, event):
         """Handle mouse press for line drawing"""
-        if event.button() == Qt.MouseButton.LeftButton and self._add_mode:
+        if event.button() == Qt.MouseButton.LeftButton and self.add_mode:
             # Find which view this event came from
             view = None
             for ch_view in self.channel_views:
@@ -511,18 +505,18 @@ class MultichannelImageDisplayWidget(BaseImageDisplayWidget):
             scene_pos = view.mapToScene(int(pos.x()), int(pos.y()))
             x, y = int(scene_pos.x()), int(scene_pos.y())
             
-            if self._temp_line_start is None:
+            if self.temp_line_start is None:
                 # First click - start the line
-                self._temp_line_start = (x, y)
+                self.temp_line_start = (x, y)
                 return True
             else:
                 # Second click - complete the line
-                x1, y1 = self._temp_line_start
+                x1, y1 = self.temp_line_start
                 # Send all channel data for proper trace plotting
                 all_channel_data = self.get_all_channel_data()
                 self.line_add_requested.emit(x1, y1, x, y, all_channel_data, self.get_channel_names())
-                self._temp_line_start = None
-                self._add_mode = False
+                self.temp_line_start = None
+                self.add_mode = False
                 self.update_display()
                 return True
         
@@ -530,7 +524,7 @@ class MultichannelImageDisplayWidget(BaseImageDisplayWidget):
     
     def handle_mouse_move(self, event):
         """Handle mouse move for line drawing"""
-        if self._add_mode and self._temp_line_start is not None:
+        if self.add_mode and self.temp_line_start is not None:
             # Force a redraw to show the temporary line
             self.update_display()
             return True
@@ -543,14 +537,14 @@ class MultichannelImageDisplayWidget(BaseImageDisplayWidget):
     @pyqtSlot()
     def enter_add_mode(self):
         """Enter line drawing mode"""
-        self._add_mode = True
-        self._temp_line_start = None
+        self.add_mode = True
+        self.temp_line_start = None
     
     @pyqtSlot(int)
     def remove_line_overlay(self, index):
         """Remove a line overlay"""
-        if hasattr(self, '_lines_widget') and self._lines_widget is not None:
-            self._lines_widget.remove_line(index)
+        if hasattr(self, 'lines_widget') and self.lines_widget is not None:
+            self.lines_widget.remove_line(index)
         self.update_display()
     
     @pyqtSlot(int, int, int, int, object)
@@ -561,14 +555,14 @@ class MultichannelImageDisplayWidget(BaseImageDisplayWidget):
     
     def get_lines(self):
         """Get current lines"""
-        if hasattr(self, '_lines_widget') and self._lines_widget is not None:
-            return self._lines_widget.get_lines()
+        if hasattr(self, 'lines_widget') and self.lines_widget is not None:
+            return self.lines_widget.get_lines()
         return []
     
     def connect_lines_widget(self, lines_widget):
         """Connect to the lines widget"""
         super().connect_lines_widget(lines_widget)  # This establishes the signal connections
-        self._lines_widget = lines_widget
+        self.lines_widget = lines_widget
     
     def get_channel_names(self):
         """Get channel names for legend display in lines widget"""
@@ -580,7 +574,7 @@ class MultichannelImageDisplayWidget(BaseImageDisplayWidget):
         if view.scene() and view.scene().sceneRect().isValid():
             view.fitInView(view.scene().sceneRect(), Qt.AspectRatioMode.KeepAspectRatio)
     
-    def _delayed_viewport_update(self):
+    def delayed_viewport_update(self):
         """Delayed viewport update to fix sizing issues after GUI updates"""
         for view in self.channel_views:
             if view.scene() and view.scene().sceneRect().isValid():

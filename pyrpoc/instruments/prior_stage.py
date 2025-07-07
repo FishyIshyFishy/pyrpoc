@@ -10,56 +10,68 @@ from ctypes import create_string_buffer, WinDLL
 import os
 
 class PriorStage(Instrument):
-    def __init__(self, name="Prior Stage"):
-        super().__init__(name, "Prior Stage")
+    def __init__(self, name="Prior Stage", console_callback=None):
+        super().__init__(name, "prior stage")
+        self.console_callback = console_callback
 
         self.parameters = {
             'port': 4,  # COM port number
             'max_z_height': 50000,  # Maximum Z height in µm
             'safe_move_distance': 10000  # Safe movement distance in µm
         }
-        self._connected = False
-        self._sdk_prior = None
-        self._session_id = None
+        self.connected = False
+        self.sdk = None
+        self.session_id = None
+
+    def log_message(self, message):
+        if self.console_callback:
+            self.console_callback(message)
 
     def initialize(self):
-        try:            
+        try:
+            if self.connected:
+                return True
+
             current_dir = os.path.dirname(os.path.abspath(__file__))
-            dll_path = os.path.join(current_dir, "..", "old", "helpers", "prior_stage", "PriorScientificSDK.dll")
+            dll_path = os.path.join(current_dir, "PriorScientificSDK.dll")
             
             if not os.path.exists(dll_path):
-                raise RuntimeError(f"PriorScientificSDK.dll not found. Searched at: {dll_path}")
+                self.log_message(f"Error: PriorScientificSDK.dll not found. Searched at: {dll_path}")
+                return False
             
-            self._sdk_prior = WinDLL(dll_path)
-            
-            # Initialize SDK
-            ret = self._sdk_prior.PriorScientificSDK_Initialise()
+            self.sdk = WinDLL(dll_path)
+
+            ret = self.sdk.PriorScientificSDK_Initialise()
             if ret != 0:
-                raise RuntimeError(f"Failed to initialize Prior SDK. Error code: {ret}")
+                self.log_message(f"Error: Failed to initialize Prior SDK. Error code: {ret}")
+                return False
             
-            # Open session
-            self._session_id = self._sdk_prior.PriorScientificSDK_OpenNewSession()
-            if self._session_id < 0:
-                raise RuntimeError(f"Failed to open Prior SDK session. SessionID: {self._session_id}")
+            self.session_id = self.sdk.PriorScientificSDK_OpenNewSession()
+            if self.session_id < 0:
+                self.log_message(f"Error: Failed to open Prior SDK session. SessionID: {self.session_id}")
+                return False
             
-            # Connect to controller
             port = self.parameters['port']
-            ret, _ = self._send_command(f"controller.connect {port}")
-            if ret != 0:
-                raise RuntimeError(f"Failed to connect to Prior stage on COM{port}")
-            
-            self._connected = True
-            print(f"Prior stage initialized on COM{port}")
-            return True
+            ret, _ = self.send_command(f"controller.connect {port}")
+            if ret == 0:
+                self.connected = True
+                self.log_message(f"Connected to Prior stage on COM{port}")
+                return True
+            else:
+                self.log_message(f"Error: Failed to connect to Prior stage on COM{port}")
+                return False
             
         except Exception as e:
-            print(f"Failed to initialize Prior stage: {e}")
+            self.log_message(f"Error initializing Prior stage: {e}")
             return False
 
-    def _send_command(self, command):
+    def send_command(self, command):
+        if not self.connected:
+            self.initialize()
+            
         rx = create_string_buffer(1000)
-        ret = self._sdk_prior.PriorScientificSDK_cmd(
-            self._session_id, create_string_buffer(command.encode()), rx
+        ret = self.sdk.PriorScientificSDK_cmd(
+            self.session_id, create_string_buffer(command.encode()), rx
         )
         response = rx.value.decode().strip()
         
@@ -68,11 +80,10 @@ class PriorStage(Instrument):
         
         return ret, response
 
-    def _wait_for_z_motion(self):
-        """Wait for Z motion to complete"""
+    def wait_for_z_motion(self):
         import time
         while True:
-            _, response = self._send_command("controller.z.busy.get")
+            _, response = self.send_command("controller.z.busy.get")
             
             if response:
                 try:
@@ -87,19 +98,21 @@ class PriorStage(Instrument):
             time.sleep(0.1)
 
     def move_z(self, z_height, max_z_height=None):
-        """Move Z stage to specified height in µm"""
+        self.check_connection()
+        
         if max_z_height is None:
             max_z_height = self.parameters.get('max_z_height', 50000)
         if not (0 <= z_height <= max_z_height):
             raise ValueError(f"Z height must be between 0 and {max_z_height} µm.")
         
-        ret, _ = self._send_command(f"controller.z.goto-position {z_height}")
+        ret, _ = self.send_command(f"controller.z.goto-position {z_height}")
         if ret != 0:
             raise RuntimeError(f"Could not move Prior stage to {z_height} µm.")
-        self._wait_for_z_motion()
+        self.wait_for_z_motion()
 
     def move_xy(self, x, y, safe_move_distance=None):
-        """Move XY stage to specified position in µm"""
+        self.check_connection()
+        
         current_x, current_y = self.get_xy()
         if safe_move_distance is None:
             safe_move_distance = self.parameters.get('safe_move_distance', 10000)
@@ -108,13 +121,16 @@ class PriorStage(Instrument):
            not (current_y - safe_move_distance <= y <= current_y + safe_move_distance):
             raise ValueError(f"Entered position is more than {safe_move_distance} µm away, and may be unsafe. Cancelling...")
         
-        ret, _ = self._send_command(f"controller.stage.goto-position {x} {y}")
+        ret, _ = self.send_command(f"controller.stage.goto-position {x} {y}")
         if ret != 0:
             raise RuntimeError(f"Could not move Prior stage to {x}, {y}.")
+        
+        self.wait_for_z_motion()  
 
     def get_xy(self):
-        """Get current XY position in µm"""
-        ret, response = self._send_command("controller.stage.position.get")
+        self.check_connection()
+        
+        ret, response = self.send_command("controller.stage.position.get")
         if ret != 0:
             raise RuntimeError("Failed to get XY position.")
         try:
@@ -123,8 +139,9 @@ class PriorStage(Instrument):
             raise RuntimeError(f"Invalid XY position response: '{response}'")
 
     def get_z(self):
-        """Get current Z position in µm"""
-        ret, response = self._send_command("controller.z.position.get")
+        self.check_connection()
+        
+        ret, response = self.send_command("controller.z.position.get")
         if ret != 0:
             raise RuntimeError("Failed to get Z position.")
         try:
@@ -133,9 +150,7 @@ class PriorStage(Instrument):
             raise RuntimeError(f"Invalid Z position response: '{response}'")
 
     def test_connection(self):
-        """Test if the Prior stage is responding correctly"""
         try:
-            # Try to get current position
             x, y = self.get_xy()
             z = self.get_z()
             print(f"Prior stage test successful - Current position: X={x}, Y={y}, Z={z}")
@@ -145,24 +160,30 @@ class PriorStage(Instrument):
             return False
 
     def cleanup(self):
-        """Clean up Prior stage connection"""
         try:
-            if self._connected and self._sdk_prior is not None and self._session_id is not None:
-                # Close session
-                self._sdk_prior.PriorScientificSDK_CloseSession(self._session_id)
-                self._session_id = None
-                self._connected = False
+            if self.connected and self.sdk is not None and self.session_id is not None:
+                self.sdk.PriorScientificSDK_CloseSession(self.session_id)
+                self.session_id = None
+                self.connected = False
                 print("Prior stage connection closed")
         except Exception as e:
             print(f"Error during Prior stage cleanup: {e}")
 
-    def __del__(self):
-        """Destructor to ensure cleanup"""
-        self.cleanup()
-
     def get_widget(self):
-        """Return unified Prior stage widget"""
         return PriorStageWidget(self)
+    
+    def validate_parameters(self, parameters):
+        required_params = ['port']
+        for param in required_params:
+            if param not in parameters:
+                raise ValueError(f"Missing required parameter for prior stage: {param}")
+        
+        if parameters['port'] < 1 or parameters['port'] > 10:
+            raise ValueError("COM port must be between 1 and 10")
+    
+    def check_connection(self):
+        if not self.connected:
+            self.initialize()
     
 
 
@@ -175,36 +196,31 @@ class PriorStageWidget(QWidget):
     def setup_ui(self):
         layout = QVBoxLayout()
         
-        # Create tab widget for config and control
         self.tab_widget = QTabWidget()
         
-        # Configuration tab
-        self.config_widget = PriorStageConfigWidget()
+        self.config_widget = PriorStageConfigWidget(self.prior_stage)
         self.tab_widget.addTab(self.config_widget, "Configuration")
         
-        # Control tab
         self.control_widget = PriorStageControlWidget(self.prior_stage)
         self.tab_widget.addTab(self.control_widget, "Control")
         
         layout.addWidget(self.tab_widget)
         
-        # Set current parameters
         if self.prior_stage.parameters:
             self.config_widget.set_parameters(self.prior_stage.parameters)
         
         self.setLayout(layout)
     
     def get_parameters(self):
-        """Get parameters from config widget"""
         return self.config_widget.get_parameters()
     
     def set_parameters(self, parameters):
-        """Set parameters in config widget"""
         self.config_widget.set_parameters(parameters)
 
 class PriorStageConfigWidget(QWidget):
-    def __init__(self):
+    def __init__(self, prior_stage):
         super().__init__()
+        self.prior_stage = prior_stage
         self.setup_ui()
 
     def setup_ui(self):
@@ -218,7 +234,6 @@ class PriorStageConfigWidget(QWidget):
         self.port_spin.setValue(4)
         layout.addRow("COM Port:", self.port_spin)
         
-        # Safety parameters
         self.max_z_height_spin = QDoubleSpinBox()
         self.max_z_height_spin.setRange(10000, 100000)
         self.max_z_height_spin.setValue(50000)
@@ -234,7 +249,6 @@ class PriorStageConfigWidget(QWidget):
         self.setLayout(layout)
 
     def set_parameters(self, parameters):
-        """Set the widget values from parameters"""
         if 'name' in parameters:
             self.name_edit.setText(parameters['name'])
         if 'port' in parameters:
@@ -252,10 +266,8 @@ class PriorStageConfigWidget(QWidget):
             'safe_move_distance': self.safe_move_distance_spin.value()
         }
         
-        # Validate parameters before returning
         try:
-            from pyrpoc.instruments.instrument_manager import validate_instrument_parameters
-            validate_instrument_parameters("Prior Stage", parameters)
+            self.prior_stage.validate_parameters(parameters)
             return parameters
         except ValueError as e:
             QMessageBox.warning(self, "Parameter Error", str(e))
@@ -270,7 +282,6 @@ class PriorStageControlWidget(QWidget):
     def setup_ui(self):
         layout = QVBoxLayout()
         
-        # XY Position controls
         xy_group = QGroupBox("XY Position")
         xy_layout = QFormLayout()
         
@@ -291,7 +302,6 @@ class PriorStageControlWidget(QWidget):
         xy_group.setLayout(xy_layout)
         layout.addWidget(xy_group)
         
-        # Z Position controls
         z_group = QGroupBox("Z Position")
         z_layout = QFormLayout()
         
@@ -307,7 +317,6 @@ class PriorStageControlWidget(QWidget):
         z_group.setLayout(z_layout)
         layout.addWidget(z_group)
         
-        # Current position display
         pos_group = QGroupBox("Current Position")
         pos_layout = QFormLayout()
         
@@ -329,7 +338,6 @@ class PriorStageControlWidget(QWidget):
         
         self.setLayout(layout)
         
-        # Initial position refresh
         self.refresh_position()
 
     def move_xy(self):
@@ -358,7 +366,6 @@ class PriorStageControlWidget(QWidget):
             self.current_y_label.setText(f"{y} µm")
             self.current_z_label.setText(f"{z} µm")
             
-            # Update spin boxes to current position
             self.x_pos_spin.setValue(x)
             self.y_pos_spin.setValue(y)
             self.z_pos_spin.setValue(z)

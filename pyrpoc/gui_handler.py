@@ -1,6 +1,6 @@
 import json
-from PyQt6.QtWidgets import QFileDialog, QMessageBox, QDialog, QVBoxLayout, QHBoxLayout, QPushButton, QComboBox, QLabel
-from pyrpoc.instruments.instrument_manager import create_instrument, get_instruments_by_type
+from PyQt6.QtWidgets import QFileDialog, QMessageBox
+from pyrpoc.instruments.instrument_manager import create_instrument, get_instruments_by_type, show_add_instrument_dialog, show_configure_instrument_dialog
 from pyrpoc.acquisitions import *
 from PyQt6.QtCore import QObject, pyqtSignal, QThread
 import numpy as np
@@ -327,37 +327,37 @@ def handle_single_acquisition(app_state, signal_bus, continuous=False):
         return
 
     instruments = {}
-    for instrument_type in ['Galvo', 'Data Input', 'Delay Stage', 'Prior Stage']:
+    for instrument_type in ['galvo', 'data input', 'delay stage', 'prior stage']:
         instruments[instrument_type] = app_state.get_instruments_by_type(instrument_type)
     
     # check modality parameters (instruments in particular)
     if modality == 'confocal':
-        galvo = instruments.get('Galvo', []) # .get() returns [] instead of None here, which is easier to look at in if statement that follows
-        data_inputs = instruments.get('Data Input', [])
+        galvo = instruments.get('galvo', []) # .get() returns [] instead of None here, which is easier to look at in if statement that follows
+        data_inputs = instruments.get('data input', [])
         
         if not galvo: 
-            signal_bus.console_message.emit("Error: Confocal acquisition requires at least one Galvo instrument. Please add a Galvo scanner.")
+            signal_bus.console_message.emit("Error: Confocal acquisition requires at least one galvo instrument. Please add a galvo scanner.")
             return
         
         if not data_inputs:
-            signal_bus.console_message.emit("Error: Confocal acquisition requires at least one Data Input instrument. Please add a Data Input.")
+            signal_bus.console_message.emit("Error: Confocal acquisition requires at least one data input instrument. Please add a data input.")
             return
     
     elif modality == 'split data stream':
-        galvo = instruments.get('Galvo', [])
-        data_inputs = instruments.get('Data Input', [])
-        prior_stage = instruments.get('Prior Stage', [])
+        galvo = instruments.get('galvo', [])
+        data_inputs = instruments.get('data input', [])
+        prior_stage = instruments.get('prior stage', [])
         
         if not galvo:
-            signal_bus.console_message.emit("Error: Split Data Stream acquisition requires at least one Galvo instrument. Please add a Galvo scanner.")
+            signal_bus.console_message.emit("Error: Split Data Stream acquisition requires at least one galvo instrument. Please add a galvo scanner.")
             return
         
         if not data_inputs:
-            signal_bus.console_message.emit("Error: Split Data Stream acquisition requires at least one Data Input instrument. Please add a Data Input.")
+            signal_bus.console_message.emit("Error: Split Data Stream acquisition requires at least one data input instrument. Please add a data input.")
             return
         
         if not prior_stage:
-            signal_bus.console_message.emit("Error: Split Data Stream acquisition requires at least one Prior Stage instrument. Please add a Prior Stage.")
+            signal_bus.console_message.emit("Error: Split Data Stream acquisition requires at least one prior stage instrument. Please add a prior stage.")
             return
 
     acquisition = None
@@ -375,8 +375,8 @@ def handle_single_acquisition(app_state, signal_bus, continuous=False):
                 signal_bus.console_message.emit("Confocal acquisition started")
 
                 # have already verified that the instruments exist, no need to .get() here
-                galvo = instruments['Galvo'][0] # returned as a list because there are multiple of each instrument in general
-                data_inputs = instruments['Data Input']
+                galvo = instruments['galvo'][0] # returned as a list because there are multiple of each instrument in general
+                data_inputs = instruments['data input']
                 
                 acquisition = Confocal(
                     galvo=galvo, 
@@ -401,9 +401,9 @@ def handle_single_acquisition(app_state, signal_bus, continuous=False):
                 signal_bus.console_message.emit("Split Data Stream acquisition started")
 
                 # have already verified that the instruments exist, no need to .get() here
-                galvo = instruments['Galvo'][0] # returned as a list because there are multiple of each instrument in general
-                data_inputs = instruments['Data Input']
-                prior_stage = instruments['Prior Stage'][0] if 'Prior Stage' in instruments else None
+                galvo = instruments['galvo'][0] # returned as a list because there are multiple of each instrument in general
+                data_inputs = instruments['data input']
+                prior_stage = instruments['prior stage'][0] if 'prior stage' in instruments else None
                 split_percentage = parameters.get('split_percentage', 50)
                 
                 acquisition = SplitDataStream(
@@ -575,94 +575,31 @@ def handle_modality_changed(text, app_state, main_window):
 
 
 def handle_add_instrument(app_state, main_window):
-    dialog = QDialog(main_window)
-    dialog.setWindowTitle("Add Instrument")
-    dialog.setModal(True)
-    
-    layout = QVBoxLayout()
-    
-    layout.addWidget(QLabel("Select instrument type:"))
-    
-    combo = QComboBox()
-    combo.addItems(['Delay Stage', 'Prior Stage'])
-    layout.addWidget(combo)
-    
-    button_layout = QHBoxLayout()
-    ok_btn = QPushButton("OK")
-    cancel_btn = QPushButton("Cancel")
-    
-    ok_btn.clicked.connect(dialog.accept)
-    cancel_btn.clicked.connect(dialog.reject)
-    
-    button_layout.addWidget(ok_btn)
-    button_layout.addWidget(cancel_btn)
-    layout.addLayout(button_layout)
-    
-    dialog.setLayout(layout)
-    
-    if dialog.exec() == QDialog.DialogCode.Accepted:
-        instrument_type = combo.currentText()
+    instrument_type = show_add_instrument_dialog(main_window)
+    if instrument_type:
         handle_add_modality_instrument(instrument_type, app_state, main_window)
-    
     return 0
 
 def handle_add_modality_instrument(instrument_type, app_state, main_window):
-    # Create instrument with default parameters
-    instrument = create_instrument(instrument_type, instrument_type)
+    # Use the instrument manager to show configuration dialog
+    instrument, display_name = show_configure_instrument_dialog(
+        instrument_type, 
+        main_window, 
+        main_window.signals.console_message.emit
+    )
     
-    # Get the unified widget for configuration
-    unified_widget = instrument.get_widget()
-    if unified_widget:
-        dialog = QDialog(main_window)
-        dialog.setWindowTitle(f"Configure {instrument_type}")
-        dialog.setModal(True)
-        
-        layout = QVBoxLayout()
-        layout.addWidget(unified_widget)
-        
-        # Buttons
-        button_layout = QHBoxLayout()
-        ok_btn = QPushButton("OK")
-        cancel_btn = QPushButton("Cancel")
-        
-        ok_btn.clicked.connect(dialog.accept)
-        cancel_btn.clicked.connect(dialog.reject)
-        
-        button_layout.addWidget(ok_btn)
-        button_layout.addWidget(cancel_btn)
-        layout.addLayout(button_layout)
-        
-        dialog.setLayout(layout)
-        dialog.resize(400, 300)
-        
-        if dialog.exec() == QDialog.DialogCode.Accepted:
-            parameters = unified_widget.get_parameters()
+    if instrument:
+        if instrument.initialize():
+            if not hasattr(app_state, 'instruments'):
+                app_state.instruments = []
             
-            if parameters is not None:  
-                instrument_name = parameters.get('name', f'{instrument_type}')
-                instrument = create_instrument(instrument_type, instrument_name, parameters)
-                
-                if hasattr(instrument, 'name') and instrument.name:
-                    display_name = instrument.name
-                else:
-                    display_name = instrument_name
-            else:
-                main_window.signals.console_message.emit(f"Failed to create {instrument_type} - invalid parameters")
-                return 0
-            
-            if instrument.initialize():
-                if not hasattr(app_state, 'instruments'):
-                    app_state.instruments = []
-                
-                app_state.instruments.append(instrument)
+            app_state.instruments.append(instrument)
 
-                main_window.left_widget.instrument_controls.add_instrument(instrument)
-                main_window.left_widget.instrument_controls.rebuild()
-                main_window.signals.console_message.emit(f"Added {display_name} successfully")
-            else:
-                main_window.signals.console_message.emit(f"Failed to connect to {display_name}")
-    else:
-        main_window.signals.console_message.emit(f"Failed to get configuration widget for {instrument_type}")
+            main_window.left_widget.instrument_controls.add_instrument(instrument)
+            main_window.left_widget.instrument_controls.rebuild()
+            main_window.signals.console_message.emit(f"Added {display_name} successfully")
+        else:
+            main_window.signals.console_message.emit(f"Failed to connect to {display_name}")
     
     return 0
 

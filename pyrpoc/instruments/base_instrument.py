@@ -7,10 +7,15 @@ from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel,
 from PyQt6.QtCore import Qt, pyqtSignal
 
 class Instrument(abc.ABC):
-    def __init__(self, name, instrument_type):
+    def __init__(self, name, instrument_type, console_callback=None):
         self.name = name
         self.instrument_type = instrument_type
         self.parameters = {}
+        self.console_callback = console_callback
+
+    def log_message(self, message):
+        if self.console_callback:
+            self.console_callback(message)
 
     @abc.abstractmethod
     def initialize(self):
@@ -27,4 +32,9 @@ class Instrument(abc.ABC):
 
     def get_parameters(self):
         return self.parameters.copy()
+
+    @abc.abstractmethod
+    def validate_parameters(self, parameters):
+        """Validate instrument communication parameters"""
+        pass
 
