@@ -149,7 +149,8 @@ class Confocal(Acquisition):
     def collect_data(self, galvo, ai_channels):
         try:
             rate = galvo.parameters.get('sample_rate', 1000000)
-            dwell_time = self.acquisition_parameters.get('dwell_time', 10e-6)
+            dwell_time = self.acquisition_parameters.get('dwell_time', 10)  # microseconds
+            dwell_time_sec = dwell_time / 1e6  # convert to seconds
             extra_left = self.acquisition_parameters.get('extrasteps_left', 50)
             extra_right = self.acquisition_parameters.get('extrasteps_right', 50)
             numsteps_x = self.acquisition_parameters.get('x_pixels', 512)
@@ -158,7 +159,7 @@ class Confocal(Acquisition):
             fast_channel = galvo.parameters.get('fast_axis_channel', 1)
             device_name = galvo.parameters.get('device_name', 'Dev1')
 
-            pixel_samples = max(1, int(dwell_time * rate))
+            pixel_samples = max(1, int(dwell_time_sec * rate))
             total_x = numsteps_x + extra_left + extra_right
             total_y = numsteps_y
             total_samples = total_x * total_y * pixel_samples

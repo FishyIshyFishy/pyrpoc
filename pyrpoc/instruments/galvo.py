@@ -36,7 +36,8 @@ class Galvo(Instrument):
             raise ValueError("Sample rate must be positive")
     
     def generate_raster_waveform(self, acquisition_parameters):
-        dwell = acquisition_parameters['dwell_time']
+        dwell = acquisition_parameters['dwell_time']  # microseconds
+        dwell_sec = dwell / 1e6  # convert to seconds
         rate = self.parameters['sample_rate']
         extra_left = acquisition_parameters['extrasteps_left']
         extra_right = acquisition_parameters['extrasteps_right']
@@ -47,7 +48,7 @@ class Galvo(Instrument):
         x_steps = acquisition_parameters['x_pixels']
         y_steps = acquisition_parameters['y_pixels']
 
-        pixel_samples = max(1, int(dwell * rate))
+        pixel_samples = max(1, int(dwell_sec * rate))
         total_x = x_steps + extra_left + extra_right
         total_y = y_steps
 

@@ -22,7 +22,7 @@ class AppState:
             'save_path': '',  # Full path to base filename for saving data
             
             # Galvo acquisition parameters (moved from galvo instrument)
-            'dwell_time': 10e-6,  # Per pixel dwell time in seconds
+            'dwell_time': 10,  # Per pixel dwell time in microseconds
             'extrasteps_left': 50,  # Extra steps left in fast direction
             'extrasteps_right': 50,  # Extra steps right in fast direction
             'amplitude_x': 0.5,  # Amplitude for X axis
@@ -490,7 +490,7 @@ def validate_acquisition_parameters(parameters, modality):
         'y_pixels': (1, 10000, "y_pixels must be between 1 and 10000"),
         'num_frames': (1, 10000, "num_frames must be between 1 and 10000"),
         'split_percentage': (1, 99, "split_percentage must be between 1 and 99"),
-        'dwell_time': (1e-6, 1e-3, "dwell_time must be between 1µs and 1ms"),
+        'dwell_time': (1, 1000, "dwell_time must be between 1 and 1000 µs"),
         'extrasteps_left': (0, 10000, "extrasteps_left must be between 0 and 10000"),
         'extrasteps_right': (0, 10000, "extrasteps_right must be between 0 and 10000"),
         'amplitude_x': (0.01, 10.0, "amplitude_x must be between 0.01V and 10V"),
