@@ -54,8 +54,8 @@ class Confocal(Acquisition):
             if self._stop_flag and self._stop_flag():
                 break
             
-            frame_data = self.generate_simulated_confocal()
-            # frame_data = self.collect_data(galvo, ai_channels)
+            # frame_data = self.generate_simulated_confocal()
+            frame_data = self.collect_data(self.galvo, ai_channels)
             
             if self.signal_bus:
                 self.signal_bus.data_signal.emit(frame_data, frame_idx, self.num_frames, False)
@@ -249,7 +249,7 @@ class Confocal(Acquisition):
                         data_to_write = [sig.tolist() for sig in rpoc_ttl_signals]
                         do_task.write(data_to_write, auto_start=False)
 
-                ao_task.write(waveform.T, auto_start=False)
+                ao_task.write(waveform, auto_start=False)
                 
                 ai_task.start()
                 if do_task:
@@ -278,6 +278,7 @@ class Confocal(Acquisition):
                     return np.stack(results)
                     
         except Exception as e:
+            print(f'exception: {e}')
             return self.generate_simulated_confocal()
     
     def save_data(self, data):

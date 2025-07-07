@@ -32,6 +32,9 @@ class PriorStage(Instrument):
             if self.connected:
                 return True
 
+            # Clean up any existing connection first
+            self.cleanup()
+
             current_dir = os.path.dirname(os.path.abspath(__file__))
             dll_path = os.path.join(current_dir, "PriorScientificSDK.dll")
             
@@ -41,10 +44,13 @@ class PriorStage(Instrument):
             
             self.sdk = WinDLL(dll_path)
 
-            ret = self.sdk.PriorScientificSDK_Initialise()
-            if ret != 0:
-                self.log_message(f"Error: Failed to initialize Prior SDK. Error code: {ret}")
-                return False
+            # Only initialize SDK if not already done
+            if not hasattr(self, '_sdk_initialized'):
+                ret = self.sdk.PriorScientificSDK_Initialise()
+                if ret != 0:
+                    self.log_message(f"Error: Failed to initialize Prior SDK. Error code: {ret}")
+                    return False
+                self._sdk_initialized = True
             
             self.session_id = self.sdk.PriorScientificSDK_OpenNewSession()
             if self.session_id < 0:
@@ -52,13 +58,19 @@ class PriorStage(Instrument):
                 return False
             
             port = self.parameters['port']
-            ret, _ = self.send_command(f"controller.connect {port}")
+            # Send connection command directly to avoid recursion
+            rx = create_string_buffer(1000)
+            ret = self.sdk.PriorScientificSDK_cmd(
+                self.session_id, create_string_buffer(f"controller.connect {port}".encode()), rx
+            )
+            response = rx.value.decode().strip()
+            
             if ret == 0:
                 self.connected = True
                 self.log_message(f"Connected to Prior stage on COM{port}")
                 return True
             else:
-                self.log_message(f"Error: Failed to connect to Prior stage on COM{port}")
+                self.log_message(f"Error: Failed to connect to Prior stage on COM{port} (Return Code: {ret})")
                 return False
             
         except Exception as e:
@@ -66,8 +78,8 @@ class PriorStage(Instrument):
             return False
 
     def send_command(self, command):
-        if not self.connected:
-            self.initialize()
+        if self.sdk is None or self.session_id is None:
+            raise RuntimeError("Prior stage not initialized. Call initialize() first.")
             
         rx = create_string_buffer(1000)
         ret = self.sdk.PriorScientificSDK_cmd(
@@ -76,7 +88,7 @@ class PriorStage(Instrument):
         response = rx.value.decode().strip()
         
         if ret != 0:
-            print(f"Error executing command: {command} (Return Code: {ret})")
+            self.log_message(f"Error executing command: {command} (Return Code: {ret})")
         
         return ret, response
 
@@ -102,7 +114,7 @@ class PriorStage(Instrument):
         
         if max_z_height is None:
             max_z_height = self.parameters.get('max_z_height', 50000)
-        if not (0 <= z_height <= max_z_height):
+        if not ((-1*max_z_height) <= z_height <= max_z_height):
             raise ValueError(f"Z height must be between 0 and {max_z_height} µm.")
         
         ret, _ = self.send_command(f"controller.z.goto-position {z_height}")
@@ -161,13 +173,15 @@ class PriorStage(Instrument):
 
     def cleanup(self):
         try:
-            if self.connected and self.sdk is not None and self.session_id is not None:
+            if self.sdk is not None and self.session_id is not None:
                 self.sdk.PriorScientificSDK_CloseSession(self.session_id)
                 self.session_id = None
-                self.connected = False
-                print("Prior stage connection closed")
+            self.connected = False
+            if hasattr(self, '_sdk_initialized'):
+                delattr(self, '_sdk_initialized')
+            self.log_message("Prior stage connection closed")
         except Exception as e:
-            print(f"Error during Prior stage cleanup: {e}")
+            self.log_message(f"Error during Prior stage cleanup: {e}")
 
     def get_widget(self):
         return PriorStageWidget(self)
@@ -338,7 +352,9 @@ class PriorStageControlWidget(QWidget):
         
         self.setLayout(layout)
         
-        self.refresh_position()
+        # Only refresh position if already connected
+        if self.prior_stage.connected:
+            self.refresh_position()
 
     def move_xy(self):
         try:

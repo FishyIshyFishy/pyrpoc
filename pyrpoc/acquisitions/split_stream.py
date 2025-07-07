@@ -56,16 +56,16 @@ class SplitDataStream(Acquisition):
         if not ai_channels:
             ai_channels = ["Dev1/ai0"] 
 
-        numtiles_x = self.acquisition_parameters.get('numtiles_x', 1)
-        numtiles_y = self.acquisition_parameters.get('numtiles_y', 1)
-        numtiles_z = self.acquisition_parameters.get('numtiles_z', 1)
-        tile_size_x = self.acquisition_parameters.get('tile_size_x', 100)
-        tile_size_y = self.acquisition_parameters.get('tile_size_y', 100)
-        tile_size_z = self.acquisition_parameters.get('tile_size_z', 50)
+        numtiles_x = int(self.acquisition_parameters.get('numtiles_x', 1))
+        numtiles_y = int(self.acquisition_parameters.get('numtiles_y', 1))
+        numtiles_z = int(self.acquisition_parameters.get('numtiles_z', 1))
+        tile_size_x = int(self.acquisition_parameters.get('tile_size_x', 100))  # in microns
+        tile_size_y = int(self.acquisition_parameters.get('tile_size_y', 100))  # in microns
+        tile_size_z = float(self.acquisition_parameters.get('tile_size_z', 50))  # in microns
         
         try:
-            start_x, start_y = self.prior_stage.get_xy()
-            start_z = self.prior_stage.get_z()
+            start_x, start_y = self.prior_stage.get_xy()  # in microns (int)
+            start_z = self.prior_stage.get_z()  # in 0.1 micron units (int)
         except Exception as e:
             if self.signal_bus:
                 self.signal_bus.console_message.emit(f"Error getting current stage position: {e}")
@@ -76,9 +76,10 @@ class SplitDataStream(Acquisition):
         for z_idx in range(numtiles_z):
             for y_idx in range(numtiles_y):
                 for x_idx in range(numtiles_x):
-                    x_pos = start_x + x_idx * tile_size_x
-                    y_pos = start_y + y_idx * tile_size_y
-                    z_pos = start_z + z_idx * tile_size_z
+                    x_pos = int(start_x + x_idx * tile_size_x)  # int microns
+                    y_pos = int(start_y + y_idx * tile_size_y)  # int microns
+                    # z is in 0.1 micron units, so convert tile_size_z (microns) to 0.1 micron units
+                    z_pos = int(start_z + z_idx * tile_size_z * 10)  # int 0.1 micron units
                     stage_positions.append((x_pos, y_pos, z_pos))
                     tile_indices.append((x_idx, y_idx, z_idx))
 
@@ -96,13 +97,10 @@ class SplitDataStream(Acquisition):
                 
                 try:
                     if self.signal_bus:
-                        self.signal_bus.console_message.emit(f"Moving to position {pos_idx + 1}/{len(stage_positions)}: X={x_pos}, Y={y_pos}, Z={z_pos}")
-                    
+                        self.signal_bus.console_message.emit(f"Moving to position {pos_idx + 1}/{len(stage_positions)}: X={x_pos} µm, Y={y_pos} µm, Z={z_pos/10:.1f} µm")
                     self.prior_stage.move_xy(x_pos, y_pos)
                     self.prior_stage.move_z(z_pos)
-                    
                     time.sleep(0.5)
-                    
                 except Exception as e:
                     if self.signal_bus:
                         self.signal_bus.console_message.emit(f"Error moving stage: {e}")
@@ -229,7 +227,7 @@ class SplitDataStream(Acquisition):
                         data_to_write = [sig.tolist() for sig in rpoc_ttl_signals]
                         do_task.write(data_to_write, auto_start=False)
 
-                ao_task.write(waveform.T, auto_start=False)
+                ao_task.write(waveform, auto_start=False)
                 
                 ai_task.start()
                 if do_task:
