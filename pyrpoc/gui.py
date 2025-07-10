@@ -631,9 +631,6 @@ class InstrumentWidget(QWidget):
         self.param_summary.setText(' | '.join(summary_lines))
     
     def remove_instrument(self):
-        if self.instrument in self.app_state.instruments:
-            self.app_state.instruments.remove(self.instrument)
-        
         self.signals.instrument_removed.emit(self.instrument)
         
         parent = self.parent()
