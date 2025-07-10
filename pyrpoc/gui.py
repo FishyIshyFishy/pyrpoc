@@ -708,33 +708,32 @@ class DisplayControls(QWidget):
         main_layout.addWidget(self.group)
         self.setLayout(main_layout)
         self.display_params_widget = None
+        self.show_placeholder()
 
-    def update_display_params_widget(self):
+    def show_placeholder(self):
+        while self.layout.count():
+            child = self.layout.takeAt(0)
+            if child.widget():
+                child.widget().deleteLater()
+        placeholder = QLabel('No display settings available for this display type.')
+        placeholder.setStyleSheet('color: #888; font-style: italic;')
+        self.display_params_widget = placeholder
+        self.layout.addWidget(self.display_params_widget)
+
+    def set_display_widget(self, display_widget):
         # Remove old widget
         while self.layout.count():
             child = self.layout.takeAt(0)
             if child.widget():
                 child.widget().deleteLater()
         self.display_params_widget = None
-
-        # Find the current display widget
-        main_window = self.window()
-        display_widget = None
-        if hasattr(main_window, 'mid_layout') and hasattr(main_window.mid_layout, 'image_display_widget'):
-            display_widget = main_window.mid_layout.image_display_widget
-
-        # Show the correct widget
         if display_widget is not None and display_widget.__class__.__name__ == 'MultichannelImageDisplayWidget':
-            print(f'creating multichanel image display widget')
+            from pyrpoc.displays.multichan_tiled import MultichannelDisplayParametersWidget
             self.display_params_widget = MultichannelDisplayParametersWidget(display_widget)
         else:
-            placeholder = QLabel('No display settings available for this display type.')
-            placeholder.setStyleSheet('color: #888; font-style: italic;')
-            self.display_params_widget = placeholder
+            self.show_placeholder()
+            return
         self.layout.addWidget(self.display_params_widget)
-
-    def refresh(self):
-        self.update_display_params_widget()
 
 class RPOCChannelWidget(QWidget):
     def __init__(self, channel_id, app_state, signals, parent=None):
@@ -1055,11 +1054,10 @@ class DockableMiddlePanel(QMainWindow):
         
         self.on_lines_toggled(self.app_state.ui_state['lines_enabled'])
 
-        # After display is created, refresh display controls if possible
+        # After display is created, set the display widget for display controls
         main_window = self.window()
         if hasattr(main_window, 'left_widget') and hasattr(main_window.left_widget, 'display_controls'):
-            main_window.left_widget.display_controls.update_display_params_widget()
-            print(f'refreshing in display panel')
+            main_window.left_widget.display_controls.set_display_widget(self.image_display_widget)
 
 
     def create_image_display_widget(self):
