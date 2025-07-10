@@ -5,8 +5,8 @@
     "split_percentage": 50,
     "save_enabled": false,
     "save_path": "",
-    "dwell_time": 10,
-    "extrasteps_left": 50,
+    "dwell_time": 3.0,
+    "extrasteps_left": 100,
     "extrasteps_right": 50,
     "amplitude_x": 0.5,
     "amplitude_y": 0.5,
@@ -22,12 +22,12 @@
     "tile_size_z": 50
   },
   "display_parameters": {},
-  "rpoc_enabled": false,
+  "rpoc_enabled": true,
   "ui_state": {
     "acquisition_parameters_visible": true,
     "instrument_controls_visible": true,
     "display_controls_visible": true,
-    "lines_enabled": false,
+    "lines_enabled": true,
     "main_splitter_sizes": [
       104,
       418,
@@ -75,5 +75,10 @@
     }
   ],
   "rpoc_masks": {},
-  "rpoc_channels": {}
+  "rpoc_channels": {
+    "1": {
+      "device": "Dev1",
+      "port_line": "port1/line1"
+    }
+  }
 }
