@@ -32,16 +32,66 @@ class SplitDataStream(Acquisition):
         self.rpoc_enabled = False
         self.rpoc_masks = {}
         self.rpoc_channels = {}
+        self.rpoc_ttl_signals = {}  # channel_id -> flat TTL array
 
     def configure_rpoc(self, rpoc_enabled, rpoc_masks=None, rpoc_channels=None, **kwargs):
         self.rpoc_enabled = rpoc_enabled
-        if rpoc_masks:
-            self.rpoc_masks = rpoc_masks
-        if rpoc_channels:
-            self.rpoc_channels = rpoc_channels
-        
+        self.rpoc_masks = rpoc_masks or {}
+        self.rpoc_channels = rpoc_channels or {}
+        self.rpoc_ttl_signals = {}  # channel_id -> flat TTL array
+
+        # Get split percentage and acquisition parameters
+        split_percentage = self.acquisition_parameters.get('split_percentage', 50)
+        dwell_time = self.acquisition_parameters.get('dwell_time', 10)  # microseconds
+        rate = self.galvo.parameters.get('sample_rate', 1000000)
+        dwell_time_sec = dwell_time / 1e6
+        pixel_samples = max(1, int(dwell_time_sec * rate))
+        numsteps_x = self.acquisition_parameters.get('x_pixels', 512)
+        numsteps_y = self.acquisition_parameters.get('y_pixels', 512)
+        extra_left = self.acquisition_parameters.get('extrasteps_left', 50)
+        extra_right = self.acquisition_parameters.get('extrasteps_right', 50)
+        total_x = numsteps_x + extra_left + extra_right
+        total_y = numsteps_y
+
+        split_point = int(split_percentage / 100.0 * pixel_samples)
+
+        for channel_id, mask in (self.rpoc_masks or {}).items():
+            if channel_id not in self.rpoc_channels:
+                continue
+            # Prepare mask
+            if isinstance(mask, np.ndarray):
+                mask_array = mask
+            else:
+                try:
+                    from PIL import Image
+                    if isinstance(mask, Image.Image):
+                        mask_array = np.array(mask)
+                    else:
+                        mask_array = mask
+                except:
+                    mask_array = mask
+            mask_array = mask_array > 0
+            # Pad mask to match scan size
+            padded_mask = []
+            for row in range(numsteps_y):
+                padded_row = np.concatenate((
+                    np.zeros(extra_left, dtype=bool),
+                    mask_array[row, :] if row < mask_array.shape[0] else np.zeros(numsteps_x, dtype=bool),
+                    np.zeros(extra_right, dtype=bool)
+                ))
+                padded_mask.append(padded_row)
+            padded_mask = np.array(padded_mask)
+            # For each pixel, create TTL: high for split_point samples, low for the rest if mask is high, else all low
+            ttl = np.zeros((total_y, total_x, pixel_samples), dtype=bool)
+            for y in range(total_y):
+                for x in range(total_x):
+                    if padded_mask[y, x]:
+                        ttl[y, x, :split_point] = True
+            flat_ttl = ttl.ravel()
+            self.rpoc_ttl_signals[channel_id] = flat_ttl
+
         if self.signal_bus:
-            self.signal_bus.console_message.emit(f"RPOC Configured - enabled: {rpoc_enabled}, masks: {len(rpoc_masks) if rpoc_masks else 0}, channels: {len(rpoc_channels) if rpoc_channels else 0}")
+            self.signal_bus.console_message.emit(f"RPOC Configured - enabled: {rpoc_enabled}, masks: {len(self.rpoc_masks)}, channels: {len(self.rpoc_channels)}")
 
     def perform_acquisition(self):     
         self.save_metadata()
@@ -143,92 +193,48 @@ class SplitDataStream(Acquisition):
             total_samples = total_x * total_y * pixel_samples
 
             waveform = galvo.generate_raster_waveform(self.acquisition_parameters)
-            
+
             rpoc_do_channels = []
             rpoc_ttl_signals = []
-            
-            if self.rpoc_enabled and self.rpoc_masks and self.rpoc_channels:
-                for channel_id, mask in self.rpoc_masks.items():
+
+            if self.rpoc_enabled and self.rpoc_ttl_signals and self.rpoc_channels:
+                for channel_id, flat_ttl in self.rpoc_ttl_signals.items():
                     if channel_id in self.rpoc_channels:
                         channel_info = self.rpoc_channels[channel_id]
                         device = channel_info.get('device', device_name)
                         port_line = channel_info.get('port_line', f'port0/line{4+channel_id-1}')
-                        
-                        if isinstance(mask, np.ndarray):
-                            mask_array = mask
-                        else:
-                            try:
-                                from PIL import Image
-                                if isinstance(mask, Image.Image):
-                                    mask_array = np.array(mask)
-                                else:
-                                    mask_array = mask
-                            except:
-                                mask_array = mask
-                        
-                        mask_array = mask_array > 0
-                        
-                        padded_mask = []
-                        for row in range(numsteps_y):
-                            padded_row = np.concatenate((
-                                np.zeros(extra_left, dtype=bool),
-                                mask_array[row, :] if row < mask_array.shape[0] else np.zeros(numsteps_x, dtype=bool),
-                                np.zeros(extra_right, dtype=bool)
-                            ))
-                            padded_mask.append(padded_row)
-                        
-                        flat_mask = np.repeat(np.array(padded_mask).ravel(), pixel_samples).astype(bool)
-                        
                         rpoc_do_channels.append(f"{device}/{port_line}")
-                        rpoc_ttl_signals.append(flat_mask)
-            
+                        rpoc_ttl_signals.append(flat_ttl.tolist())
+
             with nidaqmx.Task() as ao_task, nidaqmx.Task() as ai_task:
                 ao_task.ao_channels.add_ao_voltage_chan(f"{device_name}/ao{fast_channel}")
                 ao_task.ao_channels.add_ao_voltage_chan(f"{device_name}/ao{slow_channel}")
-                
                 for ch in ai_channels:
                     ai_task.ai_channels.add_ai_voltage_chan(ch)
-
                 ao_task.timing.cfg_samp_clk_timing(
                     rate=rate,
                     sample_mode=AcquisitionType.FINITE,
                     samps_per_chan=total_samples
                 )
-
                 ai_task.timing.cfg_samp_clk_timing(
                     rate=rate,
                     source=f"/{device_name}/ao/SampleClock",
                     sample_mode=AcquisitionType.FINITE,
                     samps_per_chan=total_samples
                 )
-
                 do_task = None
                 if rpoc_do_channels and rpoc_ttl_signals:
                     do_task = nidaqmx.Task()
-                    
-                    if len(rpoc_do_channels) == 1:
-                        do_task.do_channels.add_do_chan(rpoc_do_channels[0])
-                        do_task.timing.cfg_samp_clk_timing(
-                            rate=rate,
-                            source=f"/{device_name}/ao/SampleClock",
-                            sample_mode=AcquisitionType.FINITE,
-                            samps_per_chan=total_samples
-                        )
-                        do_task.write(rpoc_ttl_signals[0].tolist(), auto_start=False)
-                    else:
-                        for chan in rpoc_do_channels:
-                            do_task.do_channels.add_do_chan(chan)
-                        do_task.timing.cfg_samp_clk_timing(
-                            rate=rate,
-                            source=f"/{device_name}/ao/SampleClock",
-                            sample_mode=AcquisitionType.FINITE,
-                            samps_per_chan=total_samples
-                        )
-                        data_to_write = [sig.tolist() for sig in rpoc_ttl_signals]
-                        do_task.write(data_to_write, auto_start=False)
-
+                    for chan in rpoc_do_channels:
+                        do_task.do_channels.add_do_chan(chan)
+                    do_task.timing.cfg_samp_clk_timing(
+                        rate=rate,
+                        source=f"/{device_name}/ao/SampleClock",
+                        sample_mode=AcquisitionType.FINITE,
+                        samps_per_chan=total_samples
+                    )
+                    do_task.write(rpoc_ttl_signals, auto_start=False)
                 ao_task.write(waveform, auto_start=False)
-                
                 ai_task.start()
                 if do_task:
                     do_task.start()
@@ -243,45 +249,23 @@ class SplitDataStream(Acquisition):
                 acq_data = np.array(ai_task.read(number_of_samples_per_channel=total_samples))
                 
                 input_results = []
+                split_point = int(self.acquisition_parameters.get('split_percentage', 50) / 100.0 * pixel_samples)
                 for i in range(len(ai_channels)):
                     channel_data = acq_data if len(ai_channels) == 1 else acq_data[i]
                     reshaped = channel_data.reshape(total_y, total_x, pixel_samples)
-                    input_results.append(reshaped)
-                
-                split_point = int(self.split_percentage / 100.0 * pixel_samples)
-                
-                if self.signal_bus:
-                    self.signal_bus.console_message.emit(f"Split Data Stream: {pixel_samples} samples per pixel, split at {split_point} samples ({self.split_percentage}%)")
-                    self.signal_bus.console_message.emit(f"Channel 1: samples 0-{split_point-1}, Channel 2: samples {split_point}-{pixel_samples-1}, Channel 3: all {pixel_samples} samples")
-                
-                output_channels = []
-                
-                for input_channel in input_results:
-                    height, width, samples_per_pixel = input_channel.shape
-                    
-                    first_portion = np.zeros((height, width))
-                    for y in range(height):
-                        for x in range(width):
-                            pixel_samples_data = input_channel[y, x, :]
-                            first_portion[y, x] = np.mean(pixel_samples_data[:split_point])
-                    
-                    second_portion = np.zeros((height, width))
-                    for y in range(height):
-                        for x in range(width):
-                            pixel_samples_data = input_channel[y, x, :]
-                            second_portion[y, x] = np.mean(pixel_samples_data[split_point:])
-                    
-                    full_data = np.mean(input_channel, axis=2)
-                    
-                    output_channels.extend([first_portion, second_portion, full_data])
-                
-                if len(output_channels) == 1:
-                    return output_channels[0]
+                    # Only output two split channels per input channel
+                    first_portion = np.mean(reshaped[:, :, :split_point], axis=2)
+                    second_portion = np.mean(reshaped[:, :, split_point:], axis=2)
+                    cropped_first = first_portion[:, extra_left:extra_left + numsteps_x]
+                    cropped_second = second_portion[:, extra_left:extra_left + numsteps_x]
+                    input_results.append(np.stack([cropped_first, cropped_second]))
+                if len(input_results) == 1:
+                    return input_results[0]
                 else:
-                    return np.stack(output_channels)
-                    
+                    return np.stack(input_results)
         except Exception as e:
-            self.signal_bus.console_message.emit(f"Error in DAQ acquisition: {e}")
+            self.signal_bus.console_message.emit(f'Error in DAQ acquisition: {e}')
+            return self.generate_simulated_confocal()
     
     def save_data(self, data):
         if not self.save_enabled or not self.save_path:
