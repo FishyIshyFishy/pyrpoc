@@ -289,11 +289,6 @@ class SplitDataStream(Acquisition):
                 ao_task.write(waveform, auto_start=False)
                 ai_task.start()
 
-                if static_do:
-                    # static_do already wrote & updated lines,
-                    # no start()/wait_needed for non-buffered
-                    pass
-
                 if do_task:
                     do_task.start()
 
@@ -304,6 +299,10 @@ class SplitDataStream(Acquisition):
                 ai_task.wait_until_done(timeout=timeout)
                 if do_task:
                     do_task.wait_until_done(timeout=timeout)
+
+                if static_do:
+                    off_vals = [not v for v in stat_vals]
+                    static_do.write(off_vals, auto_start=True)
                 
                 acq_data = np.array(ai_task.read(number_of_samples_per_channel=total_samples))
                 

@@ -27,7 +27,7 @@
     "acquisition_parameters_visible": true,
     "instrument_controls_visible": true,
     "display_controls_visible": true,
-    "lines_enabled": true,
+    "lines_enabled": false,
     "main_splitter_sizes": [
       104,
       418,
@@ -36,17 +36,18 @@
   },
   "instruments": [
     {
-      "name": "Prior Stage",
-      "instrument_type": "prior stage",
+      "name": "Galvo Scanner",
+      "instrument_type": "galvo",
       "parameters": {
-        "port": 3,
-        "max_z_height": 50000.0,
-        "safe_move_distance": 10000.0,
-        "name": "Prior Stage"
+        "slow_axis_channel": 0,
+        "fast_axis_channel": 1,
+        "sample_rate": 1000000,
+        "device_name": "Dev1",
+        "name": "Galvo Scanner"
       }
     },
     {
-      "name": "Data Input",
+      "name": "Data Input\\",
       "instrument_type": "data input",
       "parameters": {
         "input_channels": [
@@ -59,18 +60,17 @@
         },
         "sample_rate": 1000000,
         "device_name": "Dev1",
-        "name": "Data Input"
+        "name": "Data Input\\"
       }
     },
     {
-      "name": "Galvo Scanner",
-      "instrument_type": "galvo",
+      "name": "Prior Stage",
+      "instrument_type": "prior stage",
       "parameters": {
-        "slow_axis_channel": 0,
-        "fast_axis_channel": 1,
-        "sample_rate": 1000000,
-        "device_name": "Dev1",
-        "name": "Galvo Scanner"
+        "port": 3,
+        "max_z_height": 50000.0,
+        "safe_move_distance": 10000.0,
+        "name": "Prior Stage"
       }
     }
   ],
@@ -78,9 +78,13 @@
   "rpoc_channels": {
     "1": {
       "device": "Dev1",
-      "port_line": "port1/line1",
-      "channel_type": "mask"
+      "port_line": "port0/line4",
+      "channel_type": "static"
     }
   },
-  "rpoc_static_channels": {}
+  "rpoc_static_channels": {
+    "1": {
+      "level": "Static High"
+    }
+  }
 }
