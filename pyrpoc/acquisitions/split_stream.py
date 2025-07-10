@@ -219,7 +219,7 @@ class SplitDataStream(Acquisition):
                         device = channel_info.get('device', device_name)
                         port_line = channel_info.get('port_line', f'port0/line{4+channel_id-1}')
                         rpoc_do_channels.append(f"{device}/{port_line}")
-                        rpoc_ttl_signals.append(flat_ttl.tolist())
+                        rpoc_ttl_signals.append(flat_ttl)
 
             with nidaqmx.Task() as ao_task, nidaqmx.Task() as ai_task:
                 ao_task.ao_channels.add_ao_voltage_chan(f"{device_name}/ao{fast_channel}")
@@ -238,21 +238,65 @@ class SplitDataStream(Acquisition):
                     samps_per_chan=total_samples
                 )
                 do_task = None
-                if rpoc_do_channels and rpoc_ttl_signals:
+                # Separate dynamic (port0) and static (port1+) channels
+                dyn_chans = []
+                dyn_ttls = []
+                stat_chans = []
+                stat_vals = []
+                
+                for chan, flat_ttl in zip(rpoc_do_channels, rpoc_ttl_signals):
+                    if '/port0/' in chan.lower():
+                        # anything on port0 → dynamic, clocked DO
+                        dyn_chans.append(chan)
+                        dyn_ttls.append(flat_ttl)
+                    else:
+                        # anything else (e.g. port1) → static DO
+                        stat_chans.append(chan)
+                        # take the first value as constant level
+                        stat_vals.append(bool(flat_ttl.flat[0]))
+
+                # -- dynamic, hardware-timed DO task (on port0) --
+                do_task = None
+                if dyn_chans:
                     do_task = nidaqmx.Task()
-                    for chan in rpoc_do_channels:
-                        do_task.do_channels.add_do_chan(chan)
+                    # add all port0 lines as one buffered channel
+                    for c in dyn_chans:
+                        do_task.do_channels.add_do_chan(c)
                     do_task.timing.cfg_samp_clk_timing(
                         rate=rate,
                         source=f"/{device_name}/ao/SampleClock",
                         sample_mode=AcquisitionType.FINITE,
                         samps_per_chan=total_samples
                     )
-                    do_task.write(rpoc_ttl_signals, auto_start=False)
+
+                    # write the pattern(s)
+                    if len(dyn_chans) == 1:
+                        do_task.write(dyn_ttls[0].tolist(), auto_start=False)
+                    else:
+                        data_to_write = [arr.tolist() for arr in dyn_ttls]
+                        do_task.write(data_to_write, auto_start=False)
+
+                # -- static, immediate DO task (on port1 or others) --
+                static_do = None
+                if stat_chans:
+                    static_do = nidaqmx.Task()
+                    for c in stat_chans:
+                        static_do.do_channels.add_do_chan(c)
+                    # write a constant level (list of booleans matching each line)
+                    # auto_start=True so it drives immediately
+                    static_do.write(stat_vals, auto_start=True)
+                # now write AO waveform, start AI, start DO, start AO
                 ao_task.write(waveform, auto_start=False)
                 ai_task.start()
+
+                if static_do:
+                    # static_do already wrote & updated lines,
+                    # no start()/wait_needed for non-buffered
+                    pass
+
                 if do_task:
                     do_task.start()
+
                 ao_task.start()
 
                 timeout = total_samples / rate + 5
