@@ -727,6 +727,7 @@ class DisplayControls(QWidget):
             if child.widget():
                 child.widget().deleteLater()
         self.display_params_widget = None
+        print(display_widget.__class__.__name__)
         if display_widget is not None and display_widget.__class__.__name__ == 'MultichannelImageDisplayWidget':
             from pyrpoc.displays.multichan_tiled import MultichannelDisplayParametersWidget
             self.display_params_widget = MultichannelDisplayParametersWidget(display_widget)
