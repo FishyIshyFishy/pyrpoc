@@ -46,8 +46,9 @@ class Acquisition(abc.ABC):
                 'timestamp': datetime.now().isoformat(),
                 'acquisition_parameters': getattr(self, 'acquisition_parameters', {}),
                 'rpoc_enabled': getattr(self, 'rpoc_enabled', False),
-                'rpoc_masks': len(getattr(self, 'rpoc_masks', {})),
-                'rpoc_channels': len(getattr(self, 'rpoc_channels', {})),
+                'rpoc_mask_channels': len(getattr(self, 'rpoc_mask_channels', {})),
+                'rpoc_static_channels': len(getattr(self, 'rpoc_static_channels', {})),
+                'rpoc_script_channels': len(getattr(self, 'rpoc_script_channels', {})),
                 'custom_metadata': self.metadata
             }
             

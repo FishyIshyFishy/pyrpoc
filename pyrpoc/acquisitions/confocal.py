@@ -23,8 +23,9 @@ class Confocal(Acquisition):
         self.acquisition_parameters = acquisition_parameters or {}
         
         self.rpoc_enabled = False
-        self.rpoc_masks = {}
-        self.rpoc_channels = {}
+        self.rpoc_mask_channels = {}
+        self.rpoc_static_channels = {}
+        self.rpoc_script_channels = {}
 
     def configure_rpoc(self, rpoc_enabled, rpoc_mask_channels=None, rpoc_static_channels=None, rpoc_script_channels=None, **kwargs):
         self.rpoc_enabled = rpoc_enabled
@@ -102,31 +103,33 @@ class Confocal(Acquisition):
             frame[ch] = np.clip(frame[ch], 0, 1)
 
         if self.signal_bus:
-            self.signal_bus.console_message.emit(f"RPOC Debug - enabled: {self.rpoc_enabled}, masks: {len(self.rpoc_masks)}, channels: {len(self.rpoc_channels)}")
+            self.signal_bus.console_message.emit(f"RPOC Debug - enabled: {self.rpoc_enabled}, masks: {len(self.rpoc_mask_channels)}, static: {len(self.rpoc_static_channels)}")
         
-        if self.rpoc_enabled and self.rpoc_masks and self.rpoc_channels:
+        if self.rpoc_enabled and self.rpoc_mask_channels:
             combined_mask = np.zeros((y_pixels, x_pixels), dtype=bool)
             
-            for channel_id, mask in self.rpoc_masks.items():
-                if channel_id in self.rpoc_channels:
-                    if isinstance(mask, np.ndarray):
-                        mask_array = mask
-                    else:
-                        try:
-                            if isinstance(mask, Image.Image):
-                                mask_array = np.array(mask)
-                            else:
-                                mask_array = mask
-                        except:
+            for channel_id, channel_data in self.rpoc_mask_channels.items():
+                mask = channel_data.get('mask_data')
+                if mask is None:
+                    continue
+                if isinstance(mask, np.ndarray):
+                    mask_array = mask
+                else:
+                    try:
+                        if isinstance(mask, Image.Image):
+                            mask_array = np.array(mask)
+                        else:
                             mask_array = mask
-                    
-                    mask_array = mask_array > 0
-                    if mask_array.shape != (y_pixels, x_pixels):
-                        from scipy.ndimage import zoom
-                        zoom_factors = (y_pixels / mask_array.shape[0], x_pixels / mask_array.shape[1])
-                        mask_array = zoom(mask_array, zoom_factors, order=0).astype(bool)
-                    
-                    combined_mask |= mask_array
+                    except:
+                        mask_array = mask
+                
+                mask_array = mask_array > 0
+                if mask_array.shape != (y_pixels, x_pixels):
+                    from scipy.ndimage import zoom
+                    zoom_factors = (y_pixels / mask_array.shape[0], x_pixels / mask_array.shape[1])
+                    mask_array = zoom(mask_array, zoom_factors, order=0).astype(bool)
+                
+                combined_mask |= mask_array
             
             for ch in range(num_channels):
                 frame[ch, combined_mask] = 0
@@ -137,12 +140,12 @@ class Confocal(Acquisition):
             
             if self.signal_bus:
                 rpoc_channels_info = []
-                for channel_id, channel_info in self.rpoc_channels.items():
-                    device = channel_info.get('device', 'Dev1')
-                    port_line = channel_info.get('port_line', f'port0/line{4+channel_id-1}')
+                for channel_id, channel_data in self.rpoc_mask_channels.items():
+                    device = channel_data.get('device', 'Dev1')
+                    port_line = channel_data.get('port_line', f'port0/line{4+channel_id-1}')
                     rpoc_channels_info.append(f"Channel {channel_id}: {device}/{port_line}")
                 
-                self.signal_bus.console_message.emit(f"RPOC Active - {len(self.rpoc_masks)} masks on channels: {', '.join(rpoc_channels_info)}")
+                self.signal_bus.console_message.emit(f"RPOC Active - {len(self.rpoc_mask_channels)} masks on channels: {', '.join(rpoc_channels_info)}")
 
         time.sleep(1)
         

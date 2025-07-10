@@ -30,8 +30,9 @@ class SplitDataStream(Acquisition):
             raise ValueError("Prior stage is required for SplitDataStream acquisition")
         
         self.rpoc_enabled = False
-        self.rpoc_masks = {}
-        self.rpoc_channels = {}
+        self.rpoc_mask_channels = {}
+        self.rpoc_static_channels = {}
+        self.rpoc_script_channels = {}
         self.rpoc_ttl_signals = {}  # channel_id -> flat TTL array
 
     def configure_rpoc(self, rpoc_enabled, rpoc_mask_channels=None, rpoc_static_channels=None, rpoc_script_channels=None, **kwargs):

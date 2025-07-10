@@ -79,7 +79,15 @@ class BaseRPOCChannelWidget(QWidget):
         daq_layout.addWidget(QLabel('Device:'))
         self.device_edit = QSearchableComboBox()
 
-        default_device = self.app_state.rpoc_channels.get(self.channel_id, {}).get('device', 'Dev1')
+        # Get default device from appropriate storage based on channel type
+        default_device = 'Dev1'
+        if self.channel_type == 'mask' and hasattr(self.app_state, 'rpoc_mask_channels'):
+            default_device = self.app_state.rpoc_mask_channels.get(self.channel_id, {}).get('device', 'Dev1')
+        elif self.channel_type == 'static' and hasattr(self.app_state, 'rpoc_static_channels'):
+            default_device = self.app_state.rpoc_static_channels.get(self.channel_id, {}).get('device', 'Dev1')
+        elif self.channel_type == 'script' and hasattr(self.app_state, 'rpoc_script_channels'):
+            default_device = self.app_state.rpoc_script_channels.get(self.channel_id, {}).get('device', 'Dev1')
+        
         self.device_edit.setCurrentText(default_device)
         self.device_edit.currentTextChanged.connect(self.on_daq_channel_changed)
         daq_layout.addWidget(self.device_edit)
@@ -91,7 +99,15 @@ class BaseRPOCChannelWidget(QWidget):
                                       'port1/line0', 'port1/line1', 'port1/line2', 'port1/line3', 'port1/line4', 'port1/line5', 'port1/line6', 'port1/line7', 
                                       'port1/line8', 'port1/line9', 'port1/line10', 'port1/line11', 'port1/line12', 'port1/line13', 'port1/line14', 'port1/line15'])
         
-        default_port_line = self.app_state.rpoc_channels.get(self.channel_id, {}).get('port_line', f'port0/line{3+channel_id}')
+        # Get default port_line from appropriate storage based on channel type
+        default_port_line = f'port0/line{3+self.channel_id}'
+        if self.channel_type == 'mask' and hasattr(self.app_state, 'rpoc_mask_channels'):
+            default_port_line = self.app_state.rpoc_mask_channels.get(self.channel_id, {}).get('port_line', f'port0/line{3+self.channel_id}')
+        elif self.channel_type == 'static' and hasattr(self.app_state, 'rpoc_static_channels'):
+            default_port_line = self.app_state.rpoc_static_channels.get(self.channel_id, {}).get('port_line', f'port0/line{3+self.channel_id}')
+        elif self.channel_type == 'script' and hasattr(self.app_state, 'rpoc_script_channels'):
+            default_port_line = self.app_state.rpoc_script_channels.get(self.channel_id, {}).get('port_line', f'port0/line{3+self.channel_id}')
+        
         self.port_line_edit.setCurrentText(default_port_line)
         self.port_line_edit.currentTextChanged.connect(self.on_daq_channel_changed)
         daq_layout.addWidget(self.port_line_edit)
