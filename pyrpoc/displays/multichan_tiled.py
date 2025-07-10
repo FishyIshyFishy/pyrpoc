@@ -40,7 +40,9 @@ class MultichannelImageDisplayWidget(BaseImageDisplayWidget):
         """Set display parameters from GUI"""
         if 'intensity_params' in params:
             self.intensity_params = params['intensity_params'].copy()
-            self.update_intensity_controls()
+            # Update colorbars for all channels
+            for ch in range(self.num_channels):
+                self.update_colorbar(ch)
             self.update_display()
     
 
@@ -51,7 +53,8 @@ class MultichannelImageDisplayWidget(BaseImageDisplayWidget):
         """Create a colorbar widget for a channel"""
         widget = QWidget()
         widget.setFixedWidth(30)
-        widget.setMinimumHeight(100)
+        widget.setMinimumHeight(150)
+        widget.setMaximumHeight(300)
         widget.colorbar_pixmap = None
         widget.channel_idx = channel_idx
         
@@ -60,6 +63,13 @@ class MultichannelImageDisplayWidget(BaseImageDisplayWidget):
             if widget.colorbar_pixmap:
                 painter = QPainter(widget)
                 painter.drawPixmap(0, 0, widget.colorbar_pixmap)
+            else:
+                # Draw a default colorbar if no pixmap
+                painter = QPainter(widget)
+                painter.fillRect(0, 0, widget.width(), widget.height(), QColor(240, 240, 240))
+                painter.setPen(QPen(QColor(0, 0, 0), 1))
+                painter.drawRect(0, 0, widget.width()-1, widget.height()-1)
+                painter.drawText(5, widget.height() - 5, "No data")
         
         widget.paintEvent = paintEvent
         return widget
@@ -528,18 +538,6 @@ class MultichannelImageDisplayWidget(BaseImageDisplayWidget):
             if data_max > data_min:
                 params['min'] = data_min
                 params['max'] = data_max
-                
-                # Update controls if they exist
-                if hasattr(self, 'intensity_controls') and channel_idx < len(self.intensity_controls):
-                    controls = self.intensity_controls[channel_idx]
-                    if hasattr(controls, 'min_spinbox'):
-                        controls.min_spinbox.setValue(int(data_min * 1000))
-                    if hasattr(controls, 'max_spinbox'):
-                        controls.max_spinbox.setValue(int(data_max * 1000))
-                    if hasattr(controls, 'min_slider'):
-                        controls.min_slider.setValue(int(data_min * 1000))
-                    if hasattr(controls, 'max_slider'):
-                        controls.max_slider.setValue(int(data_max * 1000))
     
     def update_display(self):
         """Update all channel displays"""
