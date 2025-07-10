@@ -32,15 +32,14 @@ class MultichannelImageDisplayWidget(BaseImageDisplayWidget):
                 self.channel_names = [f'Channel {i+1}' for i in range(self.num_channels)]
             elif modality == 'split data stream':
                 # Use real channel names from data input instrument
-                input_names = channel_names if channel_names else [f'Input {i+1}' for i in range(self.num_channels // 3)]
+                input_names = channel_names if channel_names else [f'Input {i+1}' for i in range(self.num_channels // 2)]
                 self.channel_names = []
                 for input_ch, base_name in enumerate(input_names):
                     self.channel_names.extend([
                         f'{base_name} - First Portion',
                         f'{base_name} - Second Portion',
-                        f'{base_name} - Full Data'
                     ])
-                # Handle any remaining channels (in case num_channels is not divisible by 3)
+                    
                 remaining = self.num_channels - len(self.channel_names)
                 if remaining > 0:
                     for i in range(remaining):

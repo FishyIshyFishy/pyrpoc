@@ -1,0 +1,79 @@
+{
+  "modality": "split data stream",
+  "acquisition_parameters": {
+    "num_frames": 1,
+    "split_percentage": 50,
+    "save_enabled": false,
+    "save_path": "",
+    "dwell_time": 10,
+    "extrasteps_left": 50,
+    "extrasteps_right": 50,
+    "amplitude_x": 0.5,
+    "amplitude_y": 0.5,
+    "offset_x": 0.0,
+    "offset_y": 0.0,
+    "x_pixels": 512,
+    "y_pixels": 512,
+    "numtiles_x": 1,
+    "numtiles_y": 1,
+    "numtiles_z": 1,
+    "tile_size_x": 100,
+    "tile_size_y": 100,
+    "tile_size_z": 50
+  },
+  "display_parameters": {},
+  "rpoc_enabled": false,
+  "ui_state": {
+    "acquisition_parameters_visible": true,
+    "instrument_controls_visible": true,
+    "display_controls_visible": true,
+    "lines_enabled": false,
+    "main_splitter_sizes": [
+      104,
+      418,
+      104
+    ]
+  },
+  "instruments": [
+    {
+      "name": "Prior Stage",
+      "instrument_type": "prior stage",
+      "parameters": {
+        "port": 3,
+        "max_z_height": 50000.0,
+        "safe_move_distance": 10000.0,
+        "name": "Prior Stage"
+      }
+    },
+    {
+      "name": "Data Input",
+      "instrument_type": "data input",
+      "parameters": {
+        "input_channels": [
+          0,
+          1
+        ],
+        "channel_names": {
+          "0": "ch0",
+          "1": "ch1"
+        },
+        "sample_rate": 1000000,
+        "device_name": "Dev1",
+        "name": "Data Input"
+      }
+    },
+    {
+      "name": "Galvo Scanner",
+      "instrument_type": "galvo",
+      "parameters": {
+        "slow_axis_channel": 0,
+        "fast_axis_channel": 1,
+        "sample_rate": 1000000,
+        "device_name": "Dev1",
+        "name": "Galvo Scanner"
+      }
+    }
+  ],
+  "rpoc_masks": {},
+  "rpoc_channels": {}
+}
