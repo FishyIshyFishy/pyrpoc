@@ -725,7 +725,7 @@ class DisplayControls(QWidget):
 
         # Show the correct widget
         if display_widget is not None and display_widget.__class__.__name__ == 'MultichannelImageDisplayWidget':
-            from pyrpoc.displays.multichan_tiled import MultichannelDisplayParametersWidget
+            print(f'creating multichanel image display widget')
             self.display_params_widget = MultichannelDisplayParametersWidget(display_widget)
         else:
             placeholder = QLabel('No display settings available for this display type.')
@@ -1059,6 +1059,7 @@ class DockableMiddlePanel(QMainWindow):
         main_window = self.window()
         if hasattr(main_window, 'left_widget') and hasattr(main_window.left_widget, 'display_controls'):
             main_window.left_widget.display_controls.update_display_params_widget()
+            print(f'refreshing in display panel')
 
 
     def create_image_display_widget(self):
