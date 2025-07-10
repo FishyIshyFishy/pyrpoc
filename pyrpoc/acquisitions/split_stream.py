@@ -258,11 +258,10 @@ class SplitDataStream(Acquisition):
                     second_portion = np.mean(reshaped[:, :, split_point:], axis=2)
                     cropped_first = first_portion[:, extra_left:extra_left + numsteps_x]
                     cropped_second = second_portion[:, extra_left:extra_left + numsteps_x]
-                    input_results.append(np.stack([cropped_first, cropped_second]))
-                if len(input_results) == 1:
-                    return input_results[0]
-                else:
-                    return np.stack(input_results)
+                    input_results.append(cropped_first)
+                    input_results.append(cropped_second)
+                # Output shape: (N*2, height, width)
+                return np.stack(input_results)
         except Exception as e:
             self.signal_bus.console_message.emit(f'Error in DAQ acquisition: {e}')
             return self.generate_simulated_confocal()
