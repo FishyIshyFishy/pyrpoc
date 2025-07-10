@@ -252,6 +252,15 @@ def handle_load_config(app_state, main_window):
         
         print(f"Configuration loaded from {file_path}")
         main_window.rebuild_gui()
+        
+        # Re-establish lines widget connections after GUI rebuild
+        try:
+            image_display = main_window.mid_layout.image_display_widget
+            lines = main_window.mid_layout.lines_widget
+            image_display.connect_lines_widget(lines)
+            print("Lines widget connections re-established after config load")
+        except Exception as e:
+            print(f"Error re-establishing lines widget connections after config load: {e}")
 
         return 1
         
