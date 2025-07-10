@@ -176,7 +176,13 @@ class PriorStage(Instrument):
 
     def cleanup(self):
         try:
-            if self.sdk is not None and self.session_id is not None:
+            if self.connected and self.sdk is not None and self.session_id is not None:
+                # Send disconnect command to the controller first
+                ret, response = self.send_command("controller.disconnect")
+                if ret != 0:
+                    self.log_message(f"Warning: controller.disconnect returned {ret}: {response}")
+                
+                # Close the SDK session
                 self.sdk.PriorScientificSDK_CloseSession(self.session_id)
                 self.session_id = None
             self.connected = False
@@ -187,7 +193,6 @@ class PriorStage(Instrument):
             self.log_message(f"Error during Prior stage cleanup: {e}")
 
     def disconnect(self):
-        """Disconnect the instrument and clean up resources"""
         self.cleanup()
 
     def get_widget(self):
