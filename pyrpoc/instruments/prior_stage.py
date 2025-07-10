@@ -188,11 +188,12 @@ class PriorStage(Instrument):
             self.connected = False
             if hasattr(self, '_sdk_initialized'):
                 delattr(self, '_sdk_initialized')
-            self.log_message("Prior stage connection closed")
         except Exception as e:
             self.log_message(f"Error during Prior stage cleanup: {e}")
 
     def disconnect(self):
+        print(f'iahgiof;euwgsnflvo;diesbfnlkdj')
+        self.log_message("Prior stage connection closed")
         self.cleanup()
 
     def get_widget(self):
