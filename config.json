@@ -29,9 +29,9 @@
     "display_controls_visible": true,
     "lines_enabled": false,
     "main_splitter_sizes": [
-      104,
-      418,
-      104
+      229,
+      918,
+      229
     ]
   },
   "instruments": [
@@ -74,16 +74,12 @@
       }
     }
   ],
-  "rpoc_masks": {},
-  "rpoc_channels": {
-    "1": {
-      "device": "Dev1",
-      "port_line": "port0/line4",
-      "channel_type": "static"
-    }
-  },
+  "rpoc_mask_channels": {},
+  "rpoc_script_channels": {},
   "rpoc_static_channels": {
     "1": {
+      "device": "Dev1",
+      "port_line": "port1/line1",
       "level": "Static High"
     }
   }

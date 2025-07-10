@@ -312,8 +312,11 @@ class SplitDataStream(Acquisition):
                     do_task.wait_until_done(timeout=timeout)
 
                 if static_do:
-                    off_vals = [not v for v in stat_vals]
-                    static_do.write(off_vals, auto_start=True)
+                    # off_vals = [not v for v in stat_vals]
+                    # static_do.write(off_vals, auto_start=True)
+                    static_do.write([not v for v in stat_vals])
+                    static_do.close()
+                    
                 
                 acq_data = np.array(ai_task.read(number_of_samples_per_channel=total_samples))
                 
