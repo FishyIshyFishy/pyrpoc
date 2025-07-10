@@ -830,9 +830,6 @@ class RightPanel(QWidget):
 
     def restore_rpoc_channels(self):
         """Restore RPOC channels from the app_state config"""
-        if not hasattr(self.app_state, 'rpoc_channels'):
-            return
-        
         # Clear existing channels
         self.rpoc_channels.clear()
         while self.channels_layout.count():
@@ -840,25 +837,35 @@ class RightPanel(QWidget):
             if child.widget():
                 child.widget().deleteLater()
         
-        # Create a copy of the channels data to avoid iteration issues
-        channels_to_restore = dict(self.app_state.rpoc_channels)
-        
         # Find the highest channel ID to set next_channel_id
         max_channel_id = 0
         
-        # Restore each channel from config
-        for channel_id_str, channel_data in channels_to_restore.items():
-            channel_id = int(channel_id_str)
-            max_channel_id = max(max_channel_id, channel_id)
-            
-            # Get channel type from config, default to mask
-            channel_type = channel_data.get('channel_type', 'mask')
-            
-            # Create the appropriate channel widget
-            from pyrpoc.rpoc.rpoc_manager import create_rpoc_channel_widget
-            channel_widget = create_rpoc_channel_widget(channel_type, channel_id, self.app_state, self.signals)
-            self.rpoc_channels[channel_id] = channel_widget
-            self.channels_layout.addWidget(channel_widget)
+        # Restore mask channels
+        if hasattr(self.app_state, 'rpoc_mask_channels'):
+            for channel_id, channel_data in self.app_state.rpoc_mask_channels.items():
+                max_channel_id = max(max_channel_id, channel_id)
+                from pyrpoc.rpoc.rpoc_manager import create_rpoc_channel_widget
+                channel_widget = create_rpoc_channel_widget('mask', channel_id, self.app_state, self.signals)
+                self.rpoc_channels[channel_id] = channel_widget
+                self.channels_layout.addWidget(channel_widget)
+        
+        # Restore static channels
+        if hasattr(self.app_state, 'rpoc_static_channels'):
+            for channel_id, channel_data in self.app_state.rpoc_static_channels.items():
+                max_channel_id = max(max_channel_id, channel_id)
+                from pyrpoc.rpoc.rpoc_manager import create_rpoc_channel_widget
+                channel_widget = create_rpoc_channel_widget('static', channel_id, self.app_state, self.signals)
+                self.rpoc_channels[channel_id] = channel_widget
+                self.channels_layout.addWidget(channel_widget)
+        
+        # Restore script channels
+        if hasattr(self.app_state, 'rpoc_script_channels'):
+            for channel_id, channel_data in self.app_state.rpoc_script_channels.items():
+                max_channel_id = max(max_channel_id, channel_id)
+                from pyrpoc.rpoc.rpoc_manager import create_rpoc_channel_widget
+                channel_widget = create_rpoc_channel_widget('script', channel_id, self.app_state, self.signals)
+                self.rpoc_channels[channel_id] = channel_widget
+                self.channels_layout.addWidget(channel_widget)
         
         # Update next_channel_id to be higher than any existing channel
         self.next_channel_id = max_channel_id + 1

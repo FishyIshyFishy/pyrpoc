@@ -26,15 +26,17 @@ class Confocal(Acquisition):
         self.rpoc_masks = {}
         self.rpoc_channels = {}
 
-    def configure_rpoc(self, rpoc_enabled, rpoc_masks=None, rpoc_channels=None, **kwargs):
+    def configure_rpoc(self, rpoc_enabled, rpoc_mask_channels=None, rpoc_static_channels=None, rpoc_script_channels=None, **kwargs):
         self.rpoc_enabled = rpoc_enabled
-        if rpoc_masks:
-            self.rpoc_masks = rpoc_masks
-        if rpoc_channels:
-            self.rpoc_channels = rpoc_channels
+        self.rpoc_mask_channels = rpoc_mask_channels or {}
+        self.rpoc_static_channels = rpoc_static_channels or {}
+        self.rpoc_script_channels = rpoc_script_channels or {}
 
         if self.signal_bus:
-            self.signal_bus.console_message.emit(f"RPOC Configured - enabled: {rpoc_enabled}, masks: {len(rpoc_masks) if rpoc_masks else 0}, channels: {len(rpoc_channels) if rpoc_channels else 0}")
+            n_masks = len(self.rpoc_mask_channels) if self.rpoc_mask_channels else 0
+            n_static = len(self.rpoc_static_channels) if self.rpoc_static_channels else 0
+            n_script = len(self.rpoc_script_channels) if self.rpoc_script_channels else 0
+            self.signal_bus.console_message.emit(f"RPOC Configured - enabled: {rpoc_enabled}, masks: {n_masks}, static: {n_static}, script: {n_script}")
 
     def perform_acquisition(self):     
         self.save_metadata()
@@ -169,40 +171,59 @@ class Confocal(Acquisition):
             rpoc_do_channels = []
             rpoc_ttl_signals = []
             
-            if self.rpoc_enabled and self.rpoc_masks and self.rpoc_channels:
-                for channel_id, mask in self.rpoc_masks.items():
-                    if channel_id in self.rpoc_channels:
-                        channel_info = self.rpoc_channels[channel_id]
-                        device = channel_info.get('device', device_name)
-                        port_line = channel_info.get('port_line', f'port0/line{4+channel_id-1}')
-                        
-                        if isinstance(mask, np.ndarray):
-                            mask_array = mask
-                        else:
-                            try:
-                                from PIL import Image
-                                if isinstance(mask, Image.Image):
-                                    mask_array = np.array(mask)
-                                else:
-                                    mask_array = mask
-                            except:
+            if self.rpoc_enabled and self.rpoc_mask_channels:
+                for channel_id, channel_data in self.rpoc_mask_channels.items():
+                    mask = channel_data.get('mask_data')
+                    if mask is None:
+                        continue
+                    device = channel_data.get('device', device_name)
+                    # Convert channel_id to int for arithmetic if it's a string
+                    channel_id_int = int(channel_id) if isinstance(channel_id, str) else channel_id
+                    port_line = channel_data.get('port_line', f'port0/line{4+channel_id_int-1}')
+                    
+                    if isinstance(mask, np.ndarray):
+                        mask_array = mask
+                    else:
+                        try:
+                            from PIL import Image
+                            if isinstance(mask, Image.Image):
+                                mask_array = np.array(mask)
+                            else:
                                 mask_array = mask
-                        
-                        mask_array = mask_array > 0
-                        
-                        padded_mask = []
-                        for row in range(numsteps_y):
-                            padded_row = np.concatenate((
-                                np.zeros(extra_left, dtype=bool),
-                                mask_array[row, :] if row < mask_array.shape[0] else np.zeros(numsteps_x, dtype=bool),
-                                np.zeros(extra_right, dtype=bool)
-                            ))
-                            padded_mask.append(padded_row)
-                        
-                        flat_mask = np.repeat(np.array(padded_mask).ravel(), pixel_samples).astype(bool)
-                        
-                        rpoc_do_channels.append(f"{device}/{port_line}")
-                        rpoc_ttl_signals.append(flat_mask)
+                        except:
+                            mask_array = mask
+                    
+                    mask_array = mask_array > 0
+                    
+                    padded_mask = []
+                    for row in range(numsteps_y):
+                        padded_row = np.concatenate((
+                            np.zeros(extra_left, dtype=bool),
+                            mask_array[row, :] if row < mask_array.shape[0] else np.zeros(numsteps_x, dtype=bool),
+                            np.zeros(extra_right, dtype=bool)
+                        ))
+                        padded_mask.append(padded_row)
+                    
+                    flat_mask = np.repeat(np.array(padded_mask).ravel(), pixel_samples).astype(bool)
+                    
+                    rpoc_do_channels.append(f"{device}/{port_line}")
+                    rpoc_ttl_signals.append(flat_mask)
+            
+            # Handle static channels
+            if self.rpoc_enabled and self.rpoc_static_channels:
+                for channel_id, channel_data in self.rpoc_static_channels.items():
+                    device = channel_data.get('device', device_name)
+                    # Convert channel_id to int for arithmetic if it's a string
+                    channel_id_int = int(channel_id) if isinstance(channel_id, str) else channel_id
+                    port_line = channel_data.get('port_line', f'port0/line{4+channel_id_int-1}')
+                    
+                    level = channel_data.get('level', 'Static Low').lower()
+                    # All high or all low
+                    value = True if 'high' in level else False
+                    flat_ttl = np.full(total_x * total_y * pixel_samples, value, dtype=bool)
+                    
+                    rpoc_do_channels.append(f"{device}/{port_line}")
+                    rpoc_ttl_signals.append(flat_ttl)
             
             with nidaqmx.Task() as ao_task, nidaqmx.Task() as ai_task:
                 ao_task.ao_channels.add_ao_voltage_chan(f"{device_name}/ao{fast_channel}")

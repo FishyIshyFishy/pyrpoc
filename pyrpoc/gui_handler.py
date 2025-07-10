@@ -55,9 +55,10 @@ class AppState:
             'main_splitter_sizes': [200, 800, 200],  # left, middle, right panel sizes
         }
         
-        self.rpoc_masks = {}
-        self.rpoc_channels = {}
-        self.rpoc_static_channels = {}  # Add missing static channels field
+        # RPOC storage - separate by channel type for clarity
+        self.rpoc_mask_channels = {}    # channel_id -> {device, port_line, mask_data}
+        self.rpoc_static_channels = {}  # channel_id -> {device, port_line, level}
+        self.rpoc_script_channels = {}  # channel_id -> {device, port_line, script_data} (for future use)
 
     def get_instruments_by_type(self, instrument_type):
         '''wrapper for getting the instruments to verify if all the necessary instruments are connected in each modality'''
@@ -242,17 +243,54 @@ def handle_load_config(app_state, main_window):
         if 'instruments' in config_data:
             app_state.deserialize_instruments(config_data['instruments'])
         
-        # Handle rpoc_masks - clear actual mask data but preserve channel structure
-        if 'rpoc_masks' in config_data:
-            # Clear existing masks and set up structure for new ones
-            app_state.rpoc_masks = {}
+        # Handle rpoc_mask_channels - clear actual mask data but preserve channel structure
+        if 'rpoc_mask_channels' in config_data:
+            # Convert string keys to integers for consistency
+            app_state.rpoc_mask_channels = {}
+            for channel_id_str, channel_data in config_data['rpoc_mask_channels'].items():
+                try:
+                    channel_id = int(channel_id_str)
+                    app_state.rpoc_mask_channels[channel_id] = channel_data
+                except ValueError:
+                    # If conversion fails, keep as string but log warning
+                    app_state.rpoc_mask_channels[channel_id_str] = channel_data
+            # Note: Actual mask data is not loaded from config, users need to reload masks
+        elif 'rpoc_masks' in config_data:
+            # Legacy support for old config format
+            app_state.rpoc_mask_channels = {}
             # Note: Actual mask data is not loaded from config, users need to reload masks
         
-        if 'rpoc_channels' in config_data:
-            app_state.rpoc_channels = config_data['rpoc_channels']
+        if 'rpoc_script_channels' in config_data:
+            # Convert string keys to integers for consistency
+            app_state.rpoc_script_channels = {}
+            for channel_id_str, channel_data in config_data['rpoc_script_channels'].items():
+                try:
+                    channel_id = int(channel_id_str)
+                    app_state.rpoc_script_channels[channel_id] = channel_data
+                except ValueError:
+                    # If conversion fails, keep as string but log warning
+                    app_state.rpoc_script_channels[channel_id_str] = channel_data
+        elif 'rpoc_channels' in config_data:
+            # Legacy support for old config format - convert to script channels
+            app_state.rpoc_script_channels = {}
+            for channel_id_str, channel_data in config_data['rpoc_channels'].items():
+                try:
+                    channel_id = int(channel_id_str)
+                    app_state.rpoc_script_channels[channel_id] = channel_data
+                except ValueError:
+                    # If conversion fails, keep as string but log warning
+                    app_state.rpoc_script_channels[channel_id_str] = channel_data
         
         if 'rpoc_static_channels' in config_data:
-            app_state.rpoc_static_channels = config_data['rpoc_static_channels']
+            # Convert string keys to integers for consistency
+            app_state.rpoc_static_channels = {}
+            for channel_id_str, static_data in config_data['rpoc_static_channels'].items():
+                try:
+                    channel_id = int(channel_id_str)
+                    app_state.rpoc_static_channels[channel_id] = static_data
+                except ValueError:
+                    # If conversion fails, keep as string but log warning
+                    app_state.rpoc_static_channels[channel_id_str] = static_data
         
         print(f"Configuration loaded from {file_path}")
         main_window.rebuild_gui()
@@ -282,20 +320,28 @@ def handle_save_config(app_state):
         if not file_path:
             return 0
         
-        # Create a serializable version of rpoc_masks that excludes the actual mask data
-        serializable_rpoc_masks = {}
-        if hasattr(app_state, 'rpoc_masks'):
-            for channel_id, mask in app_state.rpoc_masks.items():
-                if mask is not None:
+        # Create a serializable version of rpoc_mask_channels that excludes the actual mask data
+        serializable_rpoc_mask_channels = {}
+        if hasattr(app_state, 'rpoc_mask_channels'):
+            for channel_id, channel_data in app_state.rpoc_mask_channels.items():
+                if 'mask_data' in channel_data and channel_data['mask_data'] is not None:
                     # Store metadata about the mask instead of the actual mask data
-                    serializable_rpoc_masks[str(channel_id)] = {
-                        'shape': mask.shape if hasattr(mask, 'shape') else None,
-                        'dtype': str(mask.dtype) if hasattr(mask, 'dtype') else None,
-                        'has_mask': True
+                    serializable_rpoc_mask_channels[str(channel_id)] = {
+                        'device': channel_data.get('device', 'Dev1'),
+                        'port_line': channel_data.get('port_line', f'port0/line{4+channel_id-1}'),
+                        'mask_metadata': {
+                            'shape': channel_data['mask_data'].shape if hasattr(channel_data['mask_data'], 'shape') else None,
+                            'dtype': str(channel_data['mask_data'].dtype) if hasattr(channel_data['mask_data'], 'dtype') else None,
+                            'has_mask': True
+                        }
                     }
                 else:
-                    serializable_rpoc_masks[str(channel_id)] = {
-                        'has_mask': False
+                    serializable_rpoc_mask_channels[str(channel_id)] = {
+                        'device': channel_data.get('device', 'Dev1'),
+                        'port_line': channel_data.get('port_line', f'port0/line{4+channel_id-1}'),
+                        'mask_metadata': {
+                            'has_mask': False
+                        }
                     }
         
         config_data = {
@@ -305,8 +351,8 @@ def handle_save_config(app_state):
             'rpoc_enabled': app_state.rpoc_enabled,
             'ui_state': app_state.ui_state.copy(),
             'instruments': app_state.serialize_instruments(),
-            'rpoc_masks': serializable_rpoc_masks,
-            'rpoc_channels': app_state.rpoc_channels.copy(),
+            'rpoc_mask_channels': serializable_rpoc_mask_channels,
+            'rpoc_script_channels': app_state.rpoc_script_channels.copy(),
             'rpoc_static_channels': app_state.rpoc_static_channels.copy()
             # Note: current_data is intentionally excluded as it may contain numpy arrays
         }
@@ -404,11 +450,11 @@ def handle_single_acquisition(app_state, signal_bus, continuous=False):
                 
                 # configure RPOC with masks, channels, and static channel information
                 if rpoc_enabled:
-                    rpoc_masks = getattr(app_state, 'rpoc_masks', {})
-                    rpoc_channels = getattr(app_state, 'rpoc_channels', {})
+                    rpoc_mask_channels = getattr(app_state, 'rpoc_mask_channels', {})
                     rpoc_static_channels = getattr(app_state, 'rpoc_static_channels', {})
-                    signal_bus.console_message.emit(f"Acquisition RPOC - enabled: {rpoc_enabled}, masks: {len(rpoc_masks)}, channels: {len(rpoc_channels)}, static: {len(rpoc_static_channels)}")
-                    acquisition.configure_rpoc(rpoc_enabled, rpoc_masks=rpoc_masks, rpoc_channels=rpoc_channels, rpoc_static_channels=rpoc_static_channels)
+                    rpoc_script_channels = getattr(app_state, 'rpoc_script_channels', {})
+                    signal_bus.console_message.emit(f"Acquisition RPOC - enabled: {rpoc_enabled}, masks: {len(rpoc_mask_channels)}, static: {len(rpoc_static_channels)}, script: {len(rpoc_script_channels)}")
+                    acquisition.configure_rpoc(rpoc_enabled, rpoc_mask_channels=rpoc_mask_channels, rpoc_static_channels=rpoc_static_channels, rpoc_script_channels=rpoc_script_channels)
                 else:
                     signal_bus.console_message.emit(f"Acquisition RPOC - disabled")
                 
@@ -435,11 +481,11 @@ def handle_single_acquisition(app_state, signal_bus, continuous=False):
                 
                 # configure RPOC with masks, channels, and static channel information
                 if rpoc_enabled:
-                    rpoc_masks = getattr(app_state, 'rpoc_masks', {})
-                    rpoc_channels = getattr(app_state, 'rpoc_channels', {})
+                    rpoc_mask_channels = getattr(app_state, 'rpoc_mask_channels', {})
                     rpoc_static_channels = getattr(app_state, 'rpoc_static_channels', {})
-                    signal_bus.console_message.emit(f"Acquisition RPOC - enabled: {rpoc_enabled}, masks: {len(rpoc_masks)}, channels: {len(rpoc_channels)}, static: {len(rpoc_static_channels)}")
-                    acquisition.configure_rpoc(rpoc_enabled, rpoc_masks=rpoc_masks, rpoc_channels=rpoc_channels, rpoc_static_channels=rpoc_static_channels)
+                    rpoc_script_channels = getattr(app_state, 'rpoc_script_channels', {})
+                    signal_bus.console_message.emit(f"Acquisition RPOC - enabled: {rpoc_enabled}, masks: {len(rpoc_mask_channels)}, static: {len(rpoc_static_channels)}, script: {len(rpoc_script_channels)}")
+                    acquisition.configure_rpoc(rpoc_enabled, rpoc_mask_channels=rpoc_mask_channels, rpoc_static_channels=rpoc_static_channels, rpoc_script_channels=rpoc_script_channels)
                 else:
                     signal_bus.console_message.emit(f"Acquisition RPOC - disabled")
                 
@@ -695,12 +741,12 @@ def handle_mask_created(mask, app_state, main_window, signal_bus):
 
 def handle_rpoc_channel_removed(channel_id, app_state, signal_bus):
     # remove the mask from app_state if it exists
-    if hasattr(app_state, 'rpoc_masks') and channel_id in app_state.rpoc_masks:
-        del app_state.rpoc_masks[channel_id]
+    if hasattr(app_state, 'rpoc_mask_channels') and channel_id in app_state.rpoc_mask_channels:
+        del app_state.rpoc_mask_channels[channel_id]
     
     # remove the DAQ channel info from app_state if it exists
-    if hasattr(app_state, 'rpoc_channels') and channel_id in app_state.rpoc_channels:
-        del app_state.rpoc_channels[channel_id]
+    if hasattr(app_state, 'rpoc_script_channels') and channel_id in app_state.rpoc_script_channels:
+        del app_state.rpoc_script_channels[channel_id]
     
     signal_bus.console_message.emit(f"RPOC channel {channel_id} removed.")
     return 0

@@ -34,10 +34,11 @@ class SplitDataStream(Acquisition):
         self.rpoc_channels = {}
         self.rpoc_ttl_signals = {}  # channel_id -> flat TTL array
 
-    def configure_rpoc(self, rpoc_enabled, rpoc_masks=None, rpoc_channels=None, **kwargs):
+    def configure_rpoc(self, rpoc_enabled, rpoc_mask_channels=None, rpoc_static_channels=None, rpoc_script_channels=None, **kwargs):
         self.rpoc_enabled = rpoc_enabled
-        self.rpoc_masks = rpoc_masks or {}
-        self.rpoc_channels = rpoc_channels or {}
+        self.rpoc_mask_channels = rpoc_mask_channels or {}
+        self.rpoc_static_channels = rpoc_static_channels or {}
+        self.rpoc_script_channels = rpoc_script_channels or {}
         self.rpoc_ttl_signals = {}  # channel_id -> flat TTL array
 
         # Get split percentage and acquisition parameters
@@ -56,8 +57,9 @@ class SplitDataStream(Acquisition):
         split_point = int(split_percentage / 100.0 * pixel_samples)
 
         # Handle mask-based channels
-        for channel_id, mask in (self.rpoc_masks or {}).items():
-            if channel_id not in self.rpoc_channels:
+        for channel_id, channel_data in (self.rpoc_mask_channels or {}).items():
+            mask = channel_data.get('mask_data')
+            if mask is None:
                 continue
             # Prepare mask
             if isinstance(mask, np.ndarray):
@@ -92,21 +94,19 @@ class SplitDataStream(Acquisition):
             self.rpoc_ttl_signals[channel_id] = flat_ttl
 
         # Handle static channels
-        rpoc_static_channels = kwargs.get('rpoc_static_channels', {})
-        for channel_id, static_info in (rpoc_static_channels or {}).items():
-            if channel_id not in self.rpoc_channels:
-                continue
-            level = static_info.get('level', 'Static Low').lower()
+        for channel_id, channel_data in (self.rpoc_static_channels or {}).items():
+            level = channel_data.get('level', 'Static Low').lower()
             # All high or all low
             value = True if 'high' in level else False
             flat_ttl = np.full(total_x * total_y * pixel_samples, value, dtype=bool)
             self.rpoc_ttl_signals[channel_id] = flat_ttl
 
         if self.signal_bus:
-            n_masks = len(self.rpoc_masks) if self.rpoc_masks else 0
-            n_static = len(rpoc_static_channels) if rpoc_static_channels else 0
+            n_masks = len(self.rpoc_mask_channels) if self.rpoc_mask_channels else 0
+            n_static = len(self.rpoc_static_channels) if self.rpoc_static_channels else 0
+            n_script = len(self.rpoc_script_channels) if self.rpoc_script_channels else 0
             n_total = len(self.rpoc_ttl_signals)
-            self.signal_bus.console_message.emit(f"RPOC Configured - enabled: {rpoc_enabled}, masks: {n_masks}, static: {n_static}, total: {n_total}")
+            self.signal_bus.console_message.emit(f"RPOC Configured - enabled: {rpoc_enabled}, masks: {n_masks}, static: {n_static}, script: {n_script}, total: {n_total}")
 
     def perform_acquisition(self):     
         self.save_metadata()
@@ -212,12 +212,22 @@ class SplitDataStream(Acquisition):
             rpoc_do_channels = []
             rpoc_ttl_signals = []
 
-            if self.rpoc_enabled and self.rpoc_ttl_signals and self.rpoc_channels:
+            if self.rpoc_enabled and self.rpoc_ttl_signals and (self.rpoc_mask_channels or self.rpoc_static_channels or self.rpoc_script_channels):
                 for channel_id, flat_ttl in self.rpoc_ttl_signals.items():
-                    if channel_id in self.rpoc_channels:
-                        channel_info = self.rpoc_channels[channel_id]
+                    # Find the channel info from the appropriate storage
+                    channel_info = None
+                    if channel_id in self.rpoc_mask_channels:
+                        channel_info = self.rpoc_mask_channels[channel_id]
+                    elif channel_id in self.rpoc_static_channels:
+                        channel_info = self.rpoc_static_channels[channel_id]
+                    elif channel_id in self.rpoc_script_channels:
+                        channel_info = self.rpoc_script_channels[channel_id]
+                    
+                    if channel_info:
                         device = channel_info.get('device', device_name)
-                        port_line = channel_info.get('port_line', f'port0/line{4+channel_id-1}')
+                        # Convert channel_id to int for arithmetic if it's a string
+                        channel_id_int = int(channel_id) if isinstance(channel_id, str) else channel_id
+                        port_line = channel_info.get('port_line', f'port0/line{4+channel_id_int-1}')
                         rpoc_do_channels.append(f"{device}/{port_line}")
                         rpoc_ttl_signals.append(flat_ttl)
 

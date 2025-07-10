@@ -113,18 +113,37 @@ class BaseRPOCChannelWidget(QWidget):
         pass
     
     def on_daq_channel_changed(self):
-        if not hasattr(self.app_state, 'rpoc_channels'):
-            self.app_state.rpoc_channels = {}
-        
         device = self.device_edit.currentText().strip()
         port_line = self.port_line_edit.currentText().strip()
         
-        self.app_state.rpoc_channels[self.channel_id] = {
-            'device': device,
-            'port_line': port_line,
-            'channel_type': self.channel_type  # Include channel type in saved data
-        }
-        self.signals.console_message.emit(f'RPOC channel {self.channel_id} set on {device}/{port_line}')
+        # Store in the appropriate channel type storage
+        if self.channel_type == 'mask':
+            if not hasattr(self.app_state, 'rpoc_mask_channels'):
+                self.app_state.rpoc_mask_channels = {}
+            self.app_state.rpoc_mask_channels[self.channel_id] = {
+                'device': device,
+                'port_line': port_line,
+                'mask_data': None  # Will be set when mask is loaded
+            }
+        elif self.channel_type == 'static':
+            if not hasattr(self.app_state, 'rpoc_static_channels'):
+                self.app_state.rpoc_static_channels = {}
+            # Keep existing level if available
+            existing_level = self.app_state.rpoc_static_channels.get(self.channel_id, {}).get('level', 'Static Low')
+            self.app_state.rpoc_static_channels[self.channel_id] = {
+                'device': device,
+                'port_line': port_line,
+                'level': existing_level
+            }
+        elif self.channel_type == 'script':
+            if not hasattr(self.app_state, 'rpoc_script_channels'):
+                self.app_state.rpoc_script_channels = {}
+            self.app_state.rpoc_script_channels[self.channel_id] = {
+                'device': device,
+                'port_line': port_line
+            }
+        
+        self.signals.console_message.emit(f'RPOC {self.channel_type} channel {self.channel_id} set on {device}/{port_line}')
     
     def get_daq_channel_info(self):
         device = self.device_edit.currentText().strip()
@@ -138,9 +157,16 @@ class BaseRPOCChannelWidget(QWidget):
         # Remove channel-specific data from app_state
         self.remove_channel_data()
         
-        # Remove DAQ channel info from app_state
-        if hasattr(self.app_state, 'rpoc_channels') and self.channel_id in self.app_state.rpoc_channels:
-            del self.app_state.rpoc_channels[self.channel_id]
+        # Remove DAQ channel info from app_state based on channel type
+        if self.channel_type == 'mask':
+            if hasattr(self.app_state, 'rpoc_mask_channels') and self.channel_id in self.app_state.rpoc_mask_channels:
+                del self.app_state.rpoc_mask_channels[self.channel_id]
+        elif self.channel_type == 'static':
+            if hasattr(self.app_state, 'rpoc_static_channels') and self.channel_id in self.app_state.rpoc_static_channels:
+                del self.app_state.rpoc_static_channels[self.channel_id]
+        elif self.channel_type == 'script':
+            if hasattr(self.app_state, 'rpoc_script_channels') and self.channel_id in self.app_state.rpoc_script_channels:
+                del self.app_state.rpoc_script_channels[self.channel_id]
         
         # Emit signal to remove this widget
         self.signals.rpoc_channel_removed.emit(self.channel_id)
@@ -225,15 +251,25 @@ class RPOCMaskChannelWidget(BaseRPOCChannelWidget):
     
     def handle_mask_loaded(self, mask):
         # store the mask in app_state
-        if not hasattr(self.app_state, 'rpoc_masks'):
-            self.app_state.rpoc_masks = {}
-        self.app_state.rpoc_masks[self.channel_id] = mask
+        if not hasattr(self.app_state, 'rpoc_mask_channels'):
+            self.app_state.rpoc_mask_channels = {}
+        if self.channel_id not in self.app_state.rpoc_mask_channels:
+            # Initialize the channel if it doesn't exist
+            self.app_state.rpoc_mask_channels[self.channel_id] = {
+                'device': 'Dev1',
+                'port_line': f'port0/line{4+self.channel_id-1}',
+                'mask_data': mask
+            }
+        else:
+            # Update existing channel with mask data
+            self.app_state.rpoc_mask_channels[self.channel_id]['mask_data'] = mask
         self.update_mask_status()
         self.signals.console_message.emit(f"Mask loaded for channel {self.channel_id} - shape: {mask.shape if hasattr(mask, 'shape') else 'unknown'}")
     
     def update_mask_status(self):
-        if hasattr(self.app_state, 'rpoc_masks') and self.channel_id in self.app_state.rpoc_masks:
-            mask = self.app_state.rpoc_masks[self.channel_id]
+        if hasattr(self.app_state, 'rpoc_mask_channels') and self.channel_id in self.app_state.rpoc_mask_channels:
+            channel_data = self.app_state.rpoc_mask_channels[self.channel_id]
+            mask = channel_data.get('mask_data')
             if mask is not None:
                 self.mask_status.setText(f'Mask: {mask.shape[1]}x{mask.shape[0]}')
                 self.mask_status.setStyleSheet('color: #4CAF50; font-size: 10px;')
@@ -246,8 +282,8 @@ class RPOCMaskChannelWidget(BaseRPOCChannelWidget):
     
     def remove_channel_data(self):
         # Remove mask from app_state
-        if hasattr(self.app_state, 'rpoc_masks') and self.channel_id in self.app_state.rpoc_masks:
-            del self.app_state.rpoc_masks[self.channel_id]
+        if hasattr(self.app_state, 'rpoc_mask_channels') and self.channel_id in self.app_state.rpoc_mask_channels:
+            del self.app_state.rpoc_mask_channels[self.channel_id]
 
 class RPOCScriptChannelWidget(BaseRPOCChannelWidget):
     """Widget for script-based RPOC channels (placeholder)"""
@@ -298,7 +334,14 @@ class RPOCStaticChannelWidget(BaseRPOCChannelWidget):
             self.app_state.rpoc_static_channels = {}
         
         static_level = self.static_level_combo.currentText()
+        # Get existing device and port_line if available
+        existing_data = self.app_state.rpoc_static_channels.get(self.channel_id, {})
+        device = existing_data.get('device', 'Dev1')
+        port_line = existing_data.get('port_line', f'port0/line{4+self.channel_id-1}')
+        
         self.app_state.rpoc_static_channels[self.channel_id] = {
+            'device': device,
+            'port_line': port_line,
             'level': static_level
         }
         self.signals.console_message.emit(f'RPOC static channel {self.channel_id} set to {static_level}')
