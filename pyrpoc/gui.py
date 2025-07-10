@@ -707,19 +707,7 @@ class DisplayControls(QWidget):
         self.group.toggled.connect(self.container.setVisible)
         main_layout.addWidget(self.group)
         self.setLayout(main_layout)
-
         self.display_params_widget = None
-        self.show_placeholder()
-
-    def show_placeholder(self):
-        while self.layout.count():
-            child = self.layout.takeAt(0)
-            if child.widget():
-                child.widget().deleteLater()
-        placeholder = QLabel('No display settings available for this display type.')
-        placeholder.setStyleSheet('color: #888; font-style: italic;')
-        self.display_params_widget = placeholder
-        self.layout.addWidget(self.display_params_widget)
 
     def update_display_params_widget(self):
         # Remove old widget
@@ -735,12 +723,14 @@ class DisplayControls(QWidget):
         if hasattr(main_window, 'mid_layout') and hasattr(main_window.mid_layout, 'image_display_widget'):
             display_widget = main_window.mid_layout.image_display_widget
 
-        # Only create the parameters widget if display_widget is valid
-        if display_widget is not None and hasattr(display_widget, 'get_display_parameters'):
+        # Show the correct widget
+        if display_widget is not None and display_widget.__class__.__name__ == 'MultichannelImageDisplayWidget':
+            from pyrpoc.displays.multichan_tiled import MultichannelDisplayParametersWidget
             self.display_params_widget = MultichannelDisplayParametersWidget(display_widget)
         else:
-            self.show_placeholder()
-            return
+            placeholder = QLabel('No display settings available for this display type.')
+            placeholder.setStyleSheet('color: #888; font-style: italic;')
+            self.display_params_widget = placeholder
         self.layout.addWidget(self.display_params_widget)
 
     def refresh(self):
@@ -1068,7 +1058,7 @@ class DockableMiddlePanel(QMainWindow):
         # After display is created, refresh display controls if possible
         main_window = self.window()
         if hasattr(main_window, 'left_widget') and hasattr(main_window.left_widget, 'display_controls'):
-            main_window.left_widget.display_controls.refresh()
+            main_window.left_widget.display_controls.update_display_params_widget()
 
 
     def create_image_display_widget(self):
