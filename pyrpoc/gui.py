@@ -736,169 +736,7 @@ class DisplayControls(QWidget):
             return
         self.layout.addWidget(self.display_params_widget)
 
-class RPOCChannelWidget(QWidget):
-    def __init__(self, channel_id, app_state, signals, parent=None):
-        super().__init__(parent)
-        self.channel_id = channel_id
-        self.app_state = app_state
-        self.signals = signals
-        self.mask_editor = None
-        
-        layout = QVBoxLayout()
-        layout.setContentsMargins(5, 5, 5, 5)
 
-        header_layout = QHBoxLayout()
-        self.channel_label = QLabel(f'Channel {channel_id}')
-        header_layout.addWidget(self.channel_label)
-
-        remove_btn = QPushButton('×')
-        remove_btn.setMaximumWidth(20)
-        remove_btn.clicked.connect(self.remove_channel)
-        header_layout.addWidget(remove_btn)
-        
-        layout.addLayout(header_layout)
-
-        daq_layout = QHBoxLayout()
-        daq_layout.addWidget(QLabel('Device:'))
-        self.device_edit = QSearchableComboBox()
-
-        default_device = self.app_state.rpoc_channels.get(self.channel_id, {}).get('device', 'Dev1')
-        self.device_edit.setCurrentText(default_device)
-        self.device_edit.currentTextChanged.connect(self.on_daq_channel_changed)
-        daq_layout.addWidget(self.device_edit)
-        
-        daq_layout.addWidget(QLabel('port#/line#:'))
-        self.port_line_edit = QSearchableComboBox()
-        self.port_line_edit.addItems(['port0/line0', 'port0/line1', 'port0/line2', 'port0/line3', 'port0/line4', 'port0/line5', 'port0/line6', 'port0/line7', 
-                                      'port0/line8', 'port0/line9', 'port0/line10', 'port0/line11', 'port0/line12', 'port0/line13', 'port0/line14', 'port0/line15', 
-                                      'port1/line0', 'port1/line1', 'port1/line2', 'port1/line3', 'port1/line4', 'port1/line5', 'port1/line6', 'port1/line7', 
-                                      'port1/line8', 'port1/line9', 'port1/line10', 'port1/line11', 'port1/line12', 'port1/line13', 'port1/line14', 'port1/line15'])
-        
-        default_port_line = self.app_state.rpoc_channels.get(self.channel_id, {}).get('port_line', f'port0/line{3+channel_id}')
-        self.port_line_edit.setCurrentText(default_port_line)
-        self.port_line_edit.currentTextChanged.connect(self.on_daq_channel_changed)
-        daq_layout.addWidget(self.port_line_edit)
-        
-        layout.addLayout(daq_layout)
-
-        self.mask_status = QLabel('No mask loaded')
-        self.mask_status.setStyleSheet('color: #666; font-size: 10px;')
-        layout.addWidget(self.mask_status)
-        
-        buttons_layout = QHBoxLayout()
-        
-        self.create_mask_btn = QPushButton('Create Mask')
-        self.create_mask_btn.clicked.connect(self.create_mask)
-        buttons_layout.addWidget(self.create_mask_btn)
-        
-        self.load_mask_btn = QPushButton('Load Mask')
-        self.load_mask_btn.clicked.connect(self.load_mask)
-        buttons_layout.addWidget(self.load_mask_btn)
-        
-        layout.addLayout(buttons_layout)
-        
-        self.setLayout(layout)
-
-        self.on_daq_channel_changed()
-
-        self.update_mask_status()
-    
-    def on_daq_channel_changed(self):
-        if not hasattr(self.app_state, 'rpoc_channels'):
-            self.app_state.rpoc_channels = {}
-        
-        device = self.device_edit.currentText().strip()
-        port_line = self.port_line_edit.currentText().strip()
-        
-        self.app_state.rpoc_channels[self.channel_id] = {
-            'device': device,
-            'port_line': port_line
-        }
-        self.signals.console_message.emit(f'RPOC channel {self.channel_id} set on {device}/{port_line}')
-    
-    def get_daq_channel_info(self):
-        device = self.device_edit.currentText().strip()
-        port_line = self.port_line_edit.currentText().strip()
-        return {
-            'device': device,
-            'port_line': port_line
-        }
-    
-    def create_mask(self):
-        image_data = self.get_current_image_data()
-        if image_data is None:
-            self.signals.console_message.emit('No image data available for mask creation. Please acquire an image first.')
-            return
-            
-        self.mask_editor = RPOCMaskEditor(image_data=image_data)
-        self.mask_editor.mask_created.connect(self.handle_mask_created)
-        self.mask_editor.show()
-    
-    def load_mask(self):
-        file_path, _ = QFileDialog.getOpenFileName(
-            self, 'Load Mask', '', 'Image files (*.png *.tif *.tiff);;All files (*)'
-        )
-        if file_path:
-            try:
-                mask = cv2.imread(file_path, cv2.IMREAD_GRAYSCALE)
-                if mask is not None:
-                    self.handle_mask_loaded(mask)
-                else:
-                    self.signals.console_message.emit(f"Failed to load mask from {file_path}")
-            except Exception as e:
-                self.signals.console_message.emit(f"Error loading mask: {e}")
-    
-    def get_current_image_data(self):
-        widget = self
-        while widget is not None:
-            if hasattr(widget, 'app_state') and hasattr(widget, 'mid_layout'):
-                # should be traversed up to main_window by here
-                if hasattr(widget.mid_layout, 'image_display_widget'):
-                    image_widget = widget.mid_layout.image_display_widget
-                    if hasattr(image_widget, 'get_image_data_for_rpoc'):
-                        return image_widget.get_image_data_for_rpoc()
-                break
-            widget = widget.parent()
-        
-        return None
-    
-    def handle_mask_created(self, mask):
-        self.handle_mask_loaded(mask)
-        self.signals.mask_created.emit(mask)
-    
-    def handle_mask_loaded(self, mask):
-        # store the mask in app_state
-        if not hasattr(self.app_state, 'rpoc_masks'):
-            self.app_state.rpoc_masks = {}
-        self.app_state.rpoc_masks[self.channel_id] = mask
-        self.update_mask_status()
-        self.signals.console_message.emit(f"Mask loaded for channel {self.channel_id} - shape: {mask.shape if hasattr(mask, 'shape') else 'unknown'}")
-    
-    def update_mask_status(self):
-        if hasattr(self.app_state, 'rpoc_masks') and self.channel_id in self.app_state.rpoc_masks:
-            mask = self.app_state.rpoc_masks[self.channel_id]
-            if mask is not None:
-                self.mask_status.setText(f'Mask: {mask.shape[1]}x{mask.shape[0]}')
-                self.mask_status.setStyleSheet('color: #4CAF50; font-size: 10px;')
-            else:
-                self.mask_status.setText('No mask loaded')
-                self.mask_status.setStyleSheet('color: #666; font-size: 10px;')
-        else:
-            self.mask_status.setText('No mask loaded')
-            self.mask_status.setStyleSheet('color: #666; font-size: 10px;')
-    
-    def remove_channel(self):
-        # remove mask from app_state
-        if hasattr(self.app_state, 'rpoc_masks') and self.channel_id in self.app_state.rpoc_masks:
-            del self.app_state.rpoc_masks[self.channel_id]
-        
-        # remove DAQ channel info from app_state
-        if hasattr(self.app_state, 'rpoc_channels') and self.channel_id in self.app_state.rpoc_channels:
-            del self.app_state.rpoc_channels[self.channel_id]
-        
-        # emit signal to remove this widget
-        self.signals.rpoc_channel_removed.emit(self.channel_id)
-        self.deleteLater()
 
 class RightPanel(QWidget):
     def __init__(self, app_state: AppState, signals: StateSignalBus):
@@ -934,6 +772,9 @@ class RightPanel(QWidget):
         
         self.add_modality_specific_controls(self.content_layout)
         self.add_common_controls(self.content_layout)
+        
+        # Restore RPOC channels from config
+        self.restore_rpoc_channels()
 
     def add_modality_specific_controls(self, layout):
         pass
@@ -986,6 +827,38 @@ class RightPanel(QWidget):
             self.channels_layout.removeWidget(widget)
             del self.rpoc_channels[channel_id]
             widget.deleteLater()
+
+    def restore_rpoc_channels(self):
+        """Restore RPOC channels from the app_state config"""
+        if not hasattr(self.app_state, 'rpoc_channels'):
+            return
+        
+        # Clear existing channels
+        self.rpoc_channels.clear()
+        while self.channels_layout.count():
+            child = self.channels_layout.takeAt(0)
+            if child.widget():
+                child.widget().deleteLater()
+        
+        # Find the highest channel ID to set next_channel_id
+        max_channel_id = 0
+        
+        # Restore each channel from config
+        for channel_id_str, channel_data in self.app_state.rpoc_channels.items():
+            channel_id = int(channel_id_str)
+            max_channel_id = max(max_channel_id, channel_id)
+            
+            # Get channel type from config, default to mask
+            channel_type = channel_data.get('channel_type', 'mask')
+            
+            # Create the appropriate channel widget
+            from pyrpoc.rpoc.rpoc_manager import create_rpoc_channel_widget
+            channel_widget = create_rpoc_channel_widget(channel_type, channel_id, self.app_state, self.signals)
+            self.rpoc_channels[channel_id] = channel_widget
+            self.channels_layout.addWidget(channel_widget)
+        
+        # Update next_channel_id to be higher than any existing channel
+        self.next_channel_id = max_channel_id + 1
 
 class LeftPanel(QWidget):
     def __init__(self, app_state: AppState, signals: StateSignalBus):

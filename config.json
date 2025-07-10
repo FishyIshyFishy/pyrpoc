@@ -78,7 +78,9 @@
   "rpoc_channels": {
     "1": {
       "device": "Dev1",
-      "port_line": "port1/line1"
+      "port_line": "port1/line1",
+      "channel_type": "mask"
     }
-  }
+  },
+  "rpoc_static_channels": {}
 }

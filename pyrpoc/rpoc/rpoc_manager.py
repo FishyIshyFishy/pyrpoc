@@ -57,6 +57,7 @@ class BaseRPOCChannelWidget(QWidget):
         self.channel_id = channel_id
         self.app_state = app_state
         self.signals = signals
+        self.channel_type = self.get_channel_type()  # Store channel type
         
         layout = QVBoxLayout()
         layout.setContentsMargins(5, 5, 5, 5)
@@ -103,6 +104,10 @@ class BaseRPOCChannelWidget(QWidget):
         self.setLayout(layout)
         self.on_daq_channel_changed()
     
+    def get_channel_type(self):
+        """Override in subclasses to return the channel type"""
+        return "mask"  # Default
+    
     def add_channel_content(self, layout):
         """Override in subclasses to add channel-specific content"""
         pass
@@ -116,7 +121,8 @@ class BaseRPOCChannelWidget(QWidget):
         
         self.app_state.rpoc_channels[self.channel_id] = {
             'device': device,
-            'port_line': port_line
+            'port_line': port_line,
+            'channel_type': self.channel_type  # Include channel type in saved data
         }
         self.signals.console_message.emit(f'RPOC channel {self.channel_id} set on {device}/{port_line}')
     
@@ -150,6 +156,9 @@ class RPOCMaskChannelWidget(BaseRPOCChannelWidget):
     def __init__(self, channel_id, app_state, signals, parent=None):
         self.mask_editor = None
         super().__init__(channel_id, app_state, signals, parent)
+    
+    def get_channel_type(self):
+        return "mask"
     
     def add_channel_content(self, layout):
         # Status label
@@ -243,6 +252,9 @@ class RPOCMaskChannelWidget(BaseRPOCChannelWidget):
 class RPOCScriptChannelWidget(BaseRPOCChannelWidget):
     """Widget for script-based RPOC channels (placeholder)"""
     
+    def get_channel_type(self):
+        return "script"
+    
     def add_channel_content(self, layout):
         # Placeholder content
         placeholder_label = QLabel('Script Channel - Coming Soon')
@@ -256,12 +268,24 @@ class RPOCScriptChannelWidget(BaseRPOCChannelWidget):
 class RPOCStaticChannelWidget(BaseRPOCChannelWidget):
     """Widget for static RPOC channels"""
     
+    def get_channel_type(self):
+        return "static"
+    
     def add_channel_content(self, layout):
         # Static level selector
         level_layout = QHBoxLayout()
         level_layout.addWidget(QLabel('Static Level:'))
         self.static_level_combo = QComboBox()
         self.static_level_combo.addItems(['Static High', 'Static Low'])
+        
+        # Restore static level from config if available
+        default_level = 'Static Low'
+        if hasattr(self.app_state, 'rpoc_static_channels') and self.channel_id in self.app_state.rpoc_static_channels:
+            saved_level = self.app_state.rpoc_static_channels[self.channel_id].get('level', default_level)
+            self.static_level_combo.setCurrentText(saved_level)
+        else:
+            self.static_level_combo.setCurrentText(default_level)
+        
         self.static_level_combo.currentTextChanged.connect(self.on_static_level_changed)
         level_layout.addWidget(self.static_level_combo)
         layout.addLayout(level_layout)

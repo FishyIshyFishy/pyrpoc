@@ -57,6 +57,7 @@ class AppState:
         
         self.rpoc_masks = {}
         self.rpoc_channels = {}
+        self.rpoc_static_channels = {}  # Add missing static channels field
 
     def get_instruments_by_type(self, instrument_type):
         '''wrapper for getting the instruments to verify if all the necessary instruments are connected in each modality'''
@@ -250,6 +251,9 @@ def handle_load_config(app_state, main_window):
         if 'rpoc_channels' in config_data:
             app_state.rpoc_channels = config_data['rpoc_channels']
         
+        if 'rpoc_static_channels' in config_data:
+            app_state.rpoc_static_channels = config_data['rpoc_static_channels']
+        
         print(f"Configuration loaded from {file_path}")
         main_window.rebuild_gui()
         
@@ -302,7 +306,8 @@ def handle_save_config(app_state):
             'ui_state': app_state.ui_state.copy(),
             'instruments': app_state.serialize_instruments(),
             'rpoc_masks': serializable_rpoc_masks,
-            'rpoc_channels': app_state.rpoc_channels.copy()
+            'rpoc_channels': app_state.rpoc_channels.copy(),
+            'rpoc_static_channels': app_state.rpoc_static_channels.copy()
             # Note: current_data is intentionally excluded as it may contain numpy arrays
         }
         
