@@ -192,7 +192,6 @@ class PriorStage(Instrument):
             self.log_message(f"Error during Prior stage cleanup: {e}")
 
     def disconnect(self):
-        print(f'iahgiof;euwgsnflvo;diesbfnlkdj')
         self.log_message("Prior stage connection closed")
         self.cleanup()
 
