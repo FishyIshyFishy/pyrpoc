@@ -274,26 +274,50 @@ class MultichannelImageDisplayWidget(BaseImageDisplayWidget):
             
 
             
-            # Create colorbar
-            colorbar_widget = self.create_colorbar(i)
+            # Create intensity slider for this channel
+            slider_layout = QVBoxLayout()
+            min_label = QLabel('0')
+            min_label.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+            slider_layout.addWidget(min_label)
             
-            # Layout: 3 rows per channel (label, image+colorbar, controls)
+            intensity_slider = QRangeSlider(Qt.Orientation.Vertical)
+            intensity_slider.setMinimum(0)
+            intensity_slider.setMaximum(1000)
+            intensity_slider.setValue((0, 1000))
+            intensity_slider.valueChanged.connect(lambda val, ch=i: self.on_intensity_slider_changed(ch, val))
+            slider_layout.addWidget(intensity_slider, 1)
+            
+            max_label = QLabel('1000')
+            max_label.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+            slider_layout.addWidget(max_label)
+            
+            # Store slider and labels for this channel
+            if not hasattr(self, 'channel_sliders'):
+                self.channel_sliders = {}
+                self.channel_min_labels = {}
+                self.channel_max_labels = {}
+            
+            self.channel_sliders[i] = intensity_slider
+            self.channel_min_labels[i] = min_label
+            self.channel_max_labels[i] = max_label
+            
+            # Layout: 3 rows per channel (label, image+slider, controls)
             row = i // cols
             col = i % cols
             start_row = row * 3
             
             self.channel_layout.addWidget(label, start_row, col)
             
-            # Create horizontal layout for image and colorbar
-            image_colorbar_layout = QHBoxLayout()
-            image_colorbar_layout.addWidget(view, 1)
-            image_colorbar_layout.addWidget(colorbar_widget, 0)
-            image_colorbar_layout.setStretch(0, 1)  # colorbar gets less space
-            image_colorbar_layout.setStretch(1, 4)  # image gets more space
+            # Create horizontal layout for image and intensity slider
+            image_slider_layout = QHBoxLayout()
+            image_slider_layout.addWidget(view, 1)
+            image_slider_layout.addLayout(slider_layout, 0)
+            image_slider_layout.setStretch(0, 1)  # slider gets less space
+            image_slider_layout.setStretch(1, 4)  # image gets more space
             
-            # Create container for image+colorbar
+            # Create container for image+slider
             image_container = QWidget()
-            image_container.setLayout(image_colorbar_layout)
+            image_container.setLayout(image_slider_layout)
             self.channel_layout.addWidget(image_container, start_row + 1, col)
             
 
@@ -303,6 +327,53 @@ class MultichannelImageDisplayWidget(BaseImageDisplayWidget):
             view.viewport().installEventFilter(self)
             view.resizeEvent = lambda event, v=view: self.on_channel_view_resize(v, event)
     
+    def on_intensity_slider_changed(self, channel_idx, value):
+        """Handle intensity slider value changes for a specific channel"""
+        min_val, max_val = value
+        self.channel_min_labels[channel_idx].setText(str(min_val))
+        self.channel_max_labels[channel_idx].setText(str(max_val))
+        
+        # Update intensity parameters
+        if channel_idx not in self.intensity_params:
+            self.intensity_params[channel_idx] = {'min': 0.0, 'max': 1.0, 'auto': False}
+        
+        self.intensity_params[channel_idx]['min'] = float(min_val)
+        self.intensity_params[channel_idx]['max'] = float(max_val)
+        self.intensity_params[channel_idx]['auto'] = False
+        
+        # Update display for this channel
+        self._display_channel(channel_idx, self.get_channel_data(channel_idx))
+
+    def get_channel_data(self, channel_idx):
+        """Get data for a specific channel"""
+        if self.acq_buffer is None:
+            return None
+        
+        if self.acq_buffer.ndim == 4:  # frames x channels x height x width
+            if 0 <= self.current_frame < self.acq_buffer.shape[0] and channel_idx < self.acq_buffer.shape[1]:
+                return self.acq_buffer[self.current_frame, channel_idx]
+        elif self.acq_buffer.ndim == 3:  # frames x height x width (single channel)
+            if channel_idx == 0 and 0 <= self.current_frame < self.acq_buffer.shape[0]:
+                return self.acq_buffer[self.current_frame]
+        
+        return None
+
+    def _update_intensity_slider_range(self, channel_idx):
+        """Update the intensity slider range for a specific channel"""
+        if not hasattr(self, 'channel_sliders') or channel_idx not in self.channel_sliders:
+            return
+        
+        channel_data = self.get_channel_data(channel_idx)
+        if channel_data is not None:
+            max_val = float(np.max(channel_data))
+            slider = self.channel_sliders[channel_idx]
+            slider.setMaximum(int(np.ceil(max_val)))
+            
+            # Update labels
+            min_val, _ = slider.value()
+            self.channel_min_labels[channel_idx].setText(str(min_val))
+            self.channel_max_labels[channel_idx].setText(str(int(max_val)))
+
     def handle_frame_acquired(self, data_unit, idx, total):
         """Handle frame acquired signal for confocal multi-channel data"""
         # Reset buffer if this is the first frame of a new acquisition
@@ -361,6 +432,10 @@ class MultichannelImageDisplayWidget(BaseImageDisplayWidget):
         if idx == 0:
             self.update_frame_controls(total, 0)
         
+        # Update intensity slider ranges for all channels
+        for ch in range(self.num_channels):
+            self._update_intensity_slider_range(ch)
+        
         # Schedule delayed viewport update on first frame to fix sizing issues
         if idx == 0:
             self.resize_timer.start(100)  # 100ms delay
@@ -409,6 +484,10 @@ class MultichannelImageDisplayWidget(BaseImageDisplayWidget):
         self.frame_slider.setValue(self.current_frame)
         self.frame_slider.setEnabled(self.total_frames > 1)
         self.update_frame_label()
+        
+        # Update intensity slider ranges for all channels
+        for ch in range(self.num_channels):
+            self._update_intensity_slider_range(ch)
         
         # Update display
         self.display_frame(self.current_frame)
@@ -486,32 +565,25 @@ class MultichannelImageDisplayWidget(BaseImageDisplayWidget):
             scene.clear()
             return
         
-        # Update auto intensity parameters if needed
-        self.update_auto_intensity_params(channel_idx, channel_data)
-        
         # Get intensity parameters for this channel
         params = self.intensity_params.get(channel_idx, {'min': 0.0, 'max': 1.0, 'auto': True})
         
-        # Normalize data based on intensity parameters
-        if params['auto']:
-            # Auto scaling - use data min/max
+        # Use slider values if available
+        if hasattr(self, 'channel_sliders') and channel_idx in self.channel_sliders:
+            slider_min, slider_max = self.channel_sliders[channel_idx].value()
+            # Clip data to slider range
+            clipped_data = np.clip(channel_data, slider_min, slider_max)
+            # Normalize to 0-255 for display
+            if slider_max > slider_min:
+                data_norm = ((clipped_data - slider_min) / (slider_max - slider_min) * 255).astype(np.uint8)
+            else:
+                data_norm = np.zeros_like(channel_data, dtype=np.uint8)
+        else:
+            # Fallback to auto scaling
             data_min = channel_data.min()
             data_max = channel_data.max()
             if data_max > data_min:
                 data_norm = ((channel_data - data_min) / (data_max - data_min) * 255).astype(np.uint8)
-            else:
-                data_norm = np.zeros_like(channel_data, dtype=np.uint8)
-        else:
-            # Manual scaling - use user-set min/max
-            user_min = params['min']
-            user_max = params['max']
-            
-            # Clip data to user range
-            clipped_data = np.clip(channel_data, user_min, user_max)
-            
-            # Normalize to 0-255
-            if user_max > user_min:
-                data_norm = ((clipped_data - user_min) / (user_max - user_min) * 255).astype(np.uint8)
             else:
                 data_norm = np.zeros_like(channel_data, dtype=np.uint8)
         
@@ -526,26 +598,7 @@ class MultichannelImageDisplayWidget(BaseImageDisplayWidget):
         scene_rect = QRectF(pixmap.rect())
         scene.setSceneRect(scene_rect)
         view.fitInView(scene.sceneRect(), Qt.AspectRatioMode.KeepAspectRatio)
-        
-        # Update colorbar
-        self.update_colorbar(channel_idx)
-    
-    def update_auto_intensity_params(self, channel_idx, channel_data):
-        """Update intensity parameters when in auto mode based on data"""
-        if channel_idx not in self.intensity_params:
-            self.intensity_params[channel_idx] = {'min': 0.0, 'max': 1.0, 'auto': True}
-        
-        params = self.intensity_params[channel_idx]
-        if params['auto'] and channel_data is not None:
-            # Update min/max based on actual data range
-            data_min = float(channel_data.min())
-            data_max = float(channel_data.max())
-            
-            # Only update if we have valid data
-            if data_max > data_min:
-                params['min'] = data_min
-                params['max'] = data_max
-    
+
     def update_display(self):
         """Update all channel displays"""
         self.display_frame(self.current_frame)
@@ -810,99 +863,40 @@ class MultichannelDisplayParametersWidget(QWidget):
         num_channels = params.get('num_channels', 1)
         channel_names = params.get('channel_names', [f'Channel {i+1}' for i in range(num_channels)])
         intensity_params = params.get('intensity_params', {})
-        channel_maxes = self.get_channel_maxes()
         for ch in range(num_channels):
             group = QGroupBox(channel_names[ch] if ch < len(channel_names) else f'Channel {ch+1}')
             group_layout = QVBoxLayout()
             group.setLayout(group_layout)
-            auto_checkbox = QCheckBox('Auto')
-            auto_checkbox.setChecked(intensity_params.get(ch, {}).get('auto', True))
-            auto_checkbox.toggled.connect(lambda checked, ch=ch: self.on_auto_toggled(ch, checked))
-            group_layout.addWidget(auto_checkbox)
-            # Range slider
-            range_slider = QRangeSlider()
-            ch_max = channel_maxes[ch] if ch < len(channel_maxes) else 1.0
-            range_slider.setRange(0, int(ch_max))
-            min_val = intensity_params.get(ch, {}).get('min', 0.0)
-            max_val = intensity_params.get(ch, {}).get('max', ch_max)
-            range_slider.setValue((int(min_val), int(max_val)))
-            range_slider.valueChanged.connect(lambda val, ch=ch: self.on_range_changed(ch, val))
-            group_layout.addWidget(range_slider)
-            # Min/Max labels
-            labels_layout = QHBoxLayout()
-            min_label = QLabel(f'Min: {min_val:.3f}')
-            max_label = QLabel(f'Max: {max_val:.3f}')
-            labels_layout.addWidget(min_label)
-            labels_layout.addStretch()
-            labels_layout.addWidget(max_label)
-            group_layout.addLayout(labels_layout)
-            self.channel_controls.append({
-                'auto': auto_checkbox,
-                'range_slider': range_slider,
-                'min_label': min_label,
-                'max_label': max_label
-            })
+            
+            # Placeholder for intensity controls (now handled by sliders on display)
+            placeholder = QLabel('Intensity controls moved to display')
+            placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            placeholder.setStyleSheet('color: #666; font-style: italic;')
+            group_layout.addWidget(placeholder)
+            
+            # Show current values if available
+            if ch in intensity_params:
+                params = intensity_params[ch]
+                if not params.get('auto', True):
+                    min_val = params.get('min', 0.0)
+                    max_val = params.get('max', 1.0)
+                    values_label = QLabel(f'Current range: {min_val:.1f} - {max_val:.1f}')
+                    values_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                    group_layout.addWidget(values_label)
+            
             self.layout.addWidget(group)
         self.layout.addStretch()
         self.last_num_channels = num_channels
 
-    def get_channel_maxes(self):
-        # Get the max value for each channel in the current frame
-        data = self.display_widget.get_all_channel_data()
-        if data is None:
-            return [1.0]
-        if data.ndim == 3:
-            return [float(data[ch].max()) if data[ch].size > 0 else 1.0 for ch in range(data.shape[0])]
-        return [float(data.max())]
-
     def sync_with_display(self):
         params = self.display_widget.get_display_parameters()
         num_channels = params.get('num_channels', 1)
-        channel_maxes = self.get_channel_maxes()
         # If the number of channels changed, rebuild controls
         if num_channels != self.last_num_channels:
             self.build_controls()
             return
-        # Otherwise, just update slider ranges and labels
-        for ch, controls in enumerate(self.channel_controls):
-            ch_max = channel_maxes[ch] if ch < len(channel_maxes) else 1.0
-            controls['range_slider'].setRange(0, int(ch_max))
-            # Update min/max labels
-            min_val = controls['range_slider'].value()[0]
-            max_val = controls['range_slider'].value()[1]
-            controls['min_label'].setText(f'Min: {min_val:.3f}')
-            controls['max_label'].setText(f'Max: {max_val:.3f}')
-
-    def on_auto_toggled(self, ch, checked):
-        params = self.display_widget.get_display_parameters()
-        if 'intensity_params' not in params:
-            params['intensity_params'] = {}
-        if ch not in params['intensity_params']:
-            params['intensity_params'][ch] = {'min': 0.0, 'max': 1.0, 'auto': True}
-        params['intensity_params'][ch]['auto'] = checked
-        self.display_widget.set_display_parameters(params)
-
-    def on_range_changed(self, ch, value):
-        min_val = value[0] / 1000.0
-        max_val = value[1] / 1000.0
-        
-        params = self.display_widget.get_display_parameters()
-        if 'intensity_params' not in params:
-            params['intensity_params'] = {}
-        if ch not in params['intensity_params']:
-            params['intensity_params'][ch] = {'min': 0.0, 'max': 1.0, 'auto': False}
-        
-        params['intensity_params'][ch]['min'] = min_val
-        params['intensity_params'][ch]['max'] = max_val
-        params['intensity_params'][ch]['auto'] = False
-        
-        # Update labels
-        if ch < len(self.channel_controls):
-            controls = self.channel_controls[ch]
-            controls['min_label'].setText(f'Min: {min_val:.3f}')
-            controls['max_label'].setText(f'Max: {max_val:.3f}')
-        
-        self.display_widget.set_display_parameters(params)
+        # Otherwise, just update the display
+        self.build_controls()
 
     def refresh(self):
         self.build_controls()
