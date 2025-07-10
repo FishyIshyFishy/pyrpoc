@@ -7,6 +7,7 @@ from PyQt6.QtCore import Qt, QRectF, QPointF, pyqtSignal, pyqtSlot, QTimer
 from PyQt6.QtGui import QPixmap, QImage, QPainter, QColor, QPen, QBrush, QFont, QLinearGradient
 from .base_display import BaseImageDisplayWidget
 import math
+import functools
 
 class MultichannelImageDisplayWidget(BaseImageDisplayWidget):
     display_data_changed = pyqtSignal()
@@ -275,31 +276,33 @@ class MultichannelImageDisplayWidget(BaseImageDisplayWidget):
 
             
             # Create intensity slider for this channel
-            slider_layout = QVBoxLayout()
+            self.slider_steps = 1000
             min_label = QLabel('0')
             min_label.setAlignment(Qt.AlignmentFlag.AlignHCenter)
-            slider_layout.addWidget(min_label)
-            
-            intensity_slider = QRangeSlider(Qt.Orientation.Vertical)
-            intensity_slider.setMinimum(0)
-            intensity_slider.setMaximum(1000)
-            intensity_slider.setValue((0, 1000))
-            intensity_slider.valueChanged.connect(lambda val, ch=i: self.on_intensity_slider_changed(ch, val))
-            slider_layout.addWidget(intensity_slider, 1)
-            
-            max_label = QLabel('1000')
+            max_label = QLabel('0')
             max_label.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+
+            slider = QRangeSlider(Qt.Orientation.Vertical)
+            slider.setMinimum(0)
+            slider.setMaximum(self.slider_steps)
+            slider.setValue((0, self.slider_steps))
+
+            # 2) Bind the slider's two-param signal to our handler,
+            #    freezing in the channel index 'i'
+            slider.valueChanged.connect(
+                functools.partial(self.on_intensity_slider_changed, i)
+            )
+
+            # 3) Store references so we can update them later
+            self.channel_sliders[i]     = slider
+            self.channel_min_labels[i]  = min_label
+            self.channel_max_labels[i]  = max_label
+
+            # 4) Lay them out just as you had before…
+            slider_layout = QVBoxLayout()
+            slider_layout.addWidget(min_label)
+            slider_layout.addWidget(slider, 1)
             slider_layout.addWidget(max_label)
-            
-            # Store slider and labels for this channel
-            if not hasattr(self, 'channel_sliders'):
-                self.channel_sliders = {}
-                self.channel_min_labels = {}
-                self.channel_max_labels = {}
-            
-            self.channel_sliders[i] = intensity_slider
-            self.channel_min_labels[i] = min_label
-            self.channel_max_labels[i] = max_label
             
             # Layout: 3 rows per channel (label, image+slider, controls)
             row = i // cols
@@ -327,22 +330,24 @@ class MultichannelImageDisplayWidget(BaseImageDisplayWidget):
             view.viewport().installEventFilter(self)
             view.resizeEvent = lambda event, v=view: self.on_channel_view_resize(v, event)
     
-    def on_intensity_slider_changed(self, channel_idx, value):
-        """Handle intensity slider value changes for a specific channel"""
-        min_val, max_val = value
-        self.channel_min_labels[channel_idx].setText(str(min_val))
-        self.channel_max_labels[channel_idx].setText(str(max_val))
-        
-        # Update intensity parameters
-        if channel_idx not in self.intensity_params:
-            self.intensity_params[channel_idx] = {'min': 0.0, 'max': 1.0, 'auto': False}
-        
-        self.intensity_params[channel_idx]['min'] = float(min_val)
-        self.intensity_params[channel_idx]['max'] = float(max_val)
-        self.intensity_params[channel_idx]['auto'] = False
-        
-        # Update display for this channel
-        self._display_channel(channel_idx, self.get_channel_data(channel_idx))
+    def on_intensity_slider_changed(self, channel_idx: int, lower: int, upper: int):
+        self.channel_min_labels[channel_idx].setText(str(lower))
+        self.channel_max_labels[channel_idx].setText(str(upper))
+
+        # 2) Store the params
+        self.intensity_params[channel_idx] = {
+            'min': float(lower) / self.slider_steps,
+            'max': float(upper) / self.slider_steps,
+            'auto': False
+        }
+
+        # 3) Redraw that channel's colorbar
+        self.update_colorbar(channel_idx)
+
+        # 4) Repaint only that channel's image
+        data = self.get_channel_data(channel_idx)
+        if data is not None:
+            self._display_channel(channel_idx, data)
 
     def get_channel_data(self, channel_idx):
         """Get data for a specific channel"""
@@ -359,20 +364,32 @@ class MultichannelImageDisplayWidget(BaseImageDisplayWidget):
         return None
 
     def _update_intensity_slider_range(self, channel_idx):
-        """Update the intensity slider range for a specific channel"""
-        if not hasattr(self, 'channel_sliders') or channel_idx not in self.channel_sliders:
+        """
+        Called when new data arrives: clamp the slider to the data's
+        actual [0…max] range, update labels and colorbar to match.
+        """
+        data = self.get_channel_data(channel_idx)
+        if data is None:
             return
-        
-        channel_data = self.get_channel_data(channel_idx)
-        if channel_data is not None:
-            max_val = float(np.max(channel_data))
-            slider = self.channel_sliders[channel_idx]
-            slider.setMaximum(int(np.ceil(max_val)))
-            
-            # Update labels
-            min_val, _ = slider.value()
-            self.channel_min_labels[channel_idx].setText(str(min_val))
-            self.channel_max_labels[channel_idx].setText(str(int(max_val)))
+
+        maximum = int(np.ceil(np.max(data)))
+        slider = self.channel_sliders[channel_idx]
+
+        # Temporarily block signals so we don't trigger a repaint yet
+        slider.blockSignals(True)
+        slider.setMaximum(maximum)
+
+        # Clamp existing values
+        lower, upper = slider.value()
+        lower = min(lower, maximum)
+        upper = min(upper, maximum)
+        slider.setValue((lower, upper))
+        slider.blockSignals(False)
+
+        # Sync the labels and colorbar
+        self.channel_min_labels[channel_idx].setText(str(lower))
+        self.channel_max_labels[channel_idx].setText(str(upper))
+        self.update_colorbar(channel_idx)
 
     def handle_frame_acquired(self, data_unit, idx, total):
         """Handle frame acquired signal for confocal multi-channel data"""
@@ -572,10 +589,10 @@ class MultichannelImageDisplayWidget(BaseImageDisplayWidget):
         if hasattr(self, 'channel_sliders') and channel_idx in self.channel_sliders:
             slider_min, slider_max = self.channel_sliders[channel_idx].value()
             # Clip data to slider range
-            clipped_data = np.clip(channel_data, slider_min, slider_max)
+            clipped_data = np.clip(channel_data, params['min'], params['max'])
             # Normalize to 0-255 for display
-            if slider_max > slider_min:
-                data_norm = ((clipped_data - slider_min) / (slider_max - slider_min) * 255).astype(np.uint8)
+            if params['max'] > params['min']:
+                data_norm = ((clipped_data - params['min']) / (params['max'] - params['min']) * 255).astype(np.uint8)
             else:
                 data_norm = np.zeros_like(channel_data, dtype=np.uint8)
         else:
