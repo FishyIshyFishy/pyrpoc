@@ -720,13 +720,13 @@ class DisplayControls(QWidget):
         self.display_params_widget = placeholder
         self.layout.addWidget(self.display_params_widget)
 
-    def set_display_widget(self, display_widget):
-        # Remove old widget
+    def set_display_params_widget(self, display_widget):
         while self.layout.count():
             child = self.layout.takeAt(0)
             if child.widget():
                 child.widget().deleteLater()
         self.display_params_widget = None
+
         print(display_widget.__class__.__name__)
         if display_widget is not None and display_widget.__class__.__name__ == 'MultichannelImageDisplayWidget':
             from pyrpoc.displays.multichan_tiled import MultichannelDisplayParametersWidget
@@ -1055,11 +1055,6 @@ class DockableMiddlePanel(QMainWindow):
         
         self.on_lines_toggled(self.app_state.ui_state['lines_enabled'])
 
-        # After display is created, set the display widget for display controls
-        main_window = self.window()
-        if hasattr(main_window, 'left_widget') and hasattr(main_window.left_widget, 'display_controls'):
-            main_window.left_widget.display_controls.set_display_widget(self.image_display_widget)
-
 
     def create_image_display_widget(self):
         modality = self.app_state.modality.lower()
@@ -1135,6 +1130,8 @@ class MainWindow(QMainWindow):
         self.left_widget = LeftPanel(self.app_state, self.signals)
         self.mid_layout = DockableMiddlePanel(self.app_state, self.signals)
         self.right_layout = RightPanel(self.app_state, self.signals)
+
+        self.left_widget.display_controls.set_display_params_widget(self.mid_layout.image_display_widget)
         
         self.main_splitter.addWidget(self.left_widget)
         self.main_splitter.addWidget(self.mid_layout)
