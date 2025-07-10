@@ -3,7 +3,7 @@ from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QSlider, 
 from PyQt6.QtCore import Qt, QRectF, QPointF, pyqtSignal, pyqtSlot, QTimer
 from PyQt6.QtGui import QPixmap, QImage, QPainter, QColor, QPen, QBrush, QFont
 from .base_display import BaseImageDisplayWidget
-
+import math
 
 class MultichannelImageDisplayWidget(BaseImageDisplayWidget):
     def __init__(self, app_state, signals):
@@ -24,37 +24,28 @@ class MultichannelImageDisplayWidget(BaseImageDisplayWidget):
     
     def update_channel_names(self):
         modality = self.app_state.modality.lower()
-        
-        # Try to get channel names from data input instruments first
         channel_names = self.get_channel_names_from_instruments()
-        
         if channel_names and len(channel_names) >= self.num_channels:
-            # Use the actual channel names from instruments
             self.channel_names = channel_names[:self.num_channels]
         else:
-            # Fallback to modality-specific naming
             if modality == 'confocal':
-                # For confocal, use generic channel names
                 self.channel_names = [f'Channel {i+1}' for i in range(self.num_channels)]
             elif modality == 'split data stream':
-                # For split data stream, use descriptive channel names
-                # Each input channel creates 3 output channels
-                input_channels = self.num_channels // 3
+                # Use real channel names from data input instrument
+                input_names = channel_names if channel_names else [f'Input {i+1}' for i in range(self.num_channels // 3)]
                 self.channel_names = []
-                for input_ch in range(input_channels):
-                    base_name = f'Input {input_ch + 1}'
+                for input_ch, base_name in enumerate(input_names):
                     self.channel_names.extend([
                         f'{base_name} - First Portion',
-                        f'{base_name} - Second Portion', 
+                        f'{base_name} - Second Portion',
                         f'{base_name} - Full Data'
                     ])
                 # Handle any remaining channels (in case num_channels is not divisible by 3)
-                remaining = self.num_channels % 3
+                remaining = self.num_channels - len(self.channel_names)
                 if remaining > 0:
                     for i in range(remaining):
-                        self.channel_names.append(f'Channel {input_channels * 3 + i + 1}')
+                        self.channel_names.append(f'Channel {len(self.channel_names) + 1}')
             else:
-                # Default fallback
                 self.channel_names = [f'Channel {i+1}' for i in range(self.num_channels)]
     
     def get_channel_names_from_instruments(self):
@@ -113,23 +104,16 @@ class MultichannelImageDisplayWidget(BaseImageDisplayWidget):
             view.deleteLater()
         self.channel_views.clear()
         self.channel_scenes.clear()
-        
-        # Clear layout
         while self.channel_layout.count():
             child = self.channel_layout.takeAt(0)
             if child.widget():
                 child.widget().deleteLater()
-        
-        # Update channel names before creating display
         self.update_channel_names()
-        
-        # Calculate grid dimensions
-        cols = min(3, num_channels)  # Max 3 columns
-        rows = (num_channels + cols - 1) // cols
-        
-        # Create views for each channel
+        # Square grid layout
+
+        cols = math.ceil(math.sqrt(num_channels))
+        rows = math.ceil(num_channels / cols)
         for i in range(num_channels):
-            # Create graphics view and scene
             view = QGraphicsView()
             scene = QGraphicsScene()
             view.setScene(scene)
@@ -139,26 +123,17 @@ class MultichannelImageDisplayWidget(BaseImageDisplayWidget):
                     background-color: #f0f0f0;
                 }
             ''')
-            
-            # Add channel label
             channel_name = self.channel_names[i] if i < len(self.channel_names) else f'Channel {i+1}'
             label = QLabel(channel_name)
             label.setAlignment(Qt.AlignmentFlag.AlignCenter)
             label.setStyleSheet('font-weight: bold; color: #333;')
-            
-            # Add to layout
             row = i // cols
             col = i % cols
             self.channel_layout.addWidget(label, row*2, col)
             self.channel_layout.addWidget(view, row*2+1, col)
-            
             self.channel_views.append(view)
             self.channel_scenes.append(scene)
-            
-            # Install event filter for mouse interaction
             view.viewport().installEventFilter(self)
-            
-            # Connect resize event to ensure proper sizing
             view.resizeEvent = lambda event, v=view: self.on_channel_view_resize(v, event)
     
     def handle_frame_acquired(self, data_unit, idx, total):
