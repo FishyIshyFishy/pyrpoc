@@ -38,3 +38,7 @@ class Instrument(abc.ABC):
         """Validate instrument communication parameters"""
         pass
 
+    def disconnect(self):
+        """Disconnect the instrument. Override in subclasses if needed."""
+        pass
+

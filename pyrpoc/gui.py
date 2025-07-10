@@ -367,7 +367,7 @@ class AcquisitionParameters(QWidget):
         prior_layout.addRow("Z Tiles:", self.numtiles_z_spin)
         
         self.tile_size_x_spin = QDoubleSpinBox()
-        self.tile_size_x_spin.setRange(0.1, 10000)
+        self.tile_size_x_spin.setRange(-10000, 10000)
         self.tile_size_x_spin.setValue(self.app_state.acquisition_parameters.get('tile_size_x', 100))
         self.tile_size_x_spin.setSuffix(" µm")
         self.tile_size_x_spin.valueChanged.connect(
@@ -375,7 +375,7 @@ class AcquisitionParameters(QWidget):
         prior_layout.addRow("X Tile Size:", self.tile_size_x_spin)
         
         self.tile_size_y_spin = QDoubleSpinBox()
-        self.tile_size_y_spin.setRange(0.1, 10000)
+        self.tile_size_y_spin.setRange(-10000, 10000)
         self.tile_size_y_spin.setValue(self.app_state.acquisition_parameters.get('tile_size_y', 100))
         self.tile_size_y_spin.setSuffix(" µm")
         self.tile_size_y_spin.valueChanged.connect(
@@ -383,7 +383,7 @@ class AcquisitionParameters(QWidget):
         prior_layout.addRow("Y Tile Size:", self.tile_size_y_spin)
         
         self.tile_size_z_spin = QDoubleSpinBox()
-        self.tile_size_z_spin.setRange(0.1, 10000)
+        self.tile_size_z_spin.setRange(-10000, 10000)
         self.tile_size_z_spin.setValue(self.app_state.acquisition_parameters.get('tile_size_z', 50))
         self.tile_size_z_spin.setSuffix(" µm")
         self.tile_size_z_spin.valueChanged.connect(

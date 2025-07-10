@@ -500,9 +500,9 @@ def validate_acquisition_parameters(parameters, modality):
         'numtiles_x': (1, 1000, "numtiles_x must be between 1 and 1000"),
         'numtiles_y': (1, 1000, "numtiles_y must be between 1 and 1000"),
         'numtiles_z': (1, 1000, "numtiles_z must be between 1 and 1000"),
-        'tile_size_x': (0.1, 10000, "tile_size_x must be between 0.1µm and 10000µm"),
-        'tile_size_y': (0.1, 10000, "tile_size_y must be between 0.1µm and 10000µm"),
-        'tile_size_z': (0.1, 10000, "tile_size_z must be between 0.1µm and 10000µm")
+        'tile_size_x': (-10000, 10000, "tile_size_x must be between -10000µm and 10000µm"),
+        'tile_size_y': (-10000, 10000, "tile_size_y must be between -10000µm and 10000µm"),
+        'tile_size_z': (-10000, 10000, "tile_size_z must be between -10000µm and 10000µm")
     }
     
     # Validate each parameter that is present in the parameters dict
@@ -605,6 +605,12 @@ def handle_add_modality_instrument(instrument_type, app_state, main_window):
 
 def handle_instrument_removed(instrument, app_state):
     if hasattr(app_state, 'instruments') and instrument in app_state.instruments:
+        # Disconnect the instrument before removing it
+        try:
+            instrument.disconnect()
+        except Exception as e:
+            print(f"Error disconnecting instrument {instrument.name}: {e}")
+        
         app_state.instruments.remove(instrument)
         # Update modality buttons to show the button for the removed instrument type
         # This will be handled by the GUI when it rebuilds

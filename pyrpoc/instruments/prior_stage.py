@@ -114,12 +114,14 @@ class PriorStage(Instrument):
         
         if max_z_height is None:
             max_z_height = self.parameters.get('max_z_height', 50000)
-        if not ((-1*max_z_height) <= z_height <= max_z_height):
-            raise ValueError(f"Z height must be between 0 and {max_z_height} µm.")
+        # z_height is in 0.1 µm units, so convert max_z_height from µm to 0.1 µm units
+        max_z_height_units = int(max_z_height * 10)
+        if not (0 <= z_height <= max_z_height_units):
+            raise ValueError(f"Z height must be between 0 and {max_z_height} µm (0-{max_z_height_units} in 0.1 µm units).")
         
         ret, _ = self.send_command(f"controller.z.goto-position {z_height}")
         if ret != 0:
-            raise RuntimeError(f"Could not move Prior stage to {z_height} µm.")
+            raise RuntimeError(f"Could not move Prior stage to {z_height} (0.1 µm units).")
         self.wait_for_z_motion()
 
     def move_xy(self, x, y, safe_move_distance=None):
@@ -157,6 +159,7 @@ class PriorStage(Instrument):
         if ret != 0:
             raise RuntimeError("Failed to get Z position.")
         try:
+            # Z position is returned in 0.1 µm units
             return int(response)
         except ValueError:
             raise RuntimeError(f"Invalid Z position response: '{response}'")
@@ -165,7 +168,7 @@ class PriorStage(Instrument):
         try:
             x, y = self.get_xy()
             z = self.get_z()
-            print(f"Prior stage test successful - Current position: X={x}, Y={y}, Z={z}")
+            print(f"Prior stage test successful - Current position: X={x} µm, Y={y} µm, Z={z/10:.1f} µm")
             return True
         except Exception as e:
             print(f"Prior stage test failed: {e}")
@@ -182,6 +185,10 @@ class PriorStage(Instrument):
             self.log_message("Prior stage connection closed")
         except Exception as e:
             self.log_message(f"Error during Prior stage cleanup: {e}")
+
+    def disconnect(self):
+        """Disconnect the instrument and clean up resources"""
+        self.cleanup()
 
     def get_widget(self):
         return PriorStageWidget(self)
@@ -320,8 +327,10 @@ class PriorStageControlWidget(QWidget):
         z_layout = QFormLayout()
         
         self.z_pos_spin = QDoubleSpinBox()
-        self.z_pos_spin.setRange(0, 50000)
+        self.z_pos_spin.setRange(0, 5000)  # 0 to 5000 µm
         self.z_pos_spin.setSuffix(" µm")
+        self.z_pos_spin.setSingleStep(0.1)  # 0.1 µm steps
+        self.z_pos_spin.setDecimals(1)  # Show 1 decimal place
         z_layout.addRow("Z Position:", self.z_pos_spin)
         
         self.move_z_btn = QPushButton("Move Z")
@@ -367,8 +376,9 @@ class PriorStageControlWidget(QWidget):
 
     def move_z(self):
         try:
-            z = int(self.z_pos_spin.value())
-            self.prior_stage.move_z(z)
+            z_microns = self.z_pos_spin.value()  # Get value in µm
+            z_units = int(z_microns * 10)  # Convert to 0.1 µm units
+            self.prior_stage.move_z(z_units)
             self.refresh_position()
         except Exception as e:
             QMessageBox.warning(self, "Movement Error", f"Failed to move Z: {e}")
@@ -376,15 +386,16 @@ class PriorStageControlWidget(QWidget):
     def refresh_position(self):
         try:
             x, y = self.prior_stage.get_xy()
-            z = self.prior_stage.get_z()
+            z_units = self.prior_stage.get_z()  # Z in 0.1 µm units
+            z_microns = z_units / 10.0  # Convert to µm
             
             self.current_x_label.setText(f"{x} µm")
             self.current_y_label.setText(f"{y} µm")
-            self.current_z_label.setText(f"{z} µm")
+            self.current_z_label.setText(f"{z_microns:.1f} µm")
             
             self.x_pos_spin.setValue(x)
             self.y_pos_spin.setValue(y)
-            self.z_pos_spin.setValue(z)
+            self.z_pos_spin.setValue(z_microns)
             
         except Exception as e:
             self.current_x_label.setText("Error")
