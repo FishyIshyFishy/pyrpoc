@@ -55,6 +55,7 @@ class SplitDataStream(Acquisition):
 
         split_point = int(split_percentage / 100.0 * pixel_samples)
 
+        # Handle mask-based channels
         for channel_id, mask in (self.rpoc_masks or {}).items():
             if channel_id not in self.rpoc_channels:
                 continue
@@ -90,8 +91,22 @@ class SplitDataStream(Acquisition):
             flat_ttl = ttl.ravel()
             self.rpoc_ttl_signals[channel_id] = flat_ttl
 
+        # Handle static channels
+        rpoc_static_channels = kwargs.get('rpoc_static_channels', {})
+        for channel_id, static_info in (rpoc_static_channels or {}).items():
+            if channel_id not in self.rpoc_channels:
+                continue
+            level = static_info.get('level', 'Static Low').lower()
+            # All high or all low
+            value = True if 'high' in level else False
+            flat_ttl = np.full(total_x * total_y * pixel_samples, value, dtype=bool)
+            self.rpoc_ttl_signals[channel_id] = flat_ttl
+
         if self.signal_bus:
-            self.signal_bus.console_message.emit(f"RPOC Configured - enabled: {rpoc_enabled}, masks: {len(self.rpoc_masks)}, channels: {len(self.rpoc_channels)}")
+            n_masks = len(self.rpoc_masks) if self.rpoc_masks else 0
+            n_static = len(rpoc_static_channels) if rpoc_static_channels else 0
+            n_total = len(self.rpoc_ttl_signals)
+            self.signal_bus.console_message.emit(f"RPOC Configured - enabled: {rpoc_enabled}, masks: {n_masks}, static: {n_static}, total: {n_total}")
 
     def perform_acquisition(self):     
         self.save_metadata()

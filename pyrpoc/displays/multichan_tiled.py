@@ -19,7 +19,7 @@ class MultichannelImageDisplayWidget(BaseImageDisplayWidget):
         self.channel_views = []
         
         # Display parameters for intensity control
-        self.intensity_params = {}  # {channel_idx: {'min': float, 'max': float, 'auto': bool}}
+        self.intensity_params = {}  # {channel_idx: {'min': float, 'max': float}}
         
         self.add_mode = False
         self.temp_line_start = None
@@ -32,8 +32,6 @@ class MultichannelImageDisplayWidget(BaseImageDisplayWidget):
         self.channel_min_labels = {}
         self.channel_max_labels = {}
         self.slider_steps = 1000
-
-        self.channel_autoscale_checkboxes = {}
 
         self.setup_ui()
         self.update_channel_names()
@@ -126,7 +124,7 @@ class MultichannelImageDisplayWidget(BaseImageDisplayWidget):
         painter = QPainter(pixmap)
         
         # Get current intensity parameters
-        params = self.intensity_params.get(channel_idx, {'min': 0.0, 'max': 1.0, 'auto': True})
+        params = self.intensity_params.get(channel_idx, {'min': 0.0, 'max': 1.0})
         
         # Create gradient
         gradient = QLinearGradient(0, height, 0, 0)  # Bottom to top
@@ -144,16 +142,8 @@ class MultichannelImageDisplayWidget(BaseImageDisplayWidget):
         painter.setPen(QColor(0, 0, 0))
         painter.setFont(QFont("Arial", 8))
         
-        if params['auto']:
-            # Show "Auto" label
-            painter.drawText(5, height - 5, "Auto")
-            painter.drawText(5, 15, "Auto")
-        else:
-            # Show actual min/max values
-            min_val = params['min']
-            max_val = params['max']
-            painter.drawText(5, height - 5, f"{min_val:.3f}")
-            painter.drawText(5, 15, f"{max_val:.3f}")
+        painter.drawText(5, height - 5, f"{params['min']:.3f}")
+        painter.drawText(5, 15, f"{params['max']:.3f}")
         
         painter.end()
         
@@ -257,9 +247,9 @@ class MultichannelImageDisplayWidget(BaseImageDisplayWidget):
         cols = math.ceil(math.sqrt(num_channels))
         rows = math.ceil(num_channels / cols)
         for i in range(num_channels):
-            # Ensure intensity_params entry exists for this channel
+            # Remove autoscale logic: just initialize min/max for slider
             if i not in self.intensity_params:
-                self.intensity_params[i] = {'min': 0.0, 'max': 1.0, 'auto': True, 'last_manual': (0.0, 1.0)}
+                self.intensity_params[i] = {'min': 0.0, 'max': 1.0}
             view = QGraphicsView()
             scene = QGraphicsScene()
             view.setScene(scene)
@@ -287,13 +277,8 @@ class MultichannelImageDisplayWidget(BaseImageDisplayWidget):
             self.channel_sliders[i]     = slider
             self.channel_min_labels[i]  = min_label
             self.channel_max_labels[i]  = max_label
-            autoscale_checkbox = QCheckBox("autoscale")
-            autoscale_checkbox.setChecked(self.intensity_params[i]['auto'])
-            autoscale_checkbox.stateChanged.connect(functools.partial(self.on_autoscale_changed, i))
-            self.channel_autoscale_checkboxes[i] = autoscale_checkbox
             slider_layout = QVBoxLayout()
             slider_layout.setAlignment(Qt.AlignmentFlag.AlignHCenter)
-            slider_layout.addWidget(autoscale_checkbox, alignment=Qt.AlignmentFlag.AlignHCenter)
             slider_layout.addWidget(max_label, alignment=Qt.AlignmentFlag.AlignHCenter)
             slider_layout.addWidget(slider, alignment=Qt.AlignmentFlag.AlignHCenter)
             slider_layout.addWidget(min_label, alignment=Qt.AlignmentFlag.AlignHCenter)
@@ -330,45 +315,30 @@ class MultichannelImageDisplayWidget(BaseImageDisplayWidget):
             self.channel_min_labels[channel_idx].setText(f'{float_lower:.3f}')
             self.intensity_params[channel_idx]['min'] = float_lower
             self.intensity_params[channel_idx]['max'] = float_upper
-            self.intensity_params[channel_idx]['last_manual'] = (float_lower, float_upper)
-            self.intensity_params[channel_idx]['auto'] = False
             self._display_channel(channel_idx, data)
 
     def _update_intensity_slider_range(self, channel_idx):
         data = self.get_channel_data(channel_idx)
         if data is None:
             return
-        # Ensure intensity_params entry exists for this channel
         if channel_idx not in self.intensity_params:
-            self.intensity_params[channel_idx] = {'min': 0.0, 'max': 1.0, 'auto': True, 'last_manual': (0.0, 1.0)}
+            self.intensity_params[channel_idx] = {'min': 0.0, 'max': 1.0}
         slider = self.channel_sliders[channel_idx]
-        autoscale = self.intensity_params.get(channel_idx, {}).get('auto', True)
         data_min = 0.0
         data_max = float(np.max(data))
-        if autoscale:
-            slider.setEnabled(False)
-            self.channel_max_labels[channel_idx].setText(f'{data_max:.3f}')
-            self.channel_min_labels[channel_idx].setText(f'{data_min:.3f}')
-            self.intensity_params[channel_idx]['min'] = data_min
-            self.intensity_params[channel_idx]['max'] = data_max
-            slider.setValue((0, self.slider_steps))
-        else:
-            slider.setEnabled(True)
-            slider.setMinimum(0)
-            slider.setMaximum(self.slider_steps)
-            # Use last_manual range, mapped to slider steps
-            float_lower, float_upper = self.intensity_params[channel_idx].get('last_manual', (data_min, data_max))
-            # Clamp to current data range
-            float_lower = max(data_min, min(float_lower, data_max))
-            float_upper = max(data_min, min(float_upper, data_max))
-            # Map to slider steps
-            lower = int(self.slider_steps * (float_lower - data_min) / (data_max - data_min + 1e-9))
-            upper = int(self.slider_steps * (float_upper - data_min) / (data_max - data_min + 1e-9))
-            slider.setValue((lower, upper))
-            self.channel_max_labels[channel_idx].setText(f'{float_upper:.3f}')
-            self.channel_min_labels[channel_idx].setText(f'{float_lower:.3f}')
-            self.intensity_params[channel_idx]['min'] = float_lower
-            self.intensity_params[channel_idx]['max'] = float_upper
+        slider.setEnabled(True)
+        slider.setMinimum(0)
+        slider.setMaximum(self.slider_steps)
+        lower, upper = slider.value()
+        lower = max(0, min(lower, self.slider_steps))
+        upper = max(0, min(upper, self.slider_steps))
+        slider.setValue((lower, upper))
+        float_lower = data_min + (data_max - data_min) * (lower / self.slider_steps)
+        float_upper = data_min + (data_max - data_min) * (upper / self.slider_steps)
+        self.channel_max_labels[channel_idx].setText(f'{float_upper:.3f}')
+        self.channel_min_labels[channel_idx].setText(f'{float_lower:.3f}')
+        self.intensity_params[channel_idx]['min'] = float_lower
+        self.intensity_params[channel_idx]['max'] = float_upper
 
     def _display_channel(self, channel_idx, channel_data):
         """Display a single channel's data"""
@@ -379,7 +349,7 @@ class MultichannelImageDisplayWidget(BaseImageDisplayWidget):
         if channel_data is None:
             scene.clear()
             return
-        params = self.intensity_params.get(channel_idx, {'min': 0.0, 'max': 1.0, 'auto': True})
+        params = self.intensity_params.get(channel_idx, {'min': 0.0, 'max': 1.0})
         min_val = params['min']
         max_val = params['max']
         clipped_data = np.clip(channel_data, min_val, max_val)
@@ -833,31 +803,6 @@ class MultichannelImageDisplayWidget(BaseImageDisplayWidget):
                     channel_idx = row * 3 + col
                     if channel_idx < len(self.channel_names):
                         item.widget().setText(self.channel_names[channel_idx])
-
-    def on_autoscale_changed(self, channel_idx, state):
-        # Ensure intensity_params entry exists for this channel
-        if channel_idx not in self.intensity_params:
-            self.intensity_params[channel_idx] = {'min': 0.0, 'max': 1.0, 'auto': True, 'last_manual': (0.0, 1.0)}
-        autoscale = state == Qt.CheckState.Checked
-        self.intensity_params[channel_idx]['auto'] = autoscale
-        self.channel_sliders[channel_idx].setEnabled(not autoscale)
-        # Snap to full range and update display immediately if autoscale is enabled
-        if autoscale:
-            data = self.get_channel_data(channel_idx)
-            if data is not None:
-                data_min = 0.0
-                data_max = float(np.max(data))
-                self.intensity_params[channel_idx]['min'] = data_min
-                self.intensity_params[channel_idx]['max'] = data_max
-                self.channel_max_labels[channel_idx].setText(f'{data_max:.3f}')
-                self.channel_min_labels[channel_idx].setText(f'{data_min:.3f}')
-                self.channel_sliders[channel_idx].setValue((0, self.slider_steps))
-                self._display_channel(channel_idx, data)
-        else:
-            self._update_intensity_slider_range(channel_idx)
-            data = self.get_channel_data(channel_idx)
-            if data is not None:
-                self._display_channel(channel_idx, data)
 
 class MultichannelDisplayParametersWidget(QWidget):
     def __init__(self, display_widget):

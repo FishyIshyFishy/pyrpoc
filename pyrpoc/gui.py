@@ -13,7 +13,7 @@ import pyqtgraph as pg
 from pyrpoc.displays import *
 from pyrpoc.displays.multichan_tiled import MultichannelDisplayParametersWidget
 from pyrpoc.dockable_widgets import LinesWidget
-from pyrpoc.rpoc_mask_editor import RPOCMaskEditor
+from pyrpoc.rpoc.rpoc_mask_editor import RPOCMaskEditor
 from superqt import QSearchableComboBox
 import cv2
 from pathlib import Path
@@ -965,10 +965,18 @@ class RightPanel(QWidget):
         self.signals.rpoc_channel_removed.connect(self.remove_rpoc_channel)
     
     def add_rpoc_channel(self):
+        from pyrpoc.rpoc.rpoc_manager import show_rpoc_channel_selector, create_rpoc_channel_widget
+        
+        # Show channel type selector
+        channel_type = show_rpoc_channel_selector(self)
+        if channel_type is None:
+            return  # User cancelled
+        
         channel_id = self.next_channel_id
         self.next_channel_id += 1
         
-        channel_widget = RPOCChannelWidget(channel_id, self.app_state, self.signals)
+        # Create the appropriate channel widget
+        channel_widget = create_rpoc_channel_widget(channel_type, channel_id, self.app_state, self.signals)
         self.rpoc_channels[channel_id] = channel_widget
         self.channels_layout.addWidget(channel_widget)
     

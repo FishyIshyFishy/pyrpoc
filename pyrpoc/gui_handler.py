@@ -388,12 +388,13 @@ def handle_single_acquisition(app_state, signal_bus, continuous=False):
                     save_path=save_path
                 )
                 
-                # configure RPOC with both masks and channel information
+                # configure RPOC with masks, channels, and static channel information
                 if rpoc_enabled:
                     rpoc_masks = getattr(app_state, 'rpoc_masks', {})
                     rpoc_channels = getattr(app_state, 'rpoc_channels', {})
-                    signal_bus.console_message.emit(f"Acquisition RPOC - enabled: {rpoc_enabled}, masks: {len(rpoc_masks)}, channels: {len(rpoc_channels)}")
-                    acquisition.configure_rpoc(rpoc_enabled, rpoc_masks=rpoc_masks, rpoc_channels=rpoc_channels)
+                    rpoc_static_channels = getattr(app_state, 'rpoc_static_channels', {})
+                    signal_bus.console_message.emit(f"Acquisition RPOC - enabled: {rpoc_enabled}, masks: {len(rpoc_masks)}, channels: {len(rpoc_channels)}, static: {len(rpoc_static_channels)}")
+                    acquisition.configure_rpoc(rpoc_enabled, rpoc_masks=rpoc_masks, rpoc_channels=rpoc_channels, rpoc_static_channels=rpoc_static_channels)
                 else:
                     signal_bus.console_message.emit(f"Acquisition RPOC - disabled")
                 
@@ -418,12 +419,13 @@ def handle_single_acquisition(app_state, signal_bus, continuous=False):
                     save_path=save_path
                 )
                 
-                # configure RPOC with both masks and channel information
+                # configure RPOC with masks, channels, and static channel information
                 if rpoc_enabled:
                     rpoc_masks = getattr(app_state, 'rpoc_masks', {})
                     rpoc_channels = getattr(app_state, 'rpoc_channels', {})
-                    signal_bus.console_message.emit(f"Acquisition RPOC - enabled: {rpoc_enabled}, masks: {len(rpoc_masks)}, channels: {len(rpoc_channels)}")
-                    acquisition.configure_rpoc(rpoc_enabled, rpoc_masks=rpoc_masks, rpoc_channels=rpoc_channels)
+                    rpoc_static_channels = getattr(app_state, 'rpoc_static_channels', {})
+                    signal_bus.console_message.emit(f"Acquisition RPOC - enabled: {rpoc_enabled}, masks: {len(rpoc_masks)}, channels: {len(rpoc_channels)}, static: {len(rpoc_static_channels)}")
+                    acquisition.configure_rpoc(rpoc_enabled, rpoc_masks=rpoc_masks, rpoc_channels=rpoc_channels, rpoc_static_channels=rpoc_static_channels)
                 else:
                     signal_bus.console_message.emit(f"Acquisition RPOC - disabled")
                 
