@@ -168,10 +168,13 @@ class PriorStage(Instrument):
         try:
             x, y = self.get_xy()
             z = self.get_z()
-            print(f"Prior stage test successful - Current position: X={x} µm, Y={y} µm, Z={z/10:.1f} µm")
+            self.log_message(f"Prior stage test successful - Current position: X={x} µm, Y={y} µm, Z={z/10:.1f} µm")
             return True
         except Exception as e:
-            print(f"Prior stage test failed: {e}")
+            try: 
+                self.log_message(f"Prior stage test failed: {e}")
+            except Exception as f:
+                print(f'Logging message and prior stage test failed: {f}')
             return False
 
     def cleanup(self):

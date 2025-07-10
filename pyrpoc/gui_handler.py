@@ -146,8 +146,8 @@ class StateSignalBus(QObject):
         # store reference to app_state for data saving
         self.app_state = app_state
         
-        self.load_config_btn_clicked.connect(lambda: handle_load_config(app_state, main_window))
-        self.save_config_btn_clicked.connect(lambda: handle_save_config(app_state))
+        self.load_config_btn_clicked.connect(lambda: handle_load_config(app_state, main_window, self))
+        self.save_config_btn_clicked.connect(lambda: handle_save_config(app_state, self))
 
         self.continuous_btn_clicked.connect(lambda: handle_continuous_acquisition(app_state, self))
         self.single_btn_clicked.connect(lambda: handle_single_acquisition(app_state, self))
@@ -216,7 +216,7 @@ class AcquisitionWorker(QObject):
 
 
 
-def handle_load_config(app_state, main_window):
+def handle_load_config(app_state, main_window, signal_bus):
     '''load the config.json file and update the main_window per the config'''
     try:
         file_path, _ = QFileDialog.getOpenFileName(
@@ -292,7 +292,7 @@ def handle_load_config(app_state, main_window):
                     # If conversion fails, keep as string but log warning
                     app_state.rpoc_static_channels[channel_id_str] = static_data
         
-        print(f"Configuration loaded from {file_path}")
+        signal_bus.console_message.emit(f"Configuration loaded from {file_path}")
         main_window.rebuild_gui()
         
         # Re-establish lines widget connections after GUI rebuild
@@ -300,7 +300,6 @@ def handle_load_config(app_state, main_window):
             image_display = main_window.mid_layout.image_display_widget
             lines = main_window.mid_layout.lines_widget
             image_display.connect_lines_widget(lines)
-            print("Lines widget connections re-established after config load")
         except Exception as e:
             print(f"Error re-establishing lines widget connections after config load: {e}")
 
@@ -310,7 +309,7 @@ def handle_load_config(app_state, main_window):
         QMessageBox.critical(None, "Load Error", f"Failed to load configuration: {e}")
         return 0
 
-def handle_save_config(app_state):
+def handle_save_config(app_state, signal_bus):
     '''save current app state into a config.json in a format for handle_load_config() to read later'''
     try:
         file_path, _ = QFileDialog.getSaveFileName(
@@ -360,7 +359,7 @@ def handle_save_config(app_state):
         with open(file_path, 'w') as f:
             json.dump(config_data, f, indent=2)
         
-        print(f"Configuration saved to {file_path}")
+        signal_bus.console_message.emit(f"Configuration saved to {file_path}")
         return 1
         
     except Exception as e:
@@ -679,9 +678,6 @@ def handle_instrument_removed(instrument, app_state):
     return 0
 
 def handle_instrument_updated(instrument, app_state, main_window):
-    """Handle instrument parameter updates"""
-    print(f"Updated instrument: {instrument.name}")
-    # Refresh channel labels in multichannel display if it exists
     if hasattr(main_window, 'mid_layout') and hasattr(main_window.mid_layout, 'image_display_widget'):
         display_widget = main_window.mid_layout.image_display_widget
         if hasattr(display_widget, 'refresh_channel_labels'):
@@ -691,7 +687,6 @@ def handle_instrument_updated(instrument, app_state, main_window):
 
 def handle_rpoc_enabled_changed(enabled, app_state):
     app_state.rpoc_enabled = enabled
-    print(f"RPOC enabled changed to: {enabled}")
     return 0
 
 def handle_acquisition_parameter_changed(param_name, value, app_state, main_window=None):
