@@ -840,11 +840,14 @@ class RightPanel(QWidget):
             if child.widget():
                 child.widget().deleteLater()
         
+        # Create a copy of the channels data to avoid iteration issues
+        channels_to_restore = dict(self.app_state.rpoc_channels)
+        
         # Find the highest channel ID to set next_channel_id
         max_channel_id = 0
         
         # Restore each channel from config
-        for channel_id_str, channel_data in self.app_state.rpoc_channels.items():
+        for channel_id_str, channel_data in channels_to_restore.items():
             channel_id = int(channel_id_str)
             max_channel_id = max(max_channel_id, channel_id)
             
