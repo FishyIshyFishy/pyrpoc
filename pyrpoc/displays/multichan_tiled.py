@@ -9,6 +9,7 @@ from .base_display import BaseImageDisplayWidget
 import math
 
 class MultichannelImageDisplayWidget(BaseImageDisplayWidget):
+    display_data_changed = pyqtSignal()
     def __init__(self, app_state, signals):
         super().__init__(app_state, signals)
         self.num_channels = 1
@@ -370,6 +371,9 @@ class MultichannelImageDisplayWidget(BaseImageDisplayWidget):
         
         # Emit traces update signal
         self.traces_update_requested.emit(self.get_all_channel_data())
+        
+        # Emit display data changed after data and channels are set up
+        self.display_data_changed.emit()
     
     def handle_data_updated(self, data):
         """Handle data updated signal - determine number of channels and update display"""
@@ -415,6 +419,9 @@ class MultichannelImageDisplayWidget(BaseImageDisplayWidget):
         
         # Emit traces update signal consistently with ImageDisplayWidget
         self.traces_update_requested.emit(self.get_all_channel_data())
+        
+        # Emit display data changed after data and channels are set up
+        self.display_data_changed.emit()
     
     def on_frame_slider_changed(self, value):
         """Handle frame slider value changes"""
@@ -788,6 +795,8 @@ class MultichannelDisplayParametersWidget(QWidget):
         self.layout = QVBoxLayout()
         self.setLayout(self.layout)
         self.channel_controls = []
+        self.last_num_channels = 0
+        self.display_widget.display_data_changed.connect(self.sync_with_display)
         self.build_controls()
 
     def build_controls(self):
@@ -797,32 +806,28 @@ class MultichannelDisplayParametersWidget(QWidget):
             if child.widget():
                 child.widget().deleteLater()
         self.channel_controls.clear()
-
         params = self.display_widget.get_display_parameters()
         num_channels = params.get('num_channels', 1)
         channel_names = params.get('channel_names', [f'Channel {i+1}' for i in range(num_channels)])
         intensity_params = params.get('intensity_params', {})
-
+        channel_maxes = self.get_channel_maxes()
         for ch in range(num_channels):
             group = QGroupBox(channel_names[ch] if ch < len(channel_names) else f'Channel {ch+1}')
             group_layout = QVBoxLayout()
             group.setLayout(group_layout)
-
-            # Auto checkbox
             auto_checkbox = QCheckBox('Auto')
             auto_checkbox.setChecked(intensity_params.get(ch, {}).get('auto', True))
             auto_checkbox.toggled.connect(lambda checked, ch=ch: self.on_auto_toggled(ch, checked))
             group_layout.addWidget(auto_checkbox)
-
             # Range slider
             range_slider = QRangeSlider()
-            range_slider.setRange(0, 1000)  # Use 0-1000 for precision
+            ch_max = channel_maxes[ch] if ch < len(channel_maxes) else 1.0
+            range_slider.setRange(0, int(ch_max))
             min_val = intensity_params.get(ch, {}).get('min', 0.0)
-            max_val = intensity_params.get(ch, {}).get('max', 1.0)
-            range_slider.setValue((int(min_val * 1000), int(max_val * 1000)))
+            max_val = intensity_params.get(ch, {}).get('max', ch_max)
+            range_slider.setValue((int(min_val), int(max_val)))
             range_slider.valueChanged.connect(lambda val, ch=ch: self.on_range_changed(ch, val))
             group_layout.addWidget(range_slider)
-
             # Min/Max labels
             labels_layout = QHBoxLayout()
             min_label = QLabel(f'Min: {min_val:.3f}')
@@ -831,7 +836,6 @@ class MultichannelDisplayParametersWidget(QWidget):
             labels_layout.addStretch()
             labels_layout.addWidget(max_label)
             group_layout.addLayout(labels_layout)
-
             self.channel_controls.append({
                 'auto': auto_checkbox,
                 'range_slider': range_slider,
@@ -840,6 +844,34 @@ class MultichannelDisplayParametersWidget(QWidget):
             })
             self.layout.addWidget(group)
         self.layout.addStretch()
+        self.last_num_channels = num_channels
+
+    def get_channel_maxes(self):
+        # Get the max value for each channel in the current frame
+        data = self.display_widget.get_all_channel_data()
+        if data is None:
+            return [1.0]
+        if data.ndim == 3:
+            return [float(data[ch].max()) if data[ch].size > 0 else 1.0 for ch in range(data.shape[0])]
+        return [float(data.max())]
+
+    def sync_with_display(self):
+        params = self.display_widget.get_display_parameters()
+        num_channels = params.get('num_channels', 1)
+        channel_maxes = self.get_channel_maxes()
+        # If the number of channels changed, rebuild controls
+        if num_channels != self.last_num_channels:
+            self.build_controls()
+            return
+        # Otherwise, just update slider ranges and labels
+        for ch, controls in enumerate(self.channel_controls):
+            ch_max = channel_maxes[ch] if ch < len(channel_maxes) else 1.0
+            controls['range_slider'].setRange(0, int(ch_max))
+            # Update min/max labels
+            min_val = controls['range_slider'].value()[0]
+            max_val = controls['range_slider'].value()[1]
+            controls['min_label'].setText(f'Min: {min_val:.3f}')
+            controls['max_label'].setText(f'Max: {max_val:.3f}')
 
     def on_auto_toggled(self, ch, checked):
         params = self.display_widget.get_display_parameters()
