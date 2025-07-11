@@ -3,15 +3,15 @@ import numpy as np
 from PIL import Image, ImageDraw 
 import cv2 
 import random
-from PyQt5.QtWidgets import (
+from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QPushButton, QFileDialog,
     QGraphicsView, QGraphicsScene, QGraphicsEllipseItem,
     QVBoxLayout, QWidget, QTableWidget, QTableWidgetItem,
     QHBoxLayout, QCheckBox, QLabel, QMenu, QGraphicsTextItem, 
-    QAction, QDialog
+    QDialog, QSpinBox, QGroupBox
 )
-from PyQt5.QtGui import QPixmap, QPainterPath, QPen, QBrush, QPainter, QFont, QColor, QPalette, QImage
-from PyQt5.QtCore import Qt, QPointF, QRectF, QPoint, QVariant
+from PyQt6.QtGui import QPixmap, QPainterPath, QPen, QBrush, QPainter, QFont, QColor, QPalette, QImage
+from PyQt6.QtCore import Qt, QPointF, QRectF, QPoint, QVariant, pyqtSignal
 from superqt import QRangeSlider
 
 class ImageViewer(QGraphicsView):
@@ -37,9 +37,9 @@ class ImageViewer(QGraphicsView):
         self.temp_path_item = None
         self.current_points = []
         self.show_rois = True
-        self.show_labels = True  # toggled by N
-        self.roi_items = []      # list of QGraphicsPathItem
-        self.roi_label_items = []# parallel list of QGraphicsTextItem
+        self.show_labels = True
+        self.roi_items = []
+        self.roi_label_items = []
         self.path_pen = QPen(Qt.red, 2, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin)
         self.roi_opacity = 0.4
 
@@ -47,7 +47,7 @@ class ImageViewer(QGraphicsView):
         self.cursor_brush = QGraphicsEllipseItem(0, 0, self.brush_radius * 2, self.brush_radius * 2)
         self.cursor_brush.setBrush(QBrush(Qt.blue))
         self.cursor_brush.setPen(QPen(Qt.NoPen))
-        self.cursor_brush.setZValue(1000)  # Always on top
+        self.cursor_brush.setZValue(1000)
         self.cursor_brush.setVisible(False)
         self.scene().addItem(self.cursor_brush)
 
@@ -101,9 +101,8 @@ class ImageViewer(QGraphicsView):
 
                 self.add_roi_to_table(new_index, self.current_points)
 
-                self.main_window.roi_channel_flags.append(self.main_window.image_visibility.copy())  # FIXED
+                self.main_window.roi_channel_flags.append(self.main_window.image_visibility.copy())
 
-                # reset path
                 self.current_path = None
                 self.current_points = []
 
@@ -215,8 +214,16 @@ class ImageViewer(QGraphicsView):
         coords_str = ', '.join([f'({p.x():.1f}, {p.y():.1f})' for p in points])
         self.roi_table.setItem(row, 1, QTableWidgetItem(coords_str))
 
-        low_item = QTableWidgetItem(str(self.params.low))
-        high_item = QTableWidgetItem(str(self.params.high))
+        # Get current threshold values from the main window's slider
+        low, high = self.main_window.threshold_slider.value()
+        max_slider = self.main_window.threshold_slider.maximum()
+        if max_slider == 1000:
+            # Data is in [0,1] range, convert from [0,1000] back to [0,1]
+            low = low / 1000.0
+            high = high / 1000.0
+        
+        low_item = QTableWidgetItem(f"{low:.3f}")
+        high_item = QTableWidgetItem(f"{high:.3f}")
         self.roi_table.setItem(row, 2, low_item)
         self.roi_table.setItem(row, 3, high_item)
 
@@ -228,45 +235,31 @@ class ImageViewer(QGraphicsView):
         b = random.randint(50, 255)
         return QColor(r, g, b)
 
-def set_dark_theme(app):
-    app.setStyle("Fusion")
-    dark_palette = app.palette()
-
-    dark_palette.setColor(QPalette.Window, QColor(53, 53, 53))
-    dark_palette.setColor(QPalette.WindowText, Qt.white)
-    dark_palette.setColor(QPalette.Base, QColor(35, 35, 35))
-    dark_palette.setColor(QPalette.AlternateBase, QColor(53, 53, 53))
-    dark_palette.setColor(QPalette.ToolTipBase, Qt.white)
-    dark_palette.setColor(QPalette.ToolTipText, Qt.white)
-    dark_palette.setColor(QPalette.Text, Qt.white)
-    dark_palette.setColor(QPalette.Button, QColor(53, 53, 53))
-    dark_palette.setColor(QPalette.ButtonText, Qt.white)
-    dark_palette.setColor(QPalette.BrightText, Qt.red)
-    dark_palette.setColor(QPalette.Highlight, QColor(42, 130, 218))
-    dark_palette.setColor(QPalette.HighlightedText, Qt.black)
-
-    app.setPalette(dark_palette)
-
-class Params:  # for global parameter management
+class Params:
     def __init__(self):
         self.low = 80
         self.high = 200
-         
-class MainWindow(QMainWindow):
-    def __init__(self, preloaded_images=None, channel_names=None):
-        super().__init__()
-        self.setWindowTitle('New RPOC Editor')
+
+class RPOCMaskEditor(QMainWindow):
+    mask_created = pyqtSignal(object)  # emits the generated mask
+    
+    def __init__(self, image_data=None, channel_names=None, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle('RPOC Mask Editor')
         self.params = Params()
 
         self.channel_names = channel_names if channel_names else []
         self.loaded_img = None
+        self.image_layers = []
+        self.image_visibility = []
+        self.roi_channel_flags = []
 
         self.roi_table = QTableWidget(0, 5)
         self.roi_table.setHorizontalHeaderLabels(['ROI Name', 'Coordinates', 'Lower Threshold', 'Upper Threshold', 'Modulation Level'])
         self.roi_table.setContextMenuPolicy(Qt.CustomContextMenu)
-        self.roi_table.customContextMenuRequested.connect(self.show_table_context_menu) 
+        self.roi_table.customContextMenuRequested.connect(self.show_table_context_menu)
 
-        # top left
+        # top left controls
         load_button = QPushButton('Load Image')
         load_button.clicked.connect(self.load_image)
 
@@ -280,19 +273,18 @@ class MainWindow(QMainWindow):
 
         self.preview_button = QPushButton("Preview [P]")
         self.preview_button.clicked.connect(self.preview_mask)
-        preview_action = QAction("Preview Mask", self)
-        preview_action.setShortcut("P")
-        preview_action.triggered.connect(self.preview_mask)
-        self.addAction(preview_action)
 
         self.threshold_slider = QRangeSlider(Qt.Horizontal)
         self.threshold_slider.setMinimum(0)
-        self.threshold_slider.setMaximum(255)
-        self.threshold_slider.setValue((20, 80))
+        self.threshold_slider.setMaximum(1000)  # Will be adjusted based on data range
+        self.threshold_slider.setValue((200, 800))  # Will be adjusted based on data range
         self.threshold_slider.valueChanged.connect(self.on_threshold_changed)
 
         self.save_button = QPushButton("Save Mask")
         self.save_button.clicked.connect(self.save_mask)
+
+        self.create_mask_button = QPushButton("Create Mask")
+        self.create_mask_button.clicked.connect(self.create_and_close)
 
         self.cellpose_button = QPushButton("Segment with Cellpose")
         self.cellpose_button.clicked.connect(self.run_cellpose_segmentation)
@@ -303,29 +295,14 @@ class MainWindow(QMainWindow):
         middle_controls_layout.addWidget(self.preview_button)
         middle_controls_layout.addWidget(self.threshold_slider)
         middle_controls_layout.addWidget(self.save_button)
-
+        middle_controls_layout.addWidget(self.create_mask_button)
 
         self.toggle_layout = QHBoxLayout()
         self.channel_checkboxes = []
-        self.image_layers = []
-        self.image_colors = [(255, 0, 0), (0, 255, 0), (0, 0, 255), (255, 255, 0), (0, 255, 255), (255, 0, 255)]  # Adjust as needed
-        self.image_visibility = []
-
-        if preloaded_images:
-            for i, pil_image in enumerate(preloaded_images):
-                img = np.array(pil_image.convert("L"))  # grayscale per channel
-                self.image_layers.append(img)
-                self.image_visibility.append(True)
-
-                checkbox = QCheckBox(f"{channel_names[i]} [{i+1}]")
-                checkbox.setChecked(True)
-                checkbox.stateChanged.connect(lambda state, ch=i: self.on_channel_toggle(ch, state))
-                self.channel_checkboxes.append(checkbox)
-                self.toggle_layout.addWidget(checkbox)
-        self.roi_channel_flags = []  
+        self.image_colors = [(255, 0, 0), (0, 255, 0), (0, 0, 255), (255, 255, 0), (0, 255, 255), (255, 0, 255)]
 
         self.image_scene = QGraphicsScene()
-        self.image_item = self.image_scene.addPixmap(QPixmap())  
+        self.image_item = self.image_scene.addPixmap(QPixmap())
         self.image_view = ImageViewer(self.image_scene, self.roi_table, self.params, self)
 
         layout = QHBoxLayout()
@@ -342,7 +319,85 @@ class MainWindow(QMainWindow):
         container.setLayout(layout)
         self.setCentralWidget(container)
 
+        if image_data is not None:
+            self.set_image_data(image_data)
+        else:
+            self.update_displayed_image()
+
+    def set_image_data(self, image_data):
+        """set image data from the main application"""
+        if isinstance(image_data, np.ndarray):
+            if image_data.ndim == 3:
+                # multi-channel data
+                for i in range(image_data.shape[0]):
+                    self.image_layers.append(image_data[i])
+                    self.image_visibility.append(True)
+                    
+                    checkbox = QCheckBox(f"Channel {i+1} [{i+1}]")
+                    checkbox.setChecked(True)
+                    checkbox.stateChanged.connect(lambda state, ch=i: self.on_channel_toggle(ch, state))
+                    self.channel_checkboxes.append(checkbox)
+                    self.toggle_layout.addWidget(checkbox)
+            else:
+                # single channel data
+                self.image_layers.append(image_data)
+                self.image_visibility.append(True)
+                
+                checkbox = QCheckBox("Channel 1 [1]")
+                checkbox.setChecked(True)
+                checkbox.stateChanged.connect(lambda state, ch=0: self.on_channel_toggle(ch, state))
+                self.channel_checkboxes.append(checkbox)
+                self.toggle_layout.addWidget(checkbox)
+            
+            # Adjust threshold slider based on data range
+            self._adjust_threshold_slider()
+            
+            # Update the display with the new data
+            self.update_displayed_image()
+
+    def on_channel_toggle(self, idx, state):
+        self.image_visibility[idx] = bool(state)
         self.update_displayed_image()
+    
+    def _adjust_threshold_slider(self):
+        """Adjust threshold slider range and values based on the data range"""
+        if not self.image_layers:
+            return
+        
+        # Find the global min and max across all visible channels
+        global_min = float('inf')
+        global_max = float('-inf')
+        
+        for img in self.image_layers:
+            img_min = np.min(img)
+            img_max = np.max(img)
+            global_min = min(global_min, img_min)
+            global_max = max(global_max, img_max)
+        
+        # Determine if data is in [0,1] range or [0,255] range
+        if global_max <= 1.0:
+            # Data is in [0,1] range, scale to [0,1000] for better precision
+            self.threshold_slider.setMinimum(0)
+            self.threshold_slider.setMaximum(1000)
+            # Set default values to cover most of the range
+            default_low = int(global_min * 1000)
+            default_high = int(global_max * 1000)
+            # Ensure we have a reasonable range
+            if default_high - default_low < 100:
+                default_high = min(1000, default_low + 500)
+            self.threshold_slider.setValue((default_low, default_high))
+        else:
+            # Data is in [0,255] range or higher
+            max_val = int(global_max)
+            self.threshold_slider.setMinimum(0)
+            self.threshold_slider.setMaximum(max_val)
+            # Set default values to cover most of the range
+            default_low = int(global_min)
+            default_high = int(global_max * 0.8)  # Use 80% of max as default
+            # Ensure we have a reasonable range
+            if default_high - default_low < 50:
+                default_high = min(max_val, default_low + 100)
+            self.threshold_slider.setValue((default_low, default_high))
 
     def keyPressEvent(self, event):
         key = event.key()
@@ -371,18 +426,18 @@ class MainWindow(QMainWindow):
             self.label_checkbox.blockSignals(False)
             self.toggle_label_visibility(new_state)
 
+        elif key == Qt.Key_P:
+            self.preview_mask()
+
         else:
             super().keyPressEvent(event)
 
-    def on_channel_toggle(self, idx, state):
-        self.image_visibility[idx] = bool(state)
-        self.update_displayed_image()
-
-
-
     def run_cellpose_segmentation(self):
-        from cellpose import models
-        
+        try:
+            from cellpose import models
+        except ImportError:
+            return
+
         if not self.image_layers:
             return
 
@@ -396,7 +451,14 @@ class MainWindow(QMainWindow):
         if not visible_imgs:
             return
 
-        composite = np.mean(visible_imgs, axis=0).astype(np.uint8)
+        # Normalize the composite image to [0, 255] for cellpose
+        composite = np.mean(visible_imgs, axis=0)
+        if composite.max() <= 1.0:
+            # Data is in [0,1] range, scale to [0,255]
+            composite = (composite * 255).astype(np.uint8)
+        else:
+            # Data is already in [0,255] range or higher, clip to [0,255]
+            composite = np.clip(composite, 0, 255).astype(np.uint8)
 
         model = models.Cellpose(model_type='cyto3')
         masks, _, _, _ = model.eval([composite], diameter=None, channels=[0, 0])
@@ -439,16 +501,6 @@ class MainWindow(QMainWindow):
         self.cellpose_button.setText("Segment with Cellpose")
         self.cellpose_button.setEnabled(True)
 
-
-    def set_preloaded_image(self, pil_image):
-        pil_image = pil_image.convert("RGB")
-        img_array = np.array(pil_image)
-
-        self.original_rgb_img = img_array
-        self.loaded_img = cv2.cvtColor(img_array, cv2.COLOR_RGB2GRAY)  
-
-        self.update_displayed_image()  # apply current thresholds for display
-
     def load_image(self):
         file_path, _ = QFileDialog.getOpenFileName(self, 'Open Image', '', 'Images (*.png *.jpg *.bmp)')
         if file_path:
@@ -463,28 +515,37 @@ class MainWindow(QMainWindow):
 
     def update_displayed_image(self):
         if not self.image_layers:
+            # Clear the image if no data
+            self.image_item.setPixmap(QPixmap())
             return
 
         height, width = self.image_layers[0].shape
         rgb_overlay = np.zeros((height, width, 3), dtype=np.uint8)
         low, high = self.threshold_slider.value()
 
+        # Convert threshold values back to data range
+        max_slider = self.threshold_slider.maximum()
+        if max_slider == 1000:
+            # Data is in [0,1] range, convert from [0,1000] back to [0,1]
+            low = low / 1000.0
+            high = high / 1000.0
+        # else: data is already in the correct range
+
         for i, (img, visible) in enumerate(zip(self.image_layers, self.image_visibility)):
             if not visible:
                 continue
-            color = np.array(self.image_colors[i])
+            color = np.array(self.image_colors[i % len(self.image_colors)])
             mask = (img >= low) & (img <= high)
             normalized = np.zeros_like(img, dtype=np.float32)
             if np.any(mask):
                 clipped = np.clip(img.astype(np.float32), low, high)
-                normalized[mask] = (clipped[mask] - low) / max((high - low), 1)
+                normalized[mask] = (clipped[mask] - low) / max((high - low), 1e-9)
             channel_img = (normalized[..., None] * color).astype(np.uint8)
             rgb_overlay = np.clip(rgb_overlay + channel_img, 0, 255)
 
         qimage = QImage(rgb_overlay.data, width, height, 3 * width, QImage.Format_RGB888)
         self.image_item.setPixmap(QPixmap.fromImage(qimage))
         self.image_scene.setSceneRect(QRectF(qimage.rect()))
-
 
     def show_table_context_menu(self, pos):
         row = self.roi_table.indexAt(pos).row()
@@ -525,7 +586,7 @@ class MainWindow(QMainWindow):
 
         # relabel the remaining rois so they match table order
         for i, (roi, label) in enumerate(zip(viewer.roi_items, viewer.roi_label_items)):
-            idx = i + 1  
+            idx = i + 1
             label.setPlainText(str(idx))
 
             path = roi.path()
@@ -543,7 +604,8 @@ class MainWindow(QMainWindow):
             viewer.add_roi_to_table(i + 1, points)
 
     def on_threshold_changed(self, values):
-        self.update_displayed_image()   # update visible pixel
+        self.update_displayed_image()
+        # Store the raw slider values in params for compatibility
         self.params.low, self.params.high = values
 
     def toggle_mask_visibility(self, visible):
@@ -556,7 +618,6 @@ class MainWindow(QMainWindow):
 
     def generate_final_mask(self):
         if not self.image_layers:
-            print("No image data.")
             return None
 
         height, width = self.image_layers[0].shape
@@ -594,6 +655,7 @@ class MainWindow(QMainWindow):
             for i, (img, active) in enumerate(zip(self.image_layers, active_channels)):
                 if not active:
                     continue
+                # The threshold values from the table are already in the correct data range
                 valid_range = (img >= low_val) & (img <= high_val)
                 combined_mask |= valid_range
 
@@ -622,7 +684,6 @@ class MainWindow(QMainWindow):
         dialog.resize(width, height)
         dialog.exec_()
 
-
     def save_mask(self):
         mask = self.generate_final_mask()
         if mask is None:
@@ -635,29 +696,10 @@ class MainWindow(QMainWindow):
             return
 
         cv2.imwrite(save_path, mask)
-        print("Mask saved to:", save_path)
 
-def launch_pyqt_editor(preloaded_images=None, channel_names=None):
-    app = QApplication.instance()
-    if app is None:
-        app = QApplication(sys.argv)
-        set_dark_theme(app)
-
-    
-
-    win = MainWindow(preloaded_images=preloaded_images, channel_names=channel_names)
-
-    win.resize(1200, 800)
-    win.show()
-
-    if not QApplication.instance().startingUp():
-        app.exec_()
-
-
-if __name__ == '__main__':
-    app = QApplication(sys.argv)
-    set_dark_theme(app)  # dark mode
-    window = MainWindow()
-    window.resize(1200, 800)
-    window.show()
-    sys.exit(app.exec_())
+    def create_and_close(self):
+        """create the mask and emit it, then close the window"""
+        mask = self.generate_final_mask()
+        if mask is not None:
+            self.mask_created.emit(mask)
+        self.close() 

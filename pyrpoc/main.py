@@ -1,10 +1,15 @@
-def main():
-    import tkinter as tk
-    from pyrpoc.mains.gui import GUI
+import sys
+from pyrpoc.gui_handler import AppState, StateSignalBus
+from pyrpoc.gui import MainWindow
+from PyQt6.QtWidgets import QApplication
 
-    root = tk.Tk()
-    app = GUI(root)
-    root.mainloop()
+if __name__ == '__main__':
+    app_state = AppState() # can initialize GUI configs with this
+    signals = StateSignalBus()
 
-if __name__=='__main__':
-    main()
+    app = QApplication(sys.argv)
+    win = MainWindow(app_state, signals)
+    
+    signals.bind_controllers(app_state, win)
+    win.show()
+    sys.exit(app.exec())

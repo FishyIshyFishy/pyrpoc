@@ -15,14 +15,12 @@ dependencies = [
   "opencv-python",
   "pillow",
   "matplotlib",
-  "pyqt5",       
+  "pyqt6",       
   "pyqtgraph",
   "superqt",    
   "nidaqmx",   
   "pyvisa",      
-  "zaber_motion",
-  "scikit-image",
-  "pandas"
+  "tifffile"
 ]
 
 [project.scripts]
