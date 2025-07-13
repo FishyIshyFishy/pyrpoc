@@ -29,9 +29,9 @@
     "display_controls_visible": true,
     "lines_enabled": false,
     "main_splitter_sizes": [
-      229,
-      918,
-      229
+      421,
+      1694,
+      421
     ]
   },
   "instruments": [
@@ -67,7 +67,7 @@
       "name": "Prior Stage",
       "instrument_type": "prior stage",
       "parameters": {
-        "port": 3,
+        "port": 4,
         "max_z_height": 50000.0,
         "safe_move_distance": 10000.0,
         "name": "Prior Stage"

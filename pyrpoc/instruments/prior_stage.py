@@ -116,7 +116,7 @@ class PriorStage(Instrument):
             max_z_height = self.parameters.get('max_z_height', 50000)
         # z_height is in 0.1 µm units, so convert max_z_height from µm to 0.1 µm units
         max_z_height_units = int(max_z_height * 10)
-        if not (0 <= z_height <= max_z_height_units):
+        if not (-max_z_height_units <= z_height <= max_z_height_units):
             raise ValueError(f"Z height must be between 0 and {max_z_height} µm (0-{max_z_height_units} in 0.1 µm units).")
         
         ret, _ = self.send_command(f"controller.z.goto-position {z_height}")
