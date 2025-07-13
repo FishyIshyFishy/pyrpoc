@@ -291,8 +291,7 @@ def handle_load_config(app_state, main_window):
                 except ValueError:
                     # If conversion fails, keep as string but log warning
                     app_state.rpoc_static_channels[channel_id_str] = static_data
-        
-        print(f"Configuration loaded from {file_path}")
+
         main_window.rebuild_gui()
         
         # Re-establish lines widget connections after GUI rebuild
@@ -300,7 +299,6 @@ def handle_load_config(app_state, main_window):
             image_display = main_window.mid_layout.image_display_widget
             lines = main_window.mid_layout.lines_widget
             image_display.connect_lines_widget(lines)
-            print("Lines widget connections re-established after config load")
         except Exception as e:
             print(f"Error re-establishing lines widget connections after config load: {e}")
 
@@ -679,8 +677,6 @@ def handle_instrument_removed(instrument, app_state):
     return 0
 
 def handle_instrument_updated(instrument, app_state, main_window):
-    """Handle instrument parameter updates"""
-    print(f"Updated instrument: {instrument.name}")
     # Refresh channel labels in multichannel display if it exists
     if hasattr(main_window, 'mid_layout') and hasattr(main_window.mid_layout, 'image_display_widget'):
         display_widget = main_window.mid_layout.image_display_widget
@@ -691,7 +687,6 @@ def handle_instrument_updated(instrument, app_state, main_window):
 
 def handle_rpoc_enabled_changed(enabled, app_state):
     app_state.rpoc_enabled = enabled
-    print(f"RPOC enabled changed to: {enabled}")
     return 0
 
 def handle_acquisition_parameter_changed(param_name, value, app_state, main_window=None):

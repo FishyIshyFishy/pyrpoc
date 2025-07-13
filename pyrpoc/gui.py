@@ -144,7 +144,7 @@ class ModalityControls(QWidget):
         layout.addWidget(ms_label)
 
         ms_dropdown = QComboBox()
-        ms_dropdown.addItems(['Simulated', 'Confocal', 'Split Data Stream'])
+        ms_dropdown.addItems(['Simulated', 'Confocal', 'Split data stream'])
         current_modality = self.app_state.modality.capitalize()
         index = ms_dropdown.findText(current_modality)
         if index >= 0:
@@ -727,7 +727,6 @@ class DisplayControls(QWidget):
                 child.widget().deleteLater()
         self.display_params_widget = None
 
-        print(display_widget.__class__.__name__)
         if display_widget is not None and display_widget.__class__.__name__ == 'MultichannelImageDisplayWidget':
             from pyrpoc.displays.multichan_tiled import MultichannelDisplayParametersWidget
             self.display_params_widget = MultichannelDisplayParametersWidget(display_widget)

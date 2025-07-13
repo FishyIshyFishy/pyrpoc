@@ -155,14 +155,77 @@ class PriorStage(Instrument):
     def get_z(self):
         self.check_connection()
         
-        ret, response = self.send_command("controller.z.position.get")
+        ret, resp = self.send_command("controller.z.position.get")
         if ret != 0:
             raise RuntimeError("Failed to get Z position.")
         try:
             # Z position is returned in 0.1 µm units
-            return int(response)
+            return int(float(resp))
         except ValueError:
-            raise RuntimeError(f"Invalid Z position response: '{response}'")
+            raise RuntimeError(f"Invalid Z position response: '{resp}'")
+        
+    def get_stage_speed(self) -> int:
+        """Returns the maximum XY stage speed in µm/s."""
+        ret, resp = self.send_command("controller.stage.speed.get")
+        if ret != 0:
+            raise RuntimeError(f"Failed to get stage speed (code {ret})")
+        return int(float(resp))
+    # Command from SDK: controller.stage.speed.get :contentReference[oaicite:0]{index=0}
+
+    def set_stage_speed(self, speed: int):
+        """Sets the maximum XY stage speed in µm/s."""
+        ret, _ = self.send_command(f"controller.stage.speed.set {speed}")
+        if ret != 0:
+            raise RuntimeError(f"Failed to set stage speed to {speed} (code {ret})")
+    # Command from SDK: controller.stage.speed.set <max speed> :contentReference[oaicite:1]{index=1}
+
+    def get_stage_acceleration(self) -> int:
+        """Returns the maximum XY stage acceleration in µm/s²."""
+        ret, resp = self.send_command("controller.stage.acc.get")
+        if ret != 0:
+            raise RuntimeError(f"Failed to get stage acceleration (code {ret})")
+        return int(float(resp))
+    # Command from SDK: controller.stage.acc.get :contentReference[oaicite:2]{index=2}
+
+    def set_stage_acceleration(self, acc: int):
+        """Sets the maximum XY stage acceleration in µm/s²."""
+        ret, _ = self.send_command(f"controller.stage.acc.set {acc}")
+        if ret != 0:
+            raise RuntimeError(f"Failed to set stage acceleration to {acc} (code {ret})")
+    # Command from SDK: controller.stage.acc.set <maxacc> :contentReference[oaicite:3]{index=3}
+
+
+    # ─── Z (focus) motion parameters ────────────────────────────────────────────
+
+    def get_z_speed(self) -> int:
+        """Returns the maximum Z-axis speed in µm/s."""
+        ret, resp = self.send_command("controller.z.speed.get")
+        if ret != 0:
+            raise RuntimeError(f"Failed to get Z speed (code {ret})")
+        return int(float(resp))
+    # Command from SDK: controller.z.speed.get :contentReference[oaicite:4]{index=4}
+
+    def set_z_speed(self, speed: int):
+        """Sets the maximum Z-axis speed in µm/s."""
+        ret, _ = self.send_command(f"controller.z.speed.set {speed}")
+        if ret != 0:
+            raise RuntimeError(f"Failed to set Z speed to {speed} (code {ret})")
+    # Command from SDK: controller.z.speed.set <max speed> :contentReference[oaicite:5]{index=5}
+
+    def get_z_acceleration(self) -> int:
+        """Returns the maximum Z-axis acceleration in µm/s²."""
+        ret, resp = self.send_command("controller.z.acc.get")
+        if ret != 0:
+            raise RuntimeError(f"Failed to get Z acceleration (code {ret})")
+        return int(float(resp))
+    # Command from SDK: controller.z.acc.get :contentReference[oaicite:6]{index=6}
+
+    def set_z_acceleration(self, acc: int):
+        """Sets the maximum Z-axis acceleration in µm/s²."""
+        ret, _ = self.send_command(f"controller.z.acc.set {acc}")
+        if ret != 0:
+            raise RuntimeError(f"Failed to set Z acceleration to {acc} (code {ret})")
+    # Command from SDK: controller.z.acc.set <maxacc> :contentReference[oaicite:7]{index=7}
 
     def test_connection(self):
         try:
@@ -299,6 +362,7 @@ class PriorStageConfigWidget(QWidget):
             QMessageBox.warning(self, "Parameter Error", str(e))
             return None
 
+
 class PriorStageControlWidget(QWidget):
     def __init__(self, prior_stage):
         super().__init__()
@@ -307,103 +371,189 @@ class PriorStageControlWidget(QWidget):
 
     def setup_ui(self):
         layout = QVBoxLayout()
-        
+
+        # ── XY Position ───────────────────────────────────────────────────────────
         xy_group = QGroupBox("XY Position")
         xy_layout = QFormLayout()
-        
         self.x_pos_spin = QDoubleSpinBox()
         self.x_pos_spin.setRange(-50000, 50000)
         self.x_pos_spin.setSuffix(" µm")
         xy_layout.addRow("X Position:", self.x_pos_spin)
-        
         self.y_pos_spin = QDoubleSpinBox()
         self.y_pos_spin.setRange(-50000, 50000)
         self.y_pos_spin.setSuffix(" µm")
         xy_layout.addRow("Y Position:", self.y_pos_spin)
-        
-        self.move_xy_btn = QPushButton("Move XY")
-        self.move_xy_btn.clicked.connect(self.move_xy)
-        xy_layout.addRow("", self.move_xy_btn)
-        
+        btn_xy = QPushButton("Move XY")
+        btn_xy.clicked.connect(self.move_xy)
+        xy_layout.addRow("", btn_xy)
         xy_group.setLayout(xy_layout)
         layout.addWidget(xy_group)
-        
+
+        # ── Z Position ────────────────────────────────────────────────────────────
         z_group = QGroupBox("Z Position")
         z_layout = QFormLayout()
-        
         self.z_pos_spin = QDoubleSpinBox()
-        self.z_pos_spin.setRange(0, 5000)  # 0 to 5000 µm
+        self.z_pos_spin.setRange(0, 5000)
         self.z_pos_spin.setSuffix(" µm")
-        self.z_pos_spin.setSingleStep(0.1)  # 0.1 µm steps
-        self.z_pos_spin.setDecimals(1)  # Show 1 decimal place
+        self.z_pos_spin.setSingleStep(0.1)
+        self.z_pos_spin.setDecimals(1)
         z_layout.addRow("Z Position:", self.z_pos_spin)
-        
-        self.move_z_btn = QPushButton("Move Z")
-        self.move_z_btn.clicked.connect(self.move_z)
-        z_layout.addRow("", self.move_z_btn)
-        
+        btn_z = QPushButton("Move Z")
+        btn_z.clicked.connect(self.move_z)
+        z_layout.addRow("", btn_z)
         z_group.setLayout(z_layout)
         layout.addWidget(z_group)
-        
-        pos_group = QGroupBox("Current Position")
-        pos_layout = QFormLayout()
-        
+
+        # ── Stage Motion Parameters ───────────────────────────────────────────────
+        stage_group = QGroupBox("Stage Motion Parameters")
+        stage_layout = QFormLayout()
+        self.stage_speed_spin = QSpinBox()
+        self.stage_speed_spin.setRange(1, 100000)
+        self.stage_speed_spin.setSuffix(" µm/s")
+        stage_layout.addRow("Stage Speed:", self.stage_speed_spin)
+        btn_stage_speed = QPushButton("Set Stage Speed")
+        btn_stage_speed.clicked.connect(self.set_stage_speed)
+        stage_layout.addRow("", btn_stage_speed)
+
+        self.stage_accel_spin = QSpinBox()
+        self.stage_accel_spin.setRange(1, 1000000)
+        self.stage_accel_spin.setSuffix(" µm/s²")
+        stage_layout.addRow("Stage Acceleration:", self.stage_accel_spin)
+        btn_stage_accel = QPushButton("Set Stage Acceleration")
+        btn_stage_accel.clicked.connect(self.set_stage_acceleration)
+        stage_layout.addRow("", btn_stage_accel)
+
+        stage_group.setLayout(stage_layout)
+        layout.addWidget(stage_group)
+
+        # ── Z-Axis Motion Parameters ──────────────────────────────────────────────
+        zparam_group = QGroupBox("Z-Axis Motion Parameters")
+        zparam_layout = QFormLayout()
+        self.z_speed_spin = QSpinBox()
+        self.z_speed_spin.setRange(1, 50000)
+        self.z_speed_spin.setSuffix(" µm/s")
+        zparam_layout.addRow("Z Speed:", self.z_speed_spin)
+        btn_z_speed = QPushButton("Set Z Speed")
+        btn_z_speed.clicked.connect(self.set_z_speed)
+        zparam_layout.addRow("", btn_z_speed)
+
+        self.z_accel_spin = QSpinBox()
+        self.z_accel_spin.setRange(1, 500000)
+        self.z_accel_spin.setSuffix(" µm/s²")
+        zparam_layout.addRow("Z Acceleration:", self.z_accel_spin)
+        btn_z_accel = QPushButton("Set Z Acceleration")
+        btn_z_accel.clicked.connect(self.set_z_acceleration)
+        zparam_layout.addRow("", btn_z_accel)
+
+        zparam_group.setLayout(zparam_layout)
+        layout.addWidget(zparam_group)
+
+        # ── Current Status ────────────────────────────────────────────────────────
+        status_group = QGroupBox("Current Status")
+        status_layout = QFormLayout()
         self.current_x_label = QLabel("0 µm")
-        pos_layout.addRow("Current X:", self.current_x_label)
-        
+        status_layout.addRow("Current X:", self.current_x_label)
         self.current_y_label = QLabel("0 µm")
-        pos_layout.addRow("Current Y:", self.current_y_label)
-        
-        self.current_z_label = QLabel("0 µm")
-        pos_layout.addRow("Current Z:", self.current_z_label)
-        
-        self.refresh_btn = QPushButton("Refresh Position")
-        self.refresh_btn.clicked.connect(self.refresh_position)
-        pos_layout.addRow("", self.refresh_btn)
-        
-        pos_group.setLayout(pos_layout)
-        layout.addWidget(pos_group)
-        
+        status_layout.addRow("Current Y:", self.current_y_label)
+        self.current_z_label = QLabel("0.0 µm")
+        status_layout.addRow("Current Z:", self.current_z_label)
+        self.current_stage_speed_label = QLabel("0 µm/s")
+        status_layout.addRow("Stage Speed:", self.current_stage_speed_label)
+        self.current_stage_accel_label = QLabel("0 µm/s²")
+        status_layout.addRow("Stage Acceleration:", self.current_stage_accel_label)
+        self.current_z_speed_label = QLabel("0 µm/s")
+        status_layout.addRow("Z Speed:", self.current_z_speed_label)
+        self.current_z_accel_label = QLabel("0 µm/s²")
+        status_layout.addRow("Z Acceleration:", self.current_z_accel_label)
+        btn_refresh = QPushButton("Refresh Status")
+        btn_refresh.clicked.connect(self.refresh_status)
+        status_layout.addRow("", btn_refresh)
+        status_group.setLayout(status_layout)
+        layout.addWidget(status_group)
+
         self.setLayout(layout)
-        
-        # Only refresh position if already connected
+
+        # If already connected at startup, populate fields
         if self.prior_stage.connected:
-            self.refresh_position()
+            self.refresh_status()
 
     def move_xy(self):
         try:
             x = int(self.x_pos_spin.value())
             y = int(self.y_pos_spin.value())
             self.prior_stage.move_xy(x, y)
-            self.refresh_position()
+            self.refresh_status()
         except Exception as e:
             QMessageBox.warning(self, "Movement Error", f"Failed to move XY: {e}")
 
     def move_z(self):
         try:
-            z_microns = self.z_pos_spin.value()  # Get value in µm
-            z_units = int(z_microns * 10)  # Convert to 0.1 µm units
+            z_units = int(self.z_pos_spin.value() * 10)
             self.prior_stage.move_z(z_units)
-            self.refresh_position()
+            self.refresh_status()
         except Exception as e:
             QMessageBox.warning(self, "Movement Error", f"Failed to move Z: {e}")
 
-    def refresh_position(self):
+    def set_stage_speed(self):
         try:
+            speed = self.stage_speed_spin.value()
+            self.prior_stage.set_stage_speed(speed)
+            self.refresh_status()
+        except Exception as e:
+            QMessageBox.warning(self, "Speed Error", f"Failed to set stage speed: {e}")
+
+    def set_stage_acceleration(self):
+        try:
+            acc = self.stage_accel_spin.value()
+            self.prior_stage.set_stage_acceleration(acc)
+            self.refresh_status()
+        except Exception as e:
+            QMessageBox.warning(self, "Acceleration Error", f"Failed to set stage acceleration: {e}")
+
+    def set_z_speed(self):
+        try:
+            speed = self.z_speed_spin.value()
+            self.prior_stage.set_z_speed(speed)
+            self.refresh_status()
+        except Exception as e:
+            QMessageBox.warning(self, "Speed Error", f"Failed to set Z speed: {e}")
+
+    def set_z_acceleration(self):
+        try:
+            acc = self.z_accel_spin.value()
+            self.prior_stage.set_z_acceleration(acc)
+            self.refresh_status()
+        except Exception as e:
+            QMessageBox.warning(self, "Acceleration Error", f"Failed to set Z acceleration: {e}")
+
+    def refresh_status(self):
+        try:
+            # Position
             x, y = self.prior_stage.get_xy()
-            z_units = self.prior_stage.get_z()  # Z in 0.1 µm units
-            z_microns = z_units / 10.0  # Convert to µm
-            
+            z_units = self.prior_stage.get_z()
+            z_um = z_units / 10.0
             self.current_x_label.setText(f"{x} µm")
             self.current_y_label.setText(f"{y} µm")
-            self.current_z_label.setText(f"{z_microns:.1f} µm")
-            
+            self.current_z_label.setText(f"{z_um:.1f} µm")
             self.x_pos_spin.setValue(x)
             self.y_pos_spin.setValue(y)
-            self.z_pos_spin.setValue(z_microns)
-            
+            self.z_pos_spin.setValue(z_um)
+
+            # Stage motion
+            ss = self.prior_stage.get_stage_speed()
+            sa = self.prior_stage.get_stage_acceleration()
+            self.current_stage_speed_label.setText(f"{ss} µm/s")
+            self.current_stage_accel_label.setText(f"{sa} µm/s²")
+            self.stage_speed_spin.setValue(ss)
+            self.stage_accel_spin.setValue(sa)
+
+            # Z-axis motion
+            zs = self.prior_stage.get_z_speed()
+            za = self.prior_stage.get_z_acceleration()
+            self.current_z_speed_label.setText(f"{zs} µm/s")
+            self.current_z_accel_label.setText(f"{za} µm/s²")
+            self.z_speed_spin.setValue(zs)
+            self.z_accel_spin.setValue(za)
+
         except Exception as e:
-            self.current_x_label.setText("Error")
-            self.current_y_label.setText("Error")
-            self.current_z_label.setText("Error")
-            print(f"Error refreshing position: {e}")
+            QMessageBox.warning(self, "Refresh Error", f"Failed to refresh status: {e}")
