@@ -295,8 +295,6 @@ class MultichannelImageDisplayWidget(BaseImageDisplayWidget):
         self.current_frame = idx
         T = self._buffer.shape[0] if self._buffer is not None else 0
         self.frame_label.setText(f"{idx+1}/{T}")
-        for iv in self.channel_views:
-            iv.setCurrentIndex(idx)
         # redraw overlays if any
         self.update_overlays()
         self.traces_update_requested.emit(self.get_all_channel_data())
