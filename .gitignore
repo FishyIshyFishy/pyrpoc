@@ -4,6 +4,8 @@ __pycache__/
 
 venv/
 rpoc_env/
+pyrpoc_env/
+pyrpoc_venv/
 .env/
 .venv/
 

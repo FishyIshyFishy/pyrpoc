@@ -327,7 +327,7 @@ class SplitDataStream(Acquisition):
                     reshaped = channel_data.reshape(total_y, total_x, pixel_samples)
                     # Only output two split channels per input channel
                     first_portion = np.mean(reshaped[:, :, :split_point], axis=2)
-                    second_portion = np.mean(reshaped[:, :, split_point:], axis=2)
+                    second_portion = np.mean(reshaped[:, :, (split_point + 3):], axis=2)
                     cropped_first = first_portion[:, extra_left:extra_left + numsteps_x]
                     cropped_second = second_portion[:, extra_left:extra_left + numsteps_x]
                     input_results.append(cropped_first)
