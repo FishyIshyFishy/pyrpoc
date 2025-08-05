@@ -128,6 +128,10 @@ class StateSignalBus(QObject):
     # RPOC mask creation
     mask_created = pyqtSignal(object) # emits when a mask is created
     rpoc_channel_removed = pyqtSignal(int) # emits when an RPOC channel is removed (channel_id)
+    
+    # Local RPOC
+    local_rpoc_started = pyqtSignal(object) # emits when local RPOC treatment is started (parameters)
+    local_rpoc_progress = pyqtSignal(int) # emits progress updates (repetition_number)
 
     def __init__(self):
         super().__init__()
@@ -171,6 +175,8 @@ class StateSignalBus(QObject):
         
         self.mask_created.connect(lambda mask: handle_mask_created(mask, app_state, main_window, self))
         self.rpoc_channel_removed.connect(lambda channel_id: handle_rpoc_channel_removed(channel_id, app_state, self))
+        self.local_rpoc_started.connect(lambda parameters: handle_local_rpoc_started(parameters, app_state, self))
+        self.local_rpoc_progress.connect(lambda repetition: handle_local_rpoc_progress(repetition, app_state, self))
 
         # lines <-> Image Display signal wiring
         try:
@@ -591,6 +597,7 @@ def handle_acquisition_thread_finished(data, signal_bus, thread, worker):
     # final data signal is now emitted by the acquisition classes themselves
 
 def handle_stop_acquisition(app_state, signal_bus):
+    # Stop acquisition if running
     if hasattr(signal_bus, 'acq_thread') and hasattr(signal_bus, 'acq_worker'):
         thread = signal_bus.acq_thread
         worker = signal_bus.acq_worker
@@ -613,6 +620,27 @@ def handle_stop_acquisition(app_state, signal_bus):
             signal_bus.console_message.emit("Continuous acquisition stopped")
         else:
             signal_bus.console_message.emit("Acquisition stopped")
+    
+    # Stop local RPOC treatment if running
+    if hasattr(signal_bus, 'local_rpoc_thread') and hasattr(signal_bus, 'local_rpoc_worker'):
+        thread = signal_bus.local_rpoc_thread
+        worker = signal_bus.local_rpoc_worker
+
+        worker.stop()
+        thread.quit()
+        if thread.wait(5000):  # Wait up to 5 seconds
+            thread.deleteLater()
+            worker.deleteLater()
+        else:
+            thread.terminate()
+            thread.wait()
+            thread.deleteLater()
+            worker.deleteLater()
+
+        del signal_bus.local_rpoc_thread
+        del signal_bus.local_rpoc_worker
+        signal_bus.console_message.emit("Local RPOC treatment stopped")
+    
     return 0
 
 def handle_console_message(message, app_state, main_window):
@@ -744,4 +772,103 @@ def handle_rpoc_channel_removed(channel_id, app_state, signal_bus):
         del app_state.rpoc_script_channels[channel_id]
     
     signal_bus.console_message.emit(f"RPOC channel {channel_id} removed.")
+    return 0
+
+def handle_local_rpoc_started(parameters, app_state, signal_bus):
+    """Handle local RPOC treatment start - similar structure to handle_single_acquisition"""
+    
+    # Extract mask data and channel info from parameters
+    mask_data = parameters.pop('mask_data', None)
+    channel_id = parameters.pop('channel_id', None)
+    
+    if mask_data is None:
+        signal_bus.console_message.emit("Error: No mask data available for local RPOC treatment")
+        return 0
+    
+    # Validate that we have a galvo instrument (required for treatment)
+    galvo_instruments = app_state.get_instruments_by_type('galvo')
+    if not galvo_instruments:
+        signal_bus.console_message.emit("Error: Local RPOC treatment requires at least one galvo instrument. Please add a galvo scanner.")
+        return 0
+    
+    galvo = galvo_instruments[0]  # Use the first galvo instrument
+    
+    signal_bus.console_message.emit(f"Local RPOC treatment started with {parameters['repetitions']} repetitions")
+    signal_bus.console_message.emit(f"Parameters: dwell_time={parameters['dwell_time']}μs, "
+                                  f"amplitude_x={parameters['amplitude_x']}V, "
+                                  f"amplitude_y={parameters['amplitude_y']}V, "
+                                  f"offset_x={parameters['offset_x']}V, "
+                                  f"offset_y={parameters['offset_y']}V, "
+                                  f"drift_x={parameters['offset_drift_x']}V, "
+                                  f"drift_y={parameters['offset_drift_y']}V")
+    
+    # Create local RPOC object (similar to acquisition creation)
+    local_rpoc = None
+    try:
+        from pyrpoc.acquisitions.local_rpoc import LocalRPOC
+        local_rpoc = LocalRPOC(
+            galvo=galvo,
+            mask_data=mask_data,
+            treatment_parameters=parameters,
+            signal_bus=signal_bus
+        )
+    except Exception as e:
+        signal_bus.console_message.emit(f'Error creating local RPOC object: {e}')
+        return 0
+    
+    if local_rpoc is not None:
+        # Show progress dialog
+        from pyrpoc.rpoc.local_treatment import LocalRPOCProgressDialog
+        progress_dialog = LocalRPOCProgressDialog(parameters['repetitions'])
+        signal_bus.local_rpoc_progress_dialog = progress_dialog
+        progress_dialog.show()
+        
+        # Use the same threading model as acquisition
+        worker = AcquisitionWorker(local_rpoc, continuous=False)
+        thread = QThread()
+        worker.moveToThread(thread)
+        
+        local_rpoc.worker = worker
+        worker.acquisition_finished.connect(lambda data: handle_local_rpoc_thread_finished(data, signal_bus, thread, worker))
+        thread.started.connect(worker.run)
+        thread.start()
+        
+        # Store references for cleanup (same as acquisition)
+        signal_bus.local_rpoc_thread = thread
+        signal_bus.local_rpoc_worker = worker
+    else:
+        signal_bus.console_message.emit("Error: Failed to create local RPOC object")
+    
+    return 0
+
+
+def handle_local_rpoc_thread_finished(data, signal_bus, thread, worker):
+    """Handle local RPOC treatment completion - similar to handle_acquisition_thread_finished"""
+    # Clean up thread and worker (same pattern as acquisition)
+    worker.stop()
+    thread.quit()
+    thread.wait()
+    worker.deleteLater()
+    thread.deleteLater()
+    
+    # Close progress dialog
+    if hasattr(signal_bus, 'local_rpoc_progress_dialog'):
+        signal_bus.local_rpoc_progress_dialog.set_completed()
+        signal_bus.local_rpoc_progress_dialog.close()
+        del signal_bus.local_rpoc_progress_dialog
+    
+    # Remove references
+    if hasattr(signal_bus, 'local_rpoc_thread'):
+        del signal_bus.local_rpoc_thread
+    if hasattr(signal_bus, 'local_rpoc_worker'):
+        del signal_bus.local_rpoc_worker
+    
+    signal_bus.console_message.emit("Local RPOC treatment completed!")
+    return 0
+
+
+def handle_local_rpoc_progress(repetition, app_state, signal_bus):
+    """Handle local RPOC progress updates"""
+    if hasattr(signal_bus, 'local_rpoc_progress_dialog'):
+        signal_bus.local_rpoc_progress_dialog.update_progress(repetition)
     return 0

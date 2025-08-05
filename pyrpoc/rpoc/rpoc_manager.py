@@ -1,9 +1,10 @@
-from PyQt6.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QComboBox, QDialogButtonBox, QWidget, QFileDialog
+from PyQt6.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QComboBox, QDialogButtonBox, QWidget, QFileDialog, QGroupBox, QFormLayout, QDoubleSpinBox, QSpinBox
 from PyQt6.QtCore import pyqtSignal
 from superqt import QSearchableComboBox
 import cv2
 import numpy as np
 from pyrpoc.rpoc.rpoc_mask_editor import RPOCMaskEditor
+from pyrpoc.rpoc.local_treatment import LocalRPOCDialog
 
 class RPOCChannelSelector(QDialog):
     """Dialog for selecting RPOC channel type"""
@@ -219,9 +220,45 @@ class RPOCMaskChannelWidget(BaseRPOCChannelWidget):
         self.load_mask_btn.clicked.connect(self.load_mask)
         buttons_layout.addWidget(self.load_mask_btn)
         
+        # Local RPOC button - only show when mask is loaded
+        self.local_rpoc_btn = QPushButton('Local RPOC')
+        self.local_rpoc_btn.clicked.connect(self.start_local_rpoc)
+        self.local_rpoc_btn.setVisible(False)  # Initially hidden
+        buttons_layout.addWidget(self.local_rpoc_btn)
+        
         layout.addLayout(buttons_layout)
         
         self.update_mask_status()
+    
+    def start_local_rpoc(self):
+        """Start local RPOC dialog"""
+        if not self.has_mask_loaded():
+            self.signals.console_message.emit("No mask loaded. Please load a mask first.")
+            return
+        
+        dialog = LocalRPOCDialog(self.app_state, self.signals, self)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            # Get the mask data for this specific channel
+            mask_data = None
+            if hasattr(self.app_state, 'rpoc_mask_channels') and self.channel_id in self.app_state.rpoc_mask_channels:
+                channel_data = self.app_state.rpoc_mask_channels[self.channel_id]
+                mask_data = channel_data.get('mask_data')
+            
+            if mask_data is not None:
+                # Pass the mask data along with the parameters
+                parameters = dialog.get_parameters()
+                parameters['mask_data'] = mask_data
+                parameters['channel_id'] = self.channel_id
+                self.signals.local_rpoc_started.emit(parameters)
+            else:
+                self.signals.console_message.emit("Error: No mask data available for this channel")
+    
+    def has_mask_loaded(self):
+        """Check if a mask is loaded for this channel"""
+        if hasattr(self.app_state, 'rpoc_mask_channels') and self.channel_id in self.app_state.rpoc_mask_channels:
+            channel_data = self.app_state.rpoc_mask_channels[self.channel_id]
+            return channel_data.get('mask_data') is not None
+        return False
     
     def create_mask(self):
         image_data = self.get_current_image_data()
@@ -289,12 +326,18 @@ class RPOCMaskChannelWidget(BaseRPOCChannelWidget):
             if mask is not None:
                 self.mask_status.setText(f'Mask: {mask.shape[1]}x{mask.shape[0]}')
                 self.mask_status.setStyleSheet('color: #4CAF50; font-size: 10px;')
+                # Show local RPOC button when mask is loaded
+                self.local_rpoc_btn.setVisible(True)
             else:
                 self.mask_status.setText('No mask loaded')
                 self.mask_status.setStyleSheet('color: #666; font-size: 10px;')
+                # Hide local RPOC button when no mask is loaded
+                self.local_rpoc_btn.setVisible(False)
         else:
             self.mask_status.setText('No mask loaded')
             self.mask_status.setStyleSheet('color: #666; font-size: 10px;')
+            # Hide local RPOC button when no mask is loaded
+            self.local_rpoc_btn.setVisible(False)
     
     def remove_channel_data(self):
         # Remove mask from app_state
