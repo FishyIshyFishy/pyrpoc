@@ -284,7 +284,9 @@ class MultichannelImageDisplayWidget(BaseImageDisplayWidget):
 
         # hand off entire time-series to each ImageView
         for ch, iv in enumerate(self.channel_views):
-            iv.setImage(data[:,ch,:,:], xvals=np.arange(T))
+            # Transpose the data to fix the display orientation
+            channel_data = data[:,ch,:,:].transpose(0, 2, 1)  # Transpose H and W dimensions
+            iv.setImage(channel_data, xvals=np.arange(T))
             iv.autoLevels()  # initial auto-scale
             self._hide_imageview_timeline(iv)
 
@@ -316,7 +318,9 @@ class MultichannelImageDisplayWidget(BaseImageDisplayWidget):
                     frame_data = self._buffer[frame_idx]  # channels x height x width
                     for ch in range(min(self.num_channels, frame_data.shape[0])):
                         if ch < len(self.channel_views):
-                            self.channel_views[ch].setImage(frame_data[ch])
+                            # Transpose the data to fix the display orientation
+                            channel_data = frame_data[ch].T  # Transpose H and W dimensions
+                            self.channel_views[ch].setImage(channel_data)
                 else:
                     for iv in self.channel_views:
                         iv.clear()
@@ -324,13 +328,17 @@ class MultichannelImageDisplayWidget(BaseImageDisplayWidget):
                 if 0 <= frame_idx < self._buffer.shape[0]:
                     frame_data = self._buffer[frame_idx]  # height x width
                     if self.channel_views:
+                        # Transpose the data to fix the display orientation
+                        frame_data = frame_data.T  # Transpose H and W dimensions
                         self.channel_views[0].setImage(frame_data)
                 else:
                     for iv in self.channel_views:
                         iv.clear()
             elif self._buffer.ndim == 2:  # height x width (single frame, single channel)
                 if self.channel_views:
-                    self.channel_views[0].setImage(self._buffer)
+                    # Transpose the data to fix the display orientation
+                    buffer_data = self._buffer.T  # Transpose H and W dimensions
+                    self.channel_views[0].setImage(buffer_data)
             else:
                 for iv in self.channel_views:
                     iv.clear()
