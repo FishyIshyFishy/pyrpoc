@@ -295,7 +295,7 @@ class Confocal(Acquisition):
                     pixel_values = np.mean(reshaped, axis=2)
                     from tifffile import imwrite
                     imwrite(r'C:\Users\SRPOC\Documents\pyrpoc\pyrpoc\uncropped.tiff', pixel_values)
-                    cropped = pixel_values[:, extra_left:extra_left + numsteps_x]
+                    cropped = pixel_values[:, extra_right:extra_right + numsteps_x]
                     imwrite(r'C:\Users\SRPOC\Documents\pyrpoc\pyrpoc\cropped.tiff', cropped)
                     results.append(cropped)
                 
