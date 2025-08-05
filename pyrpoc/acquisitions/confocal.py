@@ -360,8 +360,8 @@ class Confocal(Acquisition):
                     channel_data = acq_data if len(ai_channels) == 1 else acq_data[i]
                     reshaped = channel_data.reshape(total_y, total_x, pixel_samples)
                     pixel_values = np.mean(reshaped, axis=2)
-                    cropped = pixel_values[:, extra_right:extra_right + numsteps_x]
-                    results.append(pixel_values)
+                    cropped = pixel_values[:, extra_left:extra_left + numsteps_x]
+                    results.append(cropped)
                 
                 if len(results) == 1:
                     return results[0]
