@@ -6,7 +6,7 @@ from PyQt6.QtWidgets import QApplication, QVBoxLayout, QHBoxLayout, QMainWindow,
                              QFrame, QSizePolicy, QDockWidget, QFileDialog, QDialog, QFormLayout, QDoubleSpinBox, \
                              QScrollArea
 from PyQt6.QtCore import Qt, QPointF, QRectF, QPropertyAnimation, QEasingCurve
-from PyQt6.QtGui import QPixmap, QImage, QPen, QBrush, QColor, QPainter, QFont
+from PyQt6.QtGui import QPixmap, QImage, QPen, QBrush, QColor, QPainter, QFont, QIcon
 from pyrpoc.gui_handler import AppState, StateSignalBus
 import sys
 import pyqtgraph as pg
@@ -32,6 +32,21 @@ DEV_BORDER_STYLE = """
         margin: 2px;
     }
 """
+
+def create_white_icon(standard_pixmap):
+    """create a white version of a standard icon"""
+    original_pixmap = QApplication.style().standardIcon(standard_pixmap).pixmap(32, 32)
+    white_pixmap = QPixmap(original_pixmap.size())
+    white_pixmap.fill(QColor(255, 255, 255, 0))  # transparent background
+    
+    painter = QPainter(white_pixmap)
+    painter.setCompositionMode(QPainter.CompositionMode.SourceOver)
+    painter.drawPixmap(0, 0, original_pixmap)
+    painter.setCompositionMode(QPainter.CompositionMode.SourceIn)
+    painter.fillRect(white_pixmap.rect(), QColor(255, 255, 255))  # white color
+    painter.end()
+    
+    return QIcon(white_pixmap)
 
 SPLITTER_STYLE = """
     QSplitter::handle {
@@ -77,19 +92,19 @@ class TopBar(QWidget):
         controls_layout.setContentsMargins(0, 0, 0, 0)
 
         self.single_btn = QPushButton()
-        self.single_btn.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_MediaPlay))
+        self.single_btn.setIcon(create_white_icon(QStyle.StandardPixmap.SP_MediaPlay))
         self.single_btn.setToolTip('Start Single Acquisition')
         self.single_btn.clicked.connect(signals.single_btn_clicked.emit)
         controls_layout.addWidget(self.single_btn)
 
         self.continuous_btn = QPushButton()
-        self.continuous_btn.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_MediaSeekForward))
+        self.continuous_btn.setIcon(create_white_icon(QStyle.StandardPixmap.SP_MediaSeekForward))
         self.continuous_btn.setToolTip('Start Continuous Acquisition')
         self.continuous_btn.clicked.connect(signals.continuous_btn_clicked.emit)
         controls_layout.addWidget(self.continuous_btn)
 
         self.stop_btn = QPushButton()
-        self.stop_btn.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_MediaStop))
+        self.stop_btn.setIcon(create_white_icon(QStyle.StandardPixmap.SP_MediaStop))
         self.stop_btn.setToolTip('Stop Acquisition')
         self.stop_btn.clicked.connect(signals.stop_btn_clicked.emit)
         controls_layout.addWidget(self.stop_btn)
