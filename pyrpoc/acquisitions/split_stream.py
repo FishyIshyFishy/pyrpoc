@@ -323,11 +323,9 @@ class SplitDataStream(Acquisition):
                 input_results = []
                 split_point = int(self.acquisition_parameters.get('split_percentage', 50) / 100.0 * pixel_samples)
                 
-                # Calculate AOM delay in samples
                 aom_delay_us = self.acquisition_parameters.get('aom_delay', 0)
                 aom_delay_samples = max(0, int(aom_delay_us / dwell_time * pixel_samples))
-                
-                # Validate that we have enough samples for both portions
+
                 split_percentage = self.acquisition_parameters.get('split_percentage', 50)
                 if split_point + aom_delay_samples >= pixel_samples:
                     raise ValueError(f"AOM delay too large: {aom_delay_us} µs with {dwell_time} µs dwell time and {split_percentage}% split leaves no samples for second portion")
@@ -336,10 +334,8 @@ class SplitDataStream(Acquisition):
                     channel_data = acq_data if len(ai_channels) == 1 else acq_data[i]
                     reshaped = channel_data.reshape(total_y, total_x, pixel_samples)
                     
-                    # First portion: from start to split_point
                     first_portion = np.mean(reshaped[:, :, :split_point], axis=2)
                     
-                    # Second portion: from split_point + aom_delay_samples to end
                     second_start = split_point + aom_delay_samples
                     if second_start < pixel_samples:
                         second_portion = np.mean(reshaped[:, :, second_start:], axis=2)
@@ -352,7 +348,6 @@ class SplitDataStream(Acquisition):
                     input_results.append(cropped_first)
                     input_results.append(cropped_second)
                 
-                # Output shape: (N*2, height, width)
                 return np.stack(input_results)
         except Exception as e:
             self.signal_bus.console_message.emit(f'Error in DAQ acquisition: {e}')
