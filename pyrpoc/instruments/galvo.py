@@ -48,14 +48,21 @@ class Galvo(Instrument):
         x_steps = acquisition_parameters['x_pixels']
         y_steps = acquisition_parameters['y_pixels']
 
+        print(f'printing galvo test params')
         pixel_samples = max(1, int(dwell_sec * rate))
+        print(f'    pixel samples: {pixel_samples}')
         total_x = x_steps + extra_left + extra_right
+        print(f'    total x : {total_x}')
         total_y = y_steps
+        print(f'    total y : {total_y}')
 
         contained_rowsamples = pixel_samples * x_steps
+        print(f'    contained rowsamp: {contained_rowsamples}')
         total_rowsamples = pixel_samples * total_x
+        print(f'    total rowsamp: {total_rowsamples}')
         
         step_size = (2 * amp_x) / contained_rowsamples
+        print(f'    total rowsamp: {total_rowsamples}')
         bottom = offset_x - amp_x - (step_size * extra_left)
         top = offset_x + amp_x + (step_size * extra_right)
 

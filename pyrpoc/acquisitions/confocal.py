@@ -293,7 +293,10 @@ class Confocal(Acquisition):
                     channel_data = acq_data if len(ai_channels) == 1 else acq_data[i]
                     reshaped = channel_data.reshape(total_y, total_x, pixel_samples)
                     pixel_values = np.mean(reshaped, axis=2)
+                    from tifffile import imwrite
+                    imwrite(r'C:\Users\SRPOC\Documents\pyrpoc\pyrpoc\uncropped.tiff', pixel_values)
                     cropped = pixel_values[:, extra_left:extra_left + numsteps_x]
+                    imwrite(r'C:\Users\SRPOC\Documents\pyrpoc\pyrpoc\cropped.tiff', cropped)
                     results.append(cropped)
                 
                 if len(results) == 1:
