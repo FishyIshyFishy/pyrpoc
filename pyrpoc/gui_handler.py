@@ -18,6 +18,7 @@ class AppState:
         self.acquisition_parameters = {
             'num_frames': 1,  # Common to all modalities
             'split_percentage': 50,  # Only used for split data stream modality
+            'aom_delay': 0,  # AOM delay in microseconds for split data stream modality
             'save_enabled': False,  # Whether to save acquired data
             'save_path': '',  # Full path to base filename for saving data
             
@@ -553,7 +554,7 @@ def validate_acquisition_parameters(parameters, modality):
             'amplitude_x', 'amplitude_y', 'offset_x', 'offset_y'
         ],
         'split data stream': [
-            'x_pixels', 'y_pixels', 'num_frames', 'split_percentage',
+            'x_pixels', 'y_pixels', 'num_frames', 'split_percentage', 'aom_delay',
             'dwell_time', 'extrasteps_left', 'extrasteps_right',
             'amplitude_x', 'amplitude_y', 'offset_x', 'offset_y',
             'numtiles_x', 'numtiles_y', 'numtiles_z',
@@ -576,6 +577,7 @@ def validate_acquisition_parameters(parameters, modality):
         'y_pixels': (1, 10000, "y_pixels must be between 1 and 10000"),
         'num_frames': (1, 10000, "num_frames must be between 1 and 10000"),
         'split_percentage': (1, 99, "split_percentage must be between 1 and 99"),
+        'aom_delay': (0, 1000, "aom_delay must be between 0 and 1000 µs"),
         'dwell_time': (1, 1000, "dwell_time must be between 1 and 1000 µs"),
         'extrasteps_left': (0, 10000, "extrasteps_left must be between 0 and 10000"),
         'extrasteps_right': (0, 10000, "extrasteps_right must be between 0 and 10000"),

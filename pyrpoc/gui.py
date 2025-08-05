@@ -247,6 +247,18 @@ class AcquisitionParameters(QWidget):
             split_layout.addWidget(self.split_percentage_spinbox)
             self.layout.addLayout(split_layout)
             
+            # AOM Delay parameter for split data stream modality
+            aom_delay_layout = QHBoxLayout()
+            aom_delay_layout.addWidget(QLabel('AOM Delay:'))
+            self.aom_delay_spinbox = QSpinBox()
+            self.aom_delay_spinbox.setRange(0, 1000)
+            self.aom_delay_spinbox.setValue(self.app_state.acquisition_parameters.get('aom_delay', 0))
+            self.aom_delay_spinbox.setSuffix(' µs')
+            self.aom_delay_spinbox.valueChanged.connect(
+                lambda value: self.signals.acquisition_parameter_changed.emit('aom_delay', value))
+            aom_delay_layout.addWidget(self.aom_delay_spinbox)
+            self.layout.addLayout(aom_delay_layout)
+            
 
             self.add_galvo_parameters()
             self.add_prior_stage_parameters()
