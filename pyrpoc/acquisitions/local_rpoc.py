@@ -6,12 +6,7 @@ import nidaqmx
 from nidaqmx.constants import AcquisitionType
 from scipy.ndimage import zoom
 
-class LocalRPOC(Acquisition):
-    """
-    Local RPOC treatment class that scans only the region defined by a mask
-    without collecting any data - only performs treatment laser output
-    """
-    
+class LocalRPOC(Acquisition):   
     def __init__(self, galvo=None, mask_data=None, treatment_parameters=None, signal_bus=None, **kwargs):
         super().__init__(**kwargs)
         self.galvo = galvo
@@ -38,10 +33,7 @@ class LocalRPOC(Acquisition):
         self.treatment_region = self._calculate_treatment_region()
         
     def _calculate_treatment_region(self):
-        """
-        Calculate the smallest bounding box for the mask region
-        Returns: (x_min, y_min, x_max, y_max) in pixel coordinates
-        """
+        '''get a bounding box for the region'''
         if self.mask_data is None:
             return None
             
@@ -64,41 +56,26 @@ class LocalRPOC(Acquisition):
             
         return (x_min, y_min, x_max, y_max)
     
-    def _apply_drift_offset(self, base_offset_x, base_offset_y):
-        """
-        Apply drift offset to the base offset values
-        """
-        return base_offset_x + self.offset_drift_x, base_offset_y + self.offset_drift_y
-    
     def _calculate_scan_parameters(self):
-        """
-        Calculate scan parameters for the treatment region
-        Returns: scan parameters for the galvo
-        """
         if self.treatment_region is None:
             return None
             
         x_min, y_min, x_max, y_max = self.treatment_region
         
-        # Calculate region dimensions
         region_width = x_max - x_min
         region_height = y_max - y_min
         
-        # Calculate voltage ranges for the region
-        # Assuming linear mapping from pixel coordinates to voltage
         voltage_per_pixel_x = self.amplitude_x / self.x_pixels
         voltage_per_pixel_y = self.amplitude_y / self.y_pixels
-        
-        # Calculate center of the region in voltage space
+
         center_x_pixel = (x_min + x_max) / 2.0
         center_y_pixel = (y_min + y_max) / 2.0
         
-        # Convert to voltage coordinates
         center_x_voltage = (center_x_pixel - self.x_pixels / 2.0) * voltage_per_pixel_x
         center_y_voltage = (center_y_pixel - self.y_pixels / 2.0) * voltage_per_pixel_y
-        
-        # Apply base offset and drift offset
-        final_offset_x, final_offset_y = self._apply_drift_offset(self.offset_x, self.offset_y)
+
+        final_offset_x = self.offset_x + self.offset_drift_x
+        final_offset_y = self.offset_y + self.offset_drift_y
         
         # Calculate region-specific amplitude
         region_amplitude_x = region_width * voltage_per_pixel_x
@@ -116,21 +93,13 @@ class LocalRPOC(Acquisition):
         }
     
     def configure_rpoc(self, rpoc_enabled, **kwargs):
-        """
-        Local RPOC doesn't use traditional RPOC - this is a placeholder
-        """
-        if self.signal_bus:
-            self.signal_bus.console_message.emit("Local RPOC treatment configured")
+        pass
     
     def perform_acquisition(self):
-        """
-        Perform the local RPOC treatment without data collection
-        This is the main method called by the worker
-        """
         if self.signal_bus:
             self.signal_bus.console_message.emit("Starting local RPOC treatment...")
         
-        # Calculate scan parameters
+        # calculate scan parameters
         scan_params = self._calculate_scan_parameters()
         if scan_params is None:
             if self.signal_bus:
@@ -166,19 +135,8 @@ class LocalRPOC(Acquisition):
         
         return None  # No data to return
     
-    def _perform_treatment_scan(self, scan_params):
-        """
-        Perform the actual treatment scan using galvo control
-        """
-        if self.galvo is None:
-            if self.signal_bus:
-                self.signal_bus.console_message.emit("Warning: No galvo instrument available - simulating treatment")
-            # Simulate treatment timing
-            time.sleep(1)
-            return
-        
+    def _perform_treatment_scan(self, scan_params):       
         try:
-            # Get galvo parameters
             rate = self.galvo.parameters.get('sample_rate', 1000000)
             dwell_time_sec = self.dwell_time / 1e6  # convert to seconds
             pixel_samples = max(1, int(dwell_time_sec * rate))
@@ -186,15 +144,12 @@ class LocalRPOC(Acquisition):
             fast_channel = self.galvo.parameters.get('fast_axis_channel', 1)
             device_name = self.galvo.parameters.get('device_name', 'Dev1')
             
-            # Calculate voltage per pixel
             voltage_per_pixel_x = self.amplitude_x / self.x_pixels
             voltage_per_pixel_y = self.amplitude_y / self.y_pixels
             
-            # Calculate center position with drift offset
             center_x = self.offset_x + self.offset_drift_x
             center_y = self.offset_y + self.offset_drift_y
             
-            # Generate treatment waveform based on mask
             treatment_waveform, treatment_ttl = self._generate_treatment_waveform(
                 center_x, center_y, voltage_per_pixel_x, voltage_per_pixel_y,
                 pixel_samples, rate
@@ -206,16 +161,9 @@ class LocalRPOC(Acquisition):
                 return
             
                         # Send signals to galvo (similar to confocal.py)
-            with nidaqmx.Task() as ao_task:
-                # Configure analog output channels
-                fast_channel_name = f"{device_name}/ao{fast_channel}"
-                slow_channel_name = f"{device_name}/ao{slow_channel}"
-                
-                if self.signal_bus:
-                    self.signal_bus.console_message.emit(f"Debug: Configuring AO channels - Fast: {fast_channel_name}, Slow: {slow_channel_name}")
-                
-                ao_task.ao_channels.add_ao_voltage_chan(fast_channel_name)
-                ao_task.ao_channels.add_ao_voltage_chan(slow_channel_name)
+            with nidaqmx.Task() as ao_task:                
+                ao_task.ao_channels.add_ao_voltage_chan(f"{device_name}/ao{fast_channel}")
+                ao_task.ao_channels.add_ao_voltage_chan(f"{device_name}/ao{slow_channel}")
                 
                 # Configure timing for analog output
                 ao_task.timing.cfg_samp_clk_timing(
@@ -224,12 +172,16 @@ class LocalRPOC(Acquisition):
                     samps_per_chan=treatment_waveform.shape[1]
                 )
                 
-                # Set up TTL output for treatment laser if available
+                # exported sample clock for the digital task
+                # there is no AI task here so i have to explicitly wire the DO task to the AO task
+                # DO tasks (apparently) do not have any implicit timing
+                ao_task.export_signals.samp_clk_output_term = f"/{device_name}/PFI0"
+
                 do_task = None
                 if treatment_ttl is not None:
                     try:
                         do_task = nidaqmx.Task()
-                        # Use the TTL channel from parameters
+
                         ttl_device = self.treatment_parameters.get('ttl_device', device_name)
                         ttl_port_line = self.treatment_parameters.get('ttl_port_line', 'port0/line0')
                         ttl_channel = f"{ttl_device}/{ttl_port_line}"
@@ -240,7 +192,7 @@ class LocalRPOC(Acquisition):
                         do_task.do_channels.add_do_chan(ttl_channel)
                         do_task.timing.cfg_samp_clk_timing(
                             rate=rate,
-                            source=f"/{device_name}/ao/SampleClock",
+                            source=f"/{device_name}/PFI0",
                             sample_mode=AcquisitionType.FINITE,
                             samps_per_chan=treatment_waveform.shape[1]
                         )
@@ -257,22 +209,19 @@ class LocalRPOC(Acquisition):
                             except:
                                 pass
                         do_task = None
-                
-                # Write analog output data
+
                 ao_task.write(treatment_waveform, auto_start=False)
-                
-                # Start tasks
-                ao_task.start()
+
                 if do_task:
                     do_task.start()
+                ao_task.start()
                 
-                # Wait for completion
+
                 timeout = treatment_waveform.shape[1] / rate + 5
                 ao_task.wait_until_done(timeout=timeout)
                 if do_task:
                     do_task.wait_until_done(timeout=timeout)
-                
-                # Clean up TTL task if it exists
+
                 if do_task:
                     try:
                         do_task.close()
@@ -285,14 +234,9 @@ class LocalRPOC(Acquisition):
         except Exception as e:
             if self.signal_bus:
                 self.signal_bus.console_message.emit(f"Error during treatment scan: {e}")
-            # Fallback to simulation
             time.sleep(1)
     
     def _generate_treatment_waveform(self, center_x, center_y, voltage_per_pixel_x, voltage_per_pixel_y, pixel_samples, rate):
-        """
-        Generate treatment waveform that only scans regions within the mask
-        Each row has its own start/stop positions based on mask boundaries
-        """
         if self.mask_data is None:
             return None, None
         

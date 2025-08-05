@@ -1,37 +1,37 @@
 {
-  "modality": "split data stream",
+  "modality": "confocal",
   "acquisition_parameters": {
     "num_frames": 1,
     "split_percentage": 50,
     "save_enabled": false,
     "save_path": "",
-    "dwell_time": 5.0,
-    "extrasteps_left": 250,
-    "extrasteps_right": 50,
-    "amplitude_x": 2.0,
-    "amplitude_y": 2.0,
-    "offset_x": -0.4,
-    "offset_y": -1.5,
+    "dwell_time": 2.0,
+    "extrasteps_left": 1500,
+    "extrasteps_right": 20,
+    "amplitude_x": 3.0,
+    "amplitude_y": 3.0,
+    "offset_x": 0.0,
+    "offset_y": 0.0,
     "x_pixels": 512,
     "y_pixels": 512,
-    "numtiles_x": 1,
-    "numtiles_y": 1,
-    "numtiles_z": 1,
+    "numtiles_x": 10,
+    "numtiles_y": 10,
+    "numtiles_z": 5,
     "tile_size_x": 100,
     "tile_size_y": 100,
-    "tile_size_z": 50.0
+    "tile_size_z": 50
   },
   "display_parameters": {},
-  "rpoc_enabled": true,
+  "rpoc_enabled": false,
   "ui_state": {
     "acquisition_parameters_visible": true,
     "instrument_controls_visible": true,
     "display_controls_visible": true,
     "lines_enabled": false,
     "main_splitter_sizes": [
-      104,
-      418,
-      104
+      423,
+      1690,
+      423
     ]
   },
   "instruments": [
@@ -51,49 +51,18 @@
       "instrument_type": "data input",
       "parameters": {
         "input_channels": [
-          0,
-          1
+          0
         ],
         "channel_names": {
-          "0": "ch0",
-          "1": "ch1"
+          "0": "c0"
         },
         "sample_rate": 2000000,
         "device_name": "Dev1",
         "name": "Data Input"
       }
-    },
-    {
-      "name": "Prior Stage",
-      "instrument_type": "prior stage",
-      "parameters": {
-        "port": 3,
-        "max_z_height": 50000.0,
-        "safe_move_distance": 10000.0,
-        "name": "Prior Stage"
-      }
     }
   ],
-  "rpoc_mask_channels": {
-    "1": {
-      "device": "Dev1",
-      "port_line": "port0/line4",
-      "mask_metadata": {
-        "shape": [
-          512,
-          512
-        ],
-        "dtype": "uint8",
-        "has_mask": true
-      }
-    }
-  },
+  "rpoc_mask_channels": {},
   "rpoc_script_channels": {},
-  "rpoc_static_channels": {
-    "2": {
-      "device": "Dev1",
-      "port_line": "port1/line0",
-      "level": "Static High"
-    }
-  }
+  "rpoc_static_channels": {}
 }
