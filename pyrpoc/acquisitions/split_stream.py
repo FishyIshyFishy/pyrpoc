@@ -340,7 +340,6 @@ class SplitDataStream(Acquisition):
                     if second_start < pixel_samples:
                         second_portion = np.mean(reshaped[:, :, second_start:], axis=2)
                     else:
-                        # If no samples left, create zero array
                         second_portion = np.zeros_like(first_portion)
                     
                     cropped_first = first_portion[:, extra_left:extra_left + numsteps_x]
