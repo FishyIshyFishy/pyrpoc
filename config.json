@@ -10,7 +10,7 @@
     "extrasteps_right": 20,
     "amplitude_x": 3.0,
     "amplitude_y": 3.0,
-    "offset_x": 0.0,
+    "offset_x": -1.5,
     "offset_y": 0.0,
     "x_pixels": 512,
     "y_pixels": 512,
@@ -29,9 +29,9 @@
     "display_controls_visible": true,
     "lines_enabled": false,
     "main_splitter_sizes": [
-      423,
-      1690,
-      423
+      229,
+      918,
+      229
     ]
   },
   "instruments": [
