@@ -1,5 +1,6 @@
-from PyQt6.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QGroupBox, QFormLayout, QDoubleSpinBox, QSpinBox, QProgressBar
+from PyQt6.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QGroupBox, QFormLayout, QDoubleSpinBox, QSpinBox, QProgressBar, QComboBox
 from PyQt6.QtCore import pyqtSignal, QTimer
+from superqt import QSearchableComboBox
 
 class LocalRPOCProgressDialog(QDialog):
     """Progress dialog for local RPOC treatment"""
@@ -76,6 +77,9 @@ class LocalRPOCDialog(QDialog):
         
         # Repetitions parameter
         self.add_repetitions_parameter(layout)
+        
+        # TTL channel selection
+        self.add_ttl_channel_selection(layout)
         
         # Buttons
         button_layout = QHBoxLayout()
@@ -199,6 +203,41 @@ class LocalRPOCDialog(QDialog):
         
         layout.addLayout(reps_layout)
     
+    def add_ttl_channel_selection(self, layout):
+        """Add TTL channel selection"""
+        ttl_group = QGroupBox("TTL Channel Selection")
+        ttl_layout = QFormLayout()
+        
+        # Device selection
+        self.ttl_device_combo = QSearchableComboBox()
+        self.ttl_device_combo.addItems(['Dev1', 'Dev2', 'Dev3', 'Dev4'])
+        
+        # Port/Line selection
+        self.ttl_port_line_combo = QSearchableComboBox()
+        self.ttl_port_line_combo.addItems([
+            'port0/line0', 'port0/line1', 'port0/line2', 'port0/line3', 'port0/line4', 'port0/line5', 'port0/line6', 'port0/line7',
+            'port0/line8', 'port0/line9', 'port0/line10', 'port0/line11', 'port0/line12', 'port0/line13', 'port0/line14', 'port0/line15',
+            'port1/line0', 'port1/line1', 'port1/line2', 'port1/line3', 'port1/line4', 'port1/line5', 'port1/line6', 'port1/line7',
+            'port1/line8', 'port1/line9', 'port1/line10', 'port1/line11', 'port1/line12', 'port1/line13', 'port1/line14', 'port1/line15'
+        ])
+        
+        # Set default values from the parent widget (RPOC channel)
+        if hasattr(self.parent(), 'channel_id') and hasattr(self.parent(), 'app_state'):
+            channel_id = self.parent().channel_id
+            if hasattr(self.parent().app_state, 'rpoc_mask_channels') and channel_id in self.parent().app_state.rpoc_mask_channels:
+                channel_data = self.parent().app_state.rpoc_mask_channels[channel_id]
+                default_device = channel_data.get('device', 'Dev1')
+                default_port_line = channel_data.get('port_line', 'port0/line0')
+                
+                self.ttl_device_combo.setCurrentText(default_device)
+                self.ttl_port_line_combo.setCurrentText(default_port_line)
+        
+        ttl_layout.addRow("Device:", self.ttl_device_combo)
+        ttl_layout.addRow("Port/Line:", self.ttl_port_line_combo)
+        
+        ttl_group.setLayout(ttl_layout)
+        layout.addWidget(ttl_group)
+    
     def get_parameters(self):
         """Get all parameters from the dialog"""
         return {
@@ -213,7 +252,9 @@ class LocalRPOCDialog(QDialog):
             'y_pixels': self.y_pixels_spin.value(),
             'offset_drift_x': self.offset_drift_x_spin.value(),
             'offset_drift_y': self.offset_drift_y_spin.value(),
-            'repetitions': self.repetitions_spin.value()
+            'repetitions': self.repetitions_spin.value(),
+            'ttl_device': self.ttl_device_combo.currentText(),
+            'ttl_port_line': self.ttl_port_line_combo.currentText()
         }
     
     def start_local_rpoc(self):

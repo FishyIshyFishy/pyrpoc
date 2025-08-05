@@ -801,6 +801,7 @@ def handle_local_rpoc_started(parameters, app_state, signal_bus):
                                   f"offset_y={parameters['offset_y']}V, "
                                   f"drift_x={parameters['offset_drift_x']}V, "
                                   f"drift_y={parameters['offset_drift_y']}V")
+    signal_bus.console_message.emit(f"TTL Channel: {parameters.get('ttl_device', 'Dev1')}/{parameters.get('ttl_port_line', 'port0/line0')}")
     
     # Create local RPOC object (similar to acquisition creation)
     local_rpoc = None
