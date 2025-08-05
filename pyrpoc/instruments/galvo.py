@@ -17,6 +17,12 @@ class Galvo(Instrument):
             'sample_rate': 1000000,
             'device_name': 'Dev1'
         }
+        
+        # Hardcoded voltage limits for galvo protection
+        self.voltage_limits = {
+            'min_voltage': -7.5,  # Minimum safe voltage (V)
+            'max_voltage': 7.5   # Maximum safe voltage (V)
+        }
 
     def initialize(self):
         return True
@@ -34,6 +40,26 @@ class Galvo(Instrument):
             raise ValueError("Channel numbers must be non-negative")
         if parameters['sample_rate'] <= 0:
             raise ValueError("Sample rate must be positive")
+    
+    def clip_waveform_voltages(self, waveform):
+        """Clip waveform voltages to safe limits"""
+        min_voltage = self.voltage_limits['min_voltage']
+        max_voltage = self.voltage_limits['max_voltage']
+        
+        # Clip both X and Y channels
+        clipped_waveform = np.clip(waveform, min_voltage, max_voltage)
+        
+        # Check if clipping occurred and log warnings
+        if np.any(waveform < min_voltage) or np.any(waveform > max_voltage):
+            x_clipped = np.sum(waveform[0] < min_voltage) + np.sum(waveform[0] > max_voltage)
+            y_clipped = np.sum(waveform[1] < min_voltage) + np.sum(waveform[1] > max_voltage)
+            
+            if self.console_callback:
+                self.console_callback(f"Galvo voltage clipping applied: {x_clipped} X samples, {y_clipped} Y samples clipped to [{min_voltage}, {max_voltage}] V")
+            else:
+                print(f"Galvo voltage clipping applied: {x_clipped} X samples, {y_clipped} Y samples clipped to [{min_voltage}, {max_voltage}] V")
+        
+        return clipped_waveform
     
     def generate_raster_waveform(self, acquisition_parameters):
         dwell = acquisition_parameters['dwell_time']  # microseconds
@@ -124,7 +150,13 @@ class Galvo(Instrument):
         print(f'    final x_waveform range: {composite[0].min():.3f} to {composite[0].max():.3f} V')
         print(f'    final y_waveform range: {composite[1].min():.3f} to {composite[1].max():.3f} V')
         
-        return composite
+        # Apply voltage clipping for galvo protection
+        clipped_composite = self.clip_waveform_voltages(composite)
+        
+        print(f'    clipped x_waveform range: {clipped_composite[0].min():.3f} to {clipped_composite[0].max():.3f} V')
+        print(f'    clipped y_waveform range: {clipped_composite[1].min():.3f} to {clipped_composite[1].max():.3f} V')
+        
+        return clipped_composite
 
 class GalvoWidget(QWidget):
     def __init__(self, galvo):
