@@ -205,42 +205,60 @@ class LocalRPOC(Acquisition):
                     self.signal_bus.console_message.emit("Error: No valid treatment regions found in mask")
                 return
             
-            # Send signals to galvo (similar to confocal.py)
+                        # Send signals to galvo (similar to confocal.py)
             with nidaqmx.Task() as ao_task:
-                ao_task.ao_channels.add_ao_voltage_chan(f"{device_name}/ao{fast_channel}")
-                ao_task.ao_channels.add_ao_voltage_chan(f"{device_name}/ao{slow_channel}")
+                # Configure analog output channels
+                fast_channel_name = f"{device_name}/ao{fast_channel}"
+                slow_channel_name = f"{device_name}/ao{slow_channel}"
                 
+                if self.signal_bus:
+                    self.signal_bus.console_message.emit(f"Debug: Configuring AO channels - Fast: {fast_channel_name}, Slow: {slow_channel_name}")
+                
+                ao_task.ao_channels.add_ao_voltage_chan(fast_channel_name)
+                ao_task.ao_channels.add_ao_voltage_chan(slow_channel_name)
+                
+                # Configure timing for analog output
                 ao_task.timing.cfg_samp_clk_timing(
                     rate=rate,
                     sample_mode=AcquisitionType.FINITE,
                     samps_per_chan=treatment_waveform.shape[1]
                 )
                 
-                            # Set up TTL output for treatment laser if available
-            do_task = None
-            if treatment_ttl is not None:
-                try:
-                    do_task = nidaqmx.Task()
-                    # Use the TTL channel from parameters
-                    ttl_device = self.treatment_parameters.get('ttl_device', device_name)
-                    ttl_port_line = self.treatment_parameters.get('ttl_port_line', 'port0/line0')
-                    ttl_channel = f"{ttl_device}/{ttl_port_line}"
-                    
-                    do_task.do_channels.add_do_chan(ttl_channel)
-                    do_task.timing.cfg_samp_clk_timing(
-                        rate=rate,
-                        source=f"/{device_name}/ao/SampleClock",
-                        sample_mode=AcquisitionType.FINITE,
-                        samps_per_chan=treatment_waveform.shape[1]
-                    )
-                    do_task.write(treatment_ttl.tolist(), auto_start=False)
-                    
-                    if self.signal_bus:
-                        self.signal_bus.console_message.emit(f"TTL output configured on {ttl_channel}")
-                except Exception as e:
-                    if self.signal_bus:
-                        self.signal_bus.console_message.emit(f"Warning: Could not set up TTL output: {e}")
+                # Set up TTL output for treatment laser if available
+                do_task = None
+                if treatment_ttl is not None:
+                    try:
+                        do_task = nidaqmx.Task()
+                        # Use the TTL channel from parameters
+                        ttl_device = self.treatment_parameters.get('ttl_device', device_name)
+                        ttl_port_line = self.treatment_parameters.get('ttl_port_line', 'port0/line0')
+                        ttl_channel = f"{ttl_device}/{ttl_port_line}"
+                        
+                        if self.signal_bus:
+                            self.signal_bus.console_message.emit(f"Debug: Configuring TTL channel: {ttl_channel}")
+                        
+                        do_task.do_channels.add_do_chan(ttl_channel)
+                        do_task.timing.cfg_samp_clk_timing(
+                            rate=rate,
+                            source=f"/{device_name}/ao/SampleClock",
+                            sample_mode=AcquisitionType.FINITE,
+                            samps_per_chan=treatment_waveform.shape[1]
+                        )
+                        do_task.write(treatment_ttl.tolist(), auto_start=False)
+                        
+                        if self.signal_bus:
+                            self.signal_bus.console_message.emit(f"TTL output configured on {ttl_channel}")
+                    except Exception as e:
+                        if self.signal_bus:
+                            self.signal_bus.console_message.emit(f"Warning: Could not set up TTL output: {e}")
+                        if do_task:
+                            try:
+                                do_task.close()
+                            except:
+                                pass
+                        do_task = None
                 
+                # Write analog output data
                 ao_task.write(treatment_waveform, auto_start=False)
                 
                 # Start tasks
@@ -253,6 +271,13 @@ class LocalRPOC(Acquisition):
                 ao_task.wait_until_done(timeout=timeout)
                 if do_task:
                     do_task.wait_until_done(timeout=timeout)
+                
+                # Clean up TTL task if it exists
+                if do_task:
+                    try:
+                        do_task.close()
+                    except:
+                        pass
                 
             if self.signal_bus:
                 self.signal_bus.console_message.emit("Treatment scan completed successfully")

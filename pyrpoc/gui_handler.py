@@ -781,6 +781,10 @@ def handle_local_rpoc_started(parameters, app_state, signal_bus):
     mask_data = parameters.pop('mask_data', None)
     channel_id = parameters.pop('channel_id', None)
     
+    signal_bus.console_message.emit(f"Debug: Received parameters keys: {list(parameters.keys())}")
+    signal_bus.console_message.emit(f"Debug: Mask data received: {mask_data is not None}")
+    signal_bus.console_message.emit(f"Debug: Channel ID: {channel_id}")
+    
     if mask_data is None:
         signal_bus.console_message.emit("Error: No mask data available for local RPOC treatment")
         return 0

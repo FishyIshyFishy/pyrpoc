@@ -57,8 +57,8 @@ class Confocal(Acquisition):
             if self._stop_flag and self._stop_flag():
                 break
             
-            frame_data = self.generate_simulated_confocal()
-            # frame_data = self.collect_data(self.galvo, ai_channels)
+            # frame_data = self.generate_simulated_confocal()
+            frame_data = self.collect_data(self.galvo, ai_channels)
             
             if self.signal_bus:
                 self.signal_bus.data_signal.emit(frame_data, frame_idx, self.num_frames, False)

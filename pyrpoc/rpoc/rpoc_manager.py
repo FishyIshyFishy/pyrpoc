@@ -249,9 +249,17 @@ class RPOCMaskChannelWidget(BaseRPOCChannelWidget):
                 parameters = dialog.get_parameters()
                 parameters['mask_data'] = mask_data
                 parameters['channel_id'] = self.channel_id
+                self.signals.console_message.emit(f"Debug: Mask data shape: {mask_data.shape if hasattr(mask_data, 'shape') else 'unknown'}")
                 self.signals.local_rpoc_started.emit(parameters)
             else:
-                self.signals.console_message.emit("Error: No mask data available for this channel")
+                self.signals.console_message.emit(f"Error: No mask data available for this channel (channel_id: {self.channel_id}, type: {type(self.channel_id)})")
+                # Debug: show what's in the app_state
+                if hasattr(self.app_state, 'rpoc_mask_channels'):
+                    self.signals.console_message.emit(f"Debug: Available channels: {list(self.app_state.rpoc_mask_channels.keys())}")
+                    if self.channel_id in self.app_state.rpoc_mask_channels:
+                        channel_data = self.app_state.rpoc_mask_channels[self.channel_id]
+                        self.signals.console_message.emit(f"Debug: Channel data keys: {list(channel_data.keys())}")
+                        self.signals.console_message.emit(f"Debug: Mask data in channel: {channel_data.get('mask_data') is not None}")
     
     def has_mask_loaded(self):
         """Check if a mask is loaded for this channel"""
