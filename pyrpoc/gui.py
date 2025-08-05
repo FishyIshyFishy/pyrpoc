@@ -76,23 +76,23 @@ class TopBar(QWidget):
         controls_layout = QHBoxLayout()
         controls_layout.setContentsMargins(0, 0, 0, 0)
 
-        single_btn = QPushButton()
-        single_btn.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_MediaPlay))
-        single_btn.setToolTip('Start Continuous Acquisition')
-        single_btn.clicked.connect(signals.single_btn_clicked.emit)
-        controls_layout.addWidget(single_btn)
+        self.single_btn = QPushButton()
+        self.single_btn.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_MediaPlay))
+        self.single_btn.setToolTip('Start Single Acquisition')
+        self.single_btn.clicked.connect(signals.single_btn_clicked.emit)
+        controls_layout.addWidget(self.single_btn)
 
-        continuous_btn = QPushButton()
-        continuous_btn.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_MediaSeekForward))
-        continuous_btn.setToolTip('Start Single Acquisition')
-        continuous_btn.clicked.connect(signals.continuous_btn_clicked.emit)
-        controls_layout.addWidget(continuous_btn)
+        self.continuous_btn = QPushButton()
+        self.continuous_btn.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_MediaSeekForward))
+        self.continuous_btn.setToolTip('Start Continuous Acquisition')
+        self.continuous_btn.clicked.connect(signals.continuous_btn_clicked.emit)
+        controls_layout.addWidget(self.continuous_btn)
 
-        stop_btn = QPushButton()
-        stop_btn.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_MediaStop))
-        stop_btn.setToolTip('Stop Acquisition')
-        stop_btn.clicked.connect(signals.stop_btn_clicked.emit)
-        controls_layout.addWidget(stop_btn)
+        self.stop_btn = QPushButton()
+        self.stop_btn.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_MediaStop))
+        self.stop_btn.setToolTip('Stop Acquisition')
+        self.stop_btn.clicked.connect(signals.stop_btn_clicked.emit)
+        controls_layout.addWidget(self.stop_btn)
 
         controls_widget.setLayout(controls_layout)
         layout.addWidget(controls_widget)
@@ -129,6 +129,18 @@ class TopBar(QWidget):
     def add_console_message(self, message):
         self.console.appendPlainText(message)
         self.console.verticalScrollBar().setValue(self.console.verticalScrollBar().maximum())
+    
+    def on_acquisition_started(self):
+        """disable start buttons and enable stop button when acquisition starts"""
+        self.single_btn.setEnabled(False)
+        self.continuous_btn.setEnabled(False)
+        self.stop_btn.setEnabled(True)
+    
+    def on_acquisition_stopped(self):
+        """enable start buttons and disable stop button when acquisition stops"""
+        self.single_btn.setEnabled(True)
+        self.continuous_btn.setEnabled(True)
+        self.stop_btn.setEnabled(False)
 
 
 class ModalityControls(QWidget):

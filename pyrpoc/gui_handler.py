@@ -132,6 +132,10 @@ class StateSignalBus(QObject):
     # Local RPOC
     local_rpoc_started = pyqtSignal(object) # emits when local RPOC treatment is started (parameters)
     local_rpoc_progress = pyqtSignal(int) # emits progress updates (repetition_number)
+    
+    # Button state management
+    acquisition_started = pyqtSignal() # emits when acquisition starts
+    acquisition_stopped = pyqtSignal() # emits when acquisition stops
 
     def __init__(self):
         super().__init__()
@@ -167,6 +171,14 @@ class StateSignalBus(QObject):
         self.console_message.connect(lambda message: handle_console_message(message, app_state, main_window))
 
         self.rpoc_enabled_changed.connect(lambda enabled: handle_rpoc_enabled_changed(enabled, app_state))
+        
+        # connect button state management signals
+        self.acquisition_started.connect(lambda: main_window.top_bar.on_acquisition_started())
+        self.acquisition_stopped.connect(lambda: main_window.top_bar.on_acquisition_stopped())
+        
+        # initialize button states
+        main_window.top_bar.on_acquisition_stopped()
+        
         self.acquisition_parameter_changed.connect(lambda param_name, value: handle_acquisition_parameter_changed(param_name, value, app_state, main_window))
         self.save_path_changed.connect(lambda path: handle_save_path_changed(path, app_state))
         
@@ -375,6 +387,11 @@ def handle_continuous_acquisition(app_state, signal_bus):
     return handle_single_acquisition(app_state, signal_bus, continuous=True)
 
 def handle_single_acquisition(app_state, signal_bus, continuous=False):
+    # check if acquisition is already running
+    if hasattr(signal_bus, 'acq_thread') and hasattr(signal_bus, 'acq_worker'):
+        signal_bus.console_message.emit("Acquisition already in progress. Please stop the current acquisition first.")
+        return
+    
     # take snapshot of all parameters rather than continually reading them from app_state during acquisition
     modality = app_state.modality
     parameters = app_state.acquisition_parameters.copy() 
@@ -520,6 +537,9 @@ def handle_single_acquisition(app_state, signal_bus, continuous=False):
         # garbage collection
         signal_bus.acq_thread = thread
         signal_bus.acq_worker = worker
+        
+        # emit signal to update button states
+        signal_bus.acquisition_started.emit()
     else:
         signal_bus.console_message.emit("Error: Failed to create acquisition object")
 
@@ -583,17 +603,22 @@ def handle_acquisition_thread_finished(data, signal_bus, thread, worker):
     if worker.continuous:
         return
     
+    # clean up the thread and worker for non-continuous acquisitions
+    worker.stop()
+    thread.quit()
+    thread.wait()
+    worker.deleteLater()
+    thread.deleteLater()
+    
+    # remove references from signal_bus
     if hasattr(signal_bus, 'acq_thread'):
-        thread = signal_bus.acq_thread
-        worker = signal_bus.acq_worker
-        worker.stop()
-        thread.quit()
-        thread.wait()
-        worker.deleteLater()
-        thread.deleteLater()
         del signal_bus.acq_thread
+    if hasattr(signal_bus, 'acq_worker'):
         del signal_bus.acq_worker
+    
     signal_bus.console_message.emit("Acquisition complete!")
+    # emit signal to update button states
+    signal_bus.acquisition_stopped.emit()
     # final data signal is now emitted by the acquisition classes themselves
 
 def handle_stop_acquisition(app_state, signal_bus):
@@ -620,6 +645,9 @@ def handle_stop_acquisition(app_state, signal_bus):
             signal_bus.console_message.emit("Continuous acquisition stopped")
         else:
             signal_bus.console_message.emit("Acquisition stopped")
+        
+        # emit signal to update button states
+        signal_bus.acquisition_stopped.emit()
     
     # Stop local RPOC treatment if running
     if hasattr(signal_bus, 'local_rpoc_thread') and hasattr(signal_bus, 'local_rpoc_worker'):
@@ -776,6 +804,11 @@ def handle_rpoc_channel_removed(channel_id, app_state, signal_bus):
 
 def handle_local_rpoc_started(parameters, app_state, signal_bus):
     """Handle local RPOC treatment start - similar structure to handle_single_acquisition"""
+    
+    # check if local RPOC treatment is already running
+    if hasattr(signal_bus, 'local_rpoc_thread') and hasattr(signal_bus, 'local_rpoc_worker'):
+        signal_bus.console_message.emit("Local RPOC treatment already in progress. Please stop the current treatment first.")
+        return 0
     
     # Extract mask data and channel info from parameters
     mask_data = parameters.pop('mask_data', None)
