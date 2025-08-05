@@ -20,8 +20,8 @@ class Galvo(Instrument):
         
         # Hardcoded voltage limits for galvo protection
         self.voltage_limits = {
-            'min_voltage': -7.5,  # Minimum safe voltage (V)
-            'max_voltage': 7.5   # Maximum safe voltage (V)
+            'min_voltage': -5,  # Minimum safe voltage (V)
+            'max_voltage': 5   # Maximum safe voltage (V)
         }
 
     def initialize(self):
