@@ -73,14 +73,21 @@ class Galvo(Instrument):
         total_rowsamples = pixel_samples * total_x
         print(f'    total_rowsamples: {total_rowsamples}')
         
-        step_size = (2 * amp_x) / contained_rowsamples
-        print(f'    step_size: {step_size} V/sample')
+        # Calculate step size based on pixels, not samples
+        step_size = (2 * amp_x) / x_steps
+        print(f'    step_size: {step_size} V/pixel')
         bottom = offset_x - amp_x - (step_size * extra_left)
         print(f'    bottom: {bottom} V')
         top = offset_x + amp_x + (step_size * extra_right)
         print(f'    top: {top} V')
 
-        single_row_ramp = np.linspace(bottom, top, total_rowsamples, endpoint=False)
+        # Generate ramp based on pixel positions, then repeat for samples per pixel
+        pixel_positions = np.linspace(bottom, top, total_x, endpoint=False)
+        print(f'    pixel_positions shape: {pixel_positions.shape}')
+        print(f'    pixel_positions range: {pixel_positions[0]:.3f} to {pixel_positions[-1]:.3f} V')
+        
+        # Repeat each pixel position for the number of samples per pixel
+        single_row_ramp = np.repeat(pixel_positions, pixel_samples)
         print(f'    single_row_ramp shape: {single_row_ramp.shape}')
         print(f'    single_row_ramp range: {single_row_ramp[0]:.3f} to {single_row_ramp[-1]:.3f} V')
         x_waveform = np.tile(single_row_ramp, total_y)
