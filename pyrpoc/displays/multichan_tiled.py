@@ -284,9 +284,11 @@ class MultichannelImageDisplayWidget(BaseImageDisplayWidget):
 
         # hand off entire time-series to each ImageView
         for ch, iv in enumerate(self.channel_views):
-            # Transpose the data to fix the display orientation
-            channel_data = data[:,ch,:,:].transpose(0, 2, 1)  # Transpose H and W dimensions
-            iv.setImage(channel_data, xvals=np.arange(T))
+            # swap height<->width
+            iv.setImage(
+                np.transpose(data[:, ch, :, :], (0, 2, 1)),
+                xvals=np.arange(T)
+            )
             iv.autoLevels()  # initial auto-scale
             self._hide_imageview_timeline(iv)
 
@@ -313,14 +315,13 @@ class MultichannelImageDisplayWidget(BaseImageDisplayWidget):
             return
 
         if isinstance(self._buffer, np.ndarray):
-            if self._buffer.ndim == 4:  # frames x channels x height x width
+            if self._buffer.ndim == 4:  # frames x channels x H x W
                 if 0 <= frame_idx < self._buffer.shape[0]:
-                    frame_data = self._buffer[frame_idx]  # channels x height x width
+                    frame_data = self._buffer[frame_idx]  # C x H x W
                     for ch in range(min(self.num_channels, frame_data.shape[0])):
                         if ch < len(self.channel_views):
-                            # Transpose the data to fix the display orientation
-                            channel_data = frame_data[ch].T  # Transpose H and W dimensions
-                            self.channel_views[ch].setImage(channel_data)
+                            # transpose each 2D channel
+                            self.channel_views[ch].setImage(frame_data[ch].T)
                 else:
                     for iv in self.channel_views:
                         iv.clear()
@@ -328,17 +329,15 @@ class MultichannelImageDisplayWidget(BaseImageDisplayWidget):
                 if 0 <= frame_idx < self._buffer.shape[0]:
                     frame_data = self._buffer[frame_idx]  # height x width
                     if self.channel_views:
-                        # Transpose the data to fix the display orientation
-                        frame_data = frame_data.T  # Transpose H and W dimensions
-                        self.channel_views[0].setImage(frame_data)
+                        # transpose each 2D channel
+                        self.channel_views[0].setImage(frame_data.T)
                 else:
                     for iv in self.channel_views:
                         iv.clear()
             elif self._buffer.ndim == 2:  # height x width (single frame, single channel)
                 if self.channel_views:
-                    # Transpose the data to fix the display orientation
-                    buffer_data = self._buffer.T  # Transpose H and W dimensions
-                    self.channel_views[0].setImage(buffer_data)
+                    # transpose each 2D channel
+                    self.channel_views[0].setImage(self._buffer.T)
             else:
                 for iv in self.channel_views:
                     iv.clear()
