@@ -466,3 +466,26 @@ class Confocal(Acquisition):
                 channel_names[ch] = f"ch{ch:02d}"
         
         return channel_names
+    
+
+
+def _write_port1(self, lines, levels):
+    """Write a list of boolean levels to the given port1 lines, un-timed."""
+    with nidaqmx.Task() as t:
+        for ln in lines:
+            t.do_channels.add_do_chan(ln)
+        t.write(levels, auto_start=True)
+
+def collect_data(self, galvo, ai_channels):
+    stat_chans, stat_vals = …        # as before
+    # 1) Raise port1 lines before imaging:
+    if stat_chans:
+        self._write_port1(stat_chans, stat_vals)
+
+    try:
+        # … your AO/AI (and port0) timed acquisition block …
+        return final_image
+    finally:
+        # 2) Always clear them after, even if an exception occurred:
+        if stat_chans:
+            self._write_port1(stat_chans, [False]*len(stat_chans))

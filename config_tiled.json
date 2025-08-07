@@ -1,0 +1,87 @@
+{
+  "modality": "confocal mosaic",
+  "acquisition_parameters": {
+    "num_frames": 1,
+    "split_percentage": 50,
+    "aom_delay": 0,
+    "save_enabled": false,
+    "save_path": "",
+    "dwell_time": 2.0,
+    "extrasteps_left": 1000,
+    "extrasteps_right": 10,
+    "amplitude_x": 1.9999999999999991,
+    "amplitude_y": 1.9999999999999991,
+    "offset_x": 0.09999999999999981,
+    "offset_y": -0.9999999999999999,
+    "x_pixels": 512,
+    "y_pixels": 512,
+    "numtiles_x": 1,
+    "numtiles_y": 1,
+    "numtiles_z": 5,
+    "tile_size_x": 100,
+    "tile_size_y": 100,
+    "tile_size_z": 1.0
+  },
+  "display_parameters": {},
+  "rpoc_enabled": true,
+  "ui_state": {
+    "acquisition_parameters_visible": true,
+    "instrument_controls_visible": true,
+    "display_controls_visible": true,
+    "lines_enabled": false,
+    "main_splitter_sizes": [
+      104,
+      418,
+      104
+    ],
+    "vertical_splitter_sizes": [
+      52,
+      421
+    ]
+  },
+  "instruments": [
+    {
+      "name": "Galvo Scanner",
+      "instrument_type": "galvo",
+      "parameters": {
+        "slow_axis_channel": 0,
+        "fast_axis_channel": 1,
+        "sample_rate": 2000000,
+        "device_name": "Dev1",
+        "name": "Galvo Scanner"
+      }
+    },
+    {
+      "name": "Data Input",
+      "instrument_type": "data input",
+      "parameters": {
+        "input_channels": [
+          0
+        ],
+        "channel_names": {
+          "0": "c0"
+        },
+        "sample_rate": 2000000,
+        "device_name": "Dev1",
+        "name": "Data Input"
+      }
+    }
+  ],
+  "rpoc_mask_channels": {
+    "8": {
+      "device": "Dev1",
+      "port_line": "port0/line4",
+      "mask_metadata": {
+        "has_mask": false
+      }
+    }
+  },
+  "rpoc_script_channels": {},
+  "rpoc_static_channels": {
+    "2": {
+      "device": "Dev1",
+      "port_line": "port1/line0",
+      "level": "Static High"
+    }
+  }
+}
