@@ -4,7 +4,7 @@ import abc
 from pyrpoc.instruments.instrument_manager import *
 import time
 import nidaqmx
-from nidaqmx.constants import AcquisitionType
+from nidaqmx.constants import AcquisitionType, TaskMode
 import tifffile
 from pathlib import Path
 from .base_acquisition import Acquisition
@@ -33,6 +33,9 @@ class ConfocalMosaic(Acquisition):
         self.rpoc_static_channels = {}
         self.rpoc_script_channels = {}
         self.rpoc_ttl_signals = {}  # channel_id -> flat TTL array
+        
+        # Initialize static channels list - will be populated when static channels are configured
+        self._static_channels = []
 
     def configure_rpoc(self, rpoc_enabled, rpoc_mask_channels=None, rpoc_static_channels=None, rpoc_script_channels=None, **kwargs):
         self.rpoc_enabled = rpoc_enabled
@@ -40,6 +43,20 @@ class ConfocalMosaic(Acquisition):
         self.rpoc_static_channels = rpoc_static_channels or {}
         self.rpoc_script_channels = rpoc_script_channels or {}
         self.rpoc_ttl_signals = {}  # channel_id -> flat TTL array
+
+        # Clear existing static channels list
+        self._static_channels = []
+
+        # Prepare static channels list for on-demand task creation
+        if self.rpoc_static_channels:
+            device_name = self.galvo.parameters.get('device_name', 'Dev1') if self.galvo else 'Dev1'
+            
+            for channel_id, channel_data in self.rpoc_static_channels.items():
+                device = channel_data.get('device', device_name)
+                channel_id_int = int(channel_id) if isinstance(channel_id, str) else channel_id
+                port_line = channel_data.get('port_line', f'port1/line{channel_id_int-1}')
+                channel_name = f"{device}/{port_line}"
+                self._static_channels.append(channel_name)
 
         # Get acquisition parameters
         dwell_time = self.acquisition_parameters.get('dwell_time', 10)  # microseconds
@@ -103,7 +120,6 @@ class ConfocalMosaic(Acquisition):
             n_static = len(self.rpoc_static_channels) if self.rpoc_static_channels else 0
             n_script = len(self.rpoc_script_channels) if self.rpoc_script_channels else 0
             n_total = len(self.rpoc_ttl_signals)
-            self.signal_bus.console_message.emit(f"RPOC Configured - enabled: {rpoc_enabled}, masks: {n_masks}, static: {n_static}, script: {n_script}, total: {n_total}")
 
     def perform_acquisition(self):     
         self.save_metadata()
@@ -234,7 +250,6 @@ class ConfocalMosaic(Acquisition):
             # Separate dynamic (port0) and static (port1+) channels
             dyn_chans = []
             dyn_ttls = []
-            stat_chans = []
             stat_vals = []
             
             for chan, flat_ttl in zip(rpoc_do_channels, rpoc_ttl_signals):
@@ -244,14 +259,13 @@ class ConfocalMosaic(Acquisition):
                     dyn_ttls.append(flat_ttl)
                 else:
                     # anything else (e.g. port1) → static DO
-                    stat_chans.append(chan)
                     # take the first value as constant level
                     stat_vals.append(bool(flat_ttl.flat[0]))
 
             # -- static, immediate DO task (on port1 or others) --
-            if stat_chans:
+            if stat_vals and self._static_channels:
                 # 1) Raise static lines before imaging:
-                self.write_static(stat_chans, stat_vals)
+                self.write_static(stat_vals)
 
             try:
                 # -- dynamic, hardware-timed DO task (on port0) --
@@ -363,8 +377,11 @@ class ConfocalMosaic(Acquisition):
                 return np.stack(input_results)
             finally:
                 # 2) Always clear static lines after, even if an exception occurred:
-                if stat_chans:
-                    self.write_static(stat_chans, [False] * len(stat_chans))
+                if stat_vals and self._static_channels:
+                    try:
+                        self.write_static([False] * len(stat_vals))
+                    except:
+                        pass  # Ignore errors when clearing static lines
         except Exception as e:
             self.signal_bus.console_message.emit(f'Error in DAQ acquisition: {e}')
             return self.generate_simulated_confocal()
@@ -427,12 +444,32 @@ class ConfocalMosaic(Acquisition):
         
         return input_channel_names
     
-    def write_static(self, lines, levels):
-        """Write a list of boolean levels to the given static lines, un-timed."""
-        with nidaqmx.Task() as t:
-            for ln in lines:
-                t.do_channels.add_do_chan(ln)
-            t.write(levels, auto_start=True)
+    def write_static(self, levels):
+        """Write a list of boolean levels to the static channels using on-demand task creation."""
+        if not self._static_channels:
+            # No static channels configured
+            if self.signal_bus:
+                self.signal_bus.console_message.emit("Warning: Attempted to write to static channels but none are configured")
+            return
+        
+        # Create a new task for each write operation to avoid resource conflicts
+        try:
+            with nidaqmx.Task() as static_task:
+                for channel_name in self._static_channels:
+                    static_task.do_channels.add_do_chan(channel_name)
+                # Write the levels immediately
+                static_task.write(levels, auto_start=True)
+        except Exception as e:
+            if self.signal_bus:
+                self.signal_bus.console_message.emit(f"Error writing to static channels: {e}")
+
+    def cleanup(self):
+        """Clean up resources."""
+        self._static_channels = []
+
+    def __del__(self):
+        """Destructor to ensure cleanup."""
+        self.cleanup()
     
     def generate_simulated_confocal(self):
         x_pixels = self.acquisition_parameters.get('x_pixels', 512)

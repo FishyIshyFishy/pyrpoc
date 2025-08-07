@@ -48,17 +48,7 @@ class Galvo(Instrument):
         
         # Clip both X and Y channels
         clipped_waveform = np.clip(waveform, min_voltage, max_voltage)
-        
-        # Check if clipping occurred and log warnings
-        if np.any(waveform < min_voltage) or np.any(waveform > max_voltage):
-            x_clipped = np.sum(waveform[0] < min_voltage) + np.sum(waveform[0] > max_voltage)
-            y_clipped = np.sum(waveform[1] < min_voltage) + np.sum(waveform[1] > max_voltage)
-            
-            if self.console_callback:
-                self.console_callback(f"Galvo voltage clipping applied: {x_clipped} X samples, {y_clipped} Y samples clipped to [{min_voltage}, {max_voltage}] V")
-            else:
-                print(f"Galvo voltage clipping applied: {x_clipped} X samples, {y_clipped} Y samples clipped to [{min_voltage}, {max_voltage}] V")
-        
+
         return clipped_waveform
     
     def generate_raster_waveform(self, acquisition_parameters):

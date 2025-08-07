@@ -835,11 +835,6 @@ class RightPanel(QWidget):
         rpoc_group = QGroupBox('RPOC Controls')
         rpoc_layout = QVBoxLayout()
         
-        rpoc_enabled_checkbox = QCheckBox('RPOC Enabled')
-        rpoc_enabled_checkbox.setChecked(self.app_state.rpoc_enabled)
-        rpoc_enabled_checkbox.toggled.connect(lambda checked: self.signals.rpoc_enabled_changed.emit(checked))
-        rpoc_layout.addWidget(rpoc_enabled_checkbox)
-        
         add_channel_btn = QPushButton('Add RPOC Channel')
         add_channel_btn.clicked.connect(self.add_rpoc_channel)
         rpoc_layout.addWidget(add_channel_btn)

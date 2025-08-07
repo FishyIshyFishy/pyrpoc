@@ -44,7 +44,6 @@ class AppState:
         self.display_parameters = {
             # overlay parameter removed - not implemented yet
         }
-        self.rpoc_enabled = False  # Add RPOC enabled state
         self.current_data = None
         
         # UI state parameters
@@ -116,7 +115,6 @@ class StateSignalBus(QObject):
 
     console_message = pyqtSignal(str) # emits console status messages
 
-    rpoc_enabled_changed = pyqtSignal(bool) # emits when RPOC enabled checkbox is toggled
     acquisition_parameter_changed = pyqtSignal(str, object) # emits when acquisition parameters change (param_name, new_value)
     save_path_changed = pyqtSignal(str) # emits when save path is changed
     
@@ -172,7 +170,7 @@ class StateSignalBus(QObject):
         self.data_signal.connect(lambda data, idx, total, is_final: handle_data_signal(data, idx, total, is_final, app_state, main_window))
         self.console_message.connect(lambda message: handle_console_message(message, app_state, main_window))
 
-        self.rpoc_enabled_changed.connect(lambda enabled: handle_rpoc_enabled_changed(enabled, app_state))
+
         
         # connect button state management signals
         self.acquisition_started.connect(lambda: main_window.top_bar.on_acquisition_started())
@@ -255,8 +253,6 @@ def handle_load_config(app_state, main_window):
             app_state.acquisition_parameters.update(config_data['acquisition_parameters'])
         if 'display_parameters' in config_data:
             app_state.display_parameters.update(config_data['display_parameters'])
-        if 'rpoc_enabled' in config_data:
-            app_state.rpoc_enabled = config_data['rpoc_enabled']
         if 'ui_state' in config_data:
             app_state.ui_state.update(config_data['ui_state'])
         
@@ -270,9 +266,14 @@ def handle_load_config(app_state, main_window):
             for channel_id_str, channel_data in config_data['rpoc_mask_channels'].items():
                 try:
                     channel_id = int(channel_id_str)
+                    # Ensure enabled state is preserved (default to True for backward compatibility)
+                    if 'enabled' not in channel_data:
+                        channel_data['enabled'] = True
                     app_state.rpoc_mask_channels[channel_id] = channel_data
                 except ValueError:
                     # If conversion fails, keep as string but log warning
+                    if 'enabled' not in channel_data:
+                        channel_data['enabled'] = True
                     app_state.rpoc_mask_channels[channel_id_str] = channel_data
             # Note: Actual mask data is not loaded from config, users need to reload masks
         elif 'rpoc_masks' in config_data:
@@ -286,9 +287,14 @@ def handle_load_config(app_state, main_window):
             for channel_id_str, channel_data in config_data['rpoc_script_channels'].items():
                 try:
                     channel_id = int(channel_id_str)
+                    # Ensure enabled state is preserved (default to True for backward compatibility)
+                    if 'enabled' not in channel_data:
+                        channel_data['enabled'] = True
                     app_state.rpoc_script_channels[channel_id] = channel_data
                 except ValueError:
                     # If conversion fails, keep as string but log warning
+                    if 'enabled' not in channel_data:
+                        channel_data['enabled'] = True
                     app_state.rpoc_script_channels[channel_id_str] = channel_data
         elif 'rpoc_channels' in config_data:
             # Legacy support for old config format - convert to script channels
@@ -296,9 +302,14 @@ def handle_load_config(app_state, main_window):
             for channel_id_str, channel_data in config_data['rpoc_channels'].items():
                 try:
                     channel_id = int(channel_id_str)
+                    # Ensure enabled state is preserved (default to True for backward compatibility)
+                    if 'enabled' not in channel_data:
+                        channel_data['enabled'] = True
                     app_state.rpoc_script_channels[channel_id] = channel_data
                 except ValueError:
                     # If conversion fails, keep as string but log warning
+                    if 'enabled' not in channel_data:
+                        channel_data['enabled'] = True
                     app_state.rpoc_script_channels[channel_id_str] = channel_data
         
         if 'rpoc_static_channels' in config_data:
@@ -307,9 +318,14 @@ def handle_load_config(app_state, main_window):
             for channel_id_str, static_data in config_data['rpoc_static_channels'].items():
                 try:
                     channel_id = int(channel_id_str)
+                    # Ensure enabled state is preserved (default to True for backward compatibility)
+                    if 'enabled' not in static_data:
+                        static_data['enabled'] = True
                     app_state.rpoc_static_channels[channel_id] = static_data
                 except ValueError:
                     # If conversion fails, keep as string but log warning
+                    if 'enabled' not in static_data:
+                        static_data['enabled'] = True
                     app_state.rpoc_static_channels[channel_id_str] = static_data
 
         main_window.rebuild_gui()
@@ -347,6 +363,7 @@ def handle_save_config(app_state):
                     serializable_rpoc_mask_channels[str(channel_id)] = {
                         'device': channel_data.get('device', 'Dev1'),
                         'port_line': channel_data.get('port_line', f'port0/line{4+channel_id-1}'),
+                        'enabled': channel_data.get('enabled', True),
                         'mask_metadata': {
                             'shape': channel_data['mask_data'].shape if hasattr(channel_data['mask_data'], 'shape') else None,
                             'dtype': str(channel_data['mask_data'].dtype) if hasattr(channel_data['mask_data'], 'dtype') else None,
@@ -357,6 +374,7 @@ def handle_save_config(app_state):
                     serializable_rpoc_mask_channels[str(channel_id)] = {
                         'device': channel_data.get('device', 'Dev1'),
                         'port_line': channel_data.get('port_line', f'port0/line{4+channel_id-1}'),
+                        'enabled': channel_data.get('enabled', True),
                         'mask_metadata': {
                             'has_mask': False
                         }
@@ -366,7 +384,6 @@ def handle_save_config(app_state):
             'modality': app_state.modality,
             'acquisition_parameters': app_state.acquisition_parameters.copy(),
             'display_parameters': app_state.display_parameters.copy(),
-            'rpoc_enabled': app_state.rpoc_enabled,
             'ui_state': app_state.ui_state.copy(),
             'instruments': app_state.serialize_instruments(),
             'rpoc_mask_channels': serializable_rpoc_mask_channels,
@@ -396,8 +413,7 @@ def handle_single_acquisition(app_state, signal_bus, continuous=False):
     
     # take snapshot of all parameters rather than continually reading them from app_state during acquisition
     modality = app_state.modality
-    parameters = app_state.acquisition_parameters.copy() 
-    rpoc_enabled = app_state.rpoc_enabled
+    parameters = app_state.acquisition_parameters.copy()
 
     if continuous:
         signal_bus.console_message.emit(f"Starting continuous {modality} acquisition...")
@@ -472,8 +488,6 @@ def handle_single_acquisition(app_state, signal_bus, continuous=False):
                                       save_enabled=save_enabled, save_path=save_path)
                 
             case 'confocal':
-                signal_bus.console_message.emit("Confocal acquisition started")
-
                 # have already verified that the instruments exist, no need to .get() here
                 galvo = instruments['galvo'][0] # returned as a list because there are multiple of each instrument in general
                 data_inputs = instruments['data input']
@@ -488,19 +502,25 @@ def handle_single_acquisition(app_state, signal_bus, continuous=False):
                     save_path=save_path
                 )
                 
-                # configure RPOC with masks, channels, and static channel information
-                if rpoc_enabled:
-                    rpoc_mask_channels = getattr(app_state, 'rpoc_mask_channels', {})
-                    rpoc_static_channels = getattr(app_state, 'rpoc_static_channels', {})
-                    rpoc_script_channels = getattr(app_state, 'rpoc_script_channels', {})
-                    signal_bus.console_message.emit(f"Acquisition RPOC - enabled: {rpoc_enabled}, masks: {len(rpoc_mask_channels)}, static: {len(rpoc_static_channels)}, script: {len(rpoc_script_channels)}")
-                    acquisition.configure_rpoc(rpoc_enabled, rpoc_mask_channels=rpoc_mask_channels, rpoc_static_channels=rpoc_static_channels, rpoc_script_channels=rpoc_script_channels)
+                # configure RPOC with only enabled channels
+                rpoc_mask_channels = getattr(app_state, 'rpoc_mask_channels', {})
+                rpoc_static_channels = getattr(app_state, 'rpoc_static_channels', {})
+                rpoc_script_channels = getattr(app_state, 'rpoc_script_channels', {})
+                
+                # Filter only enabled channels
+                enabled_mask_channels = {k: v for k, v in rpoc_mask_channels.items() if v.get('enabled', True)}
+                enabled_static_channels = {k: v for k, v in rpoc_static_channels.items() if v.get('enabled', True)}
+                enabled_script_channels = {k: v for k, v in rpoc_script_channels.items() if v.get('enabled', True)}
+                
+                total_enabled = len(enabled_mask_channels) + len(enabled_static_channels) + len(enabled_script_channels)
+                if total_enabled > 0:
+                    signal_bus.console_message.emit(f"Acquisition RPOC - enabled channels: {len(enabled_mask_channels)} masks, {len(enabled_static_channels)} static, {len(enabled_script_channels)} script")
+                    acquisition.configure_rpoc(True, rpoc_mask_channels=enabled_mask_channels, rpoc_static_channels=enabled_static_channels, rpoc_script_channels=enabled_script_channels)
                 else:
-                    signal_bus.console_message.emit(f"Acquisition RPOC - disabled")
+                    signal_bus.console_message.emit(f"Acquisition RPOC - no enabled channels")
+                    acquisition.configure_rpoc(False)
                 
             case 'split data stream':
-                signal_bus.console_message.emit("Split Data Stream acquisition started")
-
                 # have already verified that the instruments exist, no need to .get() here
                 galvo = instruments['galvo'][0] # returned as a list because there are multiple of each instrument in general
                 data_inputs = instruments['data input']
@@ -519,19 +539,25 @@ def handle_single_acquisition(app_state, signal_bus, continuous=False):
                     save_path=save_path
                 )
                 
-                # configure RPOC with masks, channels, and static channel information
-                if rpoc_enabled:
-                    rpoc_mask_channels = getattr(app_state, 'rpoc_mask_channels', {})
-                    rpoc_static_channels = getattr(app_state, 'rpoc_static_channels', {})
-                    rpoc_script_channels = getattr(app_state, 'rpoc_script_channels', {})
-                    signal_bus.console_message.emit(f"Acquisition RPOC - enabled: {rpoc_enabled}, masks: {len(rpoc_mask_channels)}, static: {len(rpoc_static_channels)}, script: {len(rpoc_script_channels)}")
-                    acquisition.configure_rpoc(rpoc_enabled, rpoc_mask_channels=rpoc_mask_channels, rpoc_static_channels=rpoc_static_channels, rpoc_script_channels=rpoc_script_channels)
+                # configure RPOC with only enabled channels
+                rpoc_mask_channels = getattr(app_state, 'rpoc_mask_channels', {})
+                rpoc_static_channels = getattr(app_state, 'rpoc_static_channels', {})
+                rpoc_script_channels = getattr(app_state, 'rpoc_script_channels', {})
+                
+                # Filter only enabled channels
+                enabled_mask_channels = {k: v for k, v in rpoc_mask_channels.items() if v.get('enabled', True)}
+                enabled_static_channels = {k: v for k, v in rpoc_static_channels.items() if v.get('enabled', True)}
+                enabled_script_channels = {k: v for k, v in rpoc_script_channels.items() if v.get('enabled', True)}
+                
+                total_enabled = len(enabled_mask_channels) + len(enabled_static_channels) + len(enabled_script_channels)
+                if total_enabled > 0:
+                    signal_bus.console_message.emit(f"Acquisition RPOC - enabled channels: {len(enabled_mask_channels)} masks, {len(enabled_static_channels)} static, {len(enabled_script_channels)} script")
+                    acquisition.configure_rpoc(True, rpoc_mask_channels=enabled_mask_channels, rpoc_static_channels=enabled_static_channels, rpoc_script_channels=enabled_script_channels)
                 else:
-                    signal_bus.console_message.emit(f"Acquisition RPOC - disabled")
+                    signal_bus.console_message.emit(f"Acquisition RPOC - no enabled channels")
+                    acquisition.configure_rpoc(False)
                 
             case 'confocal mosaic':
-                signal_bus.console_message.emit("Confocal Mosaic acquisition started")
-
                 # have already verified that the instruments exist, no need to .get() here
                 galvo = instruments['galvo'][0] # returned as a list because there are multiple of each instrument in general
                 data_inputs = instruments['data input']
@@ -548,15 +574,23 @@ def handle_single_acquisition(app_state, signal_bus, continuous=False):
                     save_path=save_path
                 )
                 
-                # configure RPOC with masks, channels, and static channel information
-                if rpoc_enabled:
-                    rpoc_mask_channels = getattr(app_state, 'rpoc_mask_channels', {})
-                    rpoc_static_channels = getattr(app_state, 'rpoc_static_channels', {})
-                    rpoc_script_channels = getattr(app_state, 'rpoc_script_channels', {})
-                    signal_bus.console_message.emit(f"Acquisition RPOC - enabled: {rpoc_enabled}, masks: {len(rpoc_mask_channels)}, static: {len(rpoc_static_channels)}, script: {len(rpoc_script_channels)}")
-                    acquisition.configure_rpoc(rpoc_enabled, rpoc_mask_channels=rpoc_mask_channels, rpoc_static_channels=rpoc_static_channels, rpoc_script_channels=rpoc_script_channels)
+                # configure RPOC with only enabled channels
+                rpoc_mask_channels = getattr(app_state, 'rpoc_mask_channels', {})
+                rpoc_static_channels = getattr(app_state, 'rpoc_static_channels', {})
+                rpoc_script_channels = getattr(app_state, 'rpoc_script_channels', {})
+                
+                # Filter only enabled channels
+                enabled_mask_channels = {k: v for k, v in rpoc_mask_channels.items() if v.get('enabled', True)}
+                enabled_static_channels = {k: v for k, v in rpoc_static_channels.items() if v.get('enabled', True)}
+                enabled_script_channels = {k: v for k, v in rpoc_script_channels.items() if v.get('enabled', True)}
+                
+                total_enabled = len(enabled_mask_channels) + len(enabled_static_channels) + len(enabled_script_channels)
+                if total_enabled > 0:
+                    signal_bus.console_message.emit(f"Acquisition RPOC - enabled channels: {len(enabled_mask_channels)} masks, {len(enabled_static_channels)} static, {len(enabled_script_channels)} script")
+                    acquisition.configure_rpoc(True, rpoc_mask_channels=enabled_mask_channels, rpoc_static_channels=enabled_static_channels, rpoc_script_channels=enabled_script_channels)
                 else:
-                    signal_bus.console_message.emit(f"Acquisition RPOC - disabled")
+                    signal_bus.console_message.emit(f"Acquisition RPOC - no enabled channels")
+                    acquisition.configure_rpoc(False)
                 
             case _:
                 signal_bus.console_message.emit('Warning: invalid modality, defaulting to simulation')
@@ -797,9 +831,7 @@ def handle_instrument_updated(instrument, app_state, main_window):
             display_widget.refresh_channel_labels()
     return 0
 
-def handle_rpoc_enabled_changed(enabled, app_state):
-    app_state.rpoc_enabled = enabled
-    return 0
+
 
 def handle_acquisition_parameter_changed(param_name, value, app_state, main_window=None):
     if param_name in app_state.acquisition_parameters:
