@@ -250,120 +250,121 @@ class ConfocalMosaic(Acquisition):
 
             # -- static, immediate DO task (on port1 or others) --
             if stat_chans:
-                with nidaqmx.Task() as static_do:
-                    for c in stat_chans:
-                        static_do.do_channels.add_do_chan(c)
-                    # write a constant level (list of booleans matching each line)
-                    # auto_start=True so it drives immediately
-                    static_do.write(stat_vals, auto_start=True)
+                # 1) Raise static lines before imaging:
+                self.write_static(stat_chans, stat_vals)
 
-            # -- dynamic, hardware-timed DO task (on port0) --
-            if dyn_chans:
-                with nidaqmx.Task() as ao_task, nidaqmx.Task() as ai_task, nidaqmx.Task() as do_task:
-                    # 1) Add AO & AI channels
-                    ao_task.ao_channels.add_ao_voltage_chan(f"{device_name}/ao{fast_channel}")
-                    ao_task.ao_channels.add_ao_voltage_chan(f"{device_name}/ao{slow_channel}")
-                    for ch in ai_channels:
-                        ai_task.ai_channels.add_ai_voltage_chan(ch)
-                    
-                    # 2) Clock AO
-                    ao_task.timing.cfg_samp_clk_timing(
-                        rate=rate,
-                        sample_mode=AcquisitionType.FINITE,
-                        samps_per_chan=total_samples
-                    )
-                    
-                    # 3) Clock AI off of AO's internal clock
-                    ai_task.timing.cfg_samp_clk_timing(
-                        rate=rate,
-                        source=f"/{device_name}/ao/SampleClock",
-                        sample_mode=AcquisitionType.FINITE,
-                        samps_per_chan=total_samples
-                    )
-                    
-                    # 4) Clock DO off of AO's internal clock (AO still open!)
-                    for c in dyn_chans:
-                        do_task.do_channels.add_do_chan(c)
-                    do_task.timing.cfg_samp_clk_timing(
-                        rate=rate,
-                        source=f"/{device_name}/ao/SampleClock",
-                        sample_mode=AcquisitionType.FINITE,
-                        samps_per_chan=total_samples
-                    )
-                    
-                    # 5) Write waveforms, then start in order:
-                    ao_task.write(waveform, auto_start=False)
-                    
-                    # write the pattern(s)
-                    if len(dyn_chans) == 1:
-                        do_task.write(dyn_ttls[0].tolist(), auto_start=False)
-                    else:
-                        data_to_write = [arr.tolist() for arr in dyn_ttls]
-                        do_task.write(data_to_write, auto_start=False)
-                    
-                    # 6) Start in order: AI, AO, DO
-                    ai_task.start()
-                    do_task.start()
-                    ao_task.start()
-                    
-                    
-                    # 7) Wait and tear down all three
-                    ao_task.wait_until_done(timeout=timeout)
-                    ai_task.wait_until_done(timeout=timeout)
-                    do_task.wait_until_done(timeout=timeout)
-                    
-                    acq_data = np.array(ai_task.read(number_of_samples_per_channel=total_samples))
-            else:
-                # No dynamic DO channels, just AO and AI
-                with nidaqmx.Task() as ao_task, nidaqmx.Task() as ai_task:
-                    # 1) Add AO & AI channels
-                    ao_task.ao_channels.add_ao_voltage_chan(f"{device_name}/ao{fast_channel}")
-                    ao_task.ao_channels.add_ao_voltage_chan(f"{device_name}/ao{slow_channel}")
-                    for ch in ai_channels:
-                        ai_task.ai_channels.add_ai_voltage_chan(ch)
-                    
-                    # 2) Clock AO
-                    ao_task.timing.cfg_samp_clk_timing(
-                        rate=rate,
-                        sample_mode=AcquisitionType.FINITE,
-                        samps_per_chan=total_samples
-                    )
-                    
-                    # 3) Clock AI off of AO's internal clock
-                    ai_task.timing.cfg_samp_clk_timing(
-                        rate=rate,
-                        source=f"/{device_name}/ao/SampleClock",
-                        sample_mode=AcquisitionType.FINITE,
-                        samps_per_chan=total_samples
-                    )
-                    
-                    # 4) Write waveforms, then start in order:
-                    ao_task.write(waveform, auto_start=False)
-                    
-                    # 5) Start in order: AI, AO
-                    ai_task.start()
-                    ao_task.start()
-                    
-                    # 6) Wait and tear down
-                    ao_task.wait_until_done(timeout=timeout)
-                    ai_task.wait_until_done(timeout=timeout)
-                    
-                    acq_data = np.array(ai_task.read(number_of_samples_per_channel=total_samples))
-            
-            input_results = []
-            
-            for i in range(len(ai_channels)):
-                channel_data = acq_data if len(ai_channels) == 1 else acq_data[i]
-                reshaped = channel_data.reshape(total_y, total_x, pixel_samples)
+            try:
+                # -- dynamic, hardware-timed DO task (on port0) --
+                if dyn_chans:
+                    with nidaqmx.Task() as ao_task, nidaqmx.Task() as ai_task, nidaqmx.Task() as do_task:
+                        # 1) Add AO & AI channels
+                        ao_task.ao_channels.add_ao_voltage_chan(f"{device_name}/ao{fast_channel}")
+                        ao_task.ao_channels.add_ao_voltage_chan(f"{device_name}/ao{slow_channel}")
+                        for ch in ai_channels:
+                            ai_task.ai_channels.add_ai_voltage_chan(ch)
+                        
+                        # 2) Clock AO
+                        ao_task.timing.cfg_samp_clk_timing(
+                            rate=rate,
+                            sample_mode=AcquisitionType.FINITE,
+                            samps_per_chan=total_samples
+                        )
+                        
+                        # 3) Clock AI off of AO's internal clock
+                        ai_task.timing.cfg_samp_clk_timing(
+                            rate=rate,
+                            source=f"/{device_name}/ao/SampleClock",
+                            sample_mode=AcquisitionType.FINITE,
+                            samps_per_chan=total_samples
+                        )
+                        
+                        # 4) Clock DO off of AO's internal clock (AO still open!)
+                        for c in dyn_chans:
+                            do_task.do_channels.add_do_chan(c)
+                        do_task.timing.cfg_samp_clk_timing(
+                            rate=rate,
+                            source=f"/{device_name}/ao/SampleClock",
+                            sample_mode=AcquisitionType.FINITE,
+                            samps_per_chan=total_samples
+                        )
+                        
+                        # 5) Write waveforms, then start in order:
+                        ao_task.write(waveform, auto_start=False)
+                        
+                        # write the pattern(s)
+                        if len(dyn_chans) == 1:
+                            do_task.write(dyn_ttls[0].tolist(), auto_start=False)
+                        else:
+                            data_to_write = [arr.tolist() for arr in dyn_ttls]
+                            do_task.write(data_to_write, auto_start=False)
+                        
+                        # 6) Start in order: AI, AO, DO
+                        ai_task.start()
+                        do_task.start()
+                        ao_task.start()
+                        
+                        
+                        # 7) Wait and tear down all three
+                        ao_task.wait_until_done(timeout=timeout)
+                        ai_task.wait_until_done(timeout=timeout)
+                        do_task.wait_until_done(timeout=timeout)
+                        
+                        acq_data = np.array(ai_task.read(number_of_samples_per_channel=total_samples))
+                else:
+                    # No dynamic DO channels, just AO and AI
+                    with nidaqmx.Task() as ao_task, nidaqmx.Task() as ai_task:
+                        # 1) Add AO & AI channels
+                        ao_task.ao_channels.add_ao_voltage_chan(f"{device_name}/ao{fast_channel}")
+                        ao_task.ao_channels.add_ao_voltage_chan(f"{device_name}/ao{slow_channel}")
+                        for ch in ai_channels:
+                            ai_task.ai_channels.add_ai_voltage_chan(ch)
+                        
+                        # 2) Clock AO
+                        ao_task.timing.cfg_samp_clk_timing(
+                            rate=rate,
+                            sample_mode=AcquisitionType.FINITE,
+                            samps_per_chan=total_samples
+                        )
+                        
+                        # 3) Clock AI off of AO's internal clock
+                        ai_task.timing.cfg_samp_clk_timing(
+                            rate=rate,
+                            source=f"/{device_name}/ao/SampleClock",
+                            sample_mode=AcquisitionType.FINITE,
+                            samps_per_chan=total_samples
+                        )
+                        
+                        # 4) Write waveforms, then start in order:
+                        ao_task.write(waveform, auto_start=False)
+                        
+                        # 5) Start in order: AI, AO
+                        ai_task.start()
+                        ao_task.start()
+                        
+                        # 6) Wait and tear down
+                        ao_task.wait_until_done(timeout=timeout)
+                        ai_task.wait_until_done(timeout=timeout)
+                        
+                        acq_data = np.array(ai_task.read(number_of_samples_per_channel=total_samples))
                 
-                # Average over all samples for each pixel (no splitting)
-                averaged_data = np.mean(reshaped, axis=2)
+                input_results = []
                 
-                # Crop to remove extra steps
-                cropped_data = averaged_data[:, extra_left:extra_left + numsteps_x]
-                input_results.append(cropped_data)
-            
-            return np.stack(input_results)
+                for i in range(len(ai_channels)):
+                    channel_data = acq_data if len(ai_channels) == 1 else acq_data[i]
+                    reshaped = channel_data.reshape(total_y, total_x, pixel_samples)
+                    
+                    # Average over all samples for each pixel (no splitting)
+                    averaged_data = np.mean(reshaped, axis=2)
+                    
+                    # Crop to remove extra steps
+                    cropped_data = averaged_data[:, extra_left:extra_left + numsteps_x]
+                    input_results.append(cropped_data)
+                
+                return np.stack(input_results)
+            finally:
+                # 2) Always clear static lines after, even if an exception occurred:
+                if stat_chans:
+                    self.write_static(stat_chans, [False] * len(stat_chans))
         except Exception as e:
             self.signal_bus.console_message.emit(f'Error in DAQ acquisition: {e}')
             return self.generate_simulated_confocal()
@@ -425,6 +426,13 @@ class ConfocalMosaic(Acquisition):
                 input_channel_names[ch] = f"input{ch}"
         
         return input_channel_names
+    
+    def write_static(self, lines, levels):
+        """Write a list of boolean levels to the given static lines, un-timed."""
+        with nidaqmx.Task() as t:
+            for ln in lines:
+                t.do_channels.add_do_chan(ln)
+            t.write(levels, auto_start=True)
     
     def generate_simulated_confocal(self):
         x_pixels = self.acquisition_parameters.get('x_pixels', 512)
