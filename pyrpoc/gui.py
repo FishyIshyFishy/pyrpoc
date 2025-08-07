@@ -166,7 +166,7 @@ class ModalityControls(QWidget):
         layout.addWidget(ms_label)
 
         ms_dropdown = QComboBox()
-        ms_dropdown.addItems(['Simulated', 'Confocal', 'Split data stream'])
+        ms_dropdown.addItems(['Simulated', 'Confocal', 'Split data stream', 'Confocal mosaic'])
         current_modality = self.app_state.modality.capitalize()
         index = ms_dropdown.findText(current_modality)
         if index >= 0:
@@ -261,6 +261,10 @@ class AcquisitionParameters(QWidget):
             self.layout.addLayout(aom_delay_layout)
             
 
+            self.add_galvo_parameters()
+            self.add_prior_stage_parameters()
+
+        elif modality == 'confocal mosaic':
             self.add_galvo_parameters()
             self.add_prior_stage_parameters()
 
@@ -539,6 +543,21 @@ class InstrumentControls(QWidget):
                 data_input_btn.clicked.connect(lambda: self.signals.add_modality_instrument.emit('data input'))
                 self.modality_buttons_layout.addWidget(data_input_btn)
         elif modality == 'split data stream':
+            if not self.has_instrument_type('galvo'):
+                galvo_btn = QPushButton('Add Galvos')
+                galvo_btn.clicked.connect(lambda: self.signals.add_modality_instrument.emit('galvo'))
+                self.modality_buttons_layout.addWidget(galvo_btn)
+            
+            if not self.has_instrument_type('data input'):
+                data_input_btn = QPushButton('Add Data Inputs')
+                data_input_btn.clicked.connect(lambda: self.signals.add_modality_instrument.emit('data input'))
+                self.modality_buttons_layout.addWidget(data_input_btn)
+            
+            if not self.has_instrument_type('prior stage'):
+                prior_stage_btn = QPushButton('Add Prior Stage')
+                prior_stage_btn.clicked.connect(lambda: self.signals.add_modality_instrument.emit('prior stage'))
+                self.modality_buttons_layout.addWidget(prior_stage_btn)
+        elif modality == 'confocal mosaic':
             if not self.has_instrument_type('galvo'):
                 galvo_btn = QPushButton('Add Galvos')
                 galvo_btn.clicked.connect(lambda: self.signals.add_modality_instrument.emit('galvo'))
@@ -983,7 +1002,7 @@ class DockableMiddlePanel(QMainWindow):
     def create_image_display_widget(self):
         modality = self.app_state.modality.lower()
         
-        if modality in ['confocal', 'split data stream']:
+        if modality in ['confocal', 'split data stream', 'confocal mosaic']:
             return MultichannelImageDisplayWidget(self.app_state, self.signals)
         else:
             return ImageDisplayWidget(self.app_state, self.signals)

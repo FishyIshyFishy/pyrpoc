@@ -443,6 +443,23 @@ def handle_single_acquisition(app_state, signal_bus, continuous=False):
             signal_bus.console_message.emit("Error: Split Data Stream acquisition requires at least one prior stage instrument. Please add a prior stage.")
             return
 
+    elif modality == 'confocal mosaic':
+        galvo = instruments.get('galvo', [])
+        data_inputs = instruments.get('data input', [])
+        prior_stage = instruments.get('prior stage', [])
+        
+        if not galvo:
+            signal_bus.console_message.emit("Error: Confocal Mosaic acquisition requires at least one galvo instrument. Please add a galvo scanner.")
+            return
+        
+        if not data_inputs:
+            signal_bus.console_message.emit("Error: Confocal Mosaic acquisition requires at least one data input instrument. Please add a data input.")
+            return
+        
+        if not prior_stage:
+            signal_bus.console_message.emit("Error: Confocal Mosaic acquisition requires at least one prior stage instrument. Please add a prior stage.")
+            return
+
     acquisition = None
     try:
         save_enabled = parameters.get('save_enabled', False)
@@ -512,6 +529,35 @@ def handle_single_acquisition(app_state, signal_bus, continuous=False):
                 else:
                     signal_bus.console_message.emit(f"Acquisition RPOC - disabled")
                 
+            case 'confocal mosaic':
+                signal_bus.console_message.emit("Confocal Mosaic acquisition started")
+
+                # have already verified that the instruments exist, no need to .get() here
+                galvo = instruments['galvo'][0] # returned as a list because there are multiple of each instrument in general
+                data_inputs = instruments['data input']
+                prior_stage = instruments['prior stage'][0] if 'prior stage' in instruments else None
+                
+                acquisition = ConfocalMosaic(
+                    galvo=galvo, 
+                    data_inputs=data_inputs,
+                    prior_stage=prior_stage,
+                    num_frames=parameters['num_frames'],
+                    signal_bus=signal_bus,
+                    acquisition_parameters=parameters,
+                    save_enabled=save_enabled,
+                    save_path=save_path
+                )
+                
+                # configure RPOC with masks, channels, and static channel information
+                if rpoc_enabled:
+                    rpoc_mask_channels = getattr(app_state, 'rpoc_mask_channels', {})
+                    rpoc_static_channels = getattr(app_state, 'rpoc_static_channels', {})
+                    rpoc_script_channels = getattr(app_state, 'rpoc_script_channels', {})
+                    signal_bus.console_message.emit(f"Acquisition RPOC - enabled: {rpoc_enabled}, masks: {len(rpoc_mask_channels)}, static: {len(rpoc_static_channels)}, script: {len(rpoc_script_channels)}")
+                    acquisition.configure_rpoc(rpoc_enabled, rpoc_mask_channels=rpoc_mask_channels, rpoc_static_channels=rpoc_static_channels, rpoc_script_channels=rpoc_script_channels)
+                else:
+                    signal_bus.console_message.emit(f"Acquisition RPOC - disabled")
+                
             case _:
                 signal_bus.console_message.emit('Warning: invalid modality, defaulting to simulation')
                 default_params = {'x_pixels': 512, 'y_pixels': 512, 'num_frames': 1}
@@ -556,6 +602,13 @@ def validate_acquisition_parameters(parameters, modality):
         ],
         'split data stream': [
             'x_pixels', 'y_pixels', 'num_frames', 'split_percentage', 'aom_delay',
+            'dwell_time', 'extrasteps_left', 'extrasteps_right',
+            'amplitude_x', 'amplitude_y', 'offset_x', 'offset_y',
+            'numtiles_x', 'numtiles_y', 'numtiles_z',
+            'tile_size_x', 'tile_size_y', 'tile_size_z'
+        ],
+        'confocal mosaic': [
+            'x_pixels', 'y_pixels', 'num_frames',
             'dwell_time', 'extrasteps_left', 'extrasteps_right',
             'amplitude_x', 'amplitude_y', 'offset_x', 'offset_y',
             'numtiles_x', 'numtiles_y', 'numtiles_z',
