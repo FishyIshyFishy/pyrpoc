@@ -166,7 +166,7 @@ class ModalityControls(QWidget):
         layout.addWidget(ms_label)
 
         ms_dropdown = QComboBox()
-        ms_dropdown.addItems(['Simulated', 'Confocal', 'Split data stream', 'Confocal mosaic'])
+        ms_dropdown.addItems(['Simulated', 'Confocal', 'Split data stream', 'Confocal mosaic', 'Fish'])
         current_modality = self.app_state.modality.capitalize()
         index = ms_dropdown.findText(current_modality)
         if index >= 0:
@@ -267,6 +267,11 @@ class AcquisitionParameters(QWidget):
         elif modality == 'confocal mosaic':
             self.add_galvo_parameters()
             self.add_prior_stage_parameters()
+
+        elif modality == 'fish':
+            self.add_galvo_parameters()
+            self.add_prior_stage_parameters()
+            self.add_local_rpoc_parameters()
 
         elif modality == 'simulated':
             self.add_pixel_parameters()
@@ -432,6 +437,94 @@ class AcquisitionParameters(QWidget):
         prior_group.setLayout(prior_layout)
         self.layout.addWidget(prior_group)
 
+    def add_local_rpoc_parameters(self):
+        """Add local RPOC treatment parameters"""
+        local_rpoc_group = QGroupBox("Local RPOC Treatment Parameters")
+        local_rpoc_layout = QFormLayout()
+        
+        # Local RPOC dwell time parameter
+        self.local_rpoc_dwell_time_spin = QSpinBox()
+        self.local_rpoc_dwell_time_spin.setRange(1, 10000)
+        self.local_rpoc_dwell_time_spin.setValue(self.app_state.acquisition_parameters.get('local_rpoc_dwell_time', 10))
+        self.local_rpoc_dwell_time_spin.setSuffix(" μs")
+        self.local_rpoc_dwell_time_spin.valueChanged.connect(
+            lambda value: self.signals.acquisition_parameter_changed.emit('local_rpoc_dwell_time', value))
+        local_rpoc_layout.addRow("Local RPOC Dwell Time:", self.local_rpoc_dwell_time_spin)
+        
+        # Drift offset parameters
+        self.offset_drift_x_spin = QDoubleSpinBox()
+        self.offset_drift_x_spin.setRange(-10.0, 10.0)
+        self.offset_drift_x_spin.setDecimals(3)
+        self.offset_drift_x_spin.setSingleStep(0.001)
+        self.offset_drift_x_spin.setValue(self.app_state.acquisition_parameters.get('offset_drift_x', 0.0))
+        self.offset_drift_x_spin.setSuffix(" V")
+        self.offset_drift_x_spin.valueChanged.connect(
+            lambda value: self.signals.acquisition_parameter_changed.emit('offset_drift_x', value))
+        local_rpoc_layout.addRow("Offset Drift X:", self.offset_drift_x_spin)
+        
+        self.offset_drift_y_spin = QDoubleSpinBox()
+        self.offset_drift_y_spin.setRange(-10.0, 10.0)
+        self.offset_drift_y_spin.setDecimals(3)
+        self.offset_drift_y_spin.setSingleStep(0.001)
+        self.offset_drift_y_spin.setValue(self.app_state.acquisition_parameters.get('offset_drift_y', 0.0))
+        self.offset_drift_y_spin.setSuffix(" V")
+        self.offset_drift_y_spin.valueChanged.connect(
+            lambda value: self.signals.acquisition_parameter_changed.emit('offset_drift_y', value))
+        local_rpoc_layout.addRow("Offset Drift Y:", self.offset_drift_y_spin)
+        
+        # Repetitions parameter
+        self.repetitions_spin = QSpinBox()
+        self.repetitions_spin.setRange(1, 1000)
+        self.repetitions_spin.setValue(self.app_state.acquisition_parameters.get('repetitions', 1))
+        self.repetitions_spin.valueChanged.connect(
+            lambda value: self.signals.acquisition_parameter_changed.emit('repetitions', value))
+        local_rpoc_layout.addRow("Treatment Repetitions:", self.repetitions_spin)
+        
+        # TTL channel selection
+        self.ttl_device_combo = QSearchableComboBox()
+        self.ttl_device_combo.addItems(['Dev1', 'Dev2', 'Dev3', 'Dev4'])
+        self.ttl_device_combo.setCurrentText(self.app_state.acquisition_parameters.get('ttl_device', 'Dev1'))
+        self.ttl_device_combo.currentTextChanged.connect(
+            lambda text: self.signals.acquisition_parameter_changed.emit('ttl_device', text))
+        local_rpoc_layout.addRow("TTL Device:", self.ttl_device_combo)
+        
+        self.ttl_port_line_combo = QSearchableComboBox()
+        self.ttl_port_line_combo.addItems([
+            'port0/line0', 'port0/line1', 'port0/line2', 'port0/line3', 'port0/line4', 'port0/line5', 'port0/line6', 'port0/line7',
+            'port0/line8', 'port0/line9', 'port0/line10', 'port0/line11', 'port0/line12', 'port0/line13', 'port0/line14', 'port0/line15',
+            'port1/line0', 'port1/line1', 'port1/line2', 'port1/line3', 'port1/line4', 'port1/line5', 'port1/line6', 'port1/line7',
+            'port1/line8', 'port1/line9', 'port1/line10', 'port1/line11', 'port1/line12', 'port1/line13', 'port1/line14', 'port1/line15'
+        ])
+        self.ttl_port_line_combo.setCurrentText(self.app_state.acquisition_parameters.get('ttl_port_line', 'port0/line0'))
+        self.ttl_port_line_combo.currentTextChanged.connect(
+            lambda text: self.signals.acquisition_parameter_changed.emit('ttl_port_line', text))
+        local_rpoc_layout.addRow("TTL Port/Line:", self.ttl_port_line_combo)
+        
+        self.pfi_line_combo = QSearchableComboBox()
+        self.pfi_line_combo.addItems(['None', 'PFI0', 'PFI1', 'PFI2', 'PFI3', 'PFI4', 'PFI5', 'PFI6', 'PFI7', 'PFI8', 'PFI9', 'PFI10', 'PFI11', 'PFI12', 'PFI13', 'PFI14', 'PFI15'])
+        self.pfi_line_combo.setCurrentText(self.app_state.acquisition_parameters.get('pfi_line', 'None'))
+        self.pfi_line_combo.currentTextChanged.connect(
+            lambda text: self.signals.acquisition_parameter_changed.emit('pfi_line', text))
+        local_rpoc_layout.addRow("PFI Line (Timing):", self.pfi_line_combo)
+        
+        # Local extra steps parameters
+        self.local_extrasteps_left_spin = QSpinBox()
+        self.local_extrasteps_left_spin.setRange(0, 1000)
+        self.local_extrasteps_left_spin.setValue(self.app_state.acquisition_parameters.get('local_extrasteps_left', 50))
+        self.local_extrasteps_left_spin.valueChanged.connect(
+            lambda value: self.signals.acquisition_parameter_changed.emit('local_extrasteps_left', value))
+        local_rpoc_layout.addRow("Local Extrasteps Left:", self.local_extrasteps_left_spin)
+        
+        self.local_extrasteps_right_spin = QSpinBox()
+        self.local_extrasteps_right_spin.setRange(0, 1000)
+        self.local_extrasteps_right_spin.setValue(self.app_state.acquisition_parameters.get('local_extrasteps_right', 50))
+        self.local_extrasteps_right_spin.valueChanged.connect(
+            lambda value: self.signals.acquisition_parameter_changed.emit('local_extrasteps_right', value))
+        local_rpoc_layout.addRow("Local Extrasteps Right:", self.local_extrasteps_right_spin)
+        
+        local_rpoc_group.setLayout(local_rpoc_layout)
+        self.layout.addWidget(local_rpoc_group)
+
     def add_common_parameters(self):
         frames_layout = QHBoxLayout()
         frames_layout.addWidget(QLabel('Number of Frames:'))
@@ -558,6 +651,21 @@ class InstrumentControls(QWidget):
                 prior_stage_btn.clicked.connect(lambda: self.signals.add_modality_instrument.emit('prior stage'))
                 self.modality_buttons_layout.addWidget(prior_stage_btn)
         elif modality == 'confocal mosaic':
+            if not self.has_instrument_type('galvo'):
+                galvo_btn = QPushButton('Add Galvos')
+                galvo_btn.clicked.connect(lambda: self.signals.add_modality_instrument.emit('galvo'))
+                self.modality_buttons_layout.addWidget(galvo_btn)
+            
+            if not self.has_instrument_type('data input'):
+                data_input_btn = QPushButton('Add Data Inputs')
+                data_input_btn.clicked.connect(lambda: self.signals.add_modality_instrument.emit('data input'))
+                self.modality_buttons_layout.addWidget(data_input_btn)
+            
+            if not self.has_instrument_type('prior stage'):
+                prior_stage_btn = QPushButton('Add Prior Stage')
+                prior_stage_btn.clicked.connect(lambda: self.signals.add_modality_instrument.emit('prior stage'))
+                self.modality_buttons_layout.addWidget(prior_stage_btn)
+        elif modality == 'fish':
             if not self.has_instrument_type('galvo'):
                 galvo_btn = QPushButton('Add Galvos')
                 galvo_btn.clicked.connect(lambda: self.signals.add_modality_instrument.emit('galvo'))
@@ -997,7 +1105,7 @@ class DockableMiddlePanel(QMainWindow):
     def create_image_display_widget(self):
         modality = self.app_state.modality.lower()
         
-        if modality in ['confocal', 'split data stream', 'confocal mosaic']:
+        if modality in ['confocal', 'split data stream', 'confocal mosaic', 'fish']:
             return MultichannelImageDisplayWidget(self.app_state, self.signals)
         else:
             return ImageDisplayWidget(self.app_state, self.signals)

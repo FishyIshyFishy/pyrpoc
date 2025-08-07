@@ -40,6 +40,17 @@ class AppState:
             'tile_size_x': 100,  # Tile size in µm for X
             'tile_size_y': 100,  # Tile size in µm for Y
             'tile_size_z': 50,   # Tile size in µm for Z
+            
+            # Fish modality parameters
+            'offset_drift_x': 0.0,  # Drift offset for X axis in V
+            'offset_drift_y': 0.0,  # Drift offset for Y axis in V
+            'repetitions': 1,  # Number of treatment repetitions
+            'ttl_device': 'Dev1',  # TTL device for local RPOC
+            'ttl_port_line': 'port0/line0',  # TTL port/line for local RPOC
+            'pfi_line': 'None',  # PFI line for timing (optional)
+            'local_extrasteps_left': 50,  # Local RPOC extra steps left
+            'local_extrasteps_right': 50,  # Local RPOC extra steps right
+            'local_rpoc_dwell_time': 10,  # Local RPOC dwell time in microseconds
         }
         self.display_parameters = {
             # overlay parameter removed - not implemented yet
@@ -476,6 +487,30 @@ def handle_single_acquisition(app_state, signal_bus, continuous=False):
             signal_bus.console_message.emit("Error: Confocal Mosaic acquisition requires at least one prior stage instrument. Please add a prior stage.")
             return
 
+    elif modality == 'fish':
+        galvo = instruments.get('galvo', [])
+        data_inputs = instruments.get('data input', [])
+        prior_stage = instruments.get('prior stage', [])
+        
+        if not galvo:
+            signal_bus.console_message.emit("Error: Fish acquisition requires at least one galvo instrument. Please add a galvo scanner.")
+            return
+        
+        if not data_inputs:
+            signal_bus.console_message.emit("Error: Fish acquisition requires at least one data input instrument. Please add a data input.")
+            return
+        
+        if not prior_stage:
+            signal_bus.console_message.emit("Error: Fish acquisition requires at least one prior stage instrument. Please add a prior stage.")
+            return
+        
+        # Check for at least one enabled mask channel
+        rpoc_mask_channels = getattr(app_state, 'rpoc_mask_channels', {})
+        enabled_mask_channels = {k: v for k, v in rpoc_mask_channels.items() if v.get('enabled', True)}
+        if not enabled_mask_channels:
+            signal_bus.console_message.emit("Error: Fish acquisition requires at least one enabled mask channel for local RPOC treatment.")
+            return
+
     acquisition = None
     try:
         save_enabled = parameters.get('save_enabled', False)
@@ -592,6 +627,41 @@ def handle_single_acquisition(app_state, signal_bus, continuous=False):
                     signal_bus.console_message.emit(f"Acquisition RPOC - no enabled channels")
                     acquisition.configure_rpoc(False)
                 
+            case 'fish':
+                # have already verified that the instruments exist, no need to .get() here
+                galvo = instruments['galvo'][0] # returned as a list because there are multiple of each instrument in general
+                data_inputs = instruments['data input']
+                prior_stage = instruments['prior stage'][0] if 'prior stage' in instruments else None
+                
+                acquisition = Fish(
+                    galvo=galvo, 
+                    data_inputs=data_inputs,
+                    prior_stage=prior_stage,
+                    num_frames=parameters['num_frames'],
+                    signal_bus=signal_bus,
+                    acquisition_parameters=parameters,
+                    save_enabled=save_enabled,
+                    save_path=save_path
+                )
+                
+                # configure RPOC with only enabled channels
+                rpoc_mask_channels = getattr(app_state, 'rpoc_mask_channels', {})
+                rpoc_static_channels = getattr(app_state, 'rpoc_static_channels', {})
+                rpoc_script_channels = getattr(app_state, 'rpoc_script_channels', {})
+                
+                # Filter only enabled channels
+                enabled_mask_channels = {k: v for k, v in rpoc_mask_channels.items() if v.get('enabled', True)}
+                enabled_static_channels = {k: v for k, v in rpoc_static_channels.items() if v.get('enabled', True)}
+                enabled_script_channels = {k: v for k, v in rpoc_script_channels.items() if v.get('enabled', True)}
+                
+                total_enabled = len(enabled_mask_channels) + len(enabled_static_channels) + len(enabled_script_channels)
+                if total_enabled > 0:
+                    signal_bus.console_message.emit(f"Acquisition RPOC - enabled channels: {len(enabled_mask_channels)} masks, {len(enabled_static_channels)} static, {len(enabled_script_channels)} script")
+                    acquisition.configure_rpoc(True, rpoc_mask_channels=enabled_mask_channels, rpoc_static_channels=enabled_static_channels, rpoc_script_channels=enabled_script_channels)
+                else:
+                    signal_bus.console_message.emit(f"Acquisition RPOC - no enabled channels")
+                    acquisition.configure_rpoc(False)
+                
             case _:
                 signal_bus.console_message.emit('Warning: invalid modality, defaulting to simulation')
                 default_params = {'x_pixels': 512, 'y_pixels': 512, 'num_frames': 1}
@@ -648,6 +718,16 @@ def validate_acquisition_parameters(parameters, modality):
             'numtiles_x', 'numtiles_y', 'numtiles_z',
             'tile_size_x', 'tile_size_y', 'tile_size_z'
         ],
+        'fish': [
+            'x_pixels', 'y_pixels', 'num_frames',
+            'dwell_time', 'extrasteps_left', 'extrasteps_right',
+            'amplitude_x', 'amplitude_y', 'offset_x', 'offset_y',
+            'numtiles_x', 'numtiles_y', 'numtiles_z',
+            'tile_size_x', 'tile_size_y', 'tile_size_z',
+            'offset_drift_x', 'offset_drift_y', 'repetitions',
+            'ttl_device', 'ttl_port_line', 'pfi_line',
+            'local_extrasteps_left', 'local_extrasteps_right', 'local_rpoc_dwell_time'
+        ],
         'custom': ['x_pixels', 'y_pixels', 'num_frames']
     }
     
@@ -678,7 +758,14 @@ def validate_acquisition_parameters(parameters, modality):
         'numtiles_z': (1, 1000, "numtiles_z must be between 1 and 1000"),
         'tile_size_x': (-10000, 10000, "tile_size_x must be between -10000µm and 10000µm"),
         'tile_size_y': (-10000, 10000, "tile_size_y must be between -10000µm and 10000µm"),
-        'tile_size_z': (-10000, 10000, "tile_size_z must be between -10000µm and 10000µm")
+        'tile_size_z': (-10000, 10000, "tile_size_z must be between -10000µm and 10000µm"),
+        # Fish modality specific parameters
+        'offset_drift_x': (-10.0, 10.0, "offset_drift_x must be between -10V and 10V"),
+        'offset_drift_y': (-10.0, 10.0, "offset_drift_y must be between -10V and 10V"),
+        'repetitions': (1, 1000, "repetitions must be between 1 and 1000"),
+        'local_extrasteps_left': (0, 10000, "local_extrasteps_left must be between 0 and 10000"),
+        'local_extrasteps_right': (0, 10000, "local_extrasteps_right must be between 0 and 10000"),
+        'local_rpoc_dwell_time': (1, 10000, "local_rpoc_dwell_time must be between 1 and 10000 µs")
     }
     
     # Validate each parameter that is present in the parameters dict

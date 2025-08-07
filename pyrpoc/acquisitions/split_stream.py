@@ -153,35 +153,69 @@ class SplitDataStream(Acquisition):
                 self.signal_bus.console_message.emit(f"Error getting current stage position: {e}")
             raise RuntimeError(f"Failed to get current stage position: {e}")
         
-        stage_positions = []
+        stage_step_sizes = []
         tile_indices = []
         for z_idx in range(numtiles_z):
             for y_idx in range(numtiles_y):
                 for x_idx in range(numtiles_x):
-                    x_pos = int(start_x + x_idx * tile_size_x)  # int microns
-                    y_pos = int(start_y + y_idx * tile_size_y)  # int microns
-                    # z is in 0.1 micron units, so convert tile_size_z (microns) to 0.1 micron units
-                    z_pos = int(start_z + z_idx * tile_size_z * 10)  # int 0.1 micron units
-                    stage_positions.append((x_pos, y_pos, z_pos))
+                    # Calculate step sizes relative to current position
+                    # For the first position (0,0,0), step is 0 (stay at current position)
+                    # For subsequent positions, step is the difference from the previous position
+                    if x_idx == 0 and y_idx == 0 and z_idx == 0:
+                        # First position - stay at current position
+                        x_step = 0
+                        y_step = 0
+                        z_step = 0
+                    else:
+                        # Calculate step based on the grid traversal pattern
+                        # Grid is traversed: (0,0,0) -> (1,0,0) -> (2,0,0) -> ... -> (0,1,0) -> (1,1,0) -> ... -> (0,0,1) -> ...
+                        if x_idx > 0:
+                            # Moving in X direction
+                            x_step = tile_size_x
+                            y_step = 0
+                            z_step = 0
+                        elif y_idx > 0:
+                            # Moving in Y direction (reset X)
+                            x_step = -x_idx * tile_size_x  # Reset X to 0
+                            y_step = tile_size_y
+                            z_step = 0
+                        elif z_idx > 0:
+                            # Moving in Z direction (reset X and Y)
+                            x_step = -x_idx * tile_size_x  # Reset X to 0
+                            y_step = -y_idx * tile_size_y  # Reset Y to 0
+                            z_step = int(tile_size_z * 10)
+                        else:
+                            x_step = 0
+                            y_step = 0
+                            z_step = 0
+                    stage_step_sizes.append((x_step, y_step, z_step))
                     tile_indices.append((x_idx, y_idx, z_idx))
 
         all_frames = []
-        total_positions = len(stage_positions) * self.num_frames
+        total_positions = len(stage_step_sizes) * self.num_frames
         current_position = 0
         
         for frame_idx in range(self.num_frames):
             if self._stop_flag and self._stop_flag():
                 break
             
-            for pos_idx, (x_pos, y_pos, z_pos) in enumerate(stage_positions):
+            for pos_idx, (x_step, y_step, z_step) in enumerate(stage_step_sizes):
                 if self._stop_flag and self._stop_flag():
                     break
                 
                 try:
+                    # Get current position and calculate target position
+                    current_x, current_y = self.prior_stage.get_xy()
+                    current_z = self.prior_stage.get_z()
+                    
+                    target_x = int(current_x + x_step)
+                    target_y = int(current_y + y_step)
+                    target_z = int(current_z + z_step)
+                    
                     if self.signal_bus:
-                        self.signal_bus.console_message.emit(f"Moving to position {pos_idx + 1}/{len(stage_positions)}: X={x_pos} µm, Y={y_pos} µm, Z={z_pos/10:.1f} µm")
-                    self.prior_stage.move_xy(x_pos, y_pos)
-                    self.prior_stage.move_z(z_pos)
+                        self.signal_bus.console_message.emit(f"Moving to position {pos_idx + 1}/{len(stage_step_sizes)}: X={target_x} µm, Y={target_y} µm, Z={target_z/10:.1f} µm (step: +{x_step}, +{y_step}, +{z_step/10:.1f})")
+                    self.prior_stage.move_xy(target_x, target_y)
+                    self.prior_stage.move_z(target_z)
                     time.sleep(0.5)
                 except Exception as e:
                     if self.signal_bus:
@@ -194,6 +228,33 @@ class SplitDataStream(Acquisition):
                     self.signal_bus.data_signal.emit(frame_data, current_position, total_positions, False)
                 all_frames.append(frame_data)
                 current_position += 1
+            
+            # Return stage to original position after completing all tiles for this frame
+            # (but only if there are more frames to process)
+            if frame_idx < self.num_frames - 1:
+                try:
+                    
+                    move_z = ((numtiles_z) - 1) * tile_size_z * 10
+                    print(f'move_z: {move_z}')
+                    move_y = ((numtiles_y) - 1) * tile_size_y
+                    move_x = ((numtiles_x) - 1) * tile_size_x
+                    
+                    curr_z = self.prior_stage.get_z()
+                    print(curr_z)
+                    curr_x, curr_y = self.prior_stage.get_xy()
+
+                    if self.signal_bus:
+                        self.signal_bus.console_message.emit(f"Frame {frame_idx + 1} complete. Returning stage to original position for next frame: X={curr_x - move_x} µm, Y={curr_y - move_y} µm, Z={(curr_z - move_z)/10:.1f} µm")
+
+                    self.prior_stage.move_xy(curr_x - move_x, curr_y - move_y)
+                    self.prior_stage.move_z(curr_z - move_z)
+
+                    time.sleep(0.5)
+                    if self.signal_bus:
+                        self.signal_bus.console_message.emit("Stage returned to original position successfully")
+                except Exception as e:
+                    if self.signal_bus:
+                        self.signal_bus.console_message.emit(f"Warning: Failed to return stage to original position after frame {frame_idx + 1}: {e}")
         
         if all_frames:
             final_data = np.stack(all_frames)
@@ -202,8 +263,47 @@ class SplitDataStream(Acquisition):
             
             self.metadata['tile_order'] = tile_indices            
             self.save_data(final_data)
+            
+            # Return stage to original position (final return)
+            try:
+                
+
+                move_z = ((numtiles_z) - 1) * tile_size_z * 10
+                print(f'move_z: {move_z}')
+                move_y = ((numtiles_y) - 1) * tile_size_y
+                move_x = ((numtiles_x) - 1) * tile_size_x
+                
+                curr_z = self.prior_stage.get_z()
+                print(curr_z)
+                curr_x, curr_y = self.prior_stage.get_xy()
+
+                if self.signal_bus:
+                    self.signal_bus.console_message.emit(f"All frames complete. Returning stage to original position: X={curr_x - move_x} µm, Y={curr_y - move_y} µm, Z={(curr_z - move_z)/10:.1f} µm")
+
+                self.prior_stage.move_xy(curr_x - move_x, curr_y - move_y)
+                self.prior_stage.move_z(curr_z - move_z)
+                time.sleep(0.5)
+                if self.signal_bus:
+                    self.signal_bus.console_message.emit("Stage returned to original position successfully")
+            except Exception as e:
+                if self.signal_bus:
+                    self.signal_bus.console_message.emit(f"Warning: Failed to return stage to original position: {e}")
+            
             return final_data
         else:
+            # Return stage to original position even if no frames were acquired
+            try:
+                if self.signal_bus:
+                    self.signal_bus.console_message.emit(f"Returning stage to original position: X={start_x} µm, Y={start_y} µm, Z={start_z/10:.1f} µm")
+                self.prior_stage.move_xy(start_x, start_y)
+                self.prior_stage.move_z(start_z)
+                time.sleep(0.5)
+                if self.signal_bus:
+                    self.signal_bus.console_message.emit("Stage returned to original position successfully")
+            except Exception as e:
+                if self.signal_bus:
+                    self.signal_bus.console_message.emit(f"Warning: Failed to return stage to original position: {e}")
+            
             return None
     
     def collect_split_data(self, galvo, ai_channels):
@@ -255,6 +355,7 @@ class SplitDataStream(Acquisition):
             dyn_chans = []
             dyn_ttls = []
             stat_vals = []
+            stat_chans = []
             
             for chan, flat_ttl in zip(rpoc_do_channels, rpoc_ttl_signals):
                 if '/port0/' in chan.lower():
@@ -265,11 +366,12 @@ class SplitDataStream(Acquisition):
                     # anything else (e.g. port1) → static DO
                     # take the first value as constant level
                     stat_vals.append(bool(flat_ttl.flat[0]))
+                    stat_chans.append(chan)
 
             # -- static, immediate DO task (on port1 or others) --
-            if stat_vals and self._static_channels:
+            if stat_vals and stat_chans:
                 # 1) Raise static lines before imaging:
-                self.write_static(stat_vals)
+                self.write_static(stat_vals, stat_chans)
 
             try:
                 # -- dynamic, hardware-timed DO task (on port0) --
@@ -395,9 +497,9 @@ class SplitDataStream(Acquisition):
                 return np.stack(input_results)
             finally:
                 # 2) Always clear static lines after, even if an exception occurred:
-                if stat_vals and self._static_channels:
+                if stat_vals and stat_chans:
                     try:
-                        self.write_static([False] * len(stat_vals))
+                        self.write_static([False] * len(stat_vals), stat_chans)
                     except:
                         pass  # Ignore errors when clearing static lines
         except Exception as e:
@@ -481,19 +583,26 @@ class SplitDataStream(Acquisition):
         
         return input_channel_names
     
-    def write_static(self, levels):
+    def write_static(self, levels, channel_names=None):
         """Write a list of boolean levels to the static channels using on-demand task creation."""
-        if not self._static_channels:
-            # No static channels configured
+        if not levels:
+            # No levels to write
+            return
+        
+        if not channel_names:
+            # If no channel names provided, use all static channels (backward compatibility)
+            channel_names = self._static_channels[:len(levels)]
+        
+        if len(levels) != len(channel_names):
             if self.signal_bus:
-                self.signal_bus.console_message.emit("Warning: Attempted to write to static channels but none are configured")
+                self.signal_bus.console_message.emit(f"Warning: Number of levels ({len(levels)}) doesn't match number of channels ({len(channel_names)})")
             return
         
         # Create a new task for each write operation to avoid resource conflicts
         try:
             with nidaqmx.Task() as static_task:
-                for channel_name in self._static_channels:
-                    static_task.do_channels.add_do_chan(channel_name)
+                for chan_name in channel_names:
+                    static_task.do_channels.add_do_chan(chan_name)
                 # Write the levels immediately
                 static_task.write(levels, auto_start=True)
         except Exception as e:

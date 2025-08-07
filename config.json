@@ -1,0 +1,112 @@
+{
+  "modality": "split data stream",
+  "acquisition_parameters": {
+    "num_frames": 15,
+    "split_percentage": 50,
+    "aom_delay": 0,
+    "save_enabled": true,
+    "save_path": "C:\\Users\\Zhang Lab\\Box\\(L2 Sensitive) zhan2017\\Zhang 4174 Lab data\\Chang Ding\\2025-08-07Fish with 445\\baseline2",
+    "dwell_time": 2.0,
+    "extrasteps_left": 1000,
+    "extrasteps_right": 10,
+    "amplitude_x": 2.0,
+    "amplitude_y": 2.0,
+    "offset_x": 1.0,
+    "offset_y": 0.0,
+    "x_pixels": 512,
+    "y_pixels": 512,
+    "numtiles_x": 1,
+    "numtiles_y": 1,
+    "numtiles_z": 1,
+    "tile_size_x": 0.0,
+    "tile_size_y": 0.0,
+    "tile_size_z": -2.0,
+    "offset_drift_x": -1.0,
+    "offset_drift_y": 0.0,
+    "repetitions": 1,
+    "ttl_device": "Dev1",
+    "ttl_port_line": "port0/line4",
+    "pfi_line": "None",
+    "local_extrasteps_left": 10,
+    "local_extrasteps_right": 2,
+    "local_rpoc_dwell_time": 100
+  },
+  "display_parameters": {},
+  "ui_state": {
+    "acquisition_parameters_visible": true,
+    "instrument_controls_visible": true,
+    "display_controls_visible": true,
+    "lines_enabled": false,
+    "main_splitter_sizes": [
+      421,
+      1694,
+      421
+    ],
+    "vertical_splitter_sizes": [
+      149,
+      1203
+    ]
+  },
+  "instruments": [
+    {
+      "name": "Galvo Scanner",
+      "instrument_type": "galvo",
+      "parameters": {
+        "slow_axis_channel": 0,
+        "fast_axis_channel": 1,
+        "sample_rate": 2000000,
+        "device_name": "Dev1",
+        "name": "Galvo Scanner"
+      }
+    },
+    {
+      "name": "Data Input",
+      "instrument_type": "data input",
+      "parameters": {
+        "input_channels": [
+          0,
+          1,
+          2
+        ],
+        "channel_names": {
+          "0": "GFP",
+          "1": "red1",
+          "2": "red2"
+        },
+        "sample_rate": 1000000,
+        "device_name": "Dev1",
+        "name": "Data Input"
+      }
+    }
+  ],
+  "rpoc_mask_channels": {
+    "3": {
+      "device": "Dev1",
+      "port_line": "port0/line4",
+      "enabled": true,
+      "mask_metadata": {
+        "shape": [
+          512,
+          512
+        ],
+        "dtype": "uint8",
+        "has_mask": true
+      }
+    }
+  },
+  "rpoc_script_channels": {},
+  "rpoc_static_channels": {
+    "1": {
+      "device": "Dev1",
+      "port_line": "port1/line0",
+      "level": "Static High",
+      "enabled": true
+    },
+    "2": {
+      "device": "Dev1",
+      "port_line": "port1/line1",
+      "level": "Static High",
+      "enabled": true
+    }
+  }
+}

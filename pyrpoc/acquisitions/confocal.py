@@ -4,7 +4,7 @@ import abc
 from pyrpoc.instruments.instrument_manager import *
 import time
 import nidaqmx
-from nidaqmx.constants import AcquisitionType, TaskMode
+from nidaqmx.constants import AcquisitionType
 import tifffile
 from pathlib import Path
 from .base_acquisition import Acquisition
@@ -109,11 +109,6 @@ class Confocal(Acquisition):
             flat_ttl = np.full(total_x * total_y * pixel_samples, value, dtype=bool)
             self.rpoc_ttl_signals[channel_id] = flat_ttl
 
-        if self.signal_bus:
-            n_masks = len(self.rpoc_mask_channels) if self.rpoc_mask_channels else 0
-            n_static = len(self.rpoc_static_channels) if self.rpoc_static_channels else 0
-            n_script = len(self.rpoc_script_channels) if self.rpoc_script_channels else 0
-            n_total = len(self.rpoc_ttl_signals)
 
     def perform_acquisition(self):     
         self.save_metadata()
@@ -291,6 +286,7 @@ class Confocal(Acquisition):
             dyn_chans = []
             dyn_ttls = []
             stat_vals = []
+            stat_chans = []
             
             for chan, flat_ttl in zip(rpoc_do_channels, rpoc_ttl_signals):
                 if '/port0/' in chan.lower():
@@ -301,11 +297,12 @@ class Confocal(Acquisition):
                     # anything else (e.g. port1) → static DO
                     # take the first value as constant level
                     stat_vals.append(bool(flat_ttl.flat[0]))
+                    stat_chans.append(chan)
 
             # -- static, immediate DO task (on port1 or others) --
-            if stat_vals and self._static_channels:
+            if stat_vals and stat_chans:
                 # 1) Raise static lines before imaging:
-                self.write_static(stat_vals)
+                self.write_static(stat_vals, stat_chans)
 
             try:
                 # -- dynamic, hardware-timed DO task (on port0) --
@@ -417,9 +414,9 @@ class Confocal(Acquisition):
                     return np.stack(results)
             finally:
                 # 2) Always clear static lines after, even if an exception occurred:
-                if stat_vals and self._static_channels:
+                if stat_vals and stat_chans:
                     try:
-                        self.write_static([False] * len(stat_vals))
+                        self.write_static([False] * len(stat_vals), stat_chans)
                     except:
                         pass  # Ignore errors when clearing static lines
                 
@@ -482,18 +479,25 @@ class Confocal(Acquisition):
         
         return channel_names
     
-    def write_static(self, levels):
+    def write_static(self, levels, channel_names=None):
         """Write a list of boolean levels to the static channels using the persistent task."""
-        if not self._static_channels:
-            # No static channels configured
+        if not levels:
+            # No levels to write
+            return
+        
+        if not channel_names:
+            # If no channel names provided, use all static channels (backward compatibility)
+            channel_names = self._static_channels[:len(levels)]
+        
+        if len(levels) != len(channel_names):
             if self.signal_bus:
-                self.signal_bus.console_message.emit("Warning: Attempted to write to static channels but none are configured")
+                self.signal_bus.console_message.emit(f"Warning: Number of levels ({len(levels)}) doesn't match number of channels ({len(channel_names)})")
             return
         
         # Create a new task for each write operation to avoid resource conflicts
         try:
             with nidaqmx.Task() as static_task:
-                for channel_name in self._static_channels:
+                for channel_name in channel_names:
                     static_task.do_channels.add_do_chan(channel_name)
                 # Write the levels immediately
                 static_task.write(levels, auto_start=True)
