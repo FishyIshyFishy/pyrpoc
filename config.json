@@ -3,15 +3,16 @@
   "acquisition_parameters": {
     "num_frames": 1,
     "split_percentage": 50,
+    "aom_delay": 0,
     "save_enabled": false,
     "save_path": "",
     "dwell_time": 2.0,
-    "extrasteps_left": 1500,
-    "extrasteps_right": 20,
-    "amplitude_x": 3.0,
-    "amplitude_y": 3.0,
-    "offset_x": -1.5,
-    "offset_y": 0.0,
+    "extrasteps_left": 1000,
+    "extrasteps_right": 10,
+    "amplitude_x": 1.9999999999999991,
+    "amplitude_y": 1.9999999999999991,
+    "offset_x": 0.09999999999999981,
+    "offset_y": -0.9999999999999999,
     "x_pixels": 512,
     "y_pixels": 512,
     "numtiles_x": 10,
@@ -22,16 +23,20 @@
     "tile_size_z": 50
   },
   "display_parameters": {},
-  "rpoc_enabled": false,
+  "rpoc_enabled": true,
   "ui_state": {
     "acquisition_parameters_visible": true,
     "instrument_controls_visible": true,
     "display_controls_visible": true,
     "lines_enabled": false,
     "main_splitter_sizes": [
-      229,
-      918,
-      229
+      423,
+      1682,
+      431
+    ],
+    "vertical_splitter_sizes": [
+      150,
+      1202
     ]
   },
   "instruments": [
@@ -62,7 +67,26 @@
       }
     }
   ],
-  "rpoc_mask_channels": {},
+  "rpoc_mask_channels": {
+    "8": {
+      "device": "Dev1",
+      "port_line": "port0/line4",
+      "mask_metadata": {
+        "shape": [
+          512,
+          512
+        ],
+        "dtype": "uint8",
+        "has_mask": true
+      }
+    }
+  },
   "rpoc_script_channels": {},
-  "rpoc_static_channels": {}
+  "rpoc_static_channels": {
+    "2": {
+      "device": "Dev1",
+      "port_line": "port1/line0",
+      "level": "Static High"
+    }
+  }
 }
