@@ -52,7 +52,7 @@ class TopBar(QWidget):
         self.app_state = app_state
         self.signals = signals
         self.setStyleSheet(DEV_BORDER_STYLE)
-        self.setFixedHeight(100) 
+        # Remove fixed height to allow resizing by splitter
         layout = QHBoxLayout()
         layout.setContentsMargins(5, 5, 5, 5)
 
@@ -113,6 +113,7 @@ class TopBar(QWidget):
 
         self.console = QPlainTextEdit()
         self.console.setReadOnly(True)
+        self.console.setMinimumHeight(50)  # Ensure minimum height for console
         console_layout.addWidget(self.console)
 
         # tool buttons, eventually i will make these like imageJ icons but for now just text
@@ -1014,6 +1015,7 @@ class MainWindow(QMainWindow):
         
         self.central_widget = None
         self.central_layout = None
+        self.vertical_splitter = None
         self.main_splitter = None
         self.left_widget = None
         self.mid_layout = None
@@ -1027,6 +1029,7 @@ class MainWindow(QMainWindow):
     def build_gui(self):
         self.clear_existing_gui()
         self.create_central_widget()
+        self.create_vertical_splitter()
         self.create_top_bar()
         self.create_main_splitter()
         self.setup_splitter_sizes()
@@ -1042,9 +1045,16 @@ class MainWindow(QMainWindow):
         self.central_layout.setContentsMargins(5, 5, 5, 5)
         self.central_layout.setSpacing(5)
 
+    def create_vertical_splitter(self):
+        self.vertical_splitter = QSplitter(Qt.Orientation.Vertical)
+        self.vertical_splitter.setStyleSheet(SPLITTER_STYLE)
+
     def create_top_bar(self):
         self.top_bar = TopBar(self.app_state, self.signals)
-        self.central_layout.addWidget(self.top_bar, stretch=0)
+        # Remove fixed height constraint to allow resizing
+        self.top_bar.setMinimumHeight(50)
+        self.top_bar.setMaximumHeight(300)
+        self.vertical_splitter.addWidget(self.top_bar)
 
     def create_main_splitter(self):
         self.main_splitter = QSplitter(Qt.Orientation.Horizontal)
@@ -1059,22 +1069,40 @@ class MainWindow(QMainWindow):
         self.main_splitter.addWidget(self.left_widget)
         self.main_splitter.addWidget(self.mid_layout)
         self.main_splitter.addWidget(self.right_layout)
+        
+        self.vertical_splitter.addWidget(self.main_splitter)
 
     def setup_splitter_sizes(self):
+        # Set initial sizes for the vertical splitter (top bar vs main content)
+        if 'vertical_splitter_sizes' in self.app_state.ui_state:
+            self.vertical_splitter.setSizes(self.app_state.ui_state['vertical_splitter_sizes'])
+        else:
+            # Default: top bar takes 100px, rest goes to main content
+            # Use a reasonable default if window height is not available yet
+            default_height = 900  # Default window height
+            self.vertical_splitter.setSizes([100, default_height - 100])
+        
+        # Set initial sizes for the main horizontal splitter
         self.main_splitter.setSizes([200, 800, 200])
         if 'main_splitter_sizes' in self.app_state.ui_state:
             self.main_splitter.setSizes(self.app_state.ui_state['main_splitter_sizes'])
+        
+        # Connect splitter movement signals
+        self.vertical_splitter.splitterMoved.connect(lambda: self.save_splitter_sizes())
         self.main_splitter.splitterMoved.connect(lambda: self.save_splitter_sizes())
 
     def finalize_gui(self):
-        self.central_layout.addWidget(self.main_splitter, stretch=1)
+        self.central_layout.addWidget(self.vertical_splitter, stretch=1)
         self.central_widget.setLayout(self.central_layout)
         self.setCentralWidget(self.central_widget)
 
     def rebuild_gui(self):
+        if self.vertical_splitter:
+            vertical_sizes = self.vertical_splitter.sizes()
+            self.app_state.ui_state['vertical_splitter_sizes'] = vertical_sizes
         if self.main_splitter:
-            sizes = self.main_splitter.sizes()
-            self.app_state.ui_state['main_splitter_sizes'] = sizes
+            horizontal_sizes = self.main_splitter.sizes()
+            self.app_state.ui_state['main_splitter_sizes'] = horizontal_sizes
         
         self.build_gui()
         
@@ -1085,9 +1113,12 @@ class MainWindow(QMainWindow):
         self.rebuild_gui()
 
     def save_splitter_sizes(self):
+        if self.vertical_splitter:
+            vertical_sizes = self.vertical_splitter.sizes()
+            self.signals.ui_state_changed.emit('vertical_splitter_sizes', vertical_sizes)
         if self.main_splitter:
-            sizes = self.main_splitter.sizes()
-            self.signals.ui_state_changed.emit('main_splitter_sizes', sizes)
+            horizontal_sizes = self.main_splitter.sizes()
+            self.signals.ui_state_changed.emit('main_splitter_sizes', horizontal_sizes)
 
 if __name__ == '__main__':
     app_state = AppState()

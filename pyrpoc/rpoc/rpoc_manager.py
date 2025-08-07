@@ -137,10 +137,12 @@ class BaseRPOCChannelWidget(QWidget):
         if self.channel_type == 'mask':
             if not hasattr(self.app_state, 'rpoc_mask_channels'):
                 self.app_state.rpoc_mask_channels = {}
+            # Preserve existing mask data if available
+            existing_mask_data = self.app_state.rpoc_mask_channels.get(self.channel_id, {}).get('mask_data')
             self.app_state.rpoc_mask_channels[self.channel_id] = {
                 'device': device,
                 'port_line': port_line,
-                'mask_data': None  # Will be set when mask is loaded
+                'mask_data': existing_mask_data  # Preserve existing mask data
             }
         elif self.channel_type == 'static':
             if not hasattr(self.app_state, 'rpoc_static_channels'):
@@ -159,8 +161,6 @@ class BaseRPOCChannelWidget(QWidget):
                 'device': device,
                 'port_line': port_line
             }
-        
-        self.signals.console_message.emit(f'RPOC {self.channel_type} channel {self.channel_id} set on {device}/{port_line}')
     
     def get_daq_channel_info(self):
         device = self.device_edit.currentText().strip()

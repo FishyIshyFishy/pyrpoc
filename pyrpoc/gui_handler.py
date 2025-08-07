@@ -54,6 +54,7 @@ class AppState:
             'display_controls_visible': True,
             'lines_enabled': False,
             'main_splitter_sizes': [200, 800, 200],  # left, middle, right panel sizes
+            'vertical_splitter_sizes': [100, 800],  # top bar, main content sizes
         }
         
         # RPOC storage - separate by channel type for clarity
@@ -842,6 +843,13 @@ def handle_local_rpoc_started(parameters, app_state, signal_bus):
                                   f"drift_y={parameters['offset_drift_y']}V")
     signal_bus.console_message.emit(f"TTL Channel: {parameters.get('ttl_device', 'Dev1')}/{parameters.get('ttl_port_line', 'port0/line0')}")
     
+    # Log PFI line information if specified
+    pfi_line = parameters.get('pfi_line', 'None')
+    if pfi_line and pfi_line != 'None':
+        signal_bus.console_message.emit(f"Timing: Using PFI line {pfi_line} for DO task timing")
+    else:
+        signal_bus.console_message.emit("Timing: Using internal wiring (AO sample clock) for DO task timing")
+    
     # Create local RPOC object (similar to acquisition creation)
     local_rpoc = None
     try:
@@ -861,6 +869,10 @@ def handle_local_rpoc_started(parameters, app_state, signal_bus):
         from pyrpoc.rpoc.local_treatment import LocalRPOCProgressDialog
         progress_dialog = LocalRPOCProgressDialog(parameters['repetitions'])
         signal_bus.local_rpoc_progress_dialog = progress_dialog
+        
+        # Connect the cancel signal to stop the treatment
+        progress_dialog.cancel_requested.connect(lambda: handle_local_rpoc_cancel(signal_bus))
+        
         progress_dialog.show()
         
         # Use the same threading model as acquisition
@@ -911,4 +923,34 @@ def handle_local_rpoc_progress(repetition, app_state, signal_bus):
     """Handle local RPOC progress updates"""
     if hasattr(signal_bus, 'local_rpoc_progress_dialog'):
         signal_bus.local_rpoc_progress_dialog.update_progress(repetition)
+    return 0
+
+def handle_local_rpoc_cancel(signal_bus):
+    """Handle local RPOC treatment cancellation"""
+    # Stop the treatment if it's running
+    if hasattr(signal_bus, 'local_rpoc_thread') and hasattr(signal_bus, 'local_rpoc_worker'):
+        thread = signal_bus.local_rpoc_thread
+        worker = signal_bus.local_rpoc_worker
+
+        worker.stop()
+        thread.quit()
+        if thread.wait(5000):  # Wait up to 5 seconds
+            thread.deleteLater()
+            worker.deleteLater()
+        else:
+            thread.terminate()
+            thread.wait()
+            thread.deleteLater()
+            worker.deleteLater()
+
+        del signal_bus.local_rpoc_thread
+        del signal_bus.local_rpoc_worker
+        signal_bus.console_message.emit("Local RPOC treatment cancelled")
+    
+    # Close progress dialog
+    if hasattr(signal_bus, 'local_rpoc_progress_dialog'):
+        signal_bus.local_rpoc_progress_dialog.set_stopped()
+        signal_bus.local_rpoc_progress_dialog.close()
+        del signal_bus.local_rpoc_progress_dialog
+    
     return 0

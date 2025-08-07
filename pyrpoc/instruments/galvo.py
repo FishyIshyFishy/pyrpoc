@@ -74,87 +74,47 @@ class Galvo(Instrument):
         x_steps = acquisition_parameters['x_pixels']
         y_steps = acquisition_parameters['y_pixels']
 
-        print(f'printing galvo test params')
-        print(f'    dwell_time: {dwell} µs')
-        print(f'    dwell_sec: {dwell_sec} s')
-        print(f'    rate: {rate} Hz')
-        print(f'    extra_left: {extra_left}')
-        print(f'    extra_right: {extra_right}')
-        print(f'    amp_x: {amp_x} V')
-        print(f'    amp_y: {amp_y} V')
-        print(f'    offset_x: {offset_x} V')
-        print(f'    offset_y: {offset_y} V')
-        print(f'    x_steps: {x_steps}')
-        print(f'    y_steps: {y_steps}')
-        
         pixel_samples = max(1, int(dwell_sec * rate))
-        print(f'    pixel_samples: {pixel_samples}')
         total_x = x_steps + extra_left + extra_right
-        print(f'    total_x: {total_x}')
         total_y = y_steps
-        print(f'    total_y: {total_y}')
 
         contained_rowsamples = pixel_samples * x_steps
-        print(f'    contained_rowsamples: {contained_rowsamples}')
         total_rowsamples = pixel_samples * total_x
-        print(f'    total_rowsamples: {total_rowsamples}')
         
         # Calculate step size based on pixels, not samples
         step_size = (2 * amp_x) / x_steps
-        print(f'    step_size: {step_size} V/pixel')
         bottom = offset_x - amp_x - (step_size * extra_left)
-        print(f'    bottom: {bottom} V')
         top = offset_x + amp_x + (step_size * extra_right)
-        print(f'    top: {top} V')
 
         # Generate ramp based on pixel positions, then repeat for samples per pixel
         pixel_positions = np.linspace(bottom, top, total_x, endpoint=False)
-        print(f'    pixel_positions shape: {pixel_positions.shape}')
-        print(f'    pixel_positions range: {pixel_positions[0]:.3f} to {pixel_positions[-1]:.3f} V')
         
         # Repeat each pixel position for the number of samples per pixel
         single_row_ramp = np.repeat(pixel_positions, pixel_samples)
-        print(f'    single_row_ramp shape: {single_row_ramp.shape}')
-        print(f'    single_row_ramp range: {single_row_ramp[0]:.3f} to {single_row_ramp[-1]:.3f} V')
         x_waveform = np.tile(single_row_ramp, total_y)
-        print(f'    x_waveform shape: {x_waveform.shape}')
 
         y_steps_positions = np.linspace(
             offset_y + amp_y,
             offset_y - amp_y,
             total_y
         )
-        print(f'    y_steps_positions shape: {y_steps_positions.shape}')
-        print(f'    y_steps_positions range: {y_steps_positions[0]:.3f} to {y_steps_positions[-1]:.3f} V')
         y_waveform = np.repeat(y_steps_positions, total_rowsamples)
-        print(f'    y_waveform shape: {y_waveform.shape}')
 
         composite = np.vstack([x_waveform, y_waveform])
-        print(f'    composite shape: {composite.shape}')
 
         total_samples = total_x * total_y * pixel_samples
-        print(f'    total_samples: {total_samples}')
         if x_waveform.size < total_samples:
-            print(f'    padding x_waveform from {x_waveform.size} to {total_samples}')
             x_waveform = np.pad(
                 x_waveform,
                 (0, total_samples - x_waveform.size),
                 constant_values=x_waveform[-1]
             )
         else:
-            print(f'    truncating x_waveform from {x_waveform.size} to {total_samples}')
             x_waveform = x_waveform[:total_samples]
         composite[0] = x_waveform
         
-        print(f'    final composite shape: {composite.shape}')
-        print(f'    final x_waveform range: {composite[0].min():.3f} to {composite[0].max():.3f} V')
-        print(f'    final y_waveform range: {composite[1].min():.3f} to {composite[1].max():.3f} V')
-        
         # Apply voltage clipping for galvo protection
         clipped_composite = self.clip_waveform_voltages(composite)
-        
-        print(f'    clipped x_waveform range: {clipped_composite[0].min():.3f} to {clipped_composite[0].max():.3f} V')
-        print(f'    clipped y_waveform range: {clipped_composite[1].min():.3f} to {clipped_composite[1].max():.3f} V')
         
         return clipped_composite
 
