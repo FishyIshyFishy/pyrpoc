@@ -214,13 +214,20 @@ class ImageViewer(QGraphicsView):
         coords_str = ', '.join([f'({p.x():.1f}, {p.y():.1f})' for p in points])
         self.roi_table.setItem(row, 1, QTableWidgetItem(coords_str))
 
-        # Get current threshold values from the main window's slider
+        # Get current threshold values from the main window's slider (0-1000 range)
         low, high = self.main_window.threshold_slider.value()
-        max_slider = self.main_window.threshold_slider.maximum()
-        if max_slider == 1000:
-            # Data is in [0,1] range, convert from [0,1000] back to [0,1]
-            low = low / 1000.0
-            high = high / 1000.0
+        
+        # Convert to normalized 0-1 range
+        low = low / 1000.0
+        high = high / 1000.0
+        
+        # Ensure values are in valid range
+        low = max(0.0, min(1.0, low))
+        high = max(0.0, min(1.0, high))
+        
+        # Ensure low <= high
+        if low > high:
+            low, high = high, low
         
         low_item = QTableWidgetItem(f"{low:.3f}")
         high_item = QTableWidgetItem(f"{high:.3f}")
@@ -364,40 +371,11 @@ class RPOCMaskEditor(QMainWindow):
         if not self.image_layers:
             return
         
-        # Find the global min and max across all visible channels
-        global_min = float('inf')
-        global_max = float('-inf')
-        
-        for img in self.image_layers:
-            img_min = np.min(img)
-            img_max = np.max(img)
-            global_min = min(global_min, img_min)
-            global_max = max(global_max, img_max)
-        
-        # Determine if data is in [0,1] range or [0,255] range
-        if global_max <= 1.0:
-            # Data is in [0,1] range, scale to [0,1000] for better precision
-            self.threshold_slider.setMinimum(0)
-            self.threshold_slider.setMaximum(1000)
-            # Set default values to cover most of the range
-            default_low = int(global_min * 1000)
-            default_high = int(global_max * 1000)
-            # Ensure we have a reasonable range
-            if default_high - default_low < 100:
-                default_high = min(1000, default_low + 500)
-            self.threshold_slider.setValue((default_low, default_high))
-        else:
-            # Data is in [0,255] range or higher
-            max_val = int(global_max)
-            self.threshold_slider.setMinimum(0)
-            self.threshold_slider.setMaximum(max_val)
-            # Set default values to cover most of the range
-            default_low = int(global_min)
-            default_high = int(global_max * 0.8)  # Use 80% of max as default
-            # Ensure we have a reasonable range
-            if default_high - default_low < 50:
-                default_high = min(max_val, default_low + 100)
-            self.threshold_slider.setValue((default_low, default_high))
+        # Always use 0-1 range for the slider
+        self.threshold_slider.setMinimum(0)
+        self.threshold_slider.setMaximum(1000)  # 0-1000 for precision, maps to 0-1
+        # Set default values to include the full range
+        self.threshold_slider.setValue((0, 1000))  # Full range by default
 
     def keyPressEvent(self, event):
         key = event.key()
@@ -523,22 +501,28 @@ class RPOCMaskEditor(QMainWindow):
         rgb_overlay = np.zeros((height, width, 3), dtype=np.uint8)
         low, high = self.threshold_slider.value()
 
-        # Convert threshold values back to data range
-        max_slider = self.threshold_slider.maximum()
-        if max_slider == 1000:
-            # Data is in [0,1] range, convert from [0,1000] back to [0,1]
-            low = low / 1000.0
-            high = high / 1000.0
-        # else: data is already in the correct range
+        # Convert slider values (0-1000) to normalized range (0-1)
+        low = low / 1000.0
+        high = high / 1000.0
 
         for i, (img, visible) in enumerate(zip(self.image_layers, self.image_visibility)):
             if not visible:
                 continue
             color = np.array(self.image_colors[i % len(self.image_colors)])
-            mask = (img >= low) & (img <= high)
-            normalized = np.zeros_like(img, dtype=np.float32)
+            
+            # Normalize image data to 0-1 range
+            img_min = np.min(img)
+            img_max = np.max(img)
+            if img_max > img_min:
+                img_normalized = (img - img_min) / (img_max - img_min)
+            else:
+                img_normalized = img * 0  # All zeros if no range
+            
+            # Apply threshold to normalized data
+            mask = (img_normalized >= low) & (img_normalized <= high)
+            normalized = np.zeros_like(img_normalized, dtype=np.float32)
             if np.any(mask):
-                clipped = np.clip(img.astype(np.float32), low, high)
+                clipped = np.clip(img_normalized, low, high)
                 normalized[mask] = (clipped[mask] - low) / max((high - low), 1e-9)
             channel_img = (normalized[..., None] * color).astype(np.uint8)
             rgb_overlay = np.clip(rgb_overlay + channel_img, 0, 255)
@@ -636,7 +620,7 @@ class RPOCMaskEditor(QMainWindow):
                 low_val = float(self.roi_table.item(row, 2).text())
                 high_val = float(self.roi_table.item(row, 3).text())
                 mod_val = float(self.roi_table.item(row, 4).text())
-            except:
+            except (ValueError, TypeError):
                 continue
 
             active_channels = self.roi_channel_flags[roi_index - 1]
@@ -655,8 +639,17 @@ class RPOCMaskEditor(QMainWindow):
             for i, (img, active) in enumerate(zip(self.image_layers, active_channels)):
                 if not active:
                     continue
-                # The threshold values from the table are already in the correct data range
-                valid_range = (img >= low_val) & (img <= high_val)
+                
+                # Normalize image data to 0-1 range
+                img_min = np.min(img)
+                img_max = np.max(img)
+                if img_max > img_min:
+                    img_normalized = (img - img_min) / (img_max - img_min)
+                else:
+                    img_normalized = img * 0  # All zeros if no range
+                
+                # Apply threshold to normalized data (threshold values are already 0-1)
+                valid_range = (img_normalized >= low_val) & (img_normalized <= high_val)
                 combined_mask |= valid_range
 
             valid_pixels = combined_mask & (roi_mask == 255)

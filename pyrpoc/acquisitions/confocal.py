@@ -27,6 +27,9 @@ class Confocal(Acquisition):
         self.rpoc_static_channels = {}
         self.rpoc_script_channels = {}
         self.rpoc_ttl_signals = {}  # channel_id -> flat TTL array
+        
+        # Initialize static channels list - will be populated when static channels are configured
+        self._static_channels = []
 
     def configure_rpoc(self, rpoc_enabled, rpoc_mask_channels=None, rpoc_static_channels=None, rpoc_script_channels=None, **kwargs):
         self.rpoc_enabled = rpoc_enabled
@@ -35,9 +38,23 @@ class Confocal(Acquisition):
         self.rpoc_script_channels = rpoc_script_channels or {}
         self.rpoc_ttl_signals = {}  # channel_id -> flat TTL array
 
+        # Clear existing static channels list
+        self._static_channels = []
+
+        # Prepare static channels list for on-demand task creation
+        if self.rpoc_static_channels:
+            device_name = self.galvo.parameters.get('device_name', 'Dev1') if self.galvo else 'Dev1'
+            
+            for channel_id, channel_data in self.rpoc_static_channels.items():
+                device = channel_data.get('device', device_name)
+                channel_id_int = int(channel_id) if isinstance(channel_id, str) else channel_id
+                port_line = channel_data.get('port_line', f'port1/line{channel_id_int-1}')
+                channel_name = f"{device}/{port_line}"
+                self._static_channels.append(channel_name)
+
         # Get acquisition parameters
         dwell_time = self.acquisition_parameters.get('dwell_time', 10)  # microseconds
-        rate = self.galvo.parameters.get('sample_rate', 1000000)
+        rate = self.galvo.parameters.get('sample_rate', 1000000) if self.galvo else 1000000
         dwell_time_sec = dwell_time / 1e6
         pixel_samples = max(1, int(dwell_time_sec * rate))
         numsteps_x = self.acquisition_parameters.get('x_pixels', 512)
@@ -92,12 +109,6 @@ class Confocal(Acquisition):
             flat_ttl = np.full(total_x * total_y * pixel_samples, value, dtype=bool)
             self.rpoc_ttl_signals[channel_id] = flat_ttl
 
-        if self.signal_bus:
-            n_masks = len(self.rpoc_mask_channels) if self.rpoc_mask_channels else 0
-            n_static = len(self.rpoc_static_channels) if self.rpoc_static_channels else 0
-            n_script = len(self.rpoc_script_channels) if self.rpoc_script_channels else 0
-            n_total = len(self.rpoc_ttl_signals)
-            self.signal_bus.console_message.emit(f"RPOC Configured - enabled: {rpoc_enabled}, masks: {n_masks}, static: {n_static}, script: {n_script}, total: {n_total}")
 
     def perform_acquisition(self):     
         self.save_metadata()
@@ -268,92 +279,126 @@ class Confocal(Acquisition):
                         rpoc_do_channels.append(f"{device}/{port_line}")
                         rpoc_ttl_signals.append(flat_ttl)
             
-            with nidaqmx.Task() as ao_task, nidaqmx.Task() as ai_task:
-                ao_task.ao_channels.add_ao_voltage_chan(f"{device_name}/ao{fast_channel}")
-                ao_task.ao_channels.add_ao_voltage_chan(f"{device_name}/ao{slow_channel}")
-                for ch in ai_channels:
-                    ai_task.ai_channels.add_ai_voltage_chan(ch)
-                ao_task.timing.cfg_samp_clk_timing(
-                    rate=rate,
-                    sample_mode=AcquisitionType.FINITE,
-                    samps_per_chan=total_samples
-                )
-                ai_task.timing.cfg_samp_clk_timing(
-                    rate=rate,
-                    source=f"/{device_name}/ao/SampleClock",
-                    sample_mode=AcquisitionType.FINITE,
-                    samps_per_chan=total_samples
-                )
-                do_task = None
-                # Separate dynamic (port0) and static (port1+) channels
-                dyn_chans = []
-                dyn_ttls = []
-                stat_chans = []
-                stat_vals = []
-                
-                for chan, flat_ttl in zip(rpoc_do_channels, rpoc_ttl_signals):
-                    if '/port0/' in chan.lower():
-                        # anything on port0 → dynamic, clocked DO
-                        dyn_chans.append(chan)
-                        dyn_ttls.append(flat_ttl)
-                    else:
-                        # anything else (e.g. port1) → static DO
-                        stat_chans.append(chan)
-                        # take the first value as constant level
-                        stat_vals.append(bool(flat_ttl.flat[0]))
+            # Calculate timeout once
+            timeout = total_samples / rate + 5
+            
+            # Separate dynamic (port0) and static (port1+) channels
+            dyn_chans = []
+            dyn_ttls = []
+            stat_vals = []
+            stat_chans = []
+            
+            for chan, flat_ttl in zip(rpoc_do_channels, rpoc_ttl_signals):
+                if '/port0/' in chan.lower():
+                    # anything on port0 → dynamic, clocked DO
+                    dyn_chans.append(chan)
+                    dyn_ttls.append(flat_ttl)
+                else:
+                    # anything else (e.g. port1) → static DO
+                    # take the first value as constant level
+                    stat_vals.append(bool(flat_ttl.flat[0]))
+                    stat_chans.append(chan)
 
+            # -- static, immediate DO task (on port1 or others) --
+            if stat_vals and stat_chans:
+                # 1) Raise static lines before imaging:
+                self.write_static(stat_vals, stat_chans)
+
+            try:
                 # -- dynamic, hardware-timed DO task (on port0) --
-                do_task = None
                 if dyn_chans:
-                    do_task = nidaqmx.Task()
-                    # add all port0 lines as one buffered channel
-                    for c in dyn_chans:
-                        do_task.do_channels.add_do_chan(c)
-                    do_task.timing.cfg_samp_clk_timing(
-                        rate=rate,
-                        source=f"/{device_name}/ao/SampleClock",
-                        sample_mode=AcquisitionType.FINITE,
-                        samps_per_chan=total_samples
-                    )
-
-                    # write the pattern(s)
-                    if len(dyn_chans) == 1:
-                        do_task.write(dyn_ttls[0].tolist(), auto_start=False)
-                    else:
-                        data_to_write = [arr.tolist() for arr in dyn_ttls]
-                        do_task.write(data_to_write, auto_start=False)
-
-                # -- static, immediate DO task (on port1 or others) --
-                static_do = None
-                if stat_chans:
-                    static_do = nidaqmx.Task()
-                    for c in stat_chans:
-                        static_do.do_channels.add_do_chan(c)
-                    # write a constant level (list of booleans matching each line)
-                    # auto_start=True so it drives immediately
-                    static_do.write(stat_vals, auto_start=True)
-                # now write AO waveform, start AI, start DO, start AO
-                ao_task.write(waveform, auto_start=False)
-                ai_task.start()
-
-                if do_task:
-                    do_task.start()
-
-                ao_task.start()
-
-                timeout = total_samples / rate + 5
-                ao_task.wait_until_done(timeout=timeout)
-                ai_task.wait_until_done(timeout=timeout)
-                if do_task:
-                    do_task.wait_until_done(timeout=timeout)
-
-                if static_do:
-                    # off_vals = [not v for v in stat_vals]
-                    # static_do.write(off_vals, auto_start=True)
-                    static_do.write([not v for v in stat_vals])
-                    static_do.close()
-                
-                acq_data = np.array(ai_task.read(number_of_samples_per_channel=total_samples))
+                    with nidaqmx.Task() as ao_task, nidaqmx.Task() as ai_task, nidaqmx.Task() as do_task:
+                        # 1) Add AO & AI channels
+                        ao_task.ao_channels.add_ao_voltage_chan(f"{device_name}/ao{fast_channel}")
+                        ao_task.ao_channels.add_ao_voltage_chan(f"{device_name}/ao{slow_channel}")
+                        for ch in ai_channels:
+                            ai_task.ai_channels.add_ai_voltage_chan(ch)
+                        
+                        # 2) Clock AO
+                        ao_task.timing.cfg_samp_clk_timing(
+                            rate=rate,
+                            sample_mode=AcquisitionType.FINITE,
+                            samps_per_chan=total_samples
+                        )
+                        
+                        # 3) Clock AI off of AO's internal clock
+                        ai_task.timing.cfg_samp_clk_timing(
+                            rate=rate,
+                            source=f"/{device_name}/ao/SampleClock",
+                            sample_mode=AcquisitionType.FINITE,
+                            samps_per_chan=total_samples
+                        )
+                        
+                        # 4) Clock DO off of AO's internal clock (AO still open!)
+                        for c in dyn_chans:
+                            do_task.do_channels.add_do_chan(c)
+                        do_task.timing.cfg_samp_clk_timing(
+                            rate=rate,
+                            source=f"/{device_name}/ao/SampleClock",
+                            sample_mode=AcquisitionType.FINITE,
+                            samps_per_chan=total_samples
+                        )
+                        
+                        # 5) Write waveforms, then start in order:
+                        ao_task.write(waveform, auto_start=False)
+                        
+                        # write the pattern(s)
+                        if len(dyn_chans) == 1:
+                            do_task.write(dyn_ttls[0].tolist(), auto_start=False)
+                        else:
+                            data_to_write = [arr.tolist() for arr in dyn_ttls]
+                            do_task.write(data_to_write, auto_start=False)
+                        
+                        # 6) Start in order: AI, AO, DO
+                        ai_task.start()
+                        do_task.start()
+                        ao_task.start()
+                        
+                        
+                        # 7) Wait and tear down all three
+                        ao_task.wait_until_done(timeout=timeout)
+                        do_task.wait_until_done(timeout=timeout)
+                        ai_task.wait_until_done(timeout=timeout)
+                        
+                        
+                        acq_data = np.array(ai_task.read(number_of_samples_per_channel=total_samples))
+                else:
+                    # No dynamic DO channels, just AO and AI
+                    with nidaqmx.Task() as ao_task, nidaqmx.Task() as ai_task:
+                        # 1) Add AO & AI channels
+                        ao_task.ao_channels.add_ao_voltage_chan(f"{device_name}/ao{fast_channel}")
+                        ao_task.ao_channels.add_ao_voltage_chan(f"{device_name}/ao{slow_channel}")
+                        for ch in ai_channels:
+                            ai_task.ai_channels.add_ai_voltage_chan(ch)
+                        
+                        # 2) Clock AO
+                        ao_task.timing.cfg_samp_clk_timing(
+                            rate=rate,
+                            sample_mode=AcquisitionType.FINITE,
+                            samps_per_chan=total_samples
+                        )
+                        
+                        # 3) Clock AI off of AO's internal clock
+                        ai_task.timing.cfg_samp_clk_timing(
+                            rate=rate,
+                            source=f"/{device_name}/ao/SampleClock",
+                            sample_mode=AcquisitionType.FINITE,
+                            samps_per_chan=total_samples
+                        )
+                        
+                        # 4) Write waveforms, then start in order:
+                        ao_task.write(waveform, auto_start=False)
+                        
+                        # 5) Start in order: AI, AO
+                        ai_task.start()
+                        ao_task.start()
+                        
+                        # 6) Wait and tear down
+                       
+                        ai_task.wait_until_done(timeout=timeout)
+                        ao_task.wait_until_done(timeout=timeout)
+                        
+                        acq_data = np.array(ai_task.read(number_of_samples_per_channel=total_samples))
                 
                 results = []
                 for i in range(len(ai_channels)):
@@ -367,7 +412,14 @@ class Confocal(Acquisition):
                     return results[0]
                 else:
                     return np.stack(results)
-                    
+            finally:
+                # 2) Always clear static lines after, even if an exception occurred:
+                if stat_vals and stat_chans:
+                    try:
+                        self.write_static([False] * len(stat_vals), stat_chans)
+                    except:
+                        pass  # Ignore errors when clearing static lines
+                
         except Exception as e:
             if self.signal_bus:
                 self.signal_bus.console_message.emit(f'Error in DAQ acquisition: {e}')
@@ -426,3 +478,37 @@ class Confocal(Acquisition):
                 channel_names[ch] = f"ch{ch:02d}"
         
         return channel_names
+    
+    def write_static(self, levels, channel_names=None):
+        """Write a list of boolean levels to the static channels using the persistent task."""
+        if not levels:
+            # No levels to write
+            return
+        
+        if not channel_names:
+            # If no channel names provided, use all static channels (backward compatibility)
+            channel_names = self._static_channels[:len(levels)]
+        
+        if len(levels) != len(channel_names):
+            if self.signal_bus:
+                self.signal_bus.console_message.emit(f"Warning: Number of levels ({len(levels)}) doesn't match number of channels ({len(channel_names)})")
+            return
+        
+        # Create a new task for each write operation to avoid resource conflicts
+        try:
+            with nidaqmx.Task() as static_task:
+                for channel_name in channel_names:
+                    static_task.do_channels.add_do_chan(channel_name)
+                # Write the levels immediately
+                static_task.write(levels, auto_start=True)
+        except Exception as e:
+            if self.signal_bus:
+                self.signal_bus.console_message.emit(f"Error writing to static channels: {e}")
+
+    def cleanup(self):
+        """Clean up resources."""
+        self._static_channels = []
+
+    def __del__(self):
+        """Destructor to ensure cleanup."""
+        self.cleanup()

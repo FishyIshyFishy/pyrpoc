@@ -4,7 +4,7 @@ import abc
 from pyrpoc.instruments.instrument_manager import *
 import time
 import nidaqmx
-from nidaqmx.constants import AcquisitionType
+from nidaqmx.constants import AcquisitionType, TaskMode
 import tifffile
 from pathlib import Path
 from .base_acquisition import Acquisition
@@ -34,6 +34,9 @@ class SplitDataStream(Acquisition):
         self.rpoc_static_channels = {}
         self.rpoc_script_channels = {}
         self.rpoc_ttl_signals = {}  # channel_id -> flat TTL array
+        
+        # Initialize static channels list - will be populated when static channels are configured
+        self._static_channels = []
 
     def configure_rpoc(self, rpoc_enabled, rpoc_mask_channels=None, rpoc_static_channels=None, rpoc_script_channels=None, **kwargs):
         self.rpoc_enabled = rpoc_enabled
@@ -41,6 +44,20 @@ class SplitDataStream(Acquisition):
         self.rpoc_static_channels = rpoc_static_channels or {}
         self.rpoc_script_channels = rpoc_script_channels or {}
         self.rpoc_ttl_signals = {}  # channel_id -> flat TTL array
+
+        # Clear existing static channels list
+        self._static_channels = []
+
+        # Prepare static channels list for on-demand task creation
+        if self.rpoc_static_channels:
+            device_name = self.galvo.parameters.get('device_name', 'Dev1') if self.galvo else 'Dev1'
+            
+            for channel_id, channel_data in self.rpoc_static_channels.items():
+                device = channel_data.get('device', device_name)
+                channel_id_int = int(channel_id) if isinstance(channel_id, str) else channel_id
+                port_line = channel_data.get('port_line', f'port1/line{channel_id_int-1}')
+                channel_name = f"{device}/{port_line}"
+                self._static_channels.append(channel_name)
 
         # Get split percentage and acquisition parameters
         split_percentage = self.acquisition_parameters.get('split_percentage', 50)
@@ -107,7 +124,6 @@ class SplitDataStream(Acquisition):
             n_static = len(self.rpoc_static_channels) if self.rpoc_static_channels else 0
             n_script = len(self.rpoc_script_channels) if self.rpoc_script_channels else 0
             n_total = len(self.rpoc_ttl_signals)
-            self.signal_bus.console_message.emit(f"RPOC Configured - enabled: {rpoc_enabled}, masks: {n_masks}, static: {n_static}, script: {n_script}, total: {n_total}")
 
     def perform_acquisition(self):     
         self.save_metadata()
@@ -137,35 +153,69 @@ class SplitDataStream(Acquisition):
                 self.signal_bus.console_message.emit(f"Error getting current stage position: {e}")
             raise RuntimeError(f"Failed to get current stage position: {e}")
         
-        stage_positions = []
+        stage_step_sizes = []
         tile_indices = []
         for z_idx in range(numtiles_z):
             for y_idx in range(numtiles_y):
                 for x_idx in range(numtiles_x):
-                    x_pos = int(start_x + x_idx * tile_size_x)  # int microns
-                    y_pos = int(start_y + y_idx * tile_size_y)  # int microns
-                    # z is in 0.1 micron units, so convert tile_size_z (microns) to 0.1 micron units
-                    z_pos = int(start_z + z_idx * tile_size_z * 10)  # int 0.1 micron units
-                    stage_positions.append((x_pos, y_pos, z_pos))
+                    # Calculate step sizes relative to current position
+                    # For the first position (0,0,0), step is 0 (stay at current position)
+                    # For subsequent positions, step is the difference from the previous position
+                    if x_idx == 0 and y_idx == 0 and z_idx == 0:
+                        # First position - stay at current position
+                        x_step = 0
+                        y_step = 0
+                        z_step = 0
+                    else:
+                        # Calculate step based on the grid traversal pattern
+                        # Grid is traversed: (0,0,0) -> (1,0,0) -> (2,0,0) -> ... -> (0,1,0) -> (1,1,0) -> ... -> (0,0,1) -> ...
+                        if x_idx > 0:
+                            # Moving in X direction
+                            x_step = tile_size_x
+                            y_step = 0
+                            z_step = 0
+                        elif y_idx > 0:
+                            # Moving in Y direction (reset X)
+                            x_step = -x_idx * tile_size_x  # Reset X to 0
+                            y_step = tile_size_y
+                            z_step = 0
+                        elif z_idx > 0:
+                            # Moving in Z direction (reset X and Y)
+                            x_step = -x_idx * tile_size_x  # Reset X to 0
+                            y_step = -y_idx * tile_size_y  # Reset Y to 0
+                            z_step = int(tile_size_z * 10)
+                        else:
+                            x_step = 0
+                            y_step = 0
+                            z_step = 0
+                    stage_step_sizes.append((x_step, y_step, z_step))
                     tile_indices.append((x_idx, y_idx, z_idx))
 
         all_frames = []
-        total_positions = len(stage_positions) * self.num_frames
+        total_positions = len(stage_step_sizes) * self.num_frames
         current_position = 0
         
         for frame_idx in range(self.num_frames):
             if self._stop_flag and self._stop_flag():
                 break
             
-            for pos_idx, (x_pos, y_pos, z_pos) in enumerate(stage_positions):
+            for pos_idx, (x_step, y_step, z_step) in enumerate(stage_step_sizes):
                 if self._stop_flag and self._stop_flag():
                     break
                 
                 try:
+                    # Get current position and calculate target position
+                    current_x, current_y = self.prior_stage.get_xy()
+                    current_z = self.prior_stage.get_z()
+                    
+                    target_x = int(current_x + x_step)
+                    target_y = int(current_y + y_step)
+                    target_z = int(current_z + z_step)
+                    
                     if self.signal_bus:
-                        self.signal_bus.console_message.emit(f"Moving to position {pos_idx + 1}/{len(stage_positions)}: X={x_pos} µm, Y={y_pos} µm, Z={z_pos/10:.1f} µm")
-                    self.prior_stage.move_xy(x_pos, y_pos)
-                    self.prior_stage.move_z(z_pos)
+                        self.signal_bus.console_message.emit(f"Moving to position {pos_idx + 1}/{len(stage_step_sizes)}: X={target_x} µm, Y={target_y} µm, Z={target_z/10:.1f} µm (step: +{x_step}, +{y_step}, +{z_step/10:.1f})")
+                    self.prior_stage.move_xy(target_x, target_y)
+                    self.prior_stage.move_z(target_z)
                     time.sleep(0.5)
                 except Exception as e:
                     if self.signal_bus:
@@ -178,6 +228,33 @@ class SplitDataStream(Acquisition):
                     self.signal_bus.data_signal.emit(frame_data, current_position, total_positions, False)
                 all_frames.append(frame_data)
                 current_position += 1
+            
+            # Return stage to original position after completing all tiles for this frame
+            # (but only if there are more frames to process)
+            if frame_idx < self.num_frames - 1:
+                try:
+                    
+                    move_z = ((numtiles_z) - 1) * tile_size_z * 10
+                    print(f'move_z: {move_z}')
+                    move_y = ((numtiles_y) - 1) * tile_size_y
+                    move_x = ((numtiles_x) - 1) * tile_size_x
+                    
+                    curr_z = self.prior_stage.get_z()
+                    print(curr_z)
+                    curr_x, curr_y = self.prior_stage.get_xy()
+
+                    if self.signal_bus:
+                        self.signal_bus.console_message.emit(f"Frame {frame_idx + 1} complete. Returning stage to original position for next frame: X={curr_x - move_x} µm, Y={curr_y - move_y} µm, Z={(curr_z - move_z)/10:.1f} µm")
+
+                    self.prior_stage.move_xy(curr_x - move_x, curr_y - move_y)
+                    self.prior_stage.move_z(curr_z - move_z)
+
+                    time.sleep(0.5)
+                    if self.signal_bus:
+                        self.signal_bus.console_message.emit("Stage returned to original position successfully")
+                except Exception as e:
+                    if self.signal_bus:
+                        self.signal_bus.console_message.emit(f"Warning: Failed to return stage to original position after frame {frame_idx + 1}: {e}")
         
         if all_frames:
             final_data = np.stack(all_frames)
@@ -186,8 +263,47 @@ class SplitDataStream(Acquisition):
             
             self.metadata['tile_order'] = tile_indices            
             self.save_data(final_data)
+            
+            # Return stage to original position (final return)
+            try:
+                
+
+                move_z = ((numtiles_z) - 1) * tile_size_z * 10
+                print(f'move_z: {move_z}')
+                move_y = ((numtiles_y) - 1) * tile_size_y
+                move_x = ((numtiles_x) - 1) * tile_size_x
+                
+                curr_z = self.prior_stage.get_z()
+                print(curr_z)
+                curr_x, curr_y = self.prior_stage.get_xy()
+
+                if self.signal_bus:
+                    self.signal_bus.console_message.emit(f"All frames complete. Returning stage to original position: X={curr_x - move_x} µm, Y={curr_y - move_y} µm, Z={(curr_z - move_z)/10:.1f} µm")
+
+                self.prior_stage.move_xy(curr_x - move_x, curr_y - move_y)
+                self.prior_stage.move_z(curr_z - move_z)
+                time.sleep(0.5)
+                if self.signal_bus:
+                    self.signal_bus.console_message.emit("Stage returned to original position successfully")
+            except Exception as e:
+                if self.signal_bus:
+                    self.signal_bus.console_message.emit(f"Warning: Failed to return stage to original position: {e}")
+            
             return final_data
         else:
+            # Return stage to original position even if no frames were acquired
+            try:
+                if self.signal_bus:
+                    self.signal_bus.console_message.emit(f"Returning stage to original position: X={start_x} µm, Y={start_y} µm, Z={start_z/10:.1f} µm")
+                self.prior_stage.move_xy(start_x, start_y)
+                self.prior_stage.move_z(start_z)
+                time.sleep(0.5)
+                if self.signal_bus:
+                    self.signal_bus.console_message.emit("Stage returned to original position successfully")
+            except Exception as e:
+                if self.signal_bus:
+                    self.signal_bus.console_message.emit(f"Warning: Failed to return stage to original position: {e}")
+            
             return None
     
     def collect_split_data(self, galvo, ai_channels):
@@ -232,102 +348,131 @@ class SplitDataStream(Acquisition):
                         rpoc_do_channels.append(f"{device}/{port_line}")
                         rpoc_ttl_signals.append(flat_ttl)
 
-            with nidaqmx.Task() as ao_task, nidaqmx.Task() as ai_task:
-                ao_task.ao_channels.add_ao_voltage_chan(f"{device_name}/ao{fast_channel}")
-                ao_task.ao_channels.add_ao_voltage_chan(f"{device_name}/ao{slow_channel}")
-                for ch in ai_channels:
-                    ai_task.ai_channels.add_ai_voltage_chan(ch)
-                ao_task.timing.cfg_samp_clk_timing(
-                    rate=rate,
-                    sample_mode=AcquisitionType.FINITE,
-                    samps_per_chan=total_samples
-                )
-                ai_task.timing.cfg_samp_clk_timing(
-                    rate=rate,
-                    source=f"/{device_name}/ao/SampleClock",
-                    sample_mode=AcquisitionType.FINITE,
-                    samps_per_chan=total_samples
-                )
-                do_task = None
-                # Separate dynamic (port0) and static (port1+) channels
-                dyn_chans = []
-                dyn_ttls = []
-                stat_chans = []
-                stat_vals = []
-                
-                for chan, flat_ttl in zip(rpoc_do_channels, rpoc_ttl_signals):
-                    if '/port0/' in chan.lower():
-                        # anything on port0 → dynamic, clocked DO
-                        dyn_chans.append(chan)
-                        dyn_ttls.append(flat_ttl)
-                    else:
-                        # anything else (e.g. port1) → static DO
-                        stat_chans.append(chan)
-                        # take the first value as constant level
-                        stat_vals.append(bool(flat_ttl.flat[0]))
+            # Calculate timeout once
+            timeout = total_samples / rate + 5
+            
+            # Separate dynamic (port0) and static (port1+) channels
+            dyn_chans = []
+            dyn_ttls = []
+            stat_vals = []
+            stat_chans = []
+            
+            for chan, flat_ttl in zip(rpoc_do_channels, rpoc_ttl_signals):
+                if '/port0/' in chan.lower():
+                    # anything on port0 → dynamic, clocked DO
+                    dyn_chans.append(chan)
+                    dyn_ttls.append(flat_ttl)
+                else:
+                    # anything else (e.g. port1) → static DO
+                    # take the first value as constant level
+                    stat_vals.append(bool(flat_ttl.flat[0]))
+                    stat_chans.append(chan)
 
+            # -- static, immediate DO task (on port1 or others) --
+            if stat_vals and stat_chans:
+                # 1) Raise static lines before imaging:
+                self.write_static(stat_vals, stat_chans)
+
+            try:
                 # -- dynamic, hardware-timed DO task (on port0) --
-                do_task = None
                 if dyn_chans:
-                    do_task = nidaqmx.Task()
-                    # add all port0 lines as one buffered channel
-                    for c in dyn_chans:
-                        do_task.do_channels.add_do_chan(c)
-                    do_task.timing.cfg_samp_clk_timing(
-                        rate=rate,
-                        source=f"/{device_name}/ao/SampleClock",
-                        sample_mode=AcquisitionType.FINITE,
-                        samps_per_chan=total_samples
-                    )
-
-                    # write the pattern(s)
-                    if len(dyn_chans) == 1:
-                        do_task.write(dyn_ttls[0].tolist(), auto_start=False)
-                    else:
-                        data_to_write = [arr.tolist() for arr in dyn_ttls]
-                        do_task.write(data_to_write, auto_start=False)
-
-                # -- static, immediate DO task (on port1 or others) --
-                static_do = None
-                if stat_chans:
-                    static_do = nidaqmx.Task()
-                    for c in stat_chans:
-                        static_do.do_channels.add_do_chan(c)
-                    # write a constant level (list of booleans matching each line)
-                    # auto_start=True so it drives immediately
-                    static_do.write(stat_vals, auto_start=True)
-                # now write AO waveform, start AI, start DO, start AO
-                ao_task.write(waveform, auto_start=False)
-                ai_task.start()
-
-                if do_task:
-                    do_task.start()
-
-                ao_task.start()
-
-                timeout = total_samples / rate + 5
-                ao_task.wait_until_done(timeout=timeout)
-                ai_task.wait_until_done(timeout=timeout)
-                if do_task:
-                    do_task.wait_until_done(timeout=timeout)
-
-                if static_do:
-                    # off_vals = [not v for v in stat_vals]
-                    # static_do.write(off_vals, auto_start=True)
-                    static_do.write([not v for v in stat_vals])
-                    static_do.close()
-                    
-                
-                acq_data = np.array(ai_task.read(number_of_samples_per_channel=total_samples))
+                    with nidaqmx.Task() as ao_task, nidaqmx.Task() as ai_task, nidaqmx.Task() as do_task:
+                        # 1) Add AO & AI channels
+                        ao_task.ao_channels.add_ao_voltage_chan(f"{device_name}/ao{fast_channel}")
+                        ao_task.ao_channels.add_ao_voltage_chan(f"{device_name}/ao{slow_channel}")
+                        for ch in ai_channels:
+                            ai_task.ai_channels.add_ai_voltage_chan(ch)
+                        
+                        # 2) Clock AO
+                        ao_task.timing.cfg_samp_clk_timing(
+                            rate=rate,
+                            sample_mode=AcquisitionType.FINITE,
+                            samps_per_chan=total_samples
+                        )
+                        
+                        # 3) Clock AI off of AO's internal clock
+                        ai_task.timing.cfg_samp_clk_timing(
+                            rate=rate,
+                            source=f"/{device_name}/ao/SampleClock",
+                            sample_mode=AcquisitionType.FINITE,
+                            samps_per_chan=total_samples
+                        )
+                        
+                        # 4) Clock DO off of AO's internal clock (AO still open!)
+                        for c in dyn_chans:
+                            do_task.do_channels.add_do_chan(c)
+                        do_task.timing.cfg_samp_clk_timing(
+                            rate=rate,
+                            source=f"/{device_name}/ao/SampleClock",
+                            sample_mode=AcquisitionType.FINITE,
+                            samps_per_chan=total_samples
+                        )
+                        
+                        # 5) Write waveforms, then start in order:
+                        ao_task.write(waveform, auto_start=False)
+                        
+                        # write the pattern(s)
+                        if len(dyn_chans) == 1:
+                            do_task.write(dyn_ttls[0].tolist(), auto_start=False)
+                        else:
+                            data_to_write = [arr.tolist() for arr in dyn_ttls]
+                            do_task.write(data_to_write, auto_start=False)
+                        
+                        # 6) Start in order: AI, AO, DO
+                        ai_task.start()
+                        do_task.start()
+                        ao_task.start()
+                        
+                        
+                        # 7) Wait and tear down all three
+                        ao_task.wait_until_done(timeout=timeout)
+                        ai_task.wait_until_done(timeout=timeout)
+                        do_task.wait_until_done(timeout=timeout)
+                        
+                        acq_data = np.array(ai_task.read(number_of_samples_per_channel=total_samples))
+                else:
+                    # No dynamic DO channels, just AO and AI
+                    with nidaqmx.Task() as ao_task, nidaqmx.Task() as ai_task:
+                        # 1) Add AO & AI channels
+                        ao_task.ao_channels.add_ao_voltage_chan(f"{device_name}/ao{fast_channel}")
+                        ao_task.ao_channels.add_ao_voltage_chan(f"{device_name}/ao{slow_channel}")
+                        for ch in ai_channels:
+                            ai_task.ai_channels.add_ai_voltage_chan(ch)
+                        
+                        # 2) Clock AO
+                        ao_task.timing.cfg_samp_clk_timing(
+                            rate=rate,
+                            sample_mode=AcquisitionType.FINITE,
+                            samps_per_chan=total_samples
+                        )
+                        
+                        # 3) Clock AI off of AO's internal clock
+                        ai_task.timing.cfg_samp_clk_timing(
+                            rate=rate,
+                            source=f"/{device_name}/ao/SampleClock",
+                            sample_mode=AcquisitionType.FINITE,
+                            samps_per_chan=total_samples
+                        )
+                        
+                        # 4) Write waveforms, then start in order:
+                        ao_task.write(waveform, auto_start=False)
+                        
+                        # 5) Start in order: AI, AO
+                        ai_task.start()
+                        ao_task.start()
+                        
+                        # 6) Wait and tear down
+                        ao_task.wait_until_done(timeout=timeout)
+                        ai_task.wait_until_done(timeout=timeout)
+                        
+                        acq_data = np.array(ai_task.read(number_of_samples_per_channel=total_samples))
                 
                 input_results = []
                 split_point = int(self.acquisition_parameters.get('split_percentage', 50) / 100.0 * pixel_samples)
                 
-                # Calculate AOM delay in samples
                 aom_delay_us = self.acquisition_parameters.get('aom_delay', 0)
                 aom_delay_samples = max(0, int(aom_delay_us / dwell_time * pixel_samples))
-                
-                # Validate that we have enough samples for both portions
+
                 split_percentage = self.acquisition_parameters.get('split_percentage', 50)
                 if split_point + aom_delay_samples >= pixel_samples:
                     raise ValueError(f"AOM delay too large: {aom_delay_us} µs with {dwell_time} µs dwell time and {split_percentage}% split leaves no samples for second portion")
@@ -336,15 +481,12 @@ class SplitDataStream(Acquisition):
                     channel_data = acq_data if len(ai_channels) == 1 else acq_data[i]
                     reshaped = channel_data.reshape(total_y, total_x, pixel_samples)
                     
-                    # First portion: from start to split_point
                     first_portion = np.mean(reshaped[:, :, :split_point], axis=2)
                     
-                    # Second portion: from split_point + aom_delay_samples to end
                     second_start = split_point + aom_delay_samples
                     if second_start < pixel_samples:
                         second_portion = np.mean(reshaped[:, :, second_start:], axis=2)
                     else:
-                        # If no samples left, create zero array
                         second_portion = np.zeros_like(first_portion)
                     
                     cropped_first = first_portion[:, extra_left:extra_left + numsteps_x]
@@ -352,8 +494,14 @@ class SplitDataStream(Acquisition):
                     input_results.append(cropped_first)
                     input_results.append(cropped_second)
                 
-                # Output shape: (N*2, height, width)
                 return np.stack(input_results)
+            finally:
+                # 2) Always clear static lines after, even if an exception occurred:
+                if stat_vals and stat_chans:
+                    try:
+                        self.write_static([False] * len(stat_vals), stat_chans)
+                    except:
+                        pass  # Ignore errors when clearing static lines
         except Exception as e:
             self.signal_bus.console_message.emit(f'Error in DAQ acquisition: {e}')
             return self.generate_simulated_confocal()
@@ -434,3 +582,37 @@ class SplitDataStream(Acquisition):
                 input_channel_names[ch] = f"input{ch}"
         
         return input_channel_names
+    
+    def write_static(self, levels, channel_names=None):
+        """Write a list of boolean levels to the static channels using on-demand task creation."""
+        if not levels:
+            # No levels to write
+            return
+        
+        if not channel_names:
+            # If no channel names provided, use all static channels (backward compatibility)
+            channel_names = self._static_channels[:len(levels)]
+        
+        if len(levels) != len(channel_names):
+            if self.signal_bus:
+                self.signal_bus.console_message.emit(f"Warning: Number of levels ({len(levels)}) doesn't match number of channels ({len(channel_names)})")
+            return
+        
+        # Create a new task for each write operation to avoid resource conflicts
+        try:
+            with nidaqmx.Task() as static_task:
+                for chan_name in channel_names:
+                    static_task.do_channels.add_do_chan(chan_name)
+                # Write the levels immediately
+                static_task.write(levels, auto_start=True)
+        except Exception as e:
+            if self.signal_bus:
+                self.signal_bus.console_message.emit(f"Error writing to static channels: {e}")
+
+    def cleanup(self):
+        """Clean up resources."""
+        self._static_channels = []
+
+    def __del__(self):
+        """Destructor to ensure cleanup."""
+        self.cleanup()

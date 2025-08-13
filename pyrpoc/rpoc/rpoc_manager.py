@@ -1,4 +1,4 @@
-from PyQt6.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QComboBox, QDialogButtonBox, QWidget, QFileDialog, QGroupBox, QFormLayout, QDoubleSpinBox, QSpinBox
+from PyQt6.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QComboBox, QDialogButtonBox, QWidget, QFileDialog, QGroupBox, QFormLayout, QDoubleSpinBox, QSpinBox, QCheckBox
 from PyQt6.QtCore import pyqtSignal
 from superqt import QSearchableComboBox
 import cv2
@@ -63,10 +63,16 @@ class BaseRPOCChannelWidget(QWidget):
         layout = QVBoxLayout()
         layout.setContentsMargins(5, 5, 5, 5)
 
-        # Header with channel label and remove button
+        # Header with channel label, enable checkbox, and remove button
         header_layout = QHBoxLayout()
         self.channel_label = QLabel(f'Channel {channel_id}')
         header_layout.addWidget(self.channel_label)
+        
+        # Add enable checkbox
+        self.enable_checkbox = QCheckBox('Enable')
+        self.enable_checkbox.setChecked(self.get_channel_enabled())
+        self.enable_checkbox.toggled.connect(self.on_enable_changed)
+        header_layout.addWidget(self.enable_checkbox)
 
         remove_btn = QPushButton('×')
         remove_btn.setMaximumWidth(20)
@@ -125,22 +131,32 @@ class BaseRPOCChannelWidget(QWidget):
         """Override in subclasses to return the channel type"""
         return "mask"  # Default
     
-    def add_channel_content(self, layout):
-        """Override in subclasses to add channel-specific content"""
-        pass
+    def get_channel_enabled(self):
+        """Get the enabled state for this channel from app_state"""
+        if self.channel_type == 'mask' and hasattr(self.app_state, 'rpoc_mask_channels'):
+            return self.app_state.rpoc_mask_channels.get(self.channel_id, {}).get('enabled', True)
+        elif self.channel_type == 'static' and hasattr(self.app_state, 'rpoc_static_channels'):
+            return self.app_state.rpoc_static_channels.get(self.channel_id, {}).get('enabled', True)
+        elif self.channel_type == 'script' and hasattr(self.app_state, 'rpoc_script_channels'):
+            return self.app_state.rpoc_script_channels.get(self.channel_id, {}).get('enabled', True)
+        return True  # Default to enabled
     
-    def on_daq_channel_changed(self):
+    def on_enable_changed(self, enabled):
+        """Handle enable checkbox state change"""
         device = self.device_edit.currentText().strip()
         port_line = self.port_line_edit.currentText().strip()
         
-        # Store in the appropriate channel type storage
+        # Store in the appropriate channel type storage with enabled state
         if self.channel_type == 'mask':
             if not hasattr(self.app_state, 'rpoc_mask_channels'):
                 self.app_state.rpoc_mask_channels = {}
+            # Preserve existing mask data if available
+            existing_mask_data = self.app_state.rpoc_mask_channels.get(self.channel_id, {}).get('mask_data')
             self.app_state.rpoc_mask_channels[self.channel_id] = {
                 'device': device,
                 'port_line': port_line,
-                'mask_data': None  # Will be set when mask is loaded
+                'mask_data': existing_mask_data,  # Preserve existing mask data
+                'enabled': enabled
             }
         elif self.channel_type == 'static':
             if not hasattr(self.app_state, 'rpoc_static_channels'):
@@ -150,17 +166,58 @@ class BaseRPOCChannelWidget(QWidget):
             self.app_state.rpoc_static_channels[self.channel_id] = {
                 'device': device,
                 'port_line': port_line,
-                'level': existing_level
+                'level': existing_level,
+                'enabled': enabled
             }
         elif self.channel_type == 'script':
             if not hasattr(self.app_state, 'rpoc_script_channels'):
                 self.app_state.rpoc_script_channels = {}
             self.app_state.rpoc_script_channels[self.channel_id] = {
                 'device': device,
-                'port_line': port_line
+                'port_line': port_line,
+                'enabled': enabled
             }
+    
+    def add_channel_content(self, layout):
+        """Override in subclasses to add channel-specific content"""
+        pass
+    
+    def on_daq_channel_changed(self):
+        device = self.device_edit.currentText().strip()
+        port_line = self.port_line_edit.currentText().strip()
+        enabled = self.enable_checkbox.isChecked()
         
-        self.signals.console_message.emit(f'RPOC {self.channel_type} channel {self.channel_id} set on {device}/{port_line}')
+        # Store in the appropriate channel type storage
+        if self.channel_type == 'mask':
+            if not hasattr(self.app_state, 'rpoc_mask_channels'):
+                self.app_state.rpoc_mask_channels = {}
+            # Preserve existing mask data if available
+            existing_mask_data = self.app_state.rpoc_mask_channels.get(self.channel_id, {}).get('mask_data')
+            self.app_state.rpoc_mask_channels[self.channel_id] = {
+                'device': device,
+                'port_line': port_line,
+                'mask_data': existing_mask_data,  # Preserve existing mask data
+                'enabled': enabled
+            }
+        elif self.channel_type == 'static':
+            if not hasattr(self.app_state, 'rpoc_static_channels'):
+                self.app_state.rpoc_static_channels = {}
+            # Keep existing level if available
+            existing_level = self.app_state.rpoc_static_channels.get(self.channel_id, {}).get('level', 'Static Low')
+            self.app_state.rpoc_static_channels[self.channel_id] = {
+                'device': device,
+                'port_line': port_line,
+                'level': existing_level,
+                'enabled': enabled
+            }
+        elif self.channel_type == 'script':
+            if not hasattr(self.app_state, 'rpoc_script_channels'):
+                self.app_state.rpoc_script_channels = {}
+            self.app_state.rpoc_script_channels[self.channel_id] = {
+                'device': device,
+                'port_line': port_line,
+                'enabled': enabled
+            }
     
     def get_daq_channel_info(self):
         device = self.device_edit.currentText().strip()
@@ -319,11 +376,14 @@ class RPOCMaskChannelWidget(BaseRPOCChannelWidget):
             self.app_state.rpoc_mask_channels[self.channel_id] = {
                 'device': 'Dev1',
                 'port_line': f'port0/line{4+self.channel_id-1}',
-                'mask_data': mask
+                'mask_data': mask,
+                'enabled': True
             }
         else:
-            # Update existing channel with mask data
+            # Update existing channel with mask data, preserve enabled state
+            existing_enabled = self.app_state.rpoc_mask_channels[self.channel_id].get('enabled', True)
             self.app_state.rpoc_mask_channels[self.channel_id]['mask_data'] = mask
+            self.app_state.rpoc_mask_channels[self.channel_id]['enabled'] = existing_enabled
         self.update_mask_status()
         self.signals.console_message.emit(f"Mask loaded for channel {self.channel_id} - shape: {mask.shape if hasattr(mask, 'shape') else 'unknown'}")
     
@@ -405,11 +465,13 @@ class RPOCStaticChannelWidget(BaseRPOCChannelWidget):
         existing_data = self.app_state.rpoc_static_channels.get(self.channel_id, {})
         device = existing_data.get('device', 'Dev1')
         port_line = existing_data.get('port_line', f'port0/line{4+self.channel_id-1}')
+        enabled = existing_data.get('enabled', True)
         
         self.app_state.rpoc_static_channels[self.channel_id] = {
             'device': device,
             'port_line': port_line,
-            'level': static_level
+            'level': static_level,
+            'enabled': enabled
         }
         self.signals.console_message.emit(f'RPOC static channel {self.channel_id} set to {static_level}')
     

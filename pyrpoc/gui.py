@@ -52,7 +52,7 @@ class TopBar(QWidget):
         self.app_state = app_state
         self.signals = signals
         self.setStyleSheet(DEV_BORDER_STYLE)
-        self.setFixedHeight(100) 
+        # Remove fixed height to allow resizing by splitter
         layout = QHBoxLayout()
         layout.setContentsMargins(5, 5, 5, 5)
 
@@ -113,6 +113,7 @@ class TopBar(QWidget):
 
         self.console = QPlainTextEdit()
         self.console.setReadOnly(True)
+        self.console.setMinimumHeight(50)  # Ensure minimum height for console
         console_layout.addWidget(self.console)
 
         # tool buttons, eventually i will make these like imageJ icons but for now just text
@@ -165,7 +166,7 @@ class ModalityControls(QWidget):
         layout.addWidget(ms_label)
 
         ms_dropdown = QComboBox()
-        ms_dropdown.addItems(['Simulated', 'Confocal', 'Split data stream'])
+        ms_dropdown.addItems(['Simulated', 'Confocal', 'Split data stream', 'Confocal mosaic', 'Fish'])
         current_modality = self.app_state.modality.capitalize()
         index = ms_dropdown.findText(current_modality)
         if index >= 0:
@@ -262,6 +263,15 @@ class AcquisitionParameters(QWidget):
 
             self.add_galvo_parameters()
             self.add_prior_stage_parameters()
+
+        elif modality == 'confocal mosaic':
+            self.add_galvo_parameters()
+            self.add_prior_stage_parameters()
+
+        elif modality == 'fish':
+            self.add_galvo_parameters()
+            self.add_prior_stage_parameters()
+            self.add_local_rpoc_parameters()
 
         elif modality == 'simulated':
             self.add_pixel_parameters()
@@ -427,6 +437,94 @@ class AcquisitionParameters(QWidget):
         prior_group.setLayout(prior_layout)
         self.layout.addWidget(prior_group)
 
+    def add_local_rpoc_parameters(self):
+        """Add local RPOC treatment parameters"""
+        local_rpoc_group = QGroupBox("Local RPOC Treatment Parameters")
+        local_rpoc_layout = QFormLayout()
+        
+        # Local RPOC dwell time parameter
+        self.local_rpoc_dwell_time_spin = QSpinBox()
+        self.local_rpoc_dwell_time_spin.setRange(1, 10000)
+        self.local_rpoc_dwell_time_spin.setValue(self.app_state.acquisition_parameters.get('local_rpoc_dwell_time', 10))
+        self.local_rpoc_dwell_time_spin.setSuffix(" μs")
+        self.local_rpoc_dwell_time_spin.valueChanged.connect(
+            lambda value: self.signals.acquisition_parameter_changed.emit('local_rpoc_dwell_time', value))
+        local_rpoc_layout.addRow("Local RPOC Dwell Time:", self.local_rpoc_dwell_time_spin)
+        
+        # Drift offset parameters
+        self.offset_drift_x_spin = QDoubleSpinBox()
+        self.offset_drift_x_spin.setRange(-10.0, 10.0)
+        self.offset_drift_x_spin.setDecimals(3)
+        self.offset_drift_x_spin.setSingleStep(0.001)
+        self.offset_drift_x_spin.setValue(self.app_state.acquisition_parameters.get('offset_drift_x', 0.0))
+        self.offset_drift_x_spin.setSuffix(" V")
+        self.offset_drift_x_spin.valueChanged.connect(
+            lambda value: self.signals.acquisition_parameter_changed.emit('offset_drift_x', value))
+        local_rpoc_layout.addRow("Offset Drift X:", self.offset_drift_x_spin)
+        
+        self.offset_drift_y_spin = QDoubleSpinBox()
+        self.offset_drift_y_spin.setRange(-10.0, 10.0)
+        self.offset_drift_y_spin.setDecimals(3)
+        self.offset_drift_y_spin.setSingleStep(0.001)
+        self.offset_drift_y_spin.setValue(self.app_state.acquisition_parameters.get('offset_drift_y', 0.0))
+        self.offset_drift_y_spin.setSuffix(" V")
+        self.offset_drift_y_spin.valueChanged.connect(
+            lambda value: self.signals.acquisition_parameter_changed.emit('offset_drift_y', value))
+        local_rpoc_layout.addRow("Offset Drift Y:", self.offset_drift_y_spin)
+        
+        # Repetitions parameter
+        self.repetitions_spin = QSpinBox()
+        self.repetitions_spin.setRange(1, 1000)
+        self.repetitions_spin.setValue(self.app_state.acquisition_parameters.get('repetitions', 1))
+        self.repetitions_spin.valueChanged.connect(
+            lambda value: self.signals.acquisition_parameter_changed.emit('repetitions', value))
+        local_rpoc_layout.addRow("Treatment Repetitions:", self.repetitions_spin)
+        
+        # TTL channel selection
+        self.ttl_device_combo = QSearchableComboBox()
+        self.ttl_device_combo.addItems(['Dev1', 'Dev2', 'Dev3', 'Dev4'])
+        self.ttl_device_combo.setCurrentText(self.app_state.acquisition_parameters.get('ttl_device', 'Dev1'))
+        self.ttl_device_combo.currentTextChanged.connect(
+            lambda text: self.signals.acquisition_parameter_changed.emit('ttl_device', text))
+        local_rpoc_layout.addRow("TTL Device:", self.ttl_device_combo)
+        
+        self.ttl_port_line_combo = QSearchableComboBox()
+        self.ttl_port_line_combo.addItems([
+            'port0/line0', 'port0/line1', 'port0/line2', 'port0/line3', 'port0/line4', 'port0/line5', 'port0/line6', 'port0/line7',
+            'port0/line8', 'port0/line9', 'port0/line10', 'port0/line11', 'port0/line12', 'port0/line13', 'port0/line14', 'port0/line15',
+            'port1/line0', 'port1/line1', 'port1/line2', 'port1/line3', 'port1/line4', 'port1/line5', 'port1/line6', 'port1/line7',
+            'port1/line8', 'port1/line9', 'port1/line10', 'port1/line11', 'port1/line12', 'port1/line13', 'port1/line14', 'port1/line15'
+        ])
+        self.ttl_port_line_combo.setCurrentText(self.app_state.acquisition_parameters.get('ttl_port_line', 'port0/line0'))
+        self.ttl_port_line_combo.currentTextChanged.connect(
+            lambda text: self.signals.acquisition_parameter_changed.emit('ttl_port_line', text))
+        local_rpoc_layout.addRow("TTL Port/Line:", self.ttl_port_line_combo)
+        
+        self.pfi_line_combo = QSearchableComboBox()
+        self.pfi_line_combo.addItems(['None', 'PFI0', 'PFI1', 'PFI2', 'PFI3', 'PFI4', 'PFI5', 'PFI6', 'PFI7', 'PFI8', 'PFI9', 'PFI10', 'PFI11', 'PFI12', 'PFI13', 'PFI14', 'PFI15'])
+        self.pfi_line_combo.setCurrentText(self.app_state.acquisition_parameters.get('pfi_line', 'None'))
+        self.pfi_line_combo.currentTextChanged.connect(
+            lambda text: self.signals.acquisition_parameter_changed.emit('pfi_line', text))
+        local_rpoc_layout.addRow("PFI Line (Timing):", self.pfi_line_combo)
+        
+        # Local extra steps parameters
+        self.local_extrasteps_left_spin = QSpinBox()
+        self.local_extrasteps_left_spin.setRange(0, 1000)
+        self.local_extrasteps_left_spin.setValue(self.app_state.acquisition_parameters.get('local_extrasteps_left', 50))
+        self.local_extrasteps_left_spin.valueChanged.connect(
+            lambda value: self.signals.acquisition_parameter_changed.emit('local_extrasteps_left', value))
+        local_rpoc_layout.addRow("Local Extrasteps Left:", self.local_extrasteps_left_spin)
+        
+        self.local_extrasteps_right_spin = QSpinBox()
+        self.local_extrasteps_right_spin.setRange(0, 1000)
+        self.local_extrasteps_right_spin.setValue(self.app_state.acquisition_parameters.get('local_extrasteps_right', 50))
+        self.local_extrasteps_right_spin.valueChanged.connect(
+            lambda value: self.signals.acquisition_parameter_changed.emit('local_extrasteps_right', value))
+        local_rpoc_layout.addRow("Local Extrasteps Right:", self.local_extrasteps_right_spin)
+        
+        local_rpoc_group.setLayout(local_rpoc_layout)
+        self.layout.addWidget(local_rpoc_group)
+
     def add_common_parameters(self):
         frames_layout = QHBoxLayout()
         frames_layout.addWidget(QLabel('Number of Frames:'))
@@ -538,6 +636,36 @@ class InstrumentControls(QWidget):
                 data_input_btn.clicked.connect(lambda: self.signals.add_modality_instrument.emit('data input'))
                 self.modality_buttons_layout.addWidget(data_input_btn)
         elif modality == 'split data stream':
+            if not self.has_instrument_type('galvo'):
+                galvo_btn = QPushButton('Add Galvos')
+                galvo_btn.clicked.connect(lambda: self.signals.add_modality_instrument.emit('galvo'))
+                self.modality_buttons_layout.addWidget(galvo_btn)
+            
+            if not self.has_instrument_type('data input'):
+                data_input_btn = QPushButton('Add Data Inputs')
+                data_input_btn.clicked.connect(lambda: self.signals.add_modality_instrument.emit('data input'))
+                self.modality_buttons_layout.addWidget(data_input_btn)
+            
+            if not self.has_instrument_type('prior stage'):
+                prior_stage_btn = QPushButton('Add Prior Stage')
+                prior_stage_btn.clicked.connect(lambda: self.signals.add_modality_instrument.emit('prior stage'))
+                self.modality_buttons_layout.addWidget(prior_stage_btn)
+        elif modality == 'confocal mosaic':
+            if not self.has_instrument_type('galvo'):
+                galvo_btn = QPushButton('Add Galvos')
+                galvo_btn.clicked.connect(lambda: self.signals.add_modality_instrument.emit('galvo'))
+                self.modality_buttons_layout.addWidget(galvo_btn)
+            
+            if not self.has_instrument_type('data input'):
+                data_input_btn = QPushButton('Add Data Inputs')
+                data_input_btn.clicked.connect(lambda: self.signals.add_modality_instrument.emit('data input'))
+                self.modality_buttons_layout.addWidget(data_input_btn)
+            
+            if not self.has_instrument_type('prior stage'):
+                prior_stage_btn = QPushButton('Add Prior Stage')
+                prior_stage_btn.clicked.connect(lambda: self.signals.add_modality_instrument.emit('prior stage'))
+                self.modality_buttons_layout.addWidget(prior_stage_btn)
+        elif modality == 'fish':
             if not self.has_instrument_type('galvo'):
                 galvo_btn = QPushButton('Add Galvos')
                 galvo_btn.clicked.connect(lambda: self.signals.add_modality_instrument.emit('galvo'))
@@ -815,11 +943,6 @@ class RightPanel(QWidget):
         rpoc_group = QGroupBox('RPOC Controls')
         rpoc_layout = QVBoxLayout()
         
-        rpoc_enabled_checkbox = QCheckBox('RPOC Enabled')
-        rpoc_enabled_checkbox.setChecked(self.app_state.rpoc_enabled)
-        rpoc_enabled_checkbox.toggled.connect(lambda checked: self.signals.rpoc_enabled_changed.emit(checked))
-        rpoc_layout.addWidget(rpoc_enabled_checkbox)
-        
         add_channel_btn = QPushButton('Add RPOC Channel')
         add_channel_btn.clicked.connect(self.add_rpoc_channel)
         rpoc_layout.addWidget(add_channel_btn)
@@ -982,7 +1105,7 @@ class DockableMiddlePanel(QMainWindow):
     def create_image_display_widget(self):
         modality = self.app_state.modality.lower()
         
-        if modality in ['confocal', 'split data stream']:
+        if modality in ['confocal', 'split data stream', 'confocal mosaic', 'fish']:
             return MultichannelImageDisplayWidget(self.app_state, self.signals)
         else:
             return ImageDisplayWidget(self.app_state, self.signals)
@@ -1014,6 +1137,7 @@ class MainWindow(QMainWindow):
         
         self.central_widget = None
         self.central_layout = None
+        self.vertical_splitter = None
         self.main_splitter = None
         self.left_widget = None
         self.mid_layout = None
@@ -1027,6 +1151,7 @@ class MainWindow(QMainWindow):
     def build_gui(self):
         self.clear_existing_gui()
         self.create_central_widget()
+        self.create_vertical_splitter()
         self.create_top_bar()
         self.create_main_splitter()
         self.setup_splitter_sizes()
@@ -1042,9 +1167,16 @@ class MainWindow(QMainWindow):
         self.central_layout.setContentsMargins(5, 5, 5, 5)
         self.central_layout.setSpacing(5)
 
+    def create_vertical_splitter(self):
+        self.vertical_splitter = QSplitter(Qt.Orientation.Vertical)
+        self.vertical_splitter.setStyleSheet(SPLITTER_STYLE)
+
     def create_top_bar(self):
         self.top_bar = TopBar(self.app_state, self.signals)
-        self.central_layout.addWidget(self.top_bar, stretch=0)
+        # Remove fixed height constraint to allow resizing
+        self.top_bar.setMinimumHeight(50)
+        self.top_bar.setMaximumHeight(300)
+        self.vertical_splitter.addWidget(self.top_bar)
 
     def create_main_splitter(self):
         self.main_splitter = QSplitter(Qt.Orientation.Horizontal)
@@ -1059,22 +1191,40 @@ class MainWindow(QMainWindow):
         self.main_splitter.addWidget(self.left_widget)
         self.main_splitter.addWidget(self.mid_layout)
         self.main_splitter.addWidget(self.right_layout)
+        
+        self.vertical_splitter.addWidget(self.main_splitter)
 
     def setup_splitter_sizes(self):
+        # Set initial sizes for the vertical splitter (top bar vs main content)
+        if 'vertical_splitter_sizes' in self.app_state.ui_state:
+            self.vertical_splitter.setSizes(self.app_state.ui_state['vertical_splitter_sizes'])
+        else:
+            # Default: top bar takes 100px, rest goes to main content
+            # Use a reasonable default if window height is not available yet
+            default_height = 900  # Default window height
+            self.vertical_splitter.setSizes([100, default_height - 100])
+        
+        # Set initial sizes for the main horizontal splitter
         self.main_splitter.setSizes([200, 800, 200])
         if 'main_splitter_sizes' in self.app_state.ui_state:
             self.main_splitter.setSizes(self.app_state.ui_state['main_splitter_sizes'])
+        
+        # Connect splitter movement signals
+        self.vertical_splitter.splitterMoved.connect(lambda: self.save_splitter_sizes())
         self.main_splitter.splitterMoved.connect(lambda: self.save_splitter_sizes())
 
     def finalize_gui(self):
-        self.central_layout.addWidget(self.main_splitter, stretch=1)
+        self.central_layout.addWidget(self.vertical_splitter, stretch=1)
         self.central_widget.setLayout(self.central_layout)
         self.setCentralWidget(self.central_widget)
 
     def rebuild_gui(self):
+        if self.vertical_splitter:
+            vertical_sizes = self.vertical_splitter.sizes()
+            self.app_state.ui_state['vertical_splitter_sizes'] = vertical_sizes
         if self.main_splitter:
-            sizes = self.main_splitter.sizes()
-            self.app_state.ui_state['main_splitter_sizes'] = sizes
+            horizontal_sizes = self.main_splitter.sizes()
+            self.app_state.ui_state['main_splitter_sizes'] = horizontal_sizes
         
         self.build_gui()
         
@@ -1085,9 +1235,12 @@ class MainWindow(QMainWindow):
         self.rebuild_gui()
 
     def save_splitter_sizes(self):
+        if self.vertical_splitter:
+            vertical_sizes = self.vertical_splitter.sizes()
+            self.signals.ui_state_changed.emit('vertical_splitter_sizes', vertical_sizes)
         if self.main_splitter:
-            sizes = self.main_splitter.sizes()
-            self.signals.ui_state_changed.emit('main_splitter_sizes', sizes)
+            horizontal_sizes = self.main_splitter.sizes()
+            self.signals.ui_state_changed.emit('main_splitter_sizes', horizontal_sizes)
 
 if __name__ == '__main__':
     app_state = AppState()
