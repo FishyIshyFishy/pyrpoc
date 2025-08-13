@@ -643,10 +643,7 @@ def handle_stop_acquisition(app_state, signal_bus):
         del signal_bus.acq_thread
         del signal_bus.acq_worker
 
-        if hasattr(worker, 'continuous') and worker.continuous:
-            signal_bus.console_message.emit("Continuous acquisition stopped")
-        else:
-            signal_bus.console_message.emit("Acquisition stopped")
+        signal_bus.console_message.emit("Acquisition stopped")
         
         # emit signal to update button states
         signal_bus.acquisition_stopped.emit()

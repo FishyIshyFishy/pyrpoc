@@ -1,6 +1,6 @@
 import numpy as np
 import cv2
-from .base_acquisition import Acquisition
+from pyrpoc.acquisitions.base_acquisition import Acquisition
 import time
 import nidaqmx
 from nidaqmx.constants import AcquisitionType
