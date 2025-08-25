@@ -850,7 +850,15 @@ def handle_console_message(message, app_state, main_window):
     return 0
 
 def handle_modality_changed(text, app_state, main_window):
-    app_state.modality = text.lower()
+    # Use modality registry to get the correct modality key
+    from pyrpoc.modalities import modality_registry
+    
+    modality = modality_registry.get_modality_by_name(text)
+    if modality is not None:
+        app_state.modality = modality.key
+    else:
+        # Fallback to lowercase text if modality not found
+        app_state.modality = text.lower()
 
     handle_stop_acquisition(app_state,main_window.signals)
 

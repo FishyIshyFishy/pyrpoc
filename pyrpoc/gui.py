@@ -1,4 +1,5 @@
 import numpy as np
+from typing import Dict, Any
 from PyQt6.QtWidgets import QApplication, QVBoxLayout, QHBoxLayout, QMainWindow, \
                              QLabel, QWidget, QComboBox, QSplitter, QPushButton, \
                              QPlainTextEdit, QStyle, QGroupBox, QSpinBox, QCheckBox, QLineEdit, QSlider, \
@@ -166,9 +167,19 @@ class ModalityControls(QWidget):
         layout.addWidget(ms_label)
 
         ms_dropdown = QComboBox()
-        ms_dropdown.addItems(['Simulated', 'Confocal', 'Split data stream', 'Confocal mosaic', 'Fish'])
-        current_modality = self.app_state.modality.capitalize()
-        index = ms_dropdown.findText(current_modality)
+        # Use registry instead of hard-coded list
+        from pyrpoc.modalities import modality_registry
+        ms_dropdown.addItems(modality_registry.get_modality_names())
+        
+        # Find the modality by key and get its display name
+        from pyrpoc.modalities import modality_registry
+        current_modality = modality_registry.get_modality(self.app_state.modality)
+        if current_modality is not None:
+            current_modality_name = current_modality.name
+        else:
+            current_modality_name = self.app_state.modality.capitalize()
+        
+        index = ms_dropdown.findText(current_modality_name)
         if index >= 0:
             ms_dropdown.setCurrentIndex(index)
         ms_dropdown.currentTextChanged.connect(self.signals.modality_dropdown_changed)
@@ -230,300 +241,75 @@ class AcquisitionParameters(QWidget):
         self.setLayout(main_layout)
 
     def add_specific_parameters(self):
-        modality = self.app_state.modality.lower()
+        from pyrpoc.modalities import modality_registry
         
-        if modality == 'confocal':
-            self.add_galvo_parameters()
-
-        elif modality == 'split data stream':
-            # Split percentage parameter for split data stream modality
-            split_layout = QHBoxLayout()
-            split_layout.addWidget(QLabel('Split Percentage:'))
-            self.split_percentage_spinbox = QSpinBox()
-            self.split_percentage_spinbox.setRange(1, 99)
-            self.split_percentage_spinbox.setValue(self.app_state.acquisition_parameters.get('split_percentage', 50))
-            self.split_percentage_spinbox.setSuffix('%')
-            self.split_percentage_spinbox.valueChanged.connect(
-                lambda value: self.signals.acquisition_parameter_changed.emit('split_percentage', value))
-            split_layout.addWidget(self.split_percentage_spinbox)
-            self.layout.addLayout(split_layout)
-            
-            # AOM Delay parameter for split data stream modality
-            aom_delay_layout = QHBoxLayout()
-            aom_delay_layout.addWidget(QLabel('AOM Delay:'))
-            self.aom_delay_spinbox = QSpinBox()
-            self.aom_delay_spinbox.setRange(0, 1000)
-            self.aom_delay_spinbox.setValue(self.app_state.acquisition_parameters.get('aom_delay', 0))
-            self.aom_delay_spinbox.setSuffix(' µs')
-            self.aom_delay_spinbox.valueChanged.connect(
-                lambda value: self.signals.acquisition_parameter_changed.emit('aom_delay', value))
-            aom_delay_layout.addWidget(self.aom_delay_spinbox)
-            self.layout.addLayout(aom_delay_layout)
-            
-
-            self.add_galvo_parameters()
-            self.add_prior_stage_parameters()
-
-        elif modality == 'confocal mosaic':
-            self.add_galvo_parameters()
-            self.add_prior_stage_parameters()
-
-        elif modality == 'fish':
-            self.add_galvo_parameters()
-            self.add_prior_stage_parameters()
-            self.add_local_rpoc_parameters()
-
-        elif modality == 'simulated':
-            self.add_pixel_parameters()
-
+        modality = modality_registry.get_modality_by_name(self.app_state.modality.capitalize())
+        if modality is None:
+            return
+        
+        # Generate UI widgets based on modality requirements
+        for param_name, param_meta in modality.required_parameters.items():
+            self.add_parameter_widget(param_name, param_meta)
+    
+    def add_parameter_widget(self, param_name: str, param_meta: Dict[str, Any]):
+        """Dynamically create parameter widgets based on metadata"""
+        param_type = param_meta['type']
+        default_value = param_meta.get('default', 0)
+        
+        # Get current value from app_state if it exists
+        current_value = self.app_state.acquisition_parameters.get(param_name, default_value)
+        
+        if param_type == 'int':
+            widget = QSpinBox()
+            if 'range' in param_meta:
+                widget.setRange(*param_meta['range'])
+            widget.setValue(current_value)
+        elif param_type == 'float':
+            widget = QDoubleSpinBox()
+            if 'range' in param_meta:
+                widget.setRange(*param_meta['range'])
+            widget.setValue(current_value)
+        elif param_type == 'bool':
+            widget = QCheckBox()
+            widget.setChecked(current_value)
+        elif param_type == 'choice':
+            widget = QComboBox()
+            widget.addItems(param_meta['choices'])
+            widget.setCurrentText(current_value)
         else:
-            self.add_galvo_parameters()
+            widget = QLineEdit()
+            widget.setText(str(current_value))
+        
+        # Connect to signal
+        widget.valueChanged.connect(
+            lambda value: self.signals.acquisition_parameter_changed.emit(param_name, value)
+        )
+        
+        # Add to layout with label
+        label = QLabel(f"{param_name.replace('_', ' ').title()}:")
+        if 'unit' in param_meta:
+            label.setText(f"{label.text()} ({param_meta['unit']})")
+        
+        layout = QHBoxLayout()
+        layout.addWidget(label)
+        layout.addWidget(widget)
+        self.layout.addLayout(layout)
 
-    def add_galvo_parameters(self):
-        galvo_group = QGroupBox("Galvo Parameters")
-        galvo_layout = QFormLayout()
-        
-        self.dwell_time_spin = QDoubleSpinBox()
-        self.dwell_time_spin.setRange(1, 1000)
-        self.dwell_time_spin.setValue(self.app_state.acquisition_parameters.get('dwell_time', 10))
-        self.dwell_time_spin.setSuffix(" \u03BCs")
-        self.dwell_time_spin.setDecimals(0)
-        self.dwell_time_spin.setSingleStep(1)
-        self.dwell_time_spin.valueChanged.connect(
-            lambda value: self.signals.acquisition_parameter_changed.emit('dwell_time', value))
-        galvo_layout.addRow("Dwell Time:", self.dwell_time_spin)
-        
-        self.extrasteps_left_spin = QSpinBox()
-        self.extrasteps_left_spin.setRange(0, 10000)
-        self.extrasteps_left_spin.setValue(self.app_state.acquisition_parameters.get('extrasteps_left', 50))
-        self.extrasteps_left_spin.valueChanged.connect(
-            lambda value: self.signals.acquisition_parameter_changed.emit('extrasteps_left', value))
-        galvo_layout.addRow("Extra Steps Left:", self.extrasteps_left_spin)
-        
-        self.extrasteps_right_spin = QSpinBox()
-        self.extrasteps_right_spin.setRange(0, 10000)
-        self.extrasteps_right_spin.setValue(self.app_state.acquisition_parameters.get('extrasteps_right', 50))
-        self.extrasteps_right_spin.valueChanged.connect(
-            lambda value: self.signals.acquisition_parameter_changed.emit('extrasteps_right', value))
-        galvo_layout.addRow("Extra Steps Right:", self.extrasteps_right_spin)
 
-        self.amplitude_x_spin = QDoubleSpinBox()
-        self.amplitude_x_spin.setRange(0.0, 10.0)
-        self.amplitude_x_spin.setDecimals(1)
-        self.amplitude_x_spin.setSingleStep(0.1)
-        self.amplitude_x_spin.setValue(self.app_state.acquisition_parameters.get('amplitude_x', 0.5))
-        self.amplitude_x_spin.setSuffix(" V")
-        self.amplitude_x_spin.valueChanged.connect(
-            lambda value: self.signals.acquisition_parameter_changed.emit('amplitude_x', value))
-        galvo_layout.addRow("Amplitude X:", self.amplitude_x_spin)
-        
-        self.amplitude_y_spin = QDoubleSpinBox()
-        self.amplitude_y_spin.setRange(0.0, 10.0)
-        self.amplitude_y_spin.setDecimals(1)
-        self.amplitude_y_spin.setSingleStep(0.1)
-        self.amplitude_y_spin.setValue(self.app_state.acquisition_parameters.get('amplitude_y', 0.5))
-        self.amplitude_y_spin.setSuffix(" V")
-        self.amplitude_y_spin.valueChanged.connect(
-            lambda value: self.signals.acquisition_parameter_changed.emit('amplitude_y', value))
-        galvo_layout.addRow("Amplitude Y:", self.amplitude_y_spin)
 
-        self.offset_x_spin = QDoubleSpinBox()
-        self.offset_x_spin.setRange(-10.0, 10.0)
-        self.offset_x_spin.setDecimals(1)
-        self.offset_x_spin.setSingleStep(0.1)
-        self.offset_x_spin.setValue(self.app_state.acquisition_parameters.get('offset_x', 0.0))
-        self.offset_x_spin.setSuffix(" V")
-        self.offset_x_spin.valueChanged.connect(
-            lambda value: self.signals.acquisition_parameter_changed.emit('offset_x', value))
-        galvo_layout.addRow("Offset X:", self.offset_x_spin)
-        
-        self.offset_y_spin = QDoubleSpinBox()
-        self.offset_y_spin.setRange(-10.0, 10.0)
-        self.offset_y_spin.setDecimals(1)
-        self.offset_y_spin.setSingleStep(0.1)
-        self.offset_y_spin.setValue(self.app_state.acquisition_parameters.get('offset_y', 0.0))
-        self.offset_y_spin.setSuffix(" V")
-        self.offset_y_spin.valueChanged.connect(
-            lambda value: self.signals.acquisition_parameter_changed.emit('offset_y', value))
-        galvo_layout.addRow("Offset Y:", self.offset_y_spin)
-        
-        self.x_pixels_spin = QSpinBox()
-        self.x_pixels_spin.setRange(64, 4096)
-        self.x_pixels_spin.setValue(self.app_state.acquisition_parameters.get('x_pixels', 512))
-        self.x_pixels_spin.valueChanged.connect(
-            lambda value: self.signals.acquisition_parameter_changed.emit('x_pixels', value))
-        galvo_layout.addRow("X Pixels:", self.x_pixels_spin)
-        
-        self.y_pixels_spin = QSpinBox()
-        self.y_pixels_spin.setRange(64, 4096)
-        self.y_pixels_spin.setValue(self.app_state.acquisition_parameters.get('y_pixels', 512))
-        self.y_pixels_spin.valueChanged.connect(
-            lambda value: self.signals.acquisition_parameter_changed.emit('y_pixels', value))
-        galvo_layout.addRow("Y Pixels:", self.y_pixels_spin)
-        
-        galvo_group.setLayout(galvo_layout)
-        self.layout.addWidget(galvo_group)
 
-    def add_pixel_parameters(self): # not used if galvo parameters are used
-        pixel_group = QGroupBox("Image Parameters")
-        pixel_layout = QFormLayout()
-        
-        self.x_pixels_spin = QSpinBox()
-        self.x_pixels_spin.setRange(64, 4096)
-        self.x_pixels_spin.setValue(self.app_state.acquisition_parameters.get('x_pixels', 512))
-        self.x_pixels_spin.valueChanged.connect(
-            lambda value: self.signals.acquisition_parameter_changed.emit('x_pixels', value))
-        pixel_layout.addRow("X Pixels:", self.x_pixels_spin)
-        
-        self.y_pixels_spin = QSpinBox()
-        self.y_pixels_spin.setRange(64, 4096)
-        self.y_pixels_spin.setValue(self.app_state.acquisition_parameters.get('y_pixels', 512))
-        self.y_pixels_spin.valueChanged.connect(
-            lambda value: self.signals.acquisition_parameter_changed.emit('y_pixels', value))
-        pixel_layout.addRow("Y Pixels:", self.y_pixels_spin)
-        
-        pixel_group.setLayout(pixel_layout)
-        self.layout.addWidget(pixel_group)
 
-    def add_prior_stage_parameters(self):
-        prior_group = QGroupBox("Prior Stage Parameters")
-        prior_layout = QFormLayout()
 
-        self.numtiles_x_spin = QSpinBox()
-        self.numtiles_x_spin.setRange(1, 1000)
-        self.numtiles_x_spin.setValue(self.app_state.acquisition_parameters.get('numtiles_x', 10))
-        self.numtiles_x_spin.valueChanged.connect(
-            lambda value: self.signals.acquisition_parameter_changed.emit('numtiles_x', value))
-        prior_layout.addRow("X Tiles:", self.numtiles_x_spin)
-        
-        self.numtiles_y_spin = QSpinBox()
-        self.numtiles_y_spin.setRange(1, 1000)
-        self.numtiles_y_spin.setValue(self.app_state.acquisition_parameters.get('numtiles_y', 10))
-        self.numtiles_y_spin.valueChanged.connect(
-            lambda value: self.signals.acquisition_parameter_changed.emit('numtiles_y', value))
-        prior_layout.addRow("Y Tiles:", self.numtiles_y_spin)
-        
-        self.numtiles_z_spin = QSpinBox()
-        self.numtiles_z_spin.setRange(1, 1000)
-        self.numtiles_z_spin.setValue(self.app_state.acquisition_parameters.get('numtiles_z', 5))
-        self.numtiles_z_spin.valueChanged.connect(
-            lambda value: self.signals.acquisition_parameter_changed.emit('numtiles_z', value))
-        prior_layout.addRow("Z Tiles:", self.numtiles_z_spin)
-        
-        self.tile_size_x_spin = QDoubleSpinBox()
-        self.tile_size_x_spin.setRange(-10000, 10000)
-        self.tile_size_x_spin.setValue(self.app_state.acquisition_parameters.get('tile_size_x', 100))
-        self.tile_size_x_spin.setSuffix(" µm")
-        self.tile_size_x_spin.valueChanged.connect(
-            lambda value: self.signals.acquisition_parameter_changed.emit('tile_size_x', value))
-        prior_layout.addRow("X Tile Size:", self.tile_size_x_spin)
-        
-        self.tile_size_y_spin = QDoubleSpinBox()
-        self.tile_size_y_spin.setRange(-10000, 10000)
-        self.tile_size_y_spin.setValue(self.app_state.acquisition_parameters.get('tile_size_y', 100))
-        self.tile_size_y_spin.setSuffix(" µm")
-        self.tile_size_y_spin.valueChanged.connect(
-            lambda value: self.signals.acquisition_parameter_changed.emit('tile_size_y', value))
-        prior_layout.addRow("Y Tile Size:", self.tile_size_y_spin)
-        
-        self.tile_size_z_spin = QDoubleSpinBox()
-        self.tile_size_z_spin.setRange(-10000, 10000)
-        self.tile_size_z_spin.setValue(self.app_state.acquisition_parameters.get('tile_size_z', 50))
-        self.tile_size_z_spin.setSuffix(" µm")
-        self.tile_size_z_spin.valueChanged.connect(
-            lambda value: self.signals.acquisition_parameter_changed.emit('tile_size_z', value))
-        prior_layout.addRow("Z Tile Size:", self.tile_size_z_spin)
-        
-        prior_group.setLayout(prior_layout)
-        self.layout.addWidget(prior_group)
 
-    def add_local_rpoc_parameters(self):
-        """Add local RPOC treatment parameters"""
-        local_rpoc_group = QGroupBox("Local RPOC Treatment Parameters")
-        local_rpoc_layout = QFormLayout()
+
         
-        # Local RPOC dwell time parameter
-        self.local_rpoc_dwell_time_spin = QSpinBox()
-        self.local_rpoc_dwell_time_spin.setRange(1, 10000)
-        self.local_rpoc_dwell_time_spin.setValue(self.app_state.acquisition_parameters.get('local_rpoc_dwell_time', 10))
-        self.local_rpoc_dwell_time_spin.setSuffix(" μs")
-        self.local_rpoc_dwell_time_spin.valueChanged.connect(
-            lambda value: self.signals.acquisition_parameter_changed.emit('local_rpoc_dwell_time', value))
-        local_rpoc_layout.addRow("Local RPOC Dwell Time:", self.local_rpoc_dwell_time_spin)
+
         
-        # Drift offset parameters
-        self.offset_drift_x_spin = QDoubleSpinBox()
-        self.offset_drift_x_spin.setRange(-10.0, 10.0)
-        self.offset_drift_x_spin.setDecimals(3)
-        self.offset_drift_x_spin.setSingleStep(0.001)
-        self.offset_drift_x_spin.setValue(self.app_state.acquisition_parameters.get('offset_drift_x', 0.0))
-        self.offset_drift_x_spin.setSuffix(" V")
-        self.offset_drift_x_spin.valueChanged.connect(
-            lambda value: self.signals.acquisition_parameter_changed.emit('offset_drift_x', value))
-        local_rpoc_layout.addRow("Offset Drift X:", self.offset_drift_x_spin)
+
         
-        self.offset_drift_y_spin = QDoubleSpinBox()
-        self.offset_drift_y_spin.setRange(-10.0, 10.0)
-        self.offset_drift_y_spin.setDecimals(3)
-        self.offset_drift_y_spin.setSingleStep(0.001)
-        self.offset_drift_y_spin.setValue(self.app_state.acquisition_parameters.get('offset_drift_y', 0.0))
-        self.offset_drift_y_spin.setSuffix(" V")
-        self.offset_drift_y_spin.valueChanged.connect(
-            lambda value: self.signals.acquisition_parameter_changed.emit('offset_drift_y', value))
-        local_rpoc_layout.addRow("Offset Drift Y:", self.offset_drift_y_spin)
+
         
-        # Repetitions parameter
-        self.repetitions_spin = QSpinBox()
-        self.repetitions_spin.setRange(1, 1000)
-        self.repetitions_spin.setValue(self.app_state.acquisition_parameters.get('repetitions', 1))
-        self.repetitions_spin.valueChanged.connect(
-            lambda value: self.signals.acquisition_parameter_changed.emit('repetitions', value))
-        local_rpoc_layout.addRow("Treatment Repetitions:", self.repetitions_spin)
-        
-        # TTL channel selection
-        self.ttl_device_combo = QSearchableComboBox()
-        self.ttl_device_combo.addItems(['Dev1', 'Dev2', 'Dev3', 'Dev4'])
-        self.ttl_device_combo.setCurrentText(self.app_state.acquisition_parameters.get('ttl_device', 'Dev1'))
-        self.ttl_device_combo.currentTextChanged.connect(
-            lambda text: self.signals.acquisition_parameter_changed.emit('ttl_device', text))
-        local_rpoc_layout.addRow("TTL Device:", self.ttl_device_combo)
-        
-        self.ttl_port_line_combo = QSearchableComboBox()
-        self.ttl_port_line_combo.addItems([
-            'port0/line0', 'port0/line1', 'port0/line2', 'port0/line3', 'port0/line4', 'port0/line5', 'port0/line6', 'port0/line7',
-            'port0/line8', 'port0/line9', 'port0/line10', 'port0/line11', 'port0/line12', 'port0/line13', 'port0/line14', 'port0/line15',
-            'port1/line0', 'port1/line1', 'port1/line2', 'port1/line3', 'port1/line4', 'port1/line5', 'port1/line6', 'port1/line7',
-            'port1/line8', 'port1/line9', 'port1/line10', 'port1/line11', 'port1/line12', 'port1/line13', 'port1/line14', 'port1/line15'
-        ])
-        self.ttl_port_line_combo.setCurrentText(self.app_state.acquisition_parameters.get('ttl_port_line', 'port0/line0'))
-        self.ttl_port_line_combo.currentTextChanged.connect(
-            lambda text: self.signals.acquisition_parameter_changed.emit('ttl_port_line', text))
-        local_rpoc_layout.addRow("TTL Port/Line:", self.ttl_port_line_combo)
-        
-        self.pfi_line_combo = QSearchableComboBox()
-        self.pfi_line_combo.addItems(['None', 'PFI0', 'PFI1', 'PFI2', 'PFI3', 'PFI4', 'PFI5', 'PFI6', 'PFI7', 'PFI8', 'PFI9', 'PFI10', 'PFI11', 'PFI12', 'PFI13', 'PFI14', 'PFI15'])
-        self.pfi_line_combo.setCurrentText(self.app_state.acquisition_parameters.get('pfi_line', 'None'))
-        self.pfi_line_combo.currentTextChanged.connect(
-            lambda text: self.signals.acquisition_parameter_changed.emit('pfi_line', text))
-        local_rpoc_layout.addRow("PFI Line (Timing):", self.pfi_line_combo)
-        
-        # Local extra steps parameters
-        self.local_extrasteps_left_spin = QSpinBox()
-        self.local_extrasteps_left_spin.setRange(0, 1000)
-        self.local_extrasteps_left_spin.setValue(self.app_state.acquisition_parameters.get('local_extrasteps_left', 50))
-        self.local_extrasteps_left_spin.valueChanged.connect(
-            lambda value: self.signals.acquisition_parameter_changed.emit('local_extrasteps_left', value))
-        local_rpoc_layout.addRow("Local Extrasteps Left:", self.local_extrasteps_left_spin)
-        
-        self.local_extrasteps_right_spin = QSpinBox()
-        self.local_extrasteps_right_spin.setRange(0, 1000)
-        self.local_extrasteps_right_spin.setValue(self.app_state.acquisition_parameters.get('local_extrasteps_right', 50))
-        self.local_extrasteps_right_spin.valueChanged.connect(
-            lambda value: self.signals.acquisition_parameter_changed.emit('local_extrasteps_right', value))
-        local_rpoc_layout.addRow("Local Extrasteps Right:", self.local_extrasteps_right_spin)
-        
-        local_rpoc_group.setLayout(local_rpoc_layout)
-        self.layout.addWidget(local_rpoc_group)
+
 
     def add_common_parameters(self):
         frames_layout = QHBoxLayout()
@@ -624,62 +410,17 @@ class InstrumentControls(QWidget):
             if child.widget():
                 child.widget().deleteLater()
 
-        modality = self.app_state.modality.lower()
-        if modality == 'confocal':
-            if not self.has_instrument_type('galvo'):
-                galvo_btn = QPushButton('Add Galvos')
-                galvo_btn.clicked.connect(lambda: self.signals.add_modality_instrument.emit('galvo'))
-                self.modality_buttons_layout.addWidget(galvo_btn)
-            
-            if not self.has_instrument_type('data input'):
-                data_input_btn = QPushButton('Add Data Inputs')
-                data_input_btn.clicked.connect(lambda: self.signals.add_modality_instrument.emit('data input'))
-                self.modality_buttons_layout.addWidget(data_input_btn)
-        elif modality == 'split data stream':
-            if not self.has_instrument_type('galvo'):
-                galvo_btn = QPushButton('Add Galvos')
-                galvo_btn.clicked.connect(lambda: self.signals.add_modality_instrument.emit('galvo'))
-                self.modality_buttons_layout.addWidget(galvo_btn)
-            
-            if not self.has_instrument_type('data input'):
-                data_input_btn = QPushButton('Add Data Inputs')
-                data_input_btn.clicked.connect(lambda: self.signals.add_modality_instrument.emit('data input'))
-                self.modality_buttons_layout.addWidget(data_input_btn)
-            
-            if not self.has_instrument_type('prior stage'):
-                prior_stage_btn = QPushButton('Add Prior Stage')
-                prior_stage_btn.clicked.connect(lambda: self.signals.add_modality_instrument.emit('prior stage'))
-                self.modality_buttons_layout.addWidget(prior_stage_btn)
-        elif modality == 'confocal mosaic':
-            if not self.has_instrument_type('galvo'):
-                galvo_btn = QPushButton('Add Galvos')
-                galvo_btn.clicked.connect(lambda: self.signals.add_modality_instrument.emit('galvo'))
-                self.modality_buttons_layout.addWidget(galvo_btn)
-            
-            if not self.has_instrument_type('data input'):
-                data_input_btn = QPushButton('Add Data Inputs')
-                data_input_btn.clicked.connect(lambda: self.signals.add_modality_instrument.emit('data input'))
-                self.modality_buttons_layout.addWidget(data_input_btn)
-            
-            if not self.has_instrument_type('prior stage'):
-                prior_stage_btn = QPushButton('Add Prior Stage')
-                prior_stage_btn.clicked.connect(lambda: self.signals.add_modality_instrument.emit('prior stage'))
-                self.modality_buttons_layout.addWidget(prior_stage_btn)
-        elif modality == 'fish':
-            if not self.has_instrument_type('galvo'):
-                galvo_btn = QPushButton('Add Galvos')
-                galvo_btn.clicked.connect(lambda: self.signals.add_modality_instrument.emit('galvo'))
-                self.modality_buttons_layout.addWidget(galvo_btn)
-            
-            if not self.has_instrument_type('data input'):
-                data_input_btn = QPushButton('Add Data Inputs')
-                data_input_btn.clicked.connect(lambda: self.signals.add_modality_instrument.emit('data input'))
-                self.modality_buttons_layout.addWidget(data_input_btn)
-            
-            if not self.has_instrument_type('prior stage'):
-                prior_stage_btn = QPushButton('Add Prior Stage')
-                prior_stage_btn.clicked.connect(lambda: self.signals.add_modality_instrument.emit('prior stage'))
-                self.modality_buttons_layout.addWidget(prior_stage_btn)
+        # Use modality registry to determine required instruments
+        from pyrpoc.modalities import modality_registry
+        
+        modality = modality_registry.get_modality(self.app_state.modality)
+        if modality is not None:
+            for instrument_type in modality.required_instruments:
+                if not self.has_instrument_type(instrument_type):
+                    btn = QPushButton(f'Add {instrument_type.title()}')
+                    btn.clicked.connect(lambda checked, it=instrument_type: self.signals.add_modality_instrument.emit(it))
+                    self.modality_buttons_layout.addWidget(btn)
+        
         self.rebuild_instrument_list()
     
     def has_instrument_type(self, instrument_type):
@@ -1103,12 +844,22 @@ class DockableMiddlePanel(QMainWindow):
 
 
     def create_image_display_widget(self):
-        modality = self.app_state.modality.lower()
+        # Use modality registry to determine compatible displays
+        from pyrpoc.modalities import modality_registry
         
-        if modality in ['confocal', 'split data stream', 'confocal mosaic', 'fish']:
-            return MultichannelImageDisplayWidget(self.app_state, self.signals)
-        else:
+        modality = modality_registry.get_modality(self.app_state.modality)
+        if modality is None:
+            # Fallback to default display
             return ImageDisplayWidget(self.app_state, self.signals)
+        
+        # Get the first compatible display class
+        compatible_displays = modality.compatible_displays
+        if compatible_displays:
+            display_class = compatible_displays[0]
+            return display_class(self.app_state, self.signals)
+        
+        # Fallback to default display
+        return ImageDisplayWidget(self.app_state, self.signals)
 
     def on_lines_toggled(self, enabled):        
         if enabled:
