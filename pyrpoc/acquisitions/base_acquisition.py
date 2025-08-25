@@ -20,6 +20,10 @@ class Acquisition(abc.ABC):
     def set_stop_flag(self, stop_flag_func):
         '''
         stop button in main gui for in any given acquisition sets this flag
+
+        in general we do something like:
+        if self._stop_flag and self._stop_flag()
+        so that we can check if _stop_flag has a callback, and then actually get the callback
         '''
         self._stop_flag = stop_flag_func
     
