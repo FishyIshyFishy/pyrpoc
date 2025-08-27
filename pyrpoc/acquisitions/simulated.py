@@ -28,26 +28,38 @@ class Simulated(Acquisition):
         # Save metadata before starting acquisition
         self.save_metadata()
         
+
+        
         frames = []
         for frame in range(self.num_frames):
             if self._stop_flag and self._stop_flag():
                 break
-                
-            frame_data = np.random.rand(self.y_pixels, self.x_pixels)
+            
+            frame_data = self.generate_simulated_frame()
             frames.append(frame_data)
+            
             if self.signal_bus:
-                self.signal_bus.data_signal.emit(frame_data, frame, self.num_frames, False)
-            time.sleep(1)
+                # Use new uniform pipeline instead of legacy data_signal
+                self.emit_data_frame(self.signal_bus, frame_data)
         
         if frames:
             final_data = np.stack(frames)
             if self.signal_bus:
-                self.signal_bus.data_signal.emit(final_data, len(frames)-1, self.num_frames, True)
-
-            self.save_data(final_data)
+                # Use new uniform pipeline instead of legacy data_signal
+                self.emit_acquisition_complete(self.signal_bus)
             return final_data
         else:
             return None
+
+    def generate_simulated_frame(self):
+        """
+        Generate a simulated frame with random data.
+        
+        Returns:
+            numpy.ndarray: Random frame data with shape (y_pixels, x_pixels)
+        """
+        frame_data = np.random.rand(self.y_pixels, self.x_pixels)
+        return frame_data
     
     def save_data(self, data):
         """

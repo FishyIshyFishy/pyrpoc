@@ -152,6 +152,12 @@ class TopBar(QWidget):
         self.single_btn.setEnabled(True)
         self.continuous_btn.setEnabled(True)
         self.stop_btn.setEnabled(False)
+    
+    def on_modality_changed(self, new_modality):
+        """Handle modality changes without rebuilding the entire top bar"""
+        # This method will be enhanced later to handle modality-specific top bar requirements
+        # For now, it does nothing, keeping the top bar independent of modality changes
+        pass
 
 
 class ModalityControls(QWidget):
@@ -186,6 +192,20 @@ class ModalityControls(QWidget):
         layout.addWidget(ms_dropdown)
 
         self.setLayout(layout)
+    
+    def on_modality_changed(self, new_modality):
+        """Handle modality changes by updating the dropdown selection"""
+        # Find the modality by key and get its display name
+        from pyrpoc.modalities import modality_registry
+        current_modality = modality_registry.get_modality(new_modality)
+        if current_modality is not None:
+            current_modality_name = current_modality.name
+        else:
+            current_modality_name = new_modality.capitalize()
+        
+        index = self.findChild(QComboBox).findText(current_modality_name)
+        if index >= 0:
+            self.findChild(QComboBox).setCurrentIndex(index)
 
 '''
 all subwidgets other than topbar in general get rebuilt upon modality changes
@@ -239,6 +259,10 @@ class AcquisitionParameters(QWidget):
         
         main_layout.addWidget(self.group)
         self.setLayout(main_layout)
+    
+    def on_modality_changed(self, new_modality):
+        """Handle modality changes by rebuilding the parameters"""
+        self.rebuild()
 
     def add_specific_parameters(self):
         from pyrpoc.modalities import modality_registry
@@ -402,6 +426,10 @@ class InstrumentControls(QWidget):
         self.rebuild()
 
         self.signals.instrument_removed.connect(self.remove_instrument)
+    
+    def on_modality_changed(self, new_modality):
+        """Handle modality changes by rebuilding the instrument controls"""
+        self.rebuild()
     
     def rebuild(self):
         # clear any existing modality specific instrument buttons
@@ -588,6 +616,12 @@ class InstrumentWidget(QWidget):
             else:
                 current_name = getattr(self.instrument, 'name', 'Unknown Instrument')
                 self.signals.console_message.emit(f"Failed to update {current_name} - invalid parameters")
+    
+    def on_modality_changed(self, new_modality):
+        """Handle modality changes without rebuilding the instrument widget"""
+        # This method will be enhanced later to handle modality-specific instrument requirements
+        # For now, it does nothing, keeping the instrument widget independent of modality changes
+        pass
 
 class DisplayControls(QWidget):
     def __init__(self, app_state: AppState, signals: StateSignalBus):
@@ -610,23 +644,118 @@ class DisplayControls(QWidget):
         main_layout.addWidget(self.group)
         self.setLayout(main_layout)
         self.display_params_widget = None
+        
+        # Add display selection dropdown
+        self.add_display_selection_dropdown()
+        
+        # Show placeholder after adding the dropdown
         self.show_placeholder()
 
     def show_placeholder(self):
-        while self.layout.count():
-            child = self.layout.takeAt(0)
-            if child.widget():
-                child.widget().deleteLater()
+        # Clear only the display parameters widget, not the entire layout
+        # The display selection dropdown should remain
+        if self.display_params_widget and hasattr(self.display_params_widget, 'parent'):
+            if self.display_params_widget.parent():
+                self.display_params_widget.parent().layout().removeWidget(self.display_params_widget)
+            self.display_params_widget.deleteLater()
+        
         placeholder = QLabel('No display settings available for this display type.')
         placeholder.setStyleSheet('color: #888; font-style: italic;')
         self.display_params_widget = placeholder
         self.layout.addWidget(self.display_params_widget)
+    
+    def on_modality_changed(self, new_modality):
+        """Handle modality changes by updating the display selection dropdown"""
+        # Rebuild the display selection dropdown for the new modality
+        self.rebuild_display_selection_dropdown()
+    
+    def rebuild_display_selection_dropdown(self):
+        """Rebuild the display selection dropdown for the current modality"""
+        from pyrpoc.modalities import modality_registry
+        
+        # Get current modality
+        modality = modality_registry.get_modality(self.app_state.modality)
+        if modality is None:
+            return
+        
+        # Clear existing dropdown items
+        if hasattr(self, 'display_dropdown'):
+            self.display_dropdown.clear()
+            
+            # Get compatible displays for current modality
+            compatible_displays = modality.compatible_displays
+            display_names = [display.__name__ for display in compatible_displays]
+            
+            # Add display options
+            self.display_dropdown.addItems(display_names)
+            
+            # Set current selection (try to keep current if compatible, otherwise use first)
+            current_display = self.app_state.selected_display
+            index = self.display_dropdown.findText(current_display)
+            if index >= 0:
+                self.display_dropdown.setCurrentIndex(index)
+            else:
+                # Current display not compatible with new modality, use first compatible one
+                self.app_state.selected_display = display_names[0]
+                self.display_dropdown.setCurrentIndex(0)
 
+    def add_display_selection_dropdown(self):
+        """Add display selection dropdown to the display controls"""
+        from pyrpoc.modalities import modality_registry
+        
+        # Get current modality
+        modality = modality_registry.get_modality(self.app_state.modality)
+        if modality is None:
+            return
+        
+        # Create display selection group
+        display_selection_group = QGroupBox('Display Type')
+        display_selection_layout = QVBoxLayout()
+        
+        # Create dropdown
+        self.display_dropdown = QComboBox()
+        
+        # Get compatible displays for current modality
+        compatible_displays = modality.compatible_displays
+        display_names = [display.__name__ for display in compatible_displays]
+        
+        # Add display options
+        self.display_dropdown.addItems(display_names)
+        
+        # Set current selection
+        current_display = self.app_state.selected_display
+        index = self.display_dropdown.findText(current_display)
+        if index >= 0:
+            self.display_dropdown.setCurrentIndex(index)
+        
+        # Connect signal
+        self.display_dropdown.currentTextChanged.connect(self.on_display_selection_changed)
+        
+        display_selection_layout.addWidget(self.display_dropdown)
+        display_selection_group.setLayout(display_selection_layout)
+        
+        # Add to main layout (before the placeholder)
+        self.layout.addWidget(display_selection_group)
+    
+    def on_display_selection_changed(self, display_name):
+        """Handle display selection change"""
+        self.app_state.selected_display = display_name
+        self.signals.console_message.emit(f"Display type changed to {display_name}")
+    
+    def update_display_selection(self, display_name):
+        """Update the display selection dropdown to reflect external changes"""
+        if hasattr(self, 'display_dropdown'):
+            index = self.display_dropdown.findText(display_name)
+            if index >= 0:
+                self.display_dropdown.setCurrentIndex(index)
+    
     def set_display_params_widget(self, display_widget):
-        while self.layout.count():
-            child = self.layout.takeAt(0)
-            if child.widget():
-                child.widget().deleteLater()
+        # Remove only the display parameters widget, not the entire layout
+        if self.display_params_widget and hasattr(self.display_params_widget, 'parent'):
+            if self.display_params_widget.parent():
+                self.display_params_widget.parent().layout().removeWidget(self.display_params_widget)
+            self.display_params_widget.deleteLater()
+        
         self.display_params_widget = None
 
         if display_widget is not None and display_widget.__class__.__name__ == 'MultichannelImageDisplayWidget':
@@ -765,6 +894,12 @@ class RightPanel(QWidget):
         
         # Update next_channel_id to be higher than any existing channel
         self.next_channel_id = max_channel_id + 1
+    
+    def on_modality_changed(self, new_modality):
+        """Handle modality changes without rebuilding RPOC channels"""
+        # This method will be enhanced later to handle modality-specific RPOC requirements
+        # For now, it does nothing, keeping RPOC channels independent of modality changes
+        pass
 
 class LeftPanel(QWidget):
     def __init__(self, app_state: AppState, signals: StateSignalBus):
@@ -809,6 +944,30 @@ class LeftPanel(QWidget):
         self.content_layout.addWidget(self.display_controls)
         
         self.content_layout.addStretch()
+    
+    def on_modality_changed(self, new_modality):
+        """Handle modality changes by rebuilding only modality-specific components"""
+        self.rebuild_modality_specific()
+
+    def rebuild_modality_specific(self):
+        """Rebuild only the components that change with modality changes"""
+        # Rebuild modality controls
+        if hasattr(self, 'modality_controls'):
+            self.modality_controls.deleteLater()
+        self.modality_controls = ModalityControls(self.app_state, self.signals)
+        self.content_layout.insertWidget(0, self.modality_controls)
+        
+        # Rebuild acquisition parameters
+        if hasattr(self, 'acquisition_parameters'):
+            self.acquisition_parameters.deleteLater()
+        self.acquisition_parameters = AcquisitionParameters(self.app_state, self.signals)
+        self.content_layout.insertWidget(1, self.acquisition_parameters)
+        
+        # Rebuild instrument controls since they are modality-specific
+        if hasattr(self, 'instrument_controls'):
+            self.instrument_controls.deleteLater()
+        self.instrument_controls = InstrumentControls(self.app_state, self.signals)
+        self.content_layout.insertWidget(2, self.instrument_controls)
 
 
 class DockableMiddlePanel(QMainWindow):
@@ -844,21 +1003,9 @@ class DockableMiddlePanel(QMainWindow):
 
 
     def create_image_display_widget(self):
-        # Use modality registry to determine compatible displays
-        from pyrpoc.modalities import modality_registry
-        
-        modality = modality_registry.get_modality(self.app_state.modality)
-        if modality is None:
-            # Fallback to default display
-            return ImageDisplayWidget(self.app_state, self.signals)
-        
-        # Get the first compatible display class
-        compatible_displays = modality.compatible_displays
-        if compatible_displays:
-            display_class = compatible_displays[0]
-            return display_class(self.app_state, self.signals)
-        
-        # Fallback to default display
+        # For now, use a default display that works with all modalities
+        # This will be enhanced later to handle modality-specific display requirements
+        # without requiring a full rebuild
         return ImageDisplayWidget(self.app_state, self.signals)
 
     def on_lines_toggled(self, enabled):        
@@ -876,6 +1023,12 @@ class DockableMiddlePanel(QMainWindow):
             self.image_display_widget.deleteLater()
         self.image_display_widget = widget
         layout.addWidget(self.image_display_widget)
+    
+    def on_modality_changed(self, new_modality):
+        """Handle modality changes without rebuilding the entire display"""
+        # This method will be enhanced later to handle modality-specific display requirements
+        # For now, it does nothing, keeping the display independent of modality changes
+        pass
 
 
 class MainWindow(QMainWindow):
@@ -937,6 +1090,8 @@ class MainWindow(QMainWindow):
         self.mid_layout = DockableMiddlePanel(self.app_state, self.signals)
         self.right_layout = RightPanel(self.app_state, self.signals)
 
+        # Set the display parameters widget - this will be enhanced later to handle
+        # modality-specific display requirements without requiring a full rebuild
         self.left_widget.display_controls.set_display_params_widget(self.mid_layout.image_display_widget)
         
         self.main_splitter.addWidget(self.left_widget)
@@ -969,21 +1124,74 @@ class MainWindow(QMainWindow):
         self.central_widget.setLayout(self.central_layout)
         self.setCentralWidget(self.central_widget)
 
-    def rebuild_gui(self):
-        if self.vertical_splitter:
-            vertical_sizes = self.vertical_splitter.sizes()
-            self.app_state.ui_state['vertical_splitter_sizes'] = vertical_sizes
-        if self.main_splitter:
-            horizontal_sizes = self.main_splitter.sizes()
-            self.app_state.ui_state['main_splitter_sizes'] = horizontal_sizes
-        
-        self.build_gui()
-        
-        self.signals.console_message.emit(f"GUI rebuilt for {self.app_state.modality} modality")
 
+
+    def rebuild_display_only(self):
+        """Rebuild only the display part of the GUI without affecting other components"""
+        try:
+            # Get the selected display class
+            from pyrpoc.modalities import modality_registry
+            modality = modality_registry.get_modality(self.app_state.modality)
+            if modality is None:
+                return
+            
+            # Find the selected display class
+            selected_display_class = None
+            for display_class in modality.compatible_displays:
+                if display_class.__name__ == self.app_state.selected_display:
+                    selected_display_class = display_class
+                    break
+            
+            if selected_display_class is None:
+                # Fallback to first compatible display
+                selected_display_class = modality.compatible_displays[0]
+                self.app_state.selected_display = selected_display_class.__name__
+            
+            # Create new display widget
+            new_display_widget = selected_display_class(self.app_state, self.signals)
+            
+            # Update the middle layout with the new display widget
+            if self.mid_layout:
+                self.mid_layout.set_image_display_widget(new_display_widget)
+                
+                # Update the display parameters widget in the left panel
+                if self.left_widget and hasattr(self.left_widget, 'display_controls'):
+                    self.left_widget.display_controls.set_display_params_widget(new_display_widget)
+                
+                # Re-establish lines widget connections
+                try:
+                    image_display = self.mid_layout.image_display_widget
+                    lines = self.mid_layout.lines_widget
+                    image_display.connect_lines_widget(lines)
+                except Exception as e:
+                    print(f"Error re-establishing lines widget connections: {e}")
+            
+        except Exception as e:
+            self.signals.console_message.emit(f"Error rebuilding display: {e}")
+    
     def on_modality_changed(self, new_modality):
         self.app_state.modality = new_modality.lower()
-        self.rebuild_gui()
+        # Notify all widgets of the modality change instead of rebuilding the entire GUI
+        self.notify_modality_changed(new_modality.lower())
+        self.signals.console_message.emit(f"Modality changed to {self.app_state.modality}")
+    
+    def notify_modality_changed(self, new_modality):
+        """Notify all relevant widgets of modality changes without rebuilding the entire GUI"""
+        # Notify top bar
+        if self.top_bar:
+            self.top_bar.on_modality_changed(new_modality)
+        
+        # Notify left panel components
+        if self.left_widget:
+            self.left_widget.on_modality_changed(new_modality)
+        
+        # Notify middle panel (display)
+        if self.mid_layout:
+            self.mid_layout.on_modality_changed(new_modality)
+        
+        # Notify right panel (RPOC)
+        if self.right_layout:
+            self.right_layout.on_modality_changed(new_modality)
 
     def save_splitter_sizes(self):
         if self.vertical_splitter:

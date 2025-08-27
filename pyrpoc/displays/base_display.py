@@ -5,9 +5,16 @@ from PyQt6.QtGui import QPixmap, QImage, QPainter, QColor, QPen, QBrush, QFont
 
 class BaseImageDisplayWidget(QWidget):
     '''
-    defines the interface that all image display widgets must implement to work with the acquisition system and dockable widgets
+    Abstract base class defining the interface that all image display widgets must implement
+    to work with the uniform acquisition pipeline and dockable widgets.
 
-    some image widgets will need to say no to the widgets, like raise a statusbar update (lines incompatible with zscan)
+    The new uniform acquisition pipeline follows this sequence:
+    1. User presses start → display_setup_requested signal emitted
+    2. Display widget is set up (if different from current) → acquisition_setup_complete signal emitted
+    3. During acquisition → data_frame_received signal emitted for each frame
+    4. Acquisition complete → acquisition_complete signal emitted
+
+    This eliminates modality-specific logic in the GUI, making displays modality-agnostic.
     '''
     
     # all widgets must deal with these signals
@@ -29,48 +36,48 @@ class BaseImageDisplayWidget(QWidget):
         
         # Overlay callbacks for future extensibility
         self.overlay_callbacks = []
-        
-        # Connect to unified data signal
-        self.signals.data_signal.connect(self.handle_data_signal)
     
-    def handle_data_signal(self, data, idx, total, is_final):
+    def handle_data_frame_received(self, data):
         '''
-        Unified handler for both frame updates and final data
+        New method for handling individual data frames during acquisition.
+        This is part of the uniform acquisition pipeline.
         
-        data: The data unit (could be single frame or complete dataset)
-        idx: Index of the data unit
-        total: Total number of expected data units
-        is_final: True if this is the final data signal, False for frame updates
+        data: The data frame that was just received
         '''
-        if is_final:
-            # This is the final data signal - handle as completion
-            self.handle_data_updated(data)
+        # Default implementation: update current frame
+        # Subclasses should override this for specific frame handling
+        if hasattr(self, '_current_frame_idx'):
+            self._current_frame_idx += 1
         else:
-            # This is a frame update during acquisition
-            self.handle_frame_acquired(data, idx, total)
+            self._current_frame_idx = 1
     
-    def handle_frame_acquired(self, data_unit, idx, total):
+    def prepare_for_acquisition(self, total_frames):
         '''
-        called as new data units are acquired during acquisition
+        Prepare the display widget for acquisition.
+        This is called when acquisition_setup_complete is emitted.
         
-    
-        data_unit: The data unit (e.g., single frame) that was just acquired
-        idx: Index of the acquired data unit
-        total: Total number of expected data units
+        total_frames: Total number of frames expected in this acquisition
         '''
-        raise NotImplementedError("Subclasses must implement handle_frame_acquired")
+        # Default implementation: update internal state
+        self.total_frames = total_frames
+        self.current_frame = 0
+        
+        # Clear acquisition buffer
+        self.acq_buffer = None
+        self.acq_total = total_frames
+        
+        # Initialize frame counter
+        self._current_frame_idx = 0
+        
+        # Subclasses can override this for more specific preparation
     
-    def handle_data_updated(self, data):
-        '''
-        calls when acquisition is complete and full data is available.
 
-        data: complete dataset (could be 2D or 3D numpy array)
-        '''
-        raise NotImplementedError("Subclasses must implement handle_data_updated")
+    
+
     
     def get_current_frame_data(self):
         '''
-        get the data for the current displayed unit of data
+        Get the data for the current displayed unit of data.
         
         returns: numpy.ndarray or None: current frame data, or None if no data available
         '''
@@ -78,7 +85,7 @@ class BaseImageDisplayWidget(QWidget):
     
     def get_image_data_for_rpoc(self):
         '''
-        get image data in a format suitable for RPOC mask creation
+        Get image data in a format suitable for RPOC mask creation.
         
         returns: numpy.ndarray or None: array of 2D images (channels x height x width) or None if no data
         '''
@@ -97,7 +104,7 @@ class BaseImageDisplayWidget(QWidget):
     
     def get_current_frame_index(self):
         '''
-        get the current displayed unit of data index.
+        Get the current displayed unit of data index.
         
         returns: int: Current frame index
         '''
@@ -105,13 +112,13 @@ class BaseImageDisplayWidget(QWidget):
     
     def update_display(self):
         '''
-        update the visual display with current data and overlays.
+        Update the visual display with current data and overlays.
         '''
         raise NotImplementedError("Subclasses must implement update_display")
     
     def display_frame(self, frame_idx):
         '''
-        display a specific frame.
+        Display a specific frame.
         
         frame_idx: Index of the frame to display
         '''
@@ -119,7 +126,7 @@ class BaseImageDisplayWidget(QWidget):
     
     def connect_lines_widget(self, lines_widget):
         '''
-        connect signals between this widget and a lines widget.
+        Connect signals between this widget and a lines widget.
         
         lines_widget: The lines widget to connect to
         '''
@@ -139,13 +146,13 @@ class BaseImageDisplayWidget(QWidget):
     
     def enter_add_mode(self):
         '''
-        enter interactive tool mode with clicks and stuff
+        Enter interactive tool mode with clicks and stuff.
         '''
         raise NotImplementedError("Subclasses must implement enter_add_mode")
     
     def remove_line_overlay(self, index):
         '''
-        remove a given line 
+        Remove a given line.
 
         index: Index of the line to remove
         '''
@@ -153,7 +160,7 @@ class BaseImageDisplayWidget(QWidget):
     
     def move_line_endpoint(self, line_index, endpoint_idx, x, y, image_data):
         '''
-        move a line endpoint
+        Move a line endpoint.
         
         line_index: Index of the line
         endpoint_idx: 0 for first endpoint, 1 for second endpoint
@@ -164,7 +171,7 @@ class BaseImageDisplayWidget(QWidget):
     
     def get_lines(self):
         '''
-        get current line positions and colors.
+        Get current line positions and colors.
         
         returns a list of (x1, y1, x2, y2, color) tuples for each line
         '''
@@ -172,7 +179,7 @@ class BaseImageDisplayWidget(QWidget):
     
     def register_overlay_callback(self, callback):
         '''
-        holds the callback function to be called when overlays need updating.
+        Hold the callback function to be called when overlays need updating.
         
         callback: Function to call with current frame index
         '''
@@ -180,7 +187,7 @@ class BaseImageDisplayWidget(QWidget):
     
     def update_overlays(self):
         '''
-        call all the overlay callbacks (may be more than 1)
+        Call all the overlay callbacks (may be more than 1).
         '''
         for cb in self.overlay_callbacks:
             cb(self.current_frame)

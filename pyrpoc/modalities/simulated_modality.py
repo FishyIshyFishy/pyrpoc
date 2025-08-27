@@ -21,6 +21,12 @@ class SimulatedModality(BaseModality):
         return [ImageDisplayWidget]
     
     @property
+    def parameter_groups(self) -> Dict[str, List[str]]:
+        return {
+            'Image Dimensions': ['x_pixels', 'y_pixels']
+        }
+    
+    @property
     def required_parameters(self) -> Dict[str, Dict[str, Any]]:
         return {
             'x_pixels': {

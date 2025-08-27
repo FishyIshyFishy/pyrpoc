@@ -50,6 +50,21 @@ class BaseModality(ABC):
         pass
     
     @property
+    def parameter_groups(self) -> Dict[str, List[str]]:
+        """Dictionary defining parameter groupings for better UI organization
+        
+        Format:
+        {
+            'group_name': ['param1', 'param2', 'param3'],
+            'another_group': ['param4', 'param5']
+        }
+        
+        If not overridden, all parameters will be in a single 'General' group.
+        """
+        # Default implementation: put all parameters in a 'General' group
+        return {'General': list(self.required_parameters.keys())}
+    
+    @property
     @abstractmethod
     def acquisition_class(self) -> Type:
         """The acquisition class to use for this modality"""

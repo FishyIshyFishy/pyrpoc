@@ -123,6 +123,8 @@ class Confocal(Acquisition):
         if not ai_channels:
             ai_channels = ["Dev1/ai0"] 
 
+
+
         all_frames = []
         for frame_idx in range(self.num_frames):
             if self._stop_flag and self._stop_flag():
@@ -132,13 +134,15 @@ class Confocal(Acquisition):
             frame_data = self.collect_data(self.galvo, ai_channels)
             
             if self.signal_bus:
-                self.signal_bus.data_signal.emit(frame_data, frame_idx, self.num_frames, False)
+                # Use new uniform pipeline instead of legacy data_signal
+                self.emit_data_frame(self.signal_bus, frame_data)
             all_frames.append(frame_data)
         
         if all_frames:
             final_data = np.stack(all_frames)
             if self.signal_bus:
-                self.signal_bus.data_signal.emit(final_data, len(all_frames)-1, self.num_frames, True)
+                # Use new uniform pipeline instead of legacy data_signal
+                self.emit_acquisition_complete(self.signal_bus)
             self.save_data(final_data)
             return final_data
         else:

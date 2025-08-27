@@ -57,6 +57,9 @@ class AppState:
         }
         self.current_data = None
         
+        # Display selection - stores the class name of the selected display
+        self.selected_display = 'ImageDisplayWidget'  # Default to single channel display
+        
         # UI state parameters
         self.ui_state = {
             'acquisition_parameters_visible': True,
@@ -133,9 +136,12 @@ class StateSignalBus(QObject):
     ui_state_changed = pyqtSignal(str, object) # emits when UI state changes (param_name, new_value)
     lines_toggled = pyqtSignal(bool) # emits when lines are toggled
     
-    # Unified data signal - handles both frame updates and final data
-    data_signal = pyqtSignal(object, int, int, bool) # data, index, total, is_final
-
+    # New acquisition pipeline signals
+    display_setup_requested = pyqtSignal(str) # display_class_name - requests display setup for acquisition
+    acquisition_setup_complete = pyqtSignal(int) # total_frames - signals that acquisition setup is complete
+    data_frame_received = pyqtSignal(object) # data - individual data frame during acquisition
+    acquisition_complete = pyqtSignal() # signals that acquisition is complete
+    
     # RPOC mask creation
     mask_created = pyqtSignal(object) # emits when a mask is created
     rpoc_channel_removed = pyqtSignal(int) # emits when an RPOC channel is removed (channel_id)
@@ -178,7 +184,14 @@ class StateSignalBus(QObject):
         self.instrument_removed.connect(lambda instrument: handle_instrument_removed(instrument, app_state))
         self.instrument_updated.connect(lambda instrument: handle_instrument_updated(instrument, app_state, main_window))
 
-        self.data_signal.connect(lambda data, idx, total, is_final: handle_data_signal(data, idx, total, is_final, app_state, main_window))
+        # New acquisition pipeline signal handlers
+        self.display_setup_requested.connect(lambda display_class: handle_display_setup_requested(display_class, app_state, main_window))
+        self.acquisition_setup_complete.connect(lambda total_frames: handle_acquisition_setup_complete(total_frames, app_state, main_window))
+        self.data_frame_received.connect(lambda data: handle_data_frame_received(data, app_state, main_window))
+        self.acquisition_complete.connect(lambda: handle_acquisition_complete(app_state, main_window))
+        
+        # Legacy data signal handler - disconnected since we're using new uniform pipeline
+        # self.data_signal.connect(lambda data, idx, total, is_final: handle_data_signal(data, idx, total, is_final, app_state, main_window))
         self.console_message.connect(lambda message: handle_console_message(message, app_state, main_window))
 
 
@@ -339,7 +352,7 @@ def handle_load_config(app_state, main_window):
                         static_data['enabled'] = True
                     app_state.rpoc_static_channels[channel_id_str] = static_data
 
-        main_window.rebuild_gui()
+        main_window.build_gui()
         
         # Re-establish lines widget connections after GUI rebuild
         try:
@@ -423,259 +436,99 @@ def handle_single_acquisition(app_state, signal_bus, continuous=False):
         return
     
     # take snapshot of all parameters rather than continually reading them from app_state during acquisition
-    modality = app_state.modality
+    modality_key = app_state.modality
     parameters = app_state.acquisition_parameters.copy()
 
     if continuous:
-        signal_bus.console_message.emit(f"Starting continuous {modality} acquisition...")
+        signal_bus.console_message.emit(f"Starting continuous {modality_key} acquisition...")
     else:
-        signal_bus.console_message.emit(f"Starting {modality} acquisition...")
-    try:
-        validate_acquisition_parameters(parameters, modality)
-    except ValueError as e:
-        signal_bus.console_message.emit(f"Parameter validation error: {e}")
+        signal_bus.console_message.emit(f"Starting {modality_key} acquisition...")
+    
+    # Get the modality object for validation
+    from pyrpoc.modalities import modality_registry
+    modality = modality_registry.get_modality(modality_key)
+    
+    if modality is None:
+        signal_bus.console_message.emit(f"Error: Unknown modality '{modality_key}'")
         return
-
-    instruments = {}
-    for instrument_type in ['galvo', 'data input', 'delay stage', 'prior stage']:
-        instruments[instrument_type] = app_state.get_instruments_by_type(instrument_type)
     
-    # check modality parameters (instruments in particular)
-    if modality == 'confocal':
-        galvo = instruments.get('galvo', []) # .get() returns [] instead of None here, which is easier to look at in if statement that follows
-        data_inputs = instruments.get('data input', [])
-        
-        if not galvo: 
-            signal_bus.console_message.emit("Error: Confocal acquisition requires at least one galvo instrument. Please add a galvo scanner.")
-            return
-        
-        if not data_inputs:
-            signal_bus.console_message.emit("Error: Confocal acquisition requires at least one data input instrument. Please add a data input.")
-            return
+    # Validate that required instruments are present
+    instruments = app_state.instruments
+    if not modality.validate_instruments(instruments):
+        missing = [req for req in modality.required_instruments 
+                  if not any(inst.instrument_type == req for inst in instruments)]
+        signal_bus.console_message.emit(f"Error: {modality.name} acquisition requires instruments: {', '.join(missing)}")
+        return
     
-    elif modality == 'split data stream':
-        galvo = instruments.get('galvo', [])
-        data_inputs = instruments.get('data input', [])
-        prior_stage = instruments.get('prior stage', [])
-        
-        if not galvo:
-            signal_bus.console_message.emit("Error: Split Data Stream acquisition requires at least one galvo instrument. Please add a galvo scanner.")
-            return
-        
-        if not data_inputs:
-            signal_bus.console_message.emit("Error: Split Data Stream acquisition requires at least one data input instrument. Please add a data input.")
-            return
-        
-        if not prior_stage:
-            signal_bus.console_message.emit("Error: Split Data Stream acquisition requires at least one prior stage instrument. Please add a prior stage.")
-            return
-
-    elif modality == 'confocal mosaic':
-        galvo = instruments.get('galvo', [])
-        data_inputs = instruments.get('data input', [])
-        prior_stage = instruments.get('prior stage', [])
-        
-        if not galvo:
-            signal_bus.console_message.emit("Error: Confocal Mosaic acquisition requires at least one galvo instrument. Please add a galvo scanner.")
-            return
-        
-        if not data_inputs:
-            signal_bus.console_message.emit("Error: Confocal Mosaic acquisition requires at least one data input instrument. Please add a data input.")
-            return
-        
-        if not prior_stage:
-            signal_bus.console_message.emit("Error: Confocal Mosaic acquisition requires at least one prior stage instrument. Please add a prior stage.")
-            return
-
-    elif modality == 'fish':
-        galvo = instruments.get('galvo', [])
-        data_inputs = instruments.get('data input', [])
-        prior_stage = instruments.get('prior stage', [])
-        
-        if not galvo:
-            signal_bus.console_message.emit("Error: Fish acquisition requires at least one galvo instrument. Please add a galvo scanner.")
-            return
-        
-        if not data_inputs:
-            signal_bus.console_message.emit("Error: Fish acquisition requires at least one data input instrument. Please add a data input.")
-            return
-        
-        if not prior_stage:
-            signal_bus.console_message.emit("Error: Fish acquisition requires at least one prior stage instrument. Please add a prior stage.")
-            return
-        
-        # Check for at least one enabled mask channel
-        rpoc_mask_channels = getattr(app_state, 'rpoc_mask_channels', {})
-        enabled_mask_channels = {k: v for k, v in rpoc_mask_channels.items() if v.get('enabled', True)}
-        if not enabled_mask_channels:
-            signal_bus.console_message.emit("Error: Fish acquisition requires at least one enabled mask channel for local RPOC treatment.")
-            return
-
+    # Validate that required parameters are present
+    if not modality.validate_parameters(parameters):
+        missing = [req for req in modality.required_parameters.keys() 
+                  if req not in parameters]
+        signal_bus.console_message.emit(f"Error: Missing required parameters for {modality.name}: {', '.join(missing)}")
+        return
+    
+    # Create acquisition using the modality's acquisition class
     acquisition = None
     try:
         save_enabled = parameters.get('save_enabled', False)
         save_path = parameters.get('save_path', '')
         
-        match modality:
-            case 'simulated':
-                acquisition = Simulated(signal_bus=signal_bus, 
-                                      acquisition_parameters=parameters,
-                                      save_enabled=save_enabled, save_path=save_path)
-                
-            case 'confocal':
-                # have already verified that the instruments exist, no need to .get() here
-                galvo = instruments['galvo'][0] # returned as a list because there are multiple of each instrument in general
-                data_inputs = instruments['data input']
-                
-                acquisition = Confocal(
-                    galvo=galvo, 
-                    data_inputs=data_inputs,
-                    num_frames=parameters['num_frames'],
-                    signal_bus=signal_bus,
-                    acquisition_parameters=parameters,
-                    save_enabled=save_enabled,
-                    save_path=save_path
-                )
-                
-                # configure RPOC with only enabled channels
-                rpoc_mask_channels = getattr(app_state, 'rpoc_mask_channels', {})
-                rpoc_static_channels = getattr(app_state, 'rpoc_static_channels', {})
-                rpoc_script_channels = getattr(app_state, 'rpoc_script_channels', {})
-                
-                # Filter only enabled channels
-                enabled_mask_channels = {k: v for k, v in rpoc_mask_channels.items() if v.get('enabled', True)}
-                enabled_static_channels = {k: v for k, v in rpoc_static_channels.items() if v.get('enabled', True)}
-                enabled_script_channels = {k: v for k, v in rpoc_script_channels.items() if v.get('enabled', True)}
-                
-                total_enabled = len(enabled_mask_channels) + len(enabled_static_channels) + len(enabled_script_channels)
-                if total_enabled > 0:
-                    signal_bus.console_message.emit(f"Acquisition RPOC - enabled channels: {len(enabled_mask_channels)} masks, {len(enabled_static_channels)} static, {len(enabled_script_channels)} script")
-                    acquisition.configure_rpoc(True, rpoc_mask_channels=enabled_mask_channels, rpoc_static_channels=enabled_static_channels, rpoc_script_channels=enabled_script_channels)
-                else:
-                    signal_bus.console_message.emit(f"Acquisition RPOC - no enabled channels")
-                    acquisition.configure_rpoc(False)
-                
-            case 'split data stream':
-                # have already verified that the instruments exist, no need to .get() here
-                galvo = instruments['galvo'][0] # returned as a list because there are multiple of each instrument in general
-                data_inputs = instruments['data input']
-                prior_stage = instruments['prior stage'][0] if 'prior stage' in instruments else None
-                split_percentage = parameters.get('split_percentage', 50)
-                
-                acquisition = SplitDataStream(
-                    galvo=galvo, 
-                    data_inputs=data_inputs,
-                    prior_stage=prior_stage,
-                    num_frames=parameters['num_frames'],
-                    split_percentage=split_percentage,
-                    signal_bus=signal_bus,
-                    acquisition_parameters=parameters,
-                    save_enabled=save_enabled,
-                    save_path=save_path
-                )
-                
-                # configure RPOC with only enabled channels
-                rpoc_mask_channels = getattr(app_state, 'rpoc_mask_channels', {})
-                rpoc_static_channels = getattr(app_state, 'rpoc_static_channels', {})
-                rpoc_script_channels = getattr(app_state, 'rpoc_script_channels', {})
-                
-                # Filter only enabled channels
-                enabled_mask_channels = {k: v for k, v in rpoc_mask_channels.items() if v.get('enabled', True)}
-                enabled_static_channels = {k: v for k, v in rpoc_static_channels.items() if v.get('enabled', True)}
-                enabled_script_channels = {k: v for k, v in rpoc_script_channels.items() if v.get('enabled', True)}
-                
-                total_enabled = len(enabled_mask_channels) + len(enabled_static_channels) + len(enabled_script_channels)
-                if total_enabled > 0:
-                    signal_bus.console_message.emit(f"Acquisition RPOC - enabled channels: {len(enabled_mask_channels)} masks, {len(enabled_static_channels)} static, {len(enabled_script_channels)} script")
-                    acquisition.configure_rpoc(True, rpoc_mask_channels=enabled_mask_channels, rpoc_static_channels=enabled_static_channels, rpoc_script_channels=enabled_script_channels)
-                else:
-                    signal_bus.console_message.emit(f"Acquisition RPOC - no enabled channels")
-                    acquisition.configure_rpoc(False)
-                
-            case 'confocal mosaic':
-                # have already verified that the instruments exist, no need to .get() here
-                galvo = instruments['galvo'][0] # returned as a list because there are multiple of each instrument in general
-                data_inputs = instruments['data input']
-                prior_stage = instruments['prior stage'][0] if 'prior stage' in instruments else None
-                
-                acquisition = ConfocalMosaic(
-                    galvo=galvo, 
-                    data_inputs=data_inputs,
-                    prior_stage=prior_stage,
-                    num_frames=parameters['num_frames'],
-                    signal_bus=signal_bus,
-                    acquisition_parameters=parameters,
-                    save_enabled=save_enabled,
-                    save_path=save_path
-                )
-                
-                # configure RPOC with only enabled channels
-                rpoc_mask_channels = getattr(app_state, 'rpoc_mask_channels', {})
-                rpoc_static_channels = getattr(app_state, 'rpoc_static_channels', {})
-                rpoc_script_channels = getattr(app_state, 'rpoc_script_channels', {})
-                
-                # Filter only enabled channels
-                enabled_mask_channels = {k: v for k, v in rpoc_mask_channels.items() if v.get('enabled', True)}
-                enabled_static_channels = {k: v for k, v in rpoc_static_channels.items() if v.get('enabled', True)}
-                enabled_script_channels = {k: v for k, v in rpoc_script_channels.items() if v.get('enabled', True)}
-                
-                total_enabled = len(enabled_mask_channels) + len(enabled_static_channels) + len(enabled_script_channels)
-                if total_enabled > 0:
-                    signal_bus.console_message.emit(f"Acquisition RPOC - enabled channels: {len(enabled_mask_channels)} masks, {len(enabled_static_channels)} static, {len(enabled_script_channels)} script")
-                    acquisition.configure_rpoc(True, rpoc_mask_channels=enabled_mask_channels, rpoc_static_channels=enabled_static_channels, rpoc_script_channels=enabled_script_channels)
-                else:
-                    signal_bus.console_message.emit(f"Acquisition RPOC - no enabled channels")
-                    acquisition.configure_rpoc(False)
-                
-            case 'fish':
-                # have already verified that the instruments exist, no need to .get() here
-                galvo = instruments['galvo'][0] # returned as a list because there are multiple of each instrument in general
-                data_inputs = instruments['data input']
-                prior_stage = instruments['prior stage'][0] if 'prior stage' in instruments else None
-                
-                acquisition = Fish(
-                    galvo=galvo, 
-                    data_inputs=data_inputs,
-                    prior_stage=prior_stage,
-                    num_frames=parameters['num_frames'],
-                    signal_bus=signal_bus,
-                    acquisition_parameters=parameters,
-                    save_enabled=save_enabled,
-                    save_path=save_path
-                )
-                
-                # configure RPOC with only enabled channels
-                rpoc_mask_channels = getattr(app_state, 'rpoc_mask_channels', {})
-                rpoc_static_channels = getattr(app_state, 'rpoc_static_channels', {})
-                rpoc_script_channels = getattr(app_state, 'rpoc_script_channels', {})
-                
-                # Filter only enabled channels
-                enabled_mask_channels = {k: v for k, v in rpoc_mask_channels.items() if v.get('enabled', True)}
-                enabled_static_channels = {k: v for k, v in rpoc_static_channels.items() if v.get('enabled', True)}
-                enabled_script_channels = {k: v for k, v in rpoc_script_channels.items() if v.get('enabled', True)}
-                
-                total_enabled = len(enabled_mask_channels) + len(enabled_static_channels) + len(enabled_script_channels)
-                if total_enabled > 0:
-                    signal_bus.console_message.emit(f"Acquisition RPOC - enabled channels: {len(enabled_mask_channels)} masks, {len(enabled_static_channels)} static, {len(enabled_script_channels)} script")
-                    acquisition.configure_rpoc(True, rpoc_mask_channels=enabled_mask_channels, rpoc_static_channels=enabled_static_channels, rpoc_script_channels=enabled_script_channels)
-                else:
-                    signal_bus.console_message.emit(f"Acquisition RPOC - no enabled channels")
-                    acquisition.configure_rpoc(False)
-                
-            case _:
-                signal_bus.console_message.emit('Warning: invalid modality, defaulting to simulation')
-                default_params = {'x_pixels': 512, 'y_pixels': 512, 'num_frames': 1}
-                acquisition = Simulated(signal_bus=signal_bus,
-                                      acquisition_parameters=default_params,
-                                      save_enabled=save_enabled, save_path=save_path)
-
+        # Get required instruments by type
+        instruments_by_type = {}
+        for instrument_type in modality.required_instruments:
+            instruments_by_type[instrument_type] = [inst for inst in instruments if inst.instrument_type == instrument_type]
+        
+        # Create acquisition with the appropriate constructor based on modality
+        if modality_key == 'simulated':
+            acquisition = modality.acquisition_class(
+                signal_bus=signal_bus, 
+                acquisition_parameters=parameters,
+                save_enabled=save_enabled, 
+                save_path=save_path
+            )
+        else:
+            # For all other modalities, pass instruments as keyword arguments
+            # The acquisition class constructor knows how to handle them
+            acquisition = modality.acquisition_class(
+                signal_bus=signal_bus,
+                acquisition_parameters=parameters,
+                save_enabled=save_enabled,
+                save_path=save_path,
+                **instruments_by_type
+            )
+        
+        # Configure RPOC if the acquisition supports it
+        if hasattr(acquisition, 'configure_rpoc'):
+            # Get RPOC channels from app state
+            rpoc_mask_channels = getattr(app_state, 'rpoc_mask_channels', {})
+            rpoc_static_channels = getattr(app_state, 'rpoc_static_channels', {})
+            rpoc_script_channels = getattr(app_state, 'rpoc_script_channels', {})
+            
+            # Filter only enabled channels
+            enabled_mask_channels = {k: v for k, v in rpoc_mask_channels.items() if v.get('enabled', True)}
+            enabled_static_channels = {k: v for k, v in rpoc_static_channels.items() if v.get('enabled', True)}
+            enabled_script_channels = {k: v for k, v in rpoc_script_channels.items() if v.get('enabled', True)}
+            
+            total_enabled = len(enabled_mask_channels) + len(enabled_static_channels) + len(enabled_script_channels)
+            
+            if total_enabled > 0:
+                signal_bus.console_message.emit(f"Acquisition RPOC - enabled channels: {len(enabled_mask_channels)} masks, {len(enabled_static_channels)} static, {len(enabled_script_channels)} script")
+                acquisition.configure_rpoc(True, 
+                                         rpoc_mask_channels=enabled_mask_channels, 
+                                         rpoc_static_channels=enabled_static_channels, 
+                                         rpoc_script_channels=enabled_script_channels)
+            else:
+                signal_bus.console_message.emit(f"Acquisition RPOC - no enabled channels")
+                acquisition.configure_rpoc(False)
+        
     except Exception as e:
         signal_bus.console_message.emit(f'Error creating acquisition object: {e}')
         return
 
     if acquisition is not None:
-        # acquisition objects receive parameters through their constructors and instruments are passed as needed
-        # the clean parameter snapshot has already been validated and passed to the acquisition constructor.
+        # Start the new acquisition pipeline
+        # Step 1: Request display setup
+        signal_bus.display_setup_requested.emit(app_state.selected_display)
         
         worker = AcquisitionWorker(acquisition, continuous=continuous)
         thread = QThread()
@@ -793,10 +646,11 @@ def handle_acquisition_thread_finished(data, signal_bus, thread, worker):
     if hasattr(signal_bus, 'acq_worker'):
         del signal_bus.acq_worker
     
+    # Legacy completion handling
     signal_bus.console_message.emit("Acquisition complete!")
     # emit signal to update button states
     signal_bus.acquisition_stopped.emit()
-    # final data signal is now emitted by the acquisition classes themselves
+    # Acquisition completion signal is now emitted by the acquisition classes themselves
 
 def handle_stop_acquisition(app_state, signal_bus):
     # Stop acquisition if running
@@ -864,7 +718,7 @@ def handle_modality_changed(text, app_state, main_window):
 
     app_state.current_data = None
 
-    main_window.rebuild_gui()
+    main_window.build_gui()
     
     main_window.signals.bind_controllers(app_state, main_window)
     
@@ -1131,3 +985,100 @@ def handle_local_rpoc_cancel(signal_bus):
         del signal_bus.local_rpoc_progress_dialog
     
     return 0
+
+
+# New acquisition pipeline handlers
+def handle_display_setup_requested(display_class_name, app_state, main_window):
+    """Handle display setup request for acquisition"""
+    try:
+        # Check if the display type is different from current
+        if app_state.selected_display != display_class_name:
+            # Update the selected display
+            app_state.selected_display = display_class_name
+            
+            # Rebuild only the display part of the GUI
+            main_window.rebuild_display_only()
+            
+            # Update the display controls to reflect the new selection
+            if hasattr(main_window, 'left_widget') and hasattr(main_window.left_widget, 'display_controls'):
+                main_window.left_widget.display_controls.update_display_selection(display_class_name)
+            
+            if hasattr(main_window, 'signals'):
+                main_window.signals.console_message.emit(f"Display updated to {display_class_name}")
+        else:
+            if hasattr(main_window, 'signals'):
+                main_window.signals.console_message.emit("Display type unchanged, proceeding with acquisition")
+        
+        # Signal that display setup is complete
+        # We need to get the signal bus from the main window
+        if hasattr(main_window, 'signals'):
+            main_window.signals.acquisition_setup_complete.emit(app_state.acquisition_parameters.get('num_frames', 1))
+        
+    except Exception as e:
+        # We need to get the signal bus from the main window
+        if hasattr(main_window, 'signals'):
+            main_window.signals.console_message.emit(f"Error setting up display: {e}")
+        return 0
+    
+    return 1
+
+
+def handle_acquisition_setup_complete(total_frames, app_state, main_window):
+    """Handle acquisition setup completion"""
+    try:
+        # This signal indicates that the display is ready and acquisition can begin
+        # The display widget should now be prepared to receive data frames
+        if hasattr(main_window, 'signals'):
+            main_window.signals.console_message.emit(f"Acquisition setup complete. Ready to receive {total_frames} frames.")
+        
+        # Prepare the display widget for acquisition
+        if hasattr(main_window, 'mid_layout') and hasattr(main_window.mid_layout, 'image_display_widget'):
+            widget = main_window.mid_layout.image_display_widget
+            if hasattr(widget, 'prepare_for_acquisition'):
+                widget.prepare_for_acquisition(total_frames)
+        
+    except Exception as e:
+        if hasattr(main_window, 'signals'):
+            main_window.signals.console_message.emit(f"Error in acquisition setup: {e}")
+        return 0
+    
+    return 1
+
+
+def handle_data_frame_received(data, app_state, main_window):
+    """Handle individual data frame during acquisition"""
+    try:
+        # Route the data frame to the current display widget
+        if hasattr(main_window, 'mid_layout') and hasattr(main_window.mid_layout, 'image_display_widget'):
+            widget = main_window.mid_layout.image_display_widget
+            if hasattr(widget, 'handle_data_frame_received'):
+                widget.handle_data_frame_received(data)
+            else:
+                # Fallback to legacy method if new method not available
+                if hasattr(main_window, 'signals'):
+                    main_window.signals.console_message.emit("Warning: Display widget doesn't support new data frame method")
+        
+    except Exception as e:
+        if hasattr(main_window, 'signals'):
+            main_window.signals.console_message.emit(f"Error handling data frame: {e}")
+        return 0
+    
+    return 1
+
+
+def handle_acquisition_complete(app_state, main_window):
+    """Handle acquisition completion"""
+    try:
+        # Signal that acquisition is complete
+        if hasattr(main_window, 'signals'):
+            main_window.signals.console_message.emit("Acquisition complete!")
+            
+            # Update button states
+            main_window.signals.acquisition_stopped.emit()
+        
+    except Exception as e:
+        if hasattr(main_window, 'signals'):
+            main_window.signals.console_message.emit(f"Error handling acquisition completion: {e}")
+        return 0
+    
+    return 1

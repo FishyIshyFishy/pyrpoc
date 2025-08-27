@@ -39,8 +39,11 @@ class MultichannelImageDisplayWidget(BaseImageDisplayWidget):
         # Line overlays for each channel
         self.line_overlays = {}  # {channel_idx: [line_items]}
 
+        # Initialize frame counter
+        self._current_frame_idx = 0
+        
         self._build_ui()
-        # Base class wires up `self.signals.data_updated` → `handle_data_updated`
+        # Base class provides interface for data handling
 
     def _build_ui(self):
         """Construct frame slider + channel grid + (optional) LUT controls."""
@@ -183,73 +186,114 @@ class MultichannelImageDisplayWidget(BaseImageDisplayWidget):
         
         return channel_names
 
-    def handle_frame_acquired(self, data_unit, idx, total):
-        """Handle frame acquired signal for confocal multi-channel data."""
+    def handle_data_frame_received(self, data):
+        """
+        New method for handling individual data frames during acquisition.
+        This is part of the uniform acquisition pipeline.
+        
+        data: The data frame that was just received
+        """
         # Reset buffer if this is the first frame of a new acquisition
-        if idx == 0:
+        if not hasattr(self, '_current_frame_idx') or self._current_frame_idx == 0:
             self._buffer = None
         
         # Store the acquired frame in the buffer
         if self._buffer is None:
             # Initialize buffer based on data shape
-            if isinstance(data_unit, np.ndarray):
-                if data_unit.ndim == 3:  # channels x height x width
-                    self._buffer = np.zeros((total, data_unit.shape[0], data_unit.shape[1], data_unit.shape[2]))
-                    self.num_channels = data_unit.shape[0]
+            if isinstance(data, np.ndarray):
+                if data.ndim == 3:  # channels x height x width
+                    self._buffer = np.zeros((self.total_frames, data.shape[0], data.shape[1], data.shape[2]))
+                    self.num_channels = data.shape[0]
                     # Only rebuild if channel count actually changed
                     if self.num_channels != len(self.channel_views):
                         self.update_channel_names()
                         self._setup_channel_views(self.num_channels)
                         self._refresh_channel_labels()
-                elif data_unit.ndim == 2:  # height x width (single channel)
-                    self._buffer = np.zeros((total, 1, data_unit.shape[0], data_unit.shape[1]))
+                elif data.ndim == 2:  # height x width (single channel)
+                    self._buffer = np.zeros((self.total_frames, 1, data.shape[0], data.shape[1]))
                     self.num_channels = 1
                     self.update_channel_names()
                 else:
-                    self._buffer = np.zeros((total, 1, data_unit.shape[0], data_unit.shape[1]))
+                    self._buffer = np.zeros((self.total_frames, 1, data.shape[0], data.shape[1]))
                     self.num_channels = 1
                     self.update_channel_names()
             else:
                 # Fallback for non-array data
-                self._buffer = np.zeros((total, 1, 512, 512))
+                self._buffer = np.zeros((self.total_frames, 1, 512, 512))
                 self.num_channels = 1
                 self.update_channel_names()
         
         # Store the frame data
-        if isinstance(data_unit, np.ndarray):
-            if data_unit.ndim == 3:  # channels x height x width
-                if idx < self._buffer.shape[0]:  # Safety check
-                    self._buffer[idx] = data_unit
-            elif data_unit.ndim == 2:  # height x width (single channel)
-                if idx < self._buffer.shape[0]:  # Safety check
-                    self._buffer[idx, 0] = data_unit
+        if isinstance(data, np.ndarray):
+            if data.ndim == 3:  # channels x height x width
+                if self._current_frame_idx < self._buffer.shape[0]:  # Safety check
+                    self._buffer[self._current_frame_idx] = data
+            elif data.ndim == 2:  # height x width (single channel)
+                if self._current_frame_idx < self._buffer.shape[0]:  # Safety check
+                    self._buffer[self._current_frame_idx, 0] = data
             else:
-                if idx < self._buffer.shape[0]:  # Safety check
-                    self._buffer[idx, 0] = data_unit
+                if self._current_frame_idx < self._buffer.shape[0]:  # Safety check
+                    self._buffer[self._current_frame_idx, 0] = data
         
         # Update current frame and frame controls
-        self.current_frame = idx
-        self.total_frames = total
+        self.current_frame = self._current_frame_idx
         self.frame_slider.setMaximum(max(0, self.total_frames - 1))
         self.frame_slider.setEnabled(self.total_frames > 1)
-        self.frame_slider.setValue(idx)
+        self.frame_slider.setValue(self._current_frame_idx)
         self._update_frame_label()
         
         # Update display if this is the current frame
-        if idx == self.current_frame:
-            self._display_frame(idx)
+        if self._current_frame_idx == self.current_frame:
+            self._display_frame(self._current_frame_idx)
         
         # Update frame controls if this is the first frame
-        if idx == 0:
-            self._update_frame_controls(total, 0)
+        if self._current_frame_idx == 0:
+            self._update_frame_controls(self.total_frames, 0)
         
         # Only update overlays and emit signals if this is the current frame
-        if idx == self.current_frame:
+        if self._current_frame_idx == self.current_frame:
             self.update_overlays()
             # Emit traces update signal
             self.traces_update_requested.emit(self.get_all_channel_data())
         
         # Emit display data changed after data and channels are set up
+        self.display_data_changed.emit()
+        
+        # Increment frame counter
+        self._current_frame_idx += 1
+
+    def prepare_for_acquisition(self, total_frames):
+        """
+        Prepare the display widget for acquisition.
+        This is called when acquisition_setup_complete is emitted.
+        
+        total_frames: Total number of frames expected in this acquisition
+        """
+        # Reset frame counter for new acquisition
+        self._current_frame_idx = 0
+        
+        # Update internal state
+        self.total_frames = total_frames
+        self.current_frame = 0
+        
+        # Clear acquisition buffer
+        self._buffer = None
+        self.acq_total = total_frames
+        
+        # Reset frame controls
+        self.frame_slider.setMaximum(max(0, total_frames - 1))
+        self.frame_slider.setValue(0)
+        self.frame_slider.setEnabled(total_frames > 1)
+        self._update_frame_label()
+        
+        # Clear all channel views
+        for iv in self.channel_views:
+            iv.clear()
+        
+        # Update frame label
+        self.frame_label.setText(f"1/{total_frames}")
+        
+        # Emit display data changed to notify other components
         self.display_data_changed.emit()
 
     def handle_data_updated(self, data: np.ndarray):

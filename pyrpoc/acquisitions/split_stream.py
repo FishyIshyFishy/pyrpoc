@@ -195,6 +195,8 @@ class SplitDataStream(Acquisition):
         total_positions = len(stage_step_sizes) * self.num_frames
         current_position = 0
         
+
+        
         for frame_idx in range(self.num_frames):
             if self._stop_flag and self._stop_flag():
                 break
@@ -225,7 +227,8 @@ class SplitDataStream(Acquisition):
                 frame_data = self.collect_split_data(self.galvo, ai_channels)
                 
                 if self.signal_bus:
-                    self.signal_bus.data_signal.emit(frame_data, current_position, total_positions, False)
+                    # Use new uniform pipeline instead of legacy data_signal
+                    self.emit_data_frame(self.signal_bus, frame_data)
                 all_frames.append(frame_data)
                 current_position += 1
             
@@ -259,7 +262,8 @@ class SplitDataStream(Acquisition):
         if all_frames:
             final_data = np.stack(all_frames)
             if self.signal_bus:
-                self.signal_bus.data_signal.emit(final_data, len(all_frames)-1, total_positions, True)
+                # Use new uniform pipeline instead of legacy data_signal
+                self.emit_acquisition_complete(self.signal_bus)
             
             self.metadata['tile_order'] = tile_indices            
             self.save_data(final_data)

@@ -46,6 +46,9 @@ class ImageDisplayWidget(BaseImageDisplayWidget):
         self.graphics_view.resizeEvent = self.on_graphics_view_resize
         
         # Timer for delayed viewport updates to fix sizing issues
+        # Initialize frame counter
+        self._current_frame_idx = 0
+        
         self.resize_timer = QTimer()
         self.resize_timer.setSingleShot(True)
         self.resize_timer.timeout.connect(self.delayed_viewport_update)
@@ -130,34 +133,76 @@ class ImageDisplayWidget(BaseImageDisplayWidget):
         self.line_endpoint_move_requested.emit(line_index, endpoint_idx, x, y, image_data)
         self.update_display()
 
-    def handle_frame_acquired(self, data_unit, idx, total):
-        if self.acq_buffer is None or self.acq_total != total:
+    def handle_data_frame_received(self, data):
+        """
+        New method for handling individual data frames during acquisition.
+        This is part of the uniform acquisition pipeline.
+        
+        data: The data frame that was just received
+        """
+        if self.acq_buffer is None or self.acq_total != self.total_frames:
             # allocate buffer for the expected number of data units
-            if isinstance(data_unit, np.ndarray):
-                shape = (total,) + data_unit.shape
-                self.acq_buffer = np.zeros(shape, dtype=data_unit.dtype)
+            if isinstance(data, np.ndarray):
+                shape = (self.total_frames,) + data.shape
+                self.acq_buffer = np.zeros(shape, dtype=data.dtype)
             else:
-                self.acq_buffer = [None] * total
-            self.acq_total = total
+                self.acq_buffer = [None] * self.total_frames
+            self.acq_total = self.total_frames
+        
         # store data unit
         if isinstance(self.acq_buffer, np.ndarray):
-            self.acq_buffer[idx] = data_unit
+            self.acq_buffer[self._current_frame_idx] = data
         else:
-            self.acq_buffer[idx] = data_unit
-        self.total_frames = total
-        self.current_frame = idx
+            self.acq_buffer[self._current_frame_idx] = data
+        
         self.frame_slider.setMaximum(max(0, self.total_frames - 1))
         self.frame_slider.setEnabled(self.total_frames > 1)
-        self.frame_slider.setValue(idx)
+        self.frame_slider.setValue(self._current_frame_idx)
         self.update_frame_label()
-        self.display_frame(idx)
+        self.display_frame(self._current_frame_idx)
         
         # Schedule delayed viewport update on first frame to fix sizing issues
-        if idx == 0:
+        if self._current_frame_idx == 0:
             self.resize_timer.start(100)  # 100ms delay
         
         self.update_overlays()
         self.update_display()
+        
+        # Increment frame counter
+        self._current_frame_idx += 1
+
+    def prepare_for_acquisition(self, total_frames):
+        """
+        Prepare the display widget for acquisition.
+        This is called when acquisition_setup_complete is emitted.
+        
+        total_frames: Total number of frames expected in this acquisition
+        """
+        # Reset frame counter for new acquisition
+        self._current_frame_idx = 0
+        
+        # Update internal state
+        self.total_frames = total_frames
+        self.current_frame = 0
+        
+        # Clear acquisition buffer
+        self.acq_buffer = None
+        self.acq_total = total_frames
+        
+        # Reset frame controls
+        self.frame_slider.setMaximum(max(0, total_frames - 1))
+        self.frame_slider.setValue(0)
+        self.frame_slider.setEnabled(total_frames > 1)
+        self.update_frame_label()
+        
+        # Clear the graphics scene
+        self.graphics_scene.clear()
+        
+        # Update frame label
+        self.frame_label.setText(f'Frame: 1/{total_frames}')
+        
+        # Schedule delayed viewport update to fix sizing issues
+        self.resize_timer.start(100)  # 100ms delay
 
     def handle_data_updated(self, data):
         '''

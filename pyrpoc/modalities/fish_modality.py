@@ -14,11 +14,24 @@ class FishModality(BaseModality):
     
     @property
     def required_instruments(self):
-        return ["galvo", "data_input", "prior stage"]
+        return ["galvo", "data input", "prior stage"]
     
     @property
     def compatible_displays(self):
         return [MultichannelImageDisplayWidget]
+    
+    @property
+    def parameter_groups(self) -> Dict[str, List[str]]:
+        return {
+            'Image Dimensions': ['x_pixels', 'y_pixels'],
+            'Scanning': ['dwell_time', 'extrasteps_left', 'extrasteps_right'],
+            'Galvo Control': ['amplitude_x', 'amplitude_y', 'offset_x', 'offset_y'],
+            'Tiling': ['numtiles_x', 'numtiles_y', 'numtiles_z'],
+            'Tile Sizes': ['tile_size_x', 'tile_size_y', 'tile_size_z'],
+            'Local RPOC': ['local_rpoc_dwell_time', 'local_extrasteps_left', 'local_extrasteps_right'],
+            'Treatment': ['repetitions', 'offset_drift_x', 'offset_drift_y'],
+            'TTL Configuration': ['ttl_device', 'ttl_port_line', 'pfi_line']
+        }
     
     @property
     def required_parameters(self) -> Dict[str, Dict[str, Any]]:

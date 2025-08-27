@@ -33,6 +33,27 @@ class Acquisition(abc.ABC):
         '''
         self.worker = worker
 
+    def emit_data_frame(self, signal_bus, data):
+        """
+        Emit a data frame using the new uniform pipeline.
+        
+        Args:
+            signal_bus: The StateSignalBus instance for emitting signals
+            data: The data frame to emit
+        """
+        if signal_bus:
+            signal_bus.data_frame_received.emit(data)
+
+    def emit_acquisition_complete(self, signal_bus):
+        """
+        Emit acquisition complete signal using the new uniform pipeline.
+        
+        Args:
+            signal_bus: The StateSignalBus instance for emitting signals
+        """
+        if signal_bus:
+            signal_bus.acquisition_complete.emit()
+
     def save_metadata(self):
         '''
         Save metadata JSON file to the folder determined by the base filename

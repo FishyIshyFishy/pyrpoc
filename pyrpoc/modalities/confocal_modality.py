@@ -14,11 +14,19 @@ class ConfocalModality(BaseModality):
     
     @property
     def required_instruments(self):
-        return ["galvo", "data_input"]
+        return ["galvo", "data input"]
     
     @property
     def compatible_displays(self):
         return [MultichannelImageDisplayWidget]
+    
+    @property
+    def parameter_groups(self) -> Dict[str, List[str]]:
+        return {
+            'Image Dimensions': ['x_pixels', 'y_pixels'],
+            'Scanning': ['dwell_time', 'extrasteps_left', 'extrasteps_right'],
+            'Galvo Control': ['amplitude_x', 'amplitude_y', 'offset_x', 'offset_y']
+        }
     
     @property
     def required_parameters(self):
