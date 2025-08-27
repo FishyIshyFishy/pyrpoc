@@ -151,6 +151,13 @@ class ImageDisplayWidget(BaseImageDisplayWidget):
         
         # store data unit
         if isinstance(self.acq_buffer, np.ndarray):
+            # grow buffer if needed
+            if self._current_frame_idx >= self.acq_buffer.shape[0]:
+                new_len = max(self._current_frame_idx + 1, self.acq_buffer.shape[0] * 2 if self.acq_buffer.shape[0] > 0 else 1)
+                new_shape = (new_len,) + self.acq_buffer.shape[1:]
+                new_buf = np.zeros(new_shape, dtype=self.acq_buffer.dtype)
+                new_buf[:self.acq_buffer.shape[0]] = self.acq_buffer
+                self.acq_buffer = new_buf
             self.acq_buffer[self._current_frame_idx] = data
         else:
             self.acq_buffer[self._current_frame_idx] = data
@@ -171,35 +178,45 @@ class ImageDisplayWidget(BaseImageDisplayWidget):
         # Increment frame counter
         self._current_frame_idx += 1
 
-    def prepare_for_acquisition(self, total_frames):
+    def prepare_for_acquisition(self, context_or_total_frames):
         """
         Prepare the display widget for acquisition.
-        This is called when acquisition_setup_complete is emitted.
-        
-        total_frames: Total number of frames expected in this acquisition
+        Accepts either an AcquisitionContext or a total_frames integer for backward compatibility.
         """
+        # Determine total frames and reset optional context
+        if isinstance(context_or_total_frames, int):
+            total_frames = context_or_total_frames
+            self.acquisition_context = None
+        else:
+            ctx = context_or_total_frames
+            total_frames = int(getattr(ctx, 'total_frames', 0) or 0)
+            self.acquisition_context = ctx
+            # store shape info if provided
+            self.frame_shape = getattr(ctx, 'frame_shape', None)
+            self.channel_info = getattr(ctx, 'channel_info', {})
+
         # Reset frame counter for new acquisition
         self._current_frame_idx = 0
         
         # Update internal state
-        self.total_frames = total_frames
+        self.total_frames = max(1, int(total_frames))
         self.current_frame = 0
         
         # Clear acquisition buffer
         self.acq_buffer = None
-        self.acq_total = total_frames
+        self.acq_total = self.total_frames
         
         # Reset frame controls
-        self.frame_slider.setMaximum(max(0, total_frames - 1))
+        self.frame_slider.setMaximum(max(0, self.total_frames - 1))
         self.frame_slider.setValue(0)
-        self.frame_slider.setEnabled(total_frames > 1)
+        self.frame_slider.setEnabled(self.total_frames > 1)
         self.update_frame_label()
         
         # Clear the graphics scene
         self.graphics_scene.clear()
         
         # Update frame label
-        self.frame_label.setText(f'Frame: 1/{total_frames}')
+        self.frame_label.setText(f'Frame: 1/{self.total_frames}')
         
         # Schedule delayed viewport update to fix sizing issues
         self.resize_timer.start(100)  # 100ms delay

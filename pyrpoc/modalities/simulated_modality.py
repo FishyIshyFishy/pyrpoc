@@ -1,4 +1,4 @@
-from .base_modality import BaseModality
+from .base_modality import BaseModality, AcquisitionContext
 from pyrpoc.displays.singlechan import ImageDisplayWidget
 from pyrpoc.acquisitions.simulated import Simulated
 from typing import List, Type, Dict, Any
@@ -46,3 +46,27 @@ class SimulatedModality(BaseModality):
     @property
     def acquisition_class(self) -> Type:
         return Simulated
+
+    def create_acquisition_context(self, parameters: Dict[str, Any]) -> AcquisitionContext:
+        """
+        Provide modality-agnostic context for displays.
+        Simulated frames are single-channel 2D arrays of size (y_pixels, x_pixels).
+        """
+        total_frames = int(parameters.get('num_frames', 1))
+        x_pixels = int(parameters.get('x_pixels', 512))
+        y_pixels = int(parameters.get('y_pixels', 512))
+
+        frame_shape = (y_pixels, x_pixels)
+        channel_info = {
+            'count': 1,
+            'names': ['Channel 1']
+        }
+        metadata = {}
+
+        return AcquisitionContext(
+            modality_key=self.key,
+            total_frames=total_frames,
+            frame_shape=frame_shape,
+            channel_info=channel_info,
+            metadata=metadata
+        )

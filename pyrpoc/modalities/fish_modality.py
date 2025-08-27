@@ -1,4 +1,4 @@
-from .base_modality import BaseModality
+from .base_modality import BaseModality, AcquisitionContext
 from pyrpoc.displays.multichan_tiled import MultichannelImageDisplayWidget
 from pyrpoc.acquisitions.fish import Fish
 from typing import List, Type, Dict, Any
@@ -201,3 +201,40 @@ class FishModality(BaseModality):
     @property
     def acquisition_class(self) -> Type:
         return Fish
+
+    def create_acquisition_context(self, parameters: Dict[str, Any]) -> AcquisitionContext:
+        """Create acquisition context for Fish modality (confocal tiling + treatment).
+        """
+        num_frames = int(parameters.get('num_frames', 1))
+        numtiles_x = int(parameters.get('numtiles_x', 1))
+        numtiles_y = int(parameters.get('numtiles_y', 1))
+        numtiles_z = int(parameters.get('numtiles_z', 1))
+        total_frames = max(1, num_frames * numtiles_x * numtiles_y * numtiles_z)
+        x_pixels = int(parameters.get('x_pixels', 512))
+        y_pixels = int(parameters.get('y_pixels', 512))
+
+        channel_count = 1
+        channel_info = {
+            'count': channel_count,
+            'names': [f'Channel {i+1}' for i in range(channel_count)]
+        }
+        frame_shape = (y_pixels, x_pixels) if channel_count == 1 else (channel_count, y_pixels, x_pixels)
+
+        metadata = {
+            'treatment': {
+                'repetitions': parameters.get('repetitions'),
+                'offset_drift_x': parameters.get('offset_drift_x'),
+                'offset_drift_y': parameters.get('offset_drift_y'),
+                'ttl_device': parameters.get('ttl_device'),
+                'ttl_port_line': parameters.get('ttl_port_line'),
+                'pfi_line': parameters.get('pfi_line')
+            }
+        }
+
+        return AcquisitionContext(
+            modality_key=self.key,
+            total_frames=total_frames,
+            frame_shape=frame_shape,
+            channel_info=channel_info,
+            metadata=metadata
+        )

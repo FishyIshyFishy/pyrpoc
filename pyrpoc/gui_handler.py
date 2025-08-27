@@ -2,6 +2,7 @@ import json
 from PyQt6.QtWidgets import QFileDialog, QMessageBox
 from pyrpoc.instruments.instrument_manager import create_instrument, get_instruments_by_type, show_add_instrument_dialog, show_configure_instrument_dialog
 from pyrpoc.acquisitions import *
+from pyrpoc.modalities import modality_registry
 from PyQt6.QtCore import QObject, pyqtSignal, QThread
 import numpy as np
 import os
@@ -186,12 +187,9 @@ class StateSignalBus(QObject):
 
         # New acquisition pipeline signal handlers
         self.display_setup_requested.connect(lambda display_class: handle_display_setup_requested(display_class, app_state, main_window))
-        self.acquisition_setup_complete.connect(lambda total_frames: handle_acquisition_setup_complete(total_frames, app_state, main_window))
         self.data_frame_received.connect(lambda data: handle_data_frame_received(data, app_state, main_window))
         self.acquisition_complete.connect(lambda: handle_acquisition_complete(app_state, main_window))
         
-        # Legacy data signal handler - disconnected since we're using new uniform pipeline
-        # self.data_signal.connect(lambda data, idx, total, is_final: handle_data_signal(data, idx, total, is_final, app_state, main_window))
         self.console_message.connect(lambda message: handle_console_message(message, app_state, main_window))
 
 
@@ -429,28 +427,16 @@ def handle_save_config(app_state):
 def handle_continuous_acquisition(app_state, signal_bus):
     return handle_single_acquisition(app_state, signal_bus, continuous=True)
 
-def handle_single_acquisition(app_state, signal_bus, continuous=False):
-    # check if acquisition is already running
-    if hasattr(signal_bus, 'acq_thread') and hasattr(signal_bus, 'acq_worker'):
-        signal_bus.console_message.emit("Acquisition already in progress. Please stop the current acquisition first.")
-        return
-    
+def handle_single_acquisition(app_state, signal_bus, continuous=False):    
     # take snapshot of all parameters rather than continually reading them from app_state during acquisition
     modality_key = app_state.modality
+    modality = modality_registry.get_modality(modality_key)
     parameters = app_state.acquisition_parameters.copy()
 
     if continuous:
         signal_bus.console_message.emit(f"Starting continuous {modality_key} acquisition...")
     else:
         signal_bus.console_message.emit(f"Starting {modality_key} acquisition...")
-    
-    # Get the modality object for validation
-    from pyrpoc.modalities import modality_registry
-    modality = modality_registry.get_modality(modality_key)
-    
-    if modality is None:
-        signal_bus.console_message.emit(f"Error: Unknown modality '{modality_key}'")
-        return
     
     # Validate that required instruments are present
     instruments = app_state.instruments
@@ -547,86 +533,6 @@ def handle_single_acquisition(app_state, signal_bus, continuous=False):
         signal_bus.acquisition_started.emit()
     else:
         signal_bus.console_message.emit("Error: Failed to create acquisition object")
-
-def validate_acquisition_parameters(parameters, modality):
-    # All modalities now use acquisition parameters for pixel dimensions
-    required_params = {
-        'simulated': ['x_pixels', 'y_pixels', 'num_frames'],
-        'confocal': [
-            'x_pixels', 'y_pixels', 'num_frames',
-            'dwell_time', 'extrasteps_left', 'extrasteps_right',
-            'amplitude_x', 'amplitude_y', 'offset_x', 'offset_y'
-        ],
-        'split data stream': [
-            'x_pixels', 'y_pixels', 'num_frames', 'split_percentage', 'aom_delay',
-            'dwell_time', 'extrasteps_left', 'extrasteps_right',
-            'amplitude_x', 'amplitude_y', 'offset_x', 'offset_y',
-            'numtiles_x', 'numtiles_y', 'numtiles_z',
-            'tile_size_x', 'tile_size_y', 'tile_size_z'
-        ],
-        'confocal mosaic': [
-            'x_pixels', 'y_pixels', 'num_frames',
-            'dwell_time', 'extrasteps_left', 'extrasteps_right',
-            'amplitude_x', 'amplitude_y', 'offset_x', 'offset_y',
-            'numtiles_x', 'numtiles_y', 'numtiles_z',
-            'tile_size_x', 'tile_size_y', 'tile_size_z'
-        ],
-        'fish': [
-            'x_pixels', 'y_pixels', 'num_frames',
-            'dwell_time', 'extrasteps_left', 'extrasteps_right',
-            'amplitude_x', 'amplitude_y', 'offset_x', 'offset_y',
-            'numtiles_x', 'numtiles_y', 'numtiles_z',
-            'tile_size_x', 'tile_size_y', 'tile_size_z',
-            'offset_drift_x', 'offset_drift_y', 'repetitions',
-            'ttl_device', 'ttl_port_line', 'pfi_line',
-            'local_extrasteps_left', 'local_extrasteps_right', 'local_rpoc_dwell_time'
-        ],
-        'custom': ['x_pixels', 'y_pixels', 'num_frames']
-    }
-    
-    missing_params = []
-    for param in required_params[modality]:
-        if param not in parameters:
-            missing_params.append(param)
-    
-    if missing_params:
-        raise ValueError(f"Missing required parameters for {modality}: {missing_params}")
-    
-    # Validate parameter ranges for all parameters that are present
-    validation_rules = {
-        'x_pixels': (1, 10000, "x_pixels must be between 1 and 10000"),
-        'y_pixels': (1, 10000, "y_pixels must be between 1 and 10000"),
-        'num_frames': (1, 10000, "num_frames must be between 1 and 10000"),
-        'split_percentage': (1, 99, "split_percentage must be between 1 and 99"),
-        'aom_delay': (0, 1000, "aom_delay must be between 0 and 1000 µs"),
-        'dwell_time': (1, 1000, "dwell_time must be between 1 and 1000 µs"),
-        'extrasteps_left': (0, 10000, "extrasteps_left must be between 0 and 10000"),
-        'extrasteps_right': (0, 10000, "extrasteps_right must be between 0 and 10000"),
-        'amplitude_x': (0.01, 10.0, "amplitude_x must be between 0.01V and 10V"),
-        'amplitude_y': (0.01, 10.0, "amplitude_y must be between 0.01V and 10V"),
-        'offset_x': (-10.0, 10.0, "offset_x must be between -10V and 10V"),
-        'offset_y': (-10.0, 10.0, "offset_y must be between -10V and 10V"),
-        'numtiles_x': (1, 1000, "numtiles_x must be between 1 and 1000"),
-        'numtiles_y': (1, 1000, "numtiles_y must be between 1 and 1000"),
-        'numtiles_z': (1, 1000, "numtiles_z must be between 1 and 1000"),
-        'tile_size_x': (-10000, 10000, "tile_size_x must be between -10000µm and 10000µm"),
-        'tile_size_y': (-10000, 10000, "tile_size_y must be between -10000µm and 10000µm"),
-        'tile_size_z': (-10000, 10000, "tile_size_z must be between -10000µm and 10000µm"),
-        # Fish modality specific parameters
-        'offset_drift_x': (-10.0, 10.0, "offset_drift_x must be between -10V and 10V"),
-        'offset_drift_y': (-10.0, 10.0, "offset_drift_y must be between -10V and 10V"),
-        'repetitions': (1, 1000, "repetitions must be between 1 and 1000"),
-        'local_extrasteps_left': (0, 10000, "local_extrasteps_left must be between 0 and 10000"),
-        'local_extrasteps_right': (0, 10000, "local_extrasteps_right must be between 0 and 10000"),
-        'local_rpoc_dwell_time': (1, 10000, "local_rpoc_dwell_time must be between 1 and 10000 µs")
-    }
-    
-    # Validate each parameter that is present in the parameters dict
-    for param_name, param_value in parameters.items():
-        if param_name in validation_rules:
-            min_val, max_val, error_msg = validation_rules[param_name]
-            if param_value < min_val or param_value > max_val:
-                raise ValueError(error_msg)
 
 def handle_acquisition_thread_finished(data, signal_bus, thread, worker):
     # for continuous acquisition, don't clean up the thread - let it continue
@@ -801,23 +707,6 @@ def handle_lines_toggled(enabled, app_state, main_window=None):
     
     return 0
 
-def handle_data_signal(data, idx, total, is_final, app_state, main_window):
-    # route the unified data signal to the widget
-    if hasattr(main_window, 'mid_layout') and hasattr(main_window.mid_layout, 'image_display_widget'):
-        widget = main_window.mid_layout.image_display_widget
-        if hasattr(widget, 'handle_data_signal'):
-            widget.handle_data_signal(data, idx, total, is_final)
-    return 0
-
-def handle_zoom_in(app_state, main_window):
-    pass
-
-def handle_zoom_out(app_state, main_window):
-    pass
-
-def handle_fit_to_view(app_state, main_window):
-    pass
-
 def handle_mask_created(mask, app_state, main_window, signal_bus):
     # the mask is now handled by the individual channel widgets
     # this function is kept for backward compatibility but may not be used
@@ -987,19 +876,12 @@ def handle_local_rpoc_cancel(signal_bus):
     return 0
 
 
-# New acquisition pipeline handlers
 def handle_display_setup_requested(display_class_name, app_state, main_window):
-    """Handle display setup request for acquisition"""
     try:
-        # Check if the display type is different from current
         if app_state.selected_display != display_class_name:
-            # Update the selected display
             app_state.selected_display = display_class_name
+            main_window.rebuild_display()
             
-            # Rebuild only the display part of the GUI
-            main_window.rebuild_display_only()
-            
-            # Update the display controls to reflect the new selection
             if hasattr(main_window, 'left_widget') and hasattr(main_window.left_widget, 'display_controls'):
                 main_window.left_widget.display_controls.update_display_selection(display_class_name)
             
@@ -1009,37 +891,30 @@ def handle_display_setup_requested(display_class_name, app_state, main_window):
             if hasattr(main_window, 'signals'):
                 main_window.signals.console_message.emit("Display type unchanged, proceeding with acquisition")
         
-        # Signal that display setup is complete
-        # We need to get the signal bus from the main window
-        if hasattr(main_window, 'signals'):
-            main_window.signals.acquisition_setup_complete.emit(app_state.acquisition_parameters.get('num_frames', 1))
+        # Now prepare the display for acquisition using the modality's context
+        modality = modality_registry.get_modality(app_state.modality)
+        if modality:
+            # Create acquisition context from the modality
+            acquisition_context = modality.create_acquisition_context(app_state.acquisition_parameters)
+            
+            # Get the current display widget and prepare it
+            if hasattr(main_window, 'mid_layout') and hasattr(main_window.mid_layout, 'image_display_widget'):
+                display_widget = main_window.mid_layout.image_display_widget
+                if hasattr(display_widget, 'prepare_for_acquisition'):
+                    display_widget.prepare_for_acquisition(acquisition_context)
+                    # Inform any listeners that setup is complete
+                    if hasattr(main_window, 'signals') and hasattr(main_window.signals, 'acquisition_setup_complete'):
+                        try:
+                            main_window.signals.acquisition_setup_complete.emit(acquisition_context.total_frames)
+                        except Exception:
+                            pass
+                    main_window.signals.console_message.emit(f"Display prepared for {modality.name} acquisition")
+                else:
+                    main_window.signals.console_message.emit("Warning: Display widget doesn't support acquisition preparation")
         
     except Exception as e:
-        # We need to get the signal bus from the main window
         if hasattr(main_window, 'signals'):
             main_window.signals.console_message.emit(f"Error setting up display: {e}")
-        return 0
-    
-    return 1
-
-
-def handle_acquisition_setup_complete(total_frames, app_state, main_window):
-    """Handle acquisition setup completion"""
-    try:
-        # This signal indicates that the display is ready and acquisition can begin
-        # The display widget should now be prepared to receive data frames
-        if hasattr(main_window, 'signals'):
-            main_window.signals.console_message.emit(f"Acquisition setup complete. Ready to receive {total_frames} frames.")
-        
-        # Prepare the display widget for acquisition
-        if hasattr(main_window, 'mid_layout') and hasattr(main_window.mid_layout, 'image_display_widget'):
-            widget = main_window.mid_layout.image_display_widget
-            if hasattr(widget, 'prepare_for_acquisition'):
-                widget.prepare_for_acquisition(total_frames)
-        
-    except Exception as e:
-        if hasattr(main_window, 'signals'):
-            main_window.signals.console_message.emit(f"Error in acquisition setup: {e}")
         return 0
     
     return 1

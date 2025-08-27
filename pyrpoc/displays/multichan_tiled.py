@@ -214,7 +214,10 @@ class MultichannelImageDisplayWidget(BaseImageDisplayWidget):
                     self.num_channels = 1
                     self.update_channel_names()
                 else:
-                    self._buffer = np.zeros((self.total_frames, 1, data.shape[0], data.shape[1]))
+                    # unexpected shape; coerce to single channel 2D per frame
+                    flat = data.reshape(-1)
+                    size = int(np.sqrt(flat.size))
+                    self._buffer = np.zeros((self.total_frames, 1, size, size))
                     self.num_channels = 1
                     self.update_channel_names()
             else:
@@ -225,15 +228,20 @@ class MultichannelImageDisplayWidget(BaseImageDisplayWidget):
         
         # Store the frame data
         if isinstance(data, np.ndarray):
+            # grow buffer if needed
+            if self._current_frame_idx >= self._buffer.shape[0]:
+                new_len = max(self._current_frame_idx + 1, self._buffer.shape[0] * 2 if self._buffer.shape[0] > 0 else 1)
+                T, C, H, W = self._buffer.shape
+                new_buf = np.zeros((new_len, C, H, W), dtype=self._buffer.dtype)
+                new_buf[:T] = self._buffer
+                self._buffer = new_buf
             if data.ndim == 3:  # channels x height x width
-                if self._current_frame_idx < self._buffer.shape[0]:  # Safety check
-                    self._buffer[self._current_frame_idx] = data
+                self._buffer[self._current_frame_idx] = data
             elif data.ndim == 2:  # height x width (single channel)
-                if self._current_frame_idx < self._buffer.shape[0]:  # Safety check
-                    self._buffer[self._current_frame_idx, 0] = data
+                self._buffer[self._current_frame_idx, 0] = data
             else:
-                if self._current_frame_idx < self._buffer.shape[0]:  # Safety check
-                    self._buffer[self._current_frame_idx, 0] = data
+                # unexpected, attempt first channel 2D
+                self._buffer[self._current_frame_idx, 0] = data.reshape(self._buffer.shape[2], self._buffer.shape[3])
         
         # Update current frame and frame controls
         self.current_frame = self._current_frame_idx
@@ -262,28 +270,38 @@ class MultichannelImageDisplayWidget(BaseImageDisplayWidget):
         # Increment frame counter
         self._current_frame_idx += 1
 
-    def prepare_for_acquisition(self, total_frames):
+    def prepare_for_acquisition(self, context_or_total_frames):
         """
         Prepare the display widget for acquisition.
-        This is called when acquisition_setup_complete is emitted.
-        
-        total_frames: Total number of frames expected in this acquisition
+        Accepts either an AcquisitionContext or a total_frames integer for backward compatibility.
         """
+        # Determine total frames and reset optional context
+        if isinstance(context_or_total_frames, int):
+            total_frames = context_or_total_frames
+            self.acquisition_context = None
+        else:
+            ctx = context_or_total_frames
+            total_frames = int(getattr(ctx, 'total_frames', 0) or 0)
+            self.acquisition_context = ctx
+            # store shape info if provided
+            self.frame_shape = getattr(ctx, 'frame_shape', None)
+            self.channel_info = getattr(ctx, 'channel_info', {})
+
         # Reset frame counter for new acquisition
         self._current_frame_idx = 0
         
         # Update internal state
-        self.total_frames = total_frames
+        self.total_frames = max(1, int(total_frames))
         self.current_frame = 0
         
         # Clear acquisition buffer
         self._buffer = None
-        self.acq_total = total_frames
+        self.acq_total = self.total_frames
         
         # Reset frame controls
-        self.frame_slider.setMaximum(max(0, total_frames - 1))
+        self.frame_slider.setMaximum(max(0, self.total_frames - 1))
         self.frame_slider.setValue(0)
-        self.frame_slider.setEnabled(total_frames > 1)
+        self.frame_slider.setEnabled(self.total_frames > 1)
         self._update_frame_label()
         
         # Clear all channel views
@@ -291,7 +309,7 @@ class MultichannelImageDisplayWidget(BaseImageDisplayWidget):
             iv.clear()
         
         # Update frame label
-        self.frame_label.setText(f"1/{total_frames}")
+        self.frame_label.setText(f"1/{self.total_frames}")
         
         # Emit display data changed to notify other components
         self.display_data_changed.emit()

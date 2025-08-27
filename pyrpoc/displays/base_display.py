@@ -51,29 +51,44 @@ class BaseImageDisplayWidget(QWidget):
         else:
             self._current_frame_idx = 1
     
-    def prepare_for_acquisition(self, total_frames):
-        '''
-        Prepare the display widget for acquisition.
-        This is called when acquisition_setup_complete is emitted.
+    def prepare_for_acquisition(self, acquisition_context):
+        """
+        Prepare the display widget for acquisition using the provided context.
+        This replaces the old total_frames parameter approach.
         
-        total_frames: Total number of frames expected in this acquisition
-        '''
-        # Default implementation: update internal state
-        self.total_frames = total_frames
+        Args:
+            acquisition_context: AcquisitionContext object containing acquisition information
+        """
+        # Store the context for reference
+        self.acquisition_context = acquisition_context
+        
+        # Update internal state
+        self.total_frames = acquisition_context.total_frames
         self.current_frame = 0
         
         # Clear acquisition buffer
         self.acq_buffer = None
-        self.acq_total = total_frames
+        self.acq_total = acquisition_context.total_frames
         
         # Initialize frame counter
         self._current_frame_idx = 0
         
+        # Store frame shape information
+        self.frame_shape = acquisition_context.frame_shape
+        self.channel_info = acquisition_context.channel_info
+        
         # Subclasses can override this for more specific preparation
+        self._prepare_for_acquisition_impl(acquisition_context)
     
-
-    
-
+    def _prepare_for_acquisition_impl(self, acquisition_context):
+        """
+        Subclass-specific preparation logic. Override this method for custom preparation.
+        
+        Args:
+            acquisition_context: AcquisitionContext object
+        """
+        # Default implementation does nothing
+        pass
     
     def get_current_frame_data(self):
         '''

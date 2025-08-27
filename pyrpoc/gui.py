@@ -1126,7 +1126,7 @@ class MainWindow(QMainWindow):
 
 
 
-    def rebuild_display_only(self):
+    def rebuild_display(self):
         """Rebuild only the display part of the GUI without affecting other components"""
         try:
             # Get the selected display class

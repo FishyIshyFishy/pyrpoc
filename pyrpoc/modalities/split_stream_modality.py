@@ -1,4 +1,4 @@
-from .base_modality import BaseModality
+from .base_modality import BaseModality, AcquisitionContext
 from pyrpoc.displays.multichan_tiled import MultichannelImageDisplayWidget
 from pyrpoc.acquisitions.split_stream import SplitDataStream
 from typing import List, Type, Dict, Any
@@ -151,3 +151,35 @@ class SplitStreamModality(BaseModality):
     @property
     def acquisition_class(self) -> Type:
         return SplitDataStream
+
+    def create_acquisition_context(self, parameters: Dict[str, Any]) -> AcquisitionContext:
+        """Create acquisition context for Split Data Stream modality.
+        Expects interleaved or paired channel outputs; displays can show 2x inputs per physical input.
+        """
+        total_frames = int(parameters.get('num_frames', 1))
+        x_pixels = int(parameters.get('x_pixels', 512))
+        y_pixels = int(parameters.get('y_pixels', 512))
+
+        # Default to 2 channels to represent split portions for one input.
+        # If more inputs are active, display can expand based on instruments.
+        channel_count = 2
+        channel_info = {
+            'count': channel_count,
+            'names': [f'Channel {i+1}' for i in range(channel_count)]
+        }
+        frame_shape = (channel_count, y_pixels, x_pixels)
+
+        metadata = {
+            'split_stream': {
+                'split_percentage': parameters.get('split_percentage'),
+                'aom_delay': parameters.get('aom_delay'),
+            }
+        }
+
+        return AcquisitionContext(
+            modality_key=self.key,
+            total_frames=total_frames,
+            frame_shape=frame_shape,
+            channel_info=channel_info,
+            metadata=metadata
+        )

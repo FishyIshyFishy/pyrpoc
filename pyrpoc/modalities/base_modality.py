@@ -3,6 +3,31 @@ from typing import List, Dict, Any, Type
 from pyrpoc.displays.base_display import BaseImageDisplayWidget
 from pyrpoc.instruments.base_instrument import Instrument
 
+class AcquisitionContext:
+    """Context object containing information needed by displays to prepare for acquisition"""
+    
+    def __init__(self, modality_key: str, total_frames: int, frame_shape: tuple, 
+                 channel_info: dict = None, metadata: dict = None):
+        self.modality_key = modality_key
+        self.total_frames = total_frames
+        self.frame_shape = frame_shape  # (height, width) or (channels, height, width)
+        self.channel_info = channel_info or {}
+        self.metadata = metadata or {}
+    
+    def get_frame_dimensions(self):
+        """Get the dimensions of a single frame"""
+        if len(self.frame_shape) == 2:
+            return self.frame_shape  # (height, width)
+        elif len(self.frame_shape) == 3:
+            return self.frame_shape[1:]  # (height, width) from (channels, height, width)
+        return self.frame_shape
+    
+    def get_channel_count(self):
+        """Get the number of channels"""
+        if len(self.frame_shape) == 3:
+            return self.frame_shape[0]
+        return 1
+
 class BaseModality(ABC):
     """Base class for all acquisition modalities"""
     
@@ -69,6 +94,19 @@ class BaseModality(ABC):
     def acquisition_class(self) -> Type:
         """The acquisition class to use for this modality"""
         pass
+    
+    def create_acquisition_context(self, parameters: Dict[str, Any]) -> AcquisitionContext:
+        """
+        Create an acquisition context for the display to prepare for acquisition.
+        This method should be implemented by subclasses to provide modality-specific context.
+        
+        Args:
+            parameters: Acquisition parameters from app_state
+            
+        Returns:
+            AcquisitionContext object with information needed by displays
+        """
+        raise NotImplementedError("Subclasses must implement create_acquisition_context")
     
     def validate_instruments(self, instruments: List[Instrument]) -> bool:
         """Validate that all required instruments are present"""

@@ -1,4 +1,4 @@
-from .base_modality import BaseModality
+from .base_modality import BaseModality, AcquisitionContext
 from pyrpoc.displays.multichan_tiled import MultichannelImageDisplayWidget
 from pyrpoc.acquisitions.confocal_mosaic import ConfocalMosaic
 from typing import List, Type, Dict, Any
@@ -136,3 +136,43 @@ class ConfocalMosaicModality(BaseModality):
     @property
     def acquisition_class(self) -> Type:
         return ConfocalMosaic
+
+    def create_acquisition_context(self, parameters: Dict[str, Any]) -> AcquisitionContext:
+        """Create acquisition context for confocal mosaic imaging.
+        Each data unit is a tile image; the display treats it as a frame.
+        """
+        # total frames equals frames per acquisition times number of tile positions
+        num_frames = int(parameters.get('num_frames', 1))
+        numtiles_x = int(parameters.get('numtiles_x', 1))
+        numtiles_y = int(parameters.get('numtiles_y', 1))
+        numtiles_z = int(parameters.get('numtiles_z', 1))
+        total_frames = max(1, num_frames * numtiles_x * numtiles_y * numtiles_z)
+        x_pixels = int(parameters.get('x_pixels', 512))
+        y_pixels = int(parameters.get('y_pixels', 512))
+
+        # Channel count depends on data inputs; default 1
+        channel_count = 1
+        channel_info = {
+            'count': channel_count,
+            'names': [f'Channel {i+1}' for i in range(channel_count)]
+        }
+        frame_shape = (y_pixels, x_pixels) if channel_count == 1 else (channel_count, y_pixels, x_pixels)
+
+        metadata = {
+            'tiling': {
+                'numtiles_x': numtiles_x,
+                'numtiles_y': numtiles_y,
+                'numtiles_z': numtiles_z,
+                'tile_size_x': parameters.get('tile_size_x'),
+                'tile_size_y': parameters.get('tile_size_y'),
+                'tile_size_z': parameters.get('tile_size_z'),
+            }
+        }
+
+        return AcquisitionContext(
+            modality_key=self.key,
+            total_frames=total_frames,
+            frame_shape=frame_shape,
+            channel_info=channel_info,
+            metadata=metadata
+        )
