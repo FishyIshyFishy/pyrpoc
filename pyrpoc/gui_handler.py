@@ -66,7 +66,6 @@ class AppState:
             'acquisition_parameters_visible': True,
             'instrument_controls_visible': True,
             'display_controls_visible': True,
-            'lines_enabled': False,
             'main_splitter_sizes': [200, 800, 200],  # left, middle, right panel sizes
             'vertical_splitter_sizes': [100, 800],  # top bar, main content sizes
         }
@@ -135,7 +134,6 @@ class StateSignalBus(QObject):
     
     # UI state signals
     ui_state_changed = pyqtSignal(str, object) # emits when UI state changes (param_name, new_value)
-    lines_toggled = pyqtSignal(bool) # emits when lines are toggled
     
     # New acquisition pipeline signals
     display_setup_requested = pyqtSignal(str) # display_class_name - requests display setup for acquisition
@@ -205,21 +203,11 @@ class StateSignalBus(QObject):
         self.save_path_changed.connect(lambda path: handle_save_path_changed(path, app_state))
         
         self.ui_state_changed.connect(lambda param_name, value: handle_ui_state_changed(param_name, value, app_state))
-        self.lines_toggled.connect(lambda enabled: handle_lines_toggled(enabled, app_state, main_window))
         
         self.mask_created.connect(lambda mask: handle_mask_created(mask, app_state, main_window, self))
         self.rpoc_channel_removed.connect(lambda channel_id: handle_rpoc_channel_removed(channel_id, app_state, self))
         self.local_rpoc_started.connect(lambda parameters: handle_local_rpoc_started(parameters, app_state, self))
         self.local_rpoc_progress.connect(lambda repetition: handle_local_rpoc_progress(repetition, app_state, self))
-
-        # lines <-> Image Display signal wiring
-        try:
-            image_display = main_window.mid_layout.image_display_widget
-            lines = main_window.mid_layout.lines_widget
-            image_display.connect_lines_widget(lines)
-
-        except Exception as e:
-            print(f"Error connecting lines widget: {e}")
 
         # put remaining singla wiring between image displa widgets and dockable helper widgets
         
@@ -351,15 +339,6 @@ def handle_load_config(app_state, main_window):
                     app_state.rpoc_static_channels[channel_id_str] = static_data
 
         main_window.build_gui()
-        
-        # Re-establish lines widget connections after GUI rebuild
-        try:
-            image_display = main_window.mid_layout.image_display_widget
-            lines = main_window.mid_layout.lines_widget
-            image_display.connect_lines_widget(lines)
-        except Exception as e:
-            print(f"Error re-establishing lines widget connections after config load: {e}")
-
         return 1
         
     except Exception as e:
@@ -699,12 +678,6 @@ def handle_save_path_changed(path, app_state):
 def handle_ui_state_changed(param_name, value, app_state):
     if param_name in app_state.ui_state:
         app_state.ui_state[param_name] = value
-    return 0
-
-def handle_lines_toggled(enabled, app_state, main_window=None):
-    app_state.ui_state['lines_enabled'] = enabled
-    main_window.mid_layout.on_lines_toggled(enabled)
-    
     return 0
 
 def handle_mask_created(mask, app_state, main_window, signal_bus):

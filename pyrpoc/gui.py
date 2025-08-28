@@ -13,7 +13,6 @@ import sys
 import pyqtgraph as pg
 from pyrpoc.displays import *
 from pyrpoc.displays.multichan_tiled import MultichannelDisplayParametersWidget
-from pyrpoc.dockable_widgets import LinesWidget
 from pyrpoc.rpoc.rpoc_mask_editor import RPOCMaskEditor
 from superqt import QSearchableComboBox
 import cv2
@@ -116,20 +115,6 @@ class TopBar(QWidget):
         self.console.setReadOnly(True)
         self.console.setMinimumHeight(50)  # Ensure minimum height for console
         console_layout.addWidget(self.console)
-
-        # tool buttons, eventually i will make these like imageJ icons but for now just text
-        self.tool_buttons_widget = QWidget()
-        tool_buttons_layout = QHBoxLayout()
-        tool_buttons_layout.setContentsMargins(0, 0, 0, 0)
-        self.lines_btn = QPushButton('Lines')
-        self.lines_btn.setCheckable(True)
-        self.lines_btn.setChecked(app_state.ui_state['lines_enabled'])
-
-        self.lines_btn.toggled.connect(signals.lines_toggled.emit)
-        tool_buttons_layout.addWidget(self.lines_btn)
-        tool_buttons_layout.addStretch()
-        self.tool_buttons_widget.setLayout(tool_buttons_layout)
-        console_layout.addWidget(self.tool_buttons_widget)
 
         console_widget.setLayout(console_layout)
         layout.addWidget(console_widget, stretch=1)
@@ -993,28 +978,12 @@ class DockableMiddlePanel(QMainWindow):
         self.setCentralWidget(central_widget)
 
 
-        self.lines_dock = QDockWidget('Lines', self)
-        self.lines_widget = LinesWidget(self.app_state, self.signals)
-        self.lines_dock.setWidget(self.lines_widget)
-        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.lines_dock)
-        self.lines_dock.hide()
-        
-        self.on_lines_toggled(self.app_state.ui_state['lines_enabled'])
-
 
     def create_image_display_widget(self):
         # For now, use a default display that works with all modalities
         # This will be enhanced later to handle modality-specific display requirements
         # without requiring a full rebuild
         return ImageDisplayWidget(self.app_state, self.signals)
-
-    def on_lines_toggled(self, enabled):        
-        if enabled:
-            self.lines_dock.show()
-            self.lines_widget.update_status(True)
-        else:
-            self.lines_dock.hide()
-            self.lines_widget.update_status(False)
 
     def set_image_display_widget(self, widget):
         layout = self.centralWidget().layout()
@@ -1156,14 +1125,7 @@ class MainWindow(QMainWindow):
                 # Update the display parameters widget in the left panel
                 if self.left_widget and hasattr(self.left_widget, 'display_controls'):
                     self.left_widget.display_controls.set_display_params_widget(new_display_widget)
-                
-                # Re-establish lines widget connections
-                try:
-                    image_display = self.mid_layout.image_display_widget
-                    lines = self.mid_layout.lines_widget
-                    image_display.connect_lines_widget(lines)
-                except Exception as e:
-                    print(f"Error re-establishing lines widget connections: {e}")
+            
             
         except Exception as e:
             self.signals.console_message.emit(f"Error rebuilding display: {e}")

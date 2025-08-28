@@ -17,12 +17,6 @@ class BaseImageDisplayWidget(QWidget):
     This eliminates modality-specific logic in the GUI, making displays modality-agnostic.
     '''
     
-    # all widgets must deal with these signals
-    line_add_requested = pyqtSignal(int, int, int, int, object, list)  # x1, y1, x2, y2, image_data, channel_names
-    line_endpoint_move_requested = pyqtSignal(int, int, int, int, object)  # line_index, endpoint_idx, x, y, image_data
-    line_remove_requested = pyqtSignal(int)  # index
-    traces_update_requested = pyqtSignal(object)  # image_data
-    
     def __init__(self, app_state, signals):
         super().__init__()
         self.app_state = app_state
@@ -139,59 +133,6 @@ class BaseImageDisplayWidget(QWidget):
         '''
         raise NotImplementedError("Subclasses must implement display_frame")
     
-    def connect_lines_widget(self, lines_widget):
-        '''
-        Connect signals between this widget and a lines widget.
-        
-        lines_widget: The lines widget to connect to
-        '''
-        # lines --> image display
-        lines_widget.add_mode_requested.connect(self.enter_add_mode)
-        lines_widget.remove_line_requested.connect(self.remove_line_overlay)
-        lines_widget.line_endpoint_moved.connect(self.move_line_endpoint)
-        
-        # image display --> lines
-        self.line_add_requested.connect(lines_widget.add_line)
-        self.line_endpoint_move_requested.connect(lines_widget.update_line_endpoint)
-        self.line_remove_requested.connect(lines_widget.remove_line)
-        self.traces_update_requested.connect(lines_widget.update_all_traces)
-        
-        # for drawing overlays
-        self.lines_widget = lines_widget
-    
-    def enter_add_mode(self):
-        '''
-        Enter interactive tool mode with clicks and stuff.
-        '''
-        raise NotImplementedError("Subclasses must implement enter_add_mode")
-    
-    def remove_line_overlay(self, index):
-        '''
-        Remove a given line.
-
-        index: Index of the line to remove
-        '''
-        raise NotImplementedError("Subclasses must implement remove_line_overlay")
-    
-    def move_line_endpoint(self, line_index, endpoint_idx, x, y, image_data):
-        '''
-        Move a line endpoint.
-        
-        line_index: Index of the line
-        endpoint_idx: 0 for first endpoint, 1 for second endpoint
-        x, y: New coordinates
-        image_data: Current image data
-        '''
-        raise NotImplementedError("Subclasses must implement move_line_endpoint")
-    
-    def get_lines(self):
-        '''
-        Get current line positions and colors.
-        
-        returns a list of (x1, y1, x2, y2, color) tuples for each line
-        '''
-        raise NotImplementedError("Subclasses must implement get_lines")
-    
     def register_overlay_callback(self, callback):
         '''
         Hold the callback function to be called when overlays need updating.
@@ -217,13 +158,3 @@ class BaseImageDisplayWidget(QWidget):
         '''
         self.total_frames = total_frames
         self.current_frame = current_frame
-    
-    def get_channel_names(self):
-        '''
-        Get channel names for legend display in lines widget.
-        
-        Returns:
-            list: List of channel names
-        '''
-        # Default implementation for single channel
-        return ['Channel 1']

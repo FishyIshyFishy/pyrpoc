@@ -29,15 +29,6 @@ class MultichannelImageDisplayWidget(BaseImageDisplayWidget):
         self._buffer = None               # numpy array: (T, C, H, W)
         self.num_channels = 1
         self.channel_names = ['Channel 1']
-        
-        # Line drawing state
-        self.add_mode = False
-        self.temp_line_start = None
-        self.dragging_endpoint = None
-        self.lines_widget = None
-        
-        # Line overlays for each channel
-        self.line_overlays = {}  # {channel_idx: [line_items]}
 
         # Initialize frame counter
         self._current_frame_idx = 0
@@ -258,12 +249,6 @@ class MultichannelImageDisplayWidget(BaseImageDisplayWidget):
         if self._current_frame_idx == 0:
             self._update_frame_controls(self.total_frames, 0)
         
-        # Only update overlays and emit signals if this is the current frame
-        if self._current_frame_idx == self.current_frame:
-            self.update_overlays()
-            # Emit traces update signal
-            self.traces_update_requested.emit(self.get_all_channel_data())
-        
         # Emit display data changed after data and channels are set up
         self.display_data_changed.emit()
         
@@ -363,7 +348,6 @@ class MultichannelImageDisplayWidget(BaseImageDisplayWidget):
         self.frame_label.setText(f"{idx+1}/{T}")
         # redraw overlays if any
         self.update_overlays()
-        self.traces_update_requested.emit(self.get_all_channel_data())
 
     def _update_frame_label(self):
         """Update the frame label text."""
@@ -415,97 +399,6 @@ class MultichannelImageDisplayWidget(BaseImageDisplayWidget):
         """Update all channel displays."""
         self._display_frame(self.current_frame)
         self._draw_line_overlays()
-
-    def _draw_line_overlays(self):
-        """Draw line overlays on all channels."""
-        # Clear existing overlays
-        for channel_idx in self.line_overlays:
-            for item in self.line_overlays[channel_idx]:
-                if hasattr(item, 'scene') and item.scene():
-                    item.scene().removeItem(item)
-            self.line_overlays[channel_idx].clear()
-        
-        # Draw lines on all channels
-        for channel_idx in range(self.num_channels):
-            if channel_idx >= len(self.channel_views):
-                continue
-                
-            view = self.channel_views[channel_idx]
-            plot_item = view.getView()
-            
-            for idx, (x1, y1, x2, y2, color) in enumerate(self.get_lines()):
-                # Draw the line
-                line = pg.PlotDataItem(
-                    x=[x1, x2], 
-                    y=[y1, y2], 
-                    pen=pg.mkPen(color=color, width=2)
-                )
-                plot_item.addItem(line)
-                self.line_overlays[channel_idx].append(line)
-                
-                # Draw endpoints as circles
-                endpoint1 = pg.ScatterPlotItem(
-                    x=[x1], y=[y1], 
-                    pen=pg.mkPen(color=color), 
-                    brush=pg.mkBrush(color=color),
-                    size=6
-                )
-                endpoint2 = pg.ScatterPlotItem(
-                    x=[x2], y=[y2], 
-                    pen=pg.mkPen(color=color), 
-                    brush=pg.mkBrush(color=color),
-                    size=6
-                )
-                plot_item.addItem(endpoint1)
-                plot_item.addItem(endpoint2)
-                self.line_overlays[channel_idx].extend([endpoint1, endpoint2])
-                
-                # Add line label at midpoint
-                mid_x = (x1 + x2) / 2
-                mid_y = (y1 + y2) / 2
-                text = pg.TextItem(
-                    text=f"L{idx+1}", 
-                    color=color,
-                    anchor=(0, 0)
-                )
-                text.setPos(mid_x + 5, mid_y - 10)
-                plot_item.addItem(text)
-                self.line_overlays[channel_idx].append(text)
-        
-        # Draw temporary line during creation
-        if self.add_mode and self.temp_line_start is not None and self.channel_views:
-            # Get current mouse position for temporary line
-            cursor_pos = self.channel_views[0].mapFromGlobal(self.channel_views[0].cursor().pos())
-            scene_pos = self.channel_views[0].getView().mapSceneToView(cursor_pos)
-            temp_x, temp_y = int(scene_pos.x()), int(scene_pos.y())
-            x1, y1 = self.temp_line_start
-            
-            # Draw temporary line on all channels
-            for channel_idx in range(self.num_channels):
-                if channel_idx >= len(self.channel_views):
-                    continue
-                    
-                view = self.channel_views[channel_idx]
-                plot_item = view.getView()
-                
-                # Draw temporary line
-                temp_line = pg.PlotDataItem(
-                    x=[x1, temp_x], 
-                    y=[y1, temp_y], 
-                    pen=pg.mkPen(color='#FF6B6B', width=2, style=Qt.PenStyle.DashLine)
-                )
-                plot_item.addItem(temp_line)
-                self.line_overlays[channel_idx].append(temp_line)
-                
-                # Draw temporary endpoint
-                temp_endpoint = pg.ScatterPlotItem(
-                    x=[temp_x], y=[temp_y], 
-                    pen=pg.mkPen(color='#FF6B6B'), 
-                    brush=pg.mkBrush(color='#FF6B6B'),
-                    size=6
-                )
-                plot_item.addItem(temp_endpoint)
-                self.line_overlays[channel_idx].append(temp_endpoint)
 
     def get_current_frame_data(self):
         """Get current frame data - return first channel for compatibility."""
@@ -573,106 +466,7 @@ class MultichannelImageDisplayWidget(BaseImageDisplayWidget):
         self.frame_slider.setValue(current_frame)
         self.frame_slider.setEnabled(self.total_frames > 1)
         self._update_frame_label()
-
-    def eventFilter(self, obj, event):
-        """Handle mouse events for line drawing."""
-        # Check if this event is from one of our channel views
-        if obj not in [iv.ui.graphicsView.viewport() for iv in self.channel_views]:
-            return False
-        
-        if not self.add_mode:
-            return False
-        
-        if event.type() == event.Type.MouseButtonPress:
-            return self._handle_mouse_press(obj, event)
-        elif event.type() == event.Type.MouseMove:
-            return self._handle_mouse_move(event)
-        elif event.type() == event.Type.MouseButtonRelease:
-            return self._handle_mouse_release(event)
-        
-        return False
     
-    def _handle_mouse_press(self, viewport_obj, event):
-        """Handle mouse press for line drawing."""
-        if event.button() == Qt.MouseButton.LeftButton and self.add_mode:
-            # Find which view this event came from
-            view = None
-            for ch_view in self.channel_views:
-                if ch_view.ui.graphicsView.viewport() == viewport_obj:
-                    view = ch_view
-                    break
-            
-            if view is None:
-                return False
-            
-            # Convert viewport coordinates to scene coordinates
-            pos = event.position() if hasattr(event, 'position') else event.pos()
-            scene_pos = view.getView().mapSceneToView(pos)
-            x, y = int(scene_pos.x()), int(scene_pos.y())
-            
-            if self.temp_line_start is None:
-                # First click - start the line
-                self.temp_line_start = (x, y)
-                return True
-            else:
-                # Second click - complete the line
-                x1, y1 = self.temp_line_start
-                # Send all channel data for proper trace plotting
-                all_channel_data = self.get_all_channel_data()
-                self.line_add_requested.emit(x1, y1, x, y, all_channel_data, self.get_channel_names())
-                self.temp_line_start = None
-                self.add_mode = False
-                self.update_display()
-                return True
-        
-        return False
-    
-    def _handle_mouse_move(self, event):
-        """Handle mouse move for line drawing."""
-        if self.add_mode and self.temp_line_start is not None:
-            # Force a redraw to show the temporary line
-            self.update_display()
-            return True
-        return False
-    
-    def _handle_mouse_release(self, event):
-        """Handle mouse release for line drawing."""
-        return False
-
-    @pyqtSlot()
-    def enter_add_mode(self):
-        """Enter line drawing mode."""
-        self.add_mode = True
-        self.temp_line_start = None
-    
-    @pyqtSlot(int)
-    def remove_line_overlay(self, index):
-        """Remove a line overlay."""
-        if hasattr(self, 'lines_widget') and self.lines_widget is not None:
-            self.lines_widget.remove_line(index)
-        self.update_display()
-    
-    @pyqtSlot(int, int, int, int, object)
-    def move_line_endpoint(self, line_index, endpoint_idx, x, y, image_data):
-        """Move a line endpoint."""
-        self.line_endpoint_move_requested.emit(line_index, endpoint_idx, x, y, image_data)
-        self.update_display()
-    
-    def get_lines(self):
-        """Get current lines."""
-        if hasattr(self, 'lines_widget') and self.lines_widget is not None:
-            return self.lines_widget.get_lines()
-        return []
-    
-    def connect_lines_widget(self, lines_widget):
-        """Connect to the lines widget."""
-        super().connect_lines_widget(lines_widget)  # This establishes the signal connections
-        self.lines_widget = lines_widget
-    
-    def get_channel_names(self):
-        """Get channel names for legend display in lines widget."""
-        return self.channel_names
-
     def get_display_parameters(self):
         """Get current display parameters for GUI coupling."""
         return {
