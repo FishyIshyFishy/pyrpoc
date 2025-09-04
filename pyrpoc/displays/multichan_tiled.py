@@ -246,21 +246,9 @@ class MultichannelImageDisplayWidget(BaseImageDisplayWidget):
         self._current_frame_idx += 1
 
     def prepare_for_acquisition(self, context_or_total_frames):
-        """
-        Prepare the display widget for acquisition.
-        Accepts either an AcquisitionContext or a total_frames integer for backward compatibility.
-        """
-        # Determine total frames and reset optional context
         if isinstance(context_or_total_frames, int):
             total_frames = context_or_total_frames
             self.acquisition_context = None
-        else:
-            ctx = context_or_total_frames
-            total_frames = int(getattr(ctx, 'total_frames', 0) or 0)
-            self.acquisition_context = ctx
-            # store shape info if provided
-            self.frame_shape = getattr(ctx, 'frame_shape', None)
-            self.channel_info = getattr(ctx, 'channel_info', {})
 
         # Reset frame counter for new acquisition
         self._current_frame_idx = 0

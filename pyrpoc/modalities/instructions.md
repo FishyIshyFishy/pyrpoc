@@ -1,9 +1,9 @@
 first create a new file `pyrpoc/modalities/your_modality.py`:
 
 ```python
-from .base_modality import BaseModality
+from .base import BaseModality
 from pyrpoc.displays.your_display import YourDisplayWidget
-from pyrpoc.acquisitions.your_acquisition import YourAcquisition
+# from .your_modality_file import YourAcquisition  # acquisition now lives with modality
 from typing import List, Type, Dict, Any
 
 class YourModality(BaseModality):

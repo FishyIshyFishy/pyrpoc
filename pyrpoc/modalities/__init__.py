@@ -1,5 +1,5 @@
 from .modality_registry import ModalityRegistry
-from .base_modality import BaseModality
+from .base import BaseModality
 from .confocal_modality import ConfocalModality
 from .simulated_modality import SimulatedModality
 from .split_stream_modality import SplitStreamModality

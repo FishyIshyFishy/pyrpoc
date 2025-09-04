@@ -1,5 +1,5 @@
 from typing import Dict, List, Optional
-from .base_modality import BaseModality
+from .base import BaseModality
 
 class ModalityRegistry:
     """Central registry for all available modalities"""
