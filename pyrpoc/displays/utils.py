@@ -1,4 +1,5 @@
 import numpy as np
+import pyqtgraph as pg
 
 def make_gray_to_red_colormap():
     # 0.0 to just below 1.0: grayscale

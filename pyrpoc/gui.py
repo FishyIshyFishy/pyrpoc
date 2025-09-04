@@ -983,7 +983,7 @@ class DockableMiddlePanel(QMainWindow):
         # For now, use a default display that works with all modalities
         # This will be enhanced later to handle modality-specific display requirements
         # without requiring a full rebuild
-        return ImageDisplayWidget(self.app_state, self.signals)
+        return MultichannelImageDisplayWidget(self.app_state, self.signals)
 
     def set_image_display_widget(self, widget):
         layout = self.centralWidget().layout()

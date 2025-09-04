@@ -1,7 +1,6 @@
 import json
 from PyQt6.QtWidgets import QFileDialog, QMessageBox
 from pyrpoc.instruments.instrument_manager import create_instrument, get_instruments_by_type, show_add_instrument_dialog, show_configure_instrument_dialog
-from pyrpoc.acquisitions import *
 from pyrpoc.modalities import modality_registry
 from PyQt6.QtCore import QObject, pyqtSignal, QThread
 import numpy as np
@@ -682,92 +681,92 @@ def handle_rpoc_channel_removed(channel_id, app_state, signal_bus):
     return 0
 
 def handle_local_rpoc_started(parameters, app_state, signal_bus):
-    """Handle local RPOC treatment start - similar structure to handle_single_acquisition"""
-    
-    # check if local RPOC treatment is already running
-    if hasattr(signal_bus, 'local_rpoc_thread') and hasattr(signal_bus, 'local_rpoc_worker'):
-        signal_bus.console_message.emit("Local RPOC treatment already in progress. Please stop the current treatment first.")
-        return 0
-    
-    # Extract mask data and channel info from parameters
-    mask_data = parameters.pop('mask_data', None)
-    channel_id = parameters.pop('channel_id', None)
-    
-    signal_bus.console_message.emit(f"Debug: Received parameters keys: {list(parameters.keys())}")
-    signal_bus.console_message.emit(f"Debug: Mask data received: {mask_data is not None}")
-    signal_bus.console_message.emit(f"Debug: Channel ID: {channel_id}")
-    
-    if mask_data is None:
-        signal_bus.console_message.emit("Error: No mask data available for local RPOC treatment")
-        return 0
-    
-    # Validate that we have a galvo instrument (required for treatment)
-    galvo_instruments = app_state.get_instruments_by_type('galvo')
-    if not galvo_instruments:
-        signal_bus.console_message.emit("Error: Local RPOC treatment requires at least one galvo instrument. Please add a galvo scanner.")
-        return 0
-    
-    galvo = galvo_instruments[0]  # Use the first galvo instrument
-    
-    signal_bus.console_message.emit(f"Local RPOC treatment started with {parameters['repetitions']} repetitions")
-    signal_bus.console_message.emit(f"Parameters: dwell_time={parameters['dwell_time']}μs, "
-                                  f"amplitude_x={parameters['amplitude_x']}V, "
-                                  f"amplitude_y={parameters['amplitude_y']}V, "
-                                  f"offset_x={parameters['offset_x']}V, "
-                                  f"offset_y={parameters['offset_y']}V, "
-                                  f"drift_x={parameters['offset_drift_x']}V, "
-                                  f"drift_y={parameters['offset_drift_y']}V")
-    signal_bus.console_message.emit(f"TTL Channel: {parameters.get('ttl_device', 'Dev1')}/{parameters.get('ttl_port_line', 'port0/line0')}")
-    
-    # Log PFI line information if specified
-    pfi_line = parameters.get('pfi_line', 'None')
-    if pfi_line and pfi_line != 'None':
-        signal_bus.console_message.emit(f"Timing: Using PFI line {pfi_line} for DO task timing")
-    else:
-        signal_bus.console_message.emit("Timing: Using internal wiring (AO sample clock) for DO task timing")
-    
-    # Create local RPOC object (similar to acquisition creation)
-    local_rpoc = None
-    try:
-        from pyrpoc.acquisitions.local_rpoc import LocalRPOC
-        local_rpoc = LocalRPOC(
-            galvo=galvo,
-            mask_data=mask_data,
-            treatment_parameters=parameters,
-            signal_bus=signal_bus
-        )
-    except Exception as e:
-        signal_bus.console_message.emit(f'Error creating local RPOC object: {e}')
-        return 0
-    
-    if local_rpoc is not None:
-        # Show progress dialog
-        from pyrpoc.rpoc.local_treatment import LocalRPOCProgressDialog
-        progress_dialog = LocalRPOCProgressDialog(parameters['repetitions'])
-        signal_bus.local_rpoc_progress_dialog = progress_dialog
-        
-        # Connect the cancel signal to stop the treatment
-        progress_dialog.cancel_requested.connect(lambda: handle_local_rpoc_cancel(signal_bus))
-        
-        progress_dialog.show()
-        
-        # Use the same threading model as acquisition
-        worker = AcquisitionWorker(local_rpoc, continuous=False)
-        thread = QThread()
-        worker.moveToThread(thread)
-        
-        local_rpoc.worker = worker
-        worker.acquisition_finished.connect(lambda data: handle_local_rpoc_thread_finished(data, signal_bus, thread, worker))
-        thread.started.connect(worker.run)
-        thread.start()
-        
-        # Store references for cleanup (same as acquisition)
-        signal_bus.local_rpoc_thread = thread
-        signal_bus.local_rpoc_worker = worker
-    else:
-        signal_bus.console_message.emit("Error: Failed to create local RPOC object")
-    
     return 0
+    # """Handle local RPOC treatment start - similar structure to handle_single_acquisition"""
+    
+    # # check if local RPOC treatment is already running
+    # if hasattr(signal_bus, 'local_rpoc_thread') and hasattr(signal_bus, 'local_rpoc_worker'):
+    #     signal_bus.console_message.emit("Local RPOC treatment already in progress. Please stop the current treatment first.")
+    #     return 0
+    
+    # # Extract mask data and channel info from parameters
+    # mask_data = parameters.pop('mask_data', None)
+    # channel_id = parameters.pop('channel_id', None)
+    
+    # signal_bus.console_message.emit(f"Debug: Received parameters keys: {list(parameters.keys())}")
+    # signal_bus.console_message.emit(f"Debug: Mask data received: {mask_data is not None}")
+    # signal_bus.console_message.emit(f"Debug: Channel ID: {channel_id}")
+    
+    # if mask_data is None:
+    #     signal_bus.console_message.emit("Error: No mask data available for local RPOC treatment")
+    #     return 0
+    
+    # # Validate that we have a galvo instrument (required for treatment)
+    # galvo_instruments = app_state.get_instruments_by_type('galvo')
+    # if not galvo_instruments:
+    #     signal_bus.console_message.emit("Error: Local RPOC treatment requires at least one galvo instrument. Please add a galvo scanner.")
+    #     return 0
+    
+    # galvo = galvo_instruments[0]  # Use the first galvo instrument
+    
+    # signal_bus.console_message.emit(f"Local RPOC treatment started with {parameters['repetitions']} repetitions")
+    # signal_bus.console_message.emit(f"Parameters: dwell_time={parameters['dwell_time']}μs, "
+    #                               f"amplitude_x={parameters['amplitude_x']}V, "
+    #                               f"amplitude_y={parameters['amplitude_y']}V, "
+    #                               f"offset_x={parameters['offset_x']}V, "
+    #                               f"offset_y={parameters['offset_y']}V, "
+    #                               f"drift_x={parameters['offset_drift_x']}V, "
+    #                               f"drift_y={parameters['offset_drift_y']}V")
+    # signal_bus.console_message.emit(f"TTL Channel: {parameters.get('ttl_device', 'Dev1')}/{parameters.get('ttl_port_line', 'port0/line0')}")
+    
+    # # Log PFI line information if specified
+    # pfi_line = parameters.get('pfi_line', 'None')
+    # if pfi_line and pfi_line != 'None':
+    #     signal_bus.console_message.emit(f"Timing: Using PFI line {pfi_line} for DO task timing")
+    # else:
+    #     signal_bus.console_message.emit("Timing: Using internal wiring (AO sample clock) for DO task timing")
+    
+    # # Create local RPOC object (similar to acquisition creation)
+    # local_rpoc = None
+    # try:
+    #     local_rpoc = LocalRPOC(
+    #         galvo=galvo,
+    #         mask_data=mask_data,
+    #         treatment_parameters=parameters,
+    #         signal_bus=signal_bus
+    #     )
+    # except Exception as e:
+    #     signal_bus.console_message.emit(f'Error creating local RPOC object: {e}')
+    #     return 0
+    
+    # if local_rpoc is not None:
+    #     # Show progress dialog
+    #     from pyrpoc.rpoc.local_treatment import LocalRPOCProgressDialog
+    #     progress_dialog = LocalRPOCProgressDialog(parameters['repetitions'])
+    #     signal_bus.local_rpoc_progress_dialog = progress_dialog
+        
+    #     # Connect the cancel signal to stop the treatment
+    #     progress_dialog.cancel_requested.connect(lambda: handle_local_rpoc_cancel(signal_bus))
+        
+    #     progress_dialog.show()
+        
+    #     # Use the same threading model as acquisition
+    #     worker = AcquisitionWorker(local_rpoc, continuous=False)
+    #     thread = QThread()
+    #     worker.moveToThread(thread)
+        
+    #     local_rpoc.worker = worker
+    #     worker.acquisition_finished.connect(lambda data: handle_local_rpoc_thread_finished(data, signal_bus, thread, worker))
+    #     thread.started.connect(worker.run)
+    #     thread.start()
+        
+    #     # Store references for cleanup (same as acquisition)
+    #     signal_bus.local_rpoc_thread = thread
+    #     signal_bus.local_rpoc_worker = worker
+    # else:
+    #     signal_bus.console_message.emit("Error: Failed to create local RPOC object")
+    
+    # return 0
 
 
 def handle_local_rpoc_thread_finished(data, signal_bus, thread, worker):
