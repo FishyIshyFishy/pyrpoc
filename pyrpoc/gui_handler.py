@@ -389,92 +389,60 @@ def handle_continuous_acquisition(app_state, signal_bus):
 
 
 def handle_single_acquisition(app_state, signal_bus, continuous=False):    
-    # take snapshot of all parameters rather than continually reading them from app_state during acquisition
     modality_key = app_state.modality
     modality = modality_registry.get_modality(modality_key)
     parameters = app_state.acquisition_parameters.copy()
-
-    if continuous:
-        signal_bus.console_message.emit(f"Starting continuous {modality_key} acquisition...")
-    else:
-        signal_bus.console_message.emit(f"Starting {modality_key} acquisition...")
+    instruments = app_state.instruments # no .copy() here?
+    # rpoc_stuff = app_state.rpoc_stuff.copy()
     
-    # Validate that required instruments are present
-    instruments = app_state.instruments
     if not modality.validate_instruments(instruments):
         missing = [req for req in modality.required_instruments 
                   if not any(inst.instrument_type == req for inst in instruments)]
         signal_bus.console_message.emit(f"Error: {modality.name} acquisition requires instruments: {', '.join(missing)}")
         return
+    instruments_by_type = {}
+    for instrument_type in modality.required_instruments:
+        instruments_by_type[instrument_type] = [inst for inst in instruments if inst.instrument_type == instrument_type]
+    # check connection here?
     
-    # Validate that required parameters are present
     if not modality.validate_parameters(parameters):
         missing = [req for req in modality.required_parameters.keys() 
                   if req not in parameters]
         signal_bus.console_message.emit(f"Error: Missing required parameters for {modality.name}: {', '.join(missing)}")
         return
     
-    # Create acquisition using the modality's acquisition class
-    acquisition = None
+    # if not modality.validate_rpoc(rpoc_stuff)
+        # issues = rpoc incompatibilities
+        # signal_bus.emit(here are the incompatibilities)
+
     try:
-        save_enabled = parameters.get('save_enabled', False)
-        save_path = parameters.get('save_path', '')
+        acquisition = modality.acquisition_class(
+        signal_bus=signal_bus,
+        parameters=parameters,
+        **instruments_by_type
+        )
+
+        # ideally i can just write acquisition.configre_rpoc()        
+        rpoc_mask_channels = getattr(app_state, 'rpoc_mask_channels', {})
+        rpoc_static_channels = getattr(app_state, 'rpoc_static_channels', {})
+        rpoc_script_channels = getattr(app_state, 'rpoc_script_channels', {})
         
-        # Get required instruments by type
-        instruments_by_type = {}
-        for instrument_type in modality.required_instruments:
-            instruments_by_type[instrument_type] = [inst for inst in instruments if inst.instrument_type == instrument_type]
+        enabled_mask_channels = {k: v for k, v in rpoc_mask_channels.items() if v.get('enabled', True)}
+        enabled_static_channels = {k: v for k, v in rpoc_static_channels.items() if v.get('enabled', True)}
+        enabled_script_channels = {k: v for k, v in rpoc_script_channels.items() if v.get('enabled', True)}
         
-        # Create acquisition with the appropriate constructor based on modality
-        if modality_key == 'simulated':
-            acquisition = modality.acquisition_class(
-                signal_bus=signal_bus, 
-                acquisition_parameters=parameters,
-                save_enabled=save_enabled, 
-                save_path=save_path
-            )
-        else:
-            # For all other modalities, pass instruments as keyword arguments
-            # The acquisition class constructor knows how to handle them
-            acquisition = modality.acquisition_class(
-                signal_bus=signal_bus,
-                acquisition_parameters=parameters,
-                save_enabled=save_enabled,
-                save_path=save_path,
-                **instruments_by_type
-            )
-        
-        # Configure RPOC if the acquisition supports it
-        if hasattr(acquisition, 'configure_rpoc'):
-            # Get RPOC channels from app state
-            rpoc_mask_channels = getattr(app_state, 'rpoc_mask_channels', {})
-            rpoc_static_channels = getattr(app_state, 'rpoc_static_channels', {})
-            rpoc_script_channels = getattr(app_state, 'rpoc_script_channels', {})
-            
-            # Filter only enabled channels
-            enabled_mask_channels = {k: v for k, v in rpoc_mask_channels.items() if v.get('enabled', True)}
-            enabled_static_channels = {k: v for k, v in rpoc_static_channels.items() if v.get('enabled', True)}
-            enabled_script_channels = {k: v for k, v in rpoc_script_channels.items() if v.get('enabled', True)}
-            
-            total_enabled = len(enabled_mask_channels) + len(enabled_static_channels) + len(enabled_script_channels)
-            
-            if total_enabled > 0:
-                signal_bus.console_message.emit(f"Acquisition RPOC - enabled channels: {len(enabled_mask_channels)} masks, {len(enabled_static_channels)} static, {len(enabled_script_channels)} script")
-                acquisition.configure_rpoc(True, 
-                                         rpoc_mask_channels=enabled_mask_channels, 
-                                         rpoc_static_channels=enabled_static_channels, 
-                                         rpoc_script_channels=enabled_script_channels)
-            else:
-                signal_bus.console_message.emit(f"Acquisition RPOC - no enabled channels")
-                acquisition.configure_rpoc(False)
-        
+        if len(enabled_mask_channels) + len(enabled_static_channels) + len(enabled_script_channels) > 0:
+            acquisition.configure_rpoc(True, 
+                                        rpoc_mask_channels=enabled_mask_channels, 
+                                        rpoc_static_channels=enabled_static_channels, 
+                                        rpoc_script_channels=enabled_script_channels)
+    
     except Exception as e:
         signal_bus.console_message.emit(f'Error creating acquisition object: {e}')
         return
 
-    if acquisition is not None:
-        # Start the new acquisition pipeline
-        # Step 1: Request display setup
+    try: 
+        # need to move this into its own function for modularity
         signal_bus.display_setup.emit(app_state.selected_display)
         
         worker = AcquisitionWorker(acquisition, continuous=continuous)
@@ -492,8 +460,12 @@ def handle_single_acquisition(app_state, signal_bus, continuous=False):
         
         # emit signal to update button states
         signal_bus.acquisition_started.emit()
-    else:
+    
+    except:
         signal_bus.console_message.emit("Error: Failed to create acquisition object")
+
+def setup_acquisition_rpoc(app_state):
+    return 0 # need to set this up but i dont know what the best way to do this is
 
 def handle_acquisition_thread_finished(data, signal_bus, thread, worker):
     # for continuous acquisition, don't clean up the thread - let it continue

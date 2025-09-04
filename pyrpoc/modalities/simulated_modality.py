@@ -1,5 +1,5 @@
 from .base import BaseModality, Acquisition
-from pyrpoc.displays.multichan_tiled import MultichannelImageDisplayWidget
+from pyrpoc.displays.multichan_tiled import TiledChannelsWidget
 from typing import List, Type, Dict, Any
 import numpy as np
 import tifffile
@@ -21,7 +21,7 @@ class SimulatedModality(BaseModality):
     
     @property
     def compatible_displays(self):
-        return [MultichannelImageDisplayWidget]
+        return [TiledChannelsWidget]
     
     @property
     def parameter_groups(self) -> Dict[str, List[str]]:

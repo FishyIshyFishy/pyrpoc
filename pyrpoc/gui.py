@@ -743,7 +743,7 @@ class DisplayControls(QWidget):
         
         self.display_params_widget = None
 
-        if display_widget is not None and display_widget.__class__.__name__ == 'MultichannelImageDisplayWidget':
+        if display_widget is not None and display_widget.__class__.__name__ == 'TiledChannelsWidget':
             from pyrpoc.displays.multichan_tiled import MultichannelDisplayParametersWidget
             self.display_params_widget = MultichannelDisplayParametersWidget(display_widget)
         else:
@@ -816,7 +816,7 @@ class RightPanel(QWidget):
         self.signals.rpoc_channel_removed.connect(self.remove_rpoc_channel)
     
     def add_rpoc_channel(self):
-        from pyrpoc.rpoc.rpoc_manager import show_rpoc_channel_selector, create_rpoc_channel_widget
+        from pyrpoc.rpoc.rpoc_gui import show_rpoc_channel_selector, create_rpoc_channel_widget
         
         # Show channel type selector
         channel_type = show_rpoc_channel_selector(self)
@@ -854,7 +854,7 @@ class RightPanel(QWidget):
         if hasattr(self.app_state, 'rpoc_mask_channels'):
             for channel_id, channel_data in self.app_state.rpoc_mask_channels.items():
                 max_channel_id = max(max_channel_id, channel_id)
-                from pyrpoc.rpoc.rpoc_manager import create_rpoc_channel_widget
+                from pyrpoc.rpoc.rpoc_gui import create_rpoc_channel_widget
                 channel_widget = create_rpoc_channel_widget('mask', channel_id, self.app_state, self.signals)
                 self.rpoc_channels[channel_id] = channel_widget
                 self.channels_layout.addWidget(channel_widget)
@@ -863,7 +863,7 @@ class RightPanel(QWidget):
         if hasattr(self.app_state, 'rpoc_static_channels'):
             for channel_id, channel_data in self.app_state.rpoc_static_channels.items():
                 max_channel_id = max(max_channel_id, channel_id)
-                from pyrpoc.rpoc.rpoc_manager import create_rpoc_channel_widget
+                from pyrpoc.rpoc.rpoc_gui import create_rpoc_channel_widget
                 channel_widget = create_rpoc_channel_widget('static', channel_id, self.app_state, self.signals)
                 self.rpoc_channels[channel_id] = channel_widget
                 self.channels_layout.addWidget(channel_widget)
@@ -872,7 +872,7 @@ class RightPanel(QWidget):
         if hasattr(self.app_state, 'rpoc_script_channels'):
             for channel_id, channel_data in self.app_state.rpoc_script_channels.items():
                 max_channel_id = max(max_channel_id, channel_id)
-                from pyrpoc.rpoc.rpoc_manager import create_rpoc_channel_widget
+                from pyrpoc.rpoc.rpoc_gui import create_rpoc_channel_widget
                 channel_widget = create_rpoc_channel_widget('script', channel_id, self.app_state, self.signals)
                 self.rpoc_channels[channel_id] = channel_widget
                 self.channels_layout.addWidget(channel_widget)
@@ -983,7 +983,7 @@ class DockableMiddlePanel(QMainWindow):
         # For now, use a default display that works with all modalities
         # This will be enhanced later to handle modality-specific display requirements
         # without requiring a full rebuild
-        return MultichannelImageDisplayWidget(self.app_state, self.signals)
+        return TiledChannelsWidget(self.app_state, self.signals)
 
     def set_image_display_widget(self, widget):
         layout = self.centralWidget().layout()

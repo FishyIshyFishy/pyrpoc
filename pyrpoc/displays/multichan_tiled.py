@@ -5,7 +5,7 @@ from PyQt6.QtWidgets import QWidget, QVBoxLayout, QLabel
 from PyQt6.QtCore import Qt, pyqtSignal
 from .base_display import BaseImageDisplayWidget
 
-class MultichannelImageDisplayWidget(BaseImageDisplayWidget):
+class TiledChannelsWidget(BaseImageDisplayWidget):
     """
     MINIMAL version:
     - Single ImageView
