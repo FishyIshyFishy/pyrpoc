@@ -7,6 +7,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, pyqtSignal, pyqtSlot
 from .base_display import BaseImageDisplayWidget
 import math
+from utils import *
 
 class MultichannelImageDisplayWidget(BaseImageDisplayWidget):
     """Multi-channel image display using pyqtgraph.ImageView per channel."""
