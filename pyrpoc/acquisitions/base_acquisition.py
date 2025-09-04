@@ -33,7 +33,7 @@ class Acquisition(abc.ABC):
         '''
         self.worker = worker
 
-    def emit_data_frame(self, signal_bus, data):
+    def emit_data(self, signal_bus, data):
         """
         Emit a data frame using the new uniform pipeline.
         
@@ -42,7 +42,7 @@ class Acquisition(abc.ABC):
             data: The data frame to emit
         """
         if signal_bus:
-            signal_bus.data_frame_received.emit(data)
+            signal_bus.data_received.emit(data)
 
     def emit_acquisition_complete(self, signal_bus):
         """
@@ -110,3 +110,9 @@ class Acquisition(abc.ABC):
         save data in modality-specific format
         '''
         pass    
+
+class ChannelData: 
+    def __init__(self, name, data, metadata):
+        self.name = name
+        self.data = data
+        self.metadata = metadata

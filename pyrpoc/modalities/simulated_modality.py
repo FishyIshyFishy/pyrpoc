@@ -1,5 +1,5 @@
 from .base_modality import BaseModality, AcquisitionContext
-from pyrpoc.displays.singlechan import ImageDisplayWidget
+from pyrpoc.displays.multichan_tiled import MultichannelImageDisplayWidget
 from pyrpoc.acquisitions.simulated import Simulated
 from typing import List, Type, Dict, Any
 

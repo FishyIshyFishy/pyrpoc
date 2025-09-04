@@ -136,22 +136,20 @@ class StateSignalBus(QObject):
     ui_state_changed = pyqtSignal(str, object) # emits when UI state changes (param_name, new_value)
     
     # New acquisition pipeline signals
-    display_setup_requested = pyqtSignal(str) # display_class_name - requests display setup for acquisition
-    acquisition_setup_complete = pyqtSignal(int) # total_frames - signals that acquisition setup is complete
-    data_frame_received = pyqtSignal(object) # data - individual data frame during acquisition
+    display_setup = pyqtSignal(str) # display_class_name - requests display setup for acquisition
+    acquisition_started = pyqtSignal() # emits when acquisition starts
+    acquisition_stopped = pyqtSignal() # emits when acquisition stops
+    data_received = pyqtSignal(object) # data - individual data frame during acquisition
     acquisition_complete = pyqtSignal() # signals that acquisition is complete
     
-    # RPOC mask creation
     mask_created = pyqtSignal(object) # emits when a mask is created
     rpoc_channel_removed = pyqtSignal(int) # emits when an RPOC channel is removed (channel_id)
     
-    # Local RPOC
+
     local_rpoc_started = pyqtSignal(object) # emits when local RPOC treatment is started (parameters)
     local_rpoc_progress = pyqtSignal(int) # emits progress updates (repetition_number)
     
-    # Button state management
-    acquisition_started = pyqtSignal() # emits when acquisition starts
-    acquisition_stopped = pyqtSignal() # emits when acquisition stops
+    
 
     def __init__(self):
         super().__init__()
@@ -163,11 +161,8 @@ class StateSignalBus(QObject):
             self.connected = False
 
     def bind_controllers(self, app_state, main_window):
-        # recalls when gui is rebuilt on modality changes
-        # need to disconnect the old connections
         self.disconnect_all()
-        
-        # store reference to app_state for data saving
+
         self.app_state = app_state
         
         self.load_config_btn_clicked.connect(lambda: handle_load_config(app_state, main_window))
@@ -184,8 +179,8 @@ class StateSignalBus(QObject):
         self.instrument_updated.connect(lambda instrument: handle_instrument_updated(instrument, app_state, main_window))
 
         # New acquisition pipeline signal handlers
-        self.display_setup_requested.connect(lambda display_class: handle_display_setup_requested(display_class, app_state, main_window))
-        self.data_frame_received.connect(lambda data: handle_data_frame_received(data, app_state, main_window))
+        self.display_setup.connect(lambda display_class: handle_display_setup(display_class, app_state, main_window))
+        self.data_received.connect(lambda data: handle_data_received(data, app_state, main_window))
         self.acquisition_complete.connect(lambda: handle_acquisition_complete(app_state, main_window))
         
         self.console_message.connect(lambda message: handle_console_message(message, app_state, main_window))
@@ -193,8 +188,8 @@ class StateSignalBus(QObject):
 
         
         # connect button state management signals
-        self.acquisition_started.connect(lambda: main_window.top_bar.on_acquisition_started())
-        self.acquisition_stopped.connect(lambda: main_window.top_bar.on_acquisition_stopped())
+        self.acquisition_started.connect(lambda: handle_acquisition_started(main_window))
+        self.acquisition_stopped.connect(lambda: handle_acquisition_stopped(main_window))
         
         # initialize button states
         main_window.top_bar.on_acquisition_stopped()
@@ -209,12 +204,15 @@ class StateSignalBus(QObject):
         self.local_rpoc_started.connect(lambda parameters: handle_local_rpoc_started(parameters, app_state, self))
         self.local_rpoc_progress.connect(lambda repetition: handle_local_rpoc_progress(repetition, app_state, self))
 
-        # put remaining singla wiring between image displa widgets and dockable helper widgets
-        
         self.connected = True
 
 
+def handle_acquisition_started(main_window):
+    main_window.top_bar.on_acquisition_started()
+    # display widget call for handle_display_setup here
 
+def handle_acquisition_stopped(main_window):
+    main_window.top_bar.on_acquisition_stopped()
 
 
 class AcquisitionWorker(QObject):
@@ -245,7 +243,6 @@ class AcquisitionWorker(QObject):
 
 
 def handle_load_config(app_state, main_window):
-    '''load the config.json file and update the main_window per the config'''
     try:
         file_path, _ = QFileDialog.getOpenFileName(
             None, 'Load Configuration', '', 
@@ -269,71 +266,56 @@ def handle_load_config(app_state, main_window):
         if 'instruments' in config_data:
             app_state.deserialize_instruments(config_data['instruments'])
         
-        # Handle rpoc_mask_channels - clear actual mask data but preserve channel structure
-        if 'rpoc_mask_channels' in config_data:
-            # Convert string keys to integers for consistency
             app_state.rpoc_mask_channels = {}
             for channel_id_str, channel_data in config_data['rpoc_mask_channels'].items():
                 try:
                     channel_id = int(channel_id_str)
-                    # Ensure enabled state is preserved (default to True for backward compatibility)
                     if 'enabled' not in channel_data:
                         channel_data['enabled'] = True
                     app_state.rpoc_mask_channels[channel_id] = channel_data
                 except ValueError:
-                    # If conversion fails, keep as string but log warning
                     if 'enabled' not in channel_data:
                         channel_data['enabled'] = True
                     app_state.rpoc_mask_channels[channel_id_str] = channel_data
-            # Note: Actual mask data is not loaded from config, users need to reload masks
+
         elif 'rpoc_masks' in config_data:
-            # Legacy support for old config format
             app_state.rpoc_mask_channels = {}
-            # Note: Actual mask data is not loaded from config, users need to reload masks
         
         if 'rpoc_script_channels' in config_data:
-            # Convert string keys to integers for consistency
             app_state.rpoc_script_channels = {}
             for channel_id_str, channel_data in config_data['rpoc_script_channels'].items():
                 try:
                     channel_id = int(channel_id_str)
-                    # Ensure enabled state is preserved (default to True for backward compatibility)
                     if 'enabled' not in channel_data:
                         channel_data['enabled'] = True
                     app_state.rpoc_script_channels[channel_id] = channel_data
                 except ValueError:
-                    # If conversion fails, keep as string but log warning
                     if 'enabled' not in channel_data:
                         channel_data['enabled'] = True
                     app_state.rpoc_script_channels[channel_id_str] = channel_data
+
         elif 'rpoc_channels' in config_data:
-            # Legacy support for old config format - convert to script channels
             app_state.rpoc_script_channels = {}
             for channel_id_str, channel_data in config_data['rpoc_channels'].items():
                 try:
                     channel_id = int(channel_id_str)
-                    # Ensure enabled state is preserved (default to True for backward compatibility)
                     if 'enabled' not in channel_data:
                         channel_data['enabled'] = True
                     app_state.rpoc_script_channels[channel_id] = channel_data
                 except ValueError:
-                    # If conversion fails, keep as string but log warning
                     if 'enabled' not in channel_data:
                         channel_data['enabled'] = True
                     app_state.rpoc_script_channels[channel_id_str] = channel_data
         
         if 'rpoc_static_channels' in config_data:
-            # Convert string keys to integers for consistency
             app_state.rpoc_static_channels = {}
             for channel_id_str, static_data in config_data['rpoc_static_channels'].items():
                 try:
                     channel_id = int(channel_id_str)
-                    # Ensure enabled state is preserved (default to True for backward compatibility)
                     if 'enabled' not in static_data:
                         static_data['enabled'] = True
                     app_state.rpoc_static_channels[channel_id] = static_data
                 except ValueError:
-                    # If conversion fails, keep as string but log warning
                     if 'enabled' not in static_data:
                         static_data['enabled'] = True
                     app_state.rpoc_static_channels[channel_id_str] = static_data
@@ -405,6 +387,7 @@ def handle_save_config(app_state):
 
 def handle_continuous_acquisition(app_state, signal_bus):
     return handle_single_acquisition(app_state, signal_bus, continuous=True)
+
 
 def handle_single_acquisition(app_state, signal_bus, continuous=False):    
     # take snapshot of all parameters rather than continually reading them from app_state during acquisition
@@ -493,7 +476,7 @@ def handle_single_acquisition(app_state, signal_bus, continuous=False):
     if acquisition is not None:
         # Start the new acquisition pipeline
         # Step 1: Request display setup
-        signal_bus.display_setup_requested.emit(app_state.selected_display)
+        signal_bus.display_setup.emit(app_state.selected_display)
         
         worker = AcquisitionWorker(acquisition, continuous=continuous)
         thread = QThread()
@@ -849,7 +832,7 @@ def handle_local_rpoc_cancel(signal_bus):
     return 0
 
 
-def handle_display_setup_requested(display_class_name, app_state, main_window):
+def handle_display_setup(display_class_name, app_state, main_window):
     try:
         if app_state.selected_display != display_class_name:
             app_state.selected_display = display_class_name
@@ -873,14 +856,8 @@ def handle_display_setup_requested(display_class_name, app_state, main_window):
             # Get the current display widget and prepare it
             if hasattr(main_window, 'mid_layout') and hasattr(main_window.mid_layout, 'image_display_widget'):
                 display_widget = main_window.mid_layout.image_display_widget
-                if hasattr(display_widget, 'prepare_for_acquisition'):
-                    display_widget.prepare_for_acquisition(acquisition_context)
-                    # Inform any listeners that setup is complete
-                    if hasattr(main_window, 'signals') and hasattr(main_window.signals, 'acquisition_setup_complete'):
-                        try:
-                            main_window.signals.acquisition_setup_complete.emit(acquisition_context.total_frames)
-                        except Exception:
-                            pass
+                if hasattr(display_widget, 'handle_display_setup'):
+                    display_widget.handle_display_setup()
                     main_window.signals.console_message.emit(f"Display prepared for {modality.name} acquisition")
                 else:
                     main_window.signals.console_message.emit("Warning: Display widget doesn't support acquisition preparation")
@@ -893,14 +870,14 @@ def handle_display_setup_requested(display_class_name, app_state, main_window):
     return 1
 
 
-def handle_data_frame_received(data, app_state, main_window):
+def handle_data_received(data, app_state, main_window):
     """Handle individual data frame during acquisition"""
     try:
         # Route the data frame to the current display widget
         if hasattr(main_window, 'mid_layout') and hasattr(main_window.mid_layout, 'image_display_widget'):
             widget = main_window.mid_layout.image_display_widget
-            if hasattr(widget, 'handle_data_frame_received'):
-                widget.handle_data_frame_received(data)
+            if hasattr(widget, 'handle_data_received'):
+                widget.handle_data_received(data)
             else:
                 # Fallback to legacy method if new method not available
                 if hasattr(main_window, 'signals'):

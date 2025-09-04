@@ -135,7 +135,7 @@ class Confocal(Acquisition):
             
             if self.signal_bus:
                 # Use new uniform pipeline instead of legacy data_signal
-                self.emit_data_frame(self.signal_bus, frame_data)
+                self.emit_data(self.signal_bus, frame_data)
             all_frames.append(frame_data)
         
         if all_frames:
