@@ -5,9 +5,6 @@ from superqt import QSearchableComboBox
 class LocalRPOCProgressDialog(QDialog):
     """Progress dialog for local RPOC treatment"""
     
-    # Add a signal for cancellation
-    cancel_requested = pyqtSignal()
-    
     def __init__(self, total_repetitions, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Local RPOC Treatment Progress")
@@ -32,19 +29,13 @@ class LocalRPOCProgressDialog(QDialog):
         
         # Cancel button
         self.cancel_btn = QPushButton("Cancel")
-        self.cancel_btn.clicked.connect(self._on_cancel_clicked)
+        self.cancel_btn.clicked.connect(self.reject)
         layout.addWidget(self.cancel_btn)
         
         self.setLayout(layout)
         
         self.total_repetitions = total_repetitions
         self.current_repetition = 0
-    
-    def _on_cancel_clicked(self):
-        """Handle cancel button click - emit signal and close dialog"""
-        self.cancel_requested.emit()
-        self.set_stopped()
-        self.accept()  # Close the dialog
     
     def update_progress(self, repetition_number):
         """Update progress bar and labels"""
@@ -59,23 +50,11 @@ class LocalRPOCProgressDialog(QDialog):
         self.progress_bar.setValue(self.total_repetitions)
         self.repetition_label.setText(f"Repetition: {self.total_repetitions}/{self.total_repetitions}")
         self.cancel_btn.setText("Close")
-        # Disconnect the cancel signal and connect to accept
-        try:
-            self.cancel_btn.clicked.disconnect()
-        except:
-            pass  # Signal might not be connected
-        self.cancel_btn.clicked.connect(self.accept)
     
     def set_stopped(self):
         """Mark treatment as stopped"""
         self.status_label.setText("Treatment stopped.")
         self.cancel_btn.setText("Close")
-        # Disconnect the cancel signal and connect to accept
-        try:
-            self.cancel_btn.clicked.disconnect()
-        except:
-            pass  # Signal might not be connected
-        self.cancel_btn.clicked.connect(self.accept)
 
 class LocalRPOCDialog(QDialog):
     """Dialog for configuring local RPOC parameters"""
@@ -242,11 +221,6 @@ class LocalRPOCDialog(QDialog):
             'port1/line8', 'port1/line9', 'port1/line10', 'port1/line11', 'port1/line12', 'port1/line13', 'port1/line14', 'port1/line15'
         ])
         
-        # PFI line selection for timing (optional)
-        self.pfi_line_combo = QSearchableComboBox()
-        self.pfi_line_combo.addItems(['None', 'PFI0', 'PFI1', 'PFI2', 'PFI3', 'PFI4', 'PFI5', 'PFI6', 'PFI7', 'PFI8', 'PFI9', 'PFI10', 'PFI11', 'PFI12', 'PFI13', 'PFI14', 'PFI15'])
-        self.pfi_line_combo.setCurrentText('None')
-        
         # Set default values from the parent widget (RPOC channel)
         if hasattr(self.parent(), 'channel_id') and hasattr(self.parent(), 'app_state'):
             channel_id = self.parent().channel_id
@@ -260,7 +234,6 @@ class LocalRPOCDialog(QDialog):
         
         ttl_layout.addRow("Device:", self.ttl_device_combo)
         ttl_layout.addRow("Port/Line:", self.ttl_port_line_combo)
-        ttl_layout.addRow("PFI Line (Timing):", self.pfi_line_combo)
         
         ttl_group.setLayout(ttl_layout)
         layout.addWidget(ttl_group)
@@ -281,8 +254,7 @@ class LocalRPOCDialog(QDialog):
             'offset_drift_y': self.offset_drift_y_spin.value(),
             'repetitions': self.repetitions_spin.value(),
             'ttl_device': self.ttl_device_combo.currentText(),
-            'ttl_port_line': self.ttl_port_line_combo.currentText(),
-            'pfi_line': self.pfi_line_combo.currentText()
+            'ttl_port_line': self.ttl_port_line_combo.currentText()
         }
     
     def start_local_rpoc(self):

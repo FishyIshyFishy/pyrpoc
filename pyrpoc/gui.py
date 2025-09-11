@@ -1,5 +1,4 @@
 import numpy as np
-from typing import Dict, Any
 from PyQt6.QtWidgets import QApplication, QVBoxLayout, QHBoxLayout, QMainWindow, \
                              QLabel, QWidget, QComboBox, QSplitter, QPushButton, \
                              QPlainTextEdit, QStyle, QGroupBox, QSpinBox, QCheckBox, QLineEdit, QSlider, \
@@ -13,6 +12,7 @@ import sys
 import pyqtgraph as pg
 from pyrpoc.displays import *
 from pyrpoc.displays.multichan_tiled import MultichannelDisplayParametersWidget
+from pyrpoc.dockable_widgets import LinesWidget
 from pyrpoc.rpoc.rpoc_mask_editor import RPOCMaskEditor
 from superqt import QSearchableComboBox
 import cv2
@@ -52,7 +52,7 @@ class TopBar(QWidget):
         self.app_state = app_state
         self.signals = signals
         self.setStyleSheet(DEV_BORDER_STYLE)
-        # Remove fixed height to allow resizing by splitter
+        self.setFixedHeight(100) 
         layout = QHBoxLayout()
         layout.setContentsMargins(5, 5, 5, 5)
 
@@ -113,8 +113,21 @@ class TopBar(QWidget):
 
         self.console = QPlainTextEdit()
         self.console.setReadOnly(True)
-        self.console.setMinimumHeight(50)  # Ensure minimum height for console
         console_layout.addWidget(self.console)
+
+        # tool buttons, eventually i will make these like imageJ icons but for now just text
+        self.tool_buttons_widget = QWidget()
+        tool_buttons_layout = QHBoxLayout()
+        tool_buttons_layout.setContentsMargins(0, 0, 0, 0)
+        self.lines_btn = QPushButton('Lines')
+        self.lines_btn.setCheckable(True)
+        self.lines_btn.setChecked(app_state.ui_state['lines_enabled'])
+
+        self.lines_btn.toggled.connect(signals.lines_toggled.emit)
+        tool_buttons_layout.addWidget(self.lines_btn)
+        tool_buttons_layout.addStretch()
+        self.tool_buttons_widget.setLayout(tool_buttons_layout)
+        console_layout.addWidget(self.tool_buttons_widget)
 
         console_widget.setLayout(console_layout)
         layout.addWidget(console_widget, stretch=1)
@@ -137,12 +150,6 @@ class TopBar(QWidget):
         self.single_btn.setEnabled(True)
         self.continuous_btn.setEnabled(True)
         self.stop_btn.setEnabled(False)
-    
-    def on_modality_changed(self, new_modality):
-        """Handle modality changes without rebuilding the entire top bar"""
-        # This method will be enhanced later to handle modality-specific top bar requirements
-        # For now, it does nothing, keeping the top bar independent of modality changes
-        pass
 
 
 class ModalityControls(QWidget):
@@ -158,39 +165,15 @@ class ModalityControls(QWidget):
         layout.addWidget(ms_label)
 
         ms_dropdown = QComboBox()
-        # Use registry instead of hard-coded list
-        from pyrpoc.modalities import modality_registry
-        ms_dropdown.addItems(modality_registry.get_modality_names())
-        
-        # Find the modality by key and get its display name
-        from pyrpoc.modalities import modality_registry
-        current_modality = modality_registry.get_modality(self.app_state.modality)
-        if current_modality is not None:
-            current_modality_name = current_modality.name
-        else:
-            current_modality_name = self.app_state.modality.capitalize()
-        
-        index = ms_dropdown.findText(current_modality_name)
+        ms_dropdown.addItems(['Simulated', 'Confocal', 'Split data stream'])
+        current_modality = self.app_state.modality.capitalize()
+        index = ms_dropdown.findText(current_modality)
         if index >= 0:
             ms_dropdown.setCurrentIndex(index)
         ms_dropdown.currentTextChanged.connect(self.signals.modality_dropdown_changed)
         layout.addWidget(ms_dropdown)
 
         self.setLayout(layout)
-    
-    def on_modality_changed(self, new_modality):
-        """Handle modality changes by updating the dropdown selection"""
-        # Find the modality by key and get its display name
-        from pyrpoc.modalities import modality_registry
-        current_modality = modality_registry.get_modality(new_modality)
-        if current_modality is not None:
-            current_modality_name = current_modality.name
-        else:
-            current_modality_name = new_modality.capitalize()
-        
-        index = self.findChild(QComboBox).findText(current_modality_name)
-        if index >= 0:
-            self.findChild(QComboBox).setCurrentIndex(index)
 
 '''
 all subwidgets other than topbar in general get rebuilt upon modality changes
@@ -244,81 +227,205 @@ class AcquisitionParameters(QWidget):
         
         main_layout.addWidget(self.group)
         self.setLayout(main_layout)
-    
-    def on_modality_changed(self, new_modality):
-        """Handle modality changes by rebuilding the parameters"""
-        self.rebuild()
 
     def add_specific_parameters(self):
-        from pyrpoc.modalities import modality_registry
+        modality = self.app_state.modality.lower()
         
-        modality = modality_registry.get_modality_by_name(self.app_state.modality.capitalize())
-        if modality is None:
-            return
-        
-        # Generate UI widgets based on modality requirements
-        for param_name, param_meta in modality.required_parameters.items():
-            self.add_parameter_widget(param_name, param_meta)
-    
-    def add_parameter_widget(self, param_name: str, param_meta: Dict[str, Any]):
-        """Dynamically create parameter widgets based on metadata"""
-        param_type = param_meta['type']
-        default_value = param_meta.get('default', 0)
-        
-        # Get current value from app_state if it exists
-        current_value = self.app_state.acquisition_parameters.get(param_name, default_value)
-        
-        if param_type == 'int':
-            widget = QSpinBox()
-            if 'range' in param_meta:
-                widget.setRange(*param_meta['range'])
-            widget.setValue(current_value)
-        elif param_type == 'float':
-            widget = QDoubleSpinBox()
-            if 'range' in param_meta:
-                widget.setRange(*param_meta['range'])
-            widget.setValue(current_value)
-        elif param_type == 'bool':
-            widget = QCheckBox()
-            widget.setChecked(current_value)
-        elif param_type == 'choice':
-            widget = QComboBox()
-            widget.addItems(param_meta['choices'])
-            widget.setCurrentText(current_value)
+        if modality == 'confocal':
+            self.add_galvo_parameters()
+
+        elif modality == 'split data stream':
+            # Split percentage parameter for split data stream modality
+            split_layout = QHBoxLayout()
+            split_layout.addWidget(QLabel('Split Percentage:'))
+            self.split_percentage_spinbox = QSpinBox()
+            self.split_percentage_spinbox.setRange(1, 99)
+            self.split_percentage_spinbox.setValue(self.app_state.acquisition_parameters.get('split_percentage', 50))
+            self.split_percentage_spinbox.setSuffix('%')
+            self.split_percentage_spinbox.valueChanged.connect(
+                lambda value: self.signals.acquisition_parameter_changed.emit('split_percentage', value))
+            split_layout.addWidget(self.split_percentage_spinbox)
+            self.layout.addLayout(split_layout)
+            
+            # AOM Delay parameter for split data stream modality
+            aom_delay_layout = QHBoxLayout()
+            aom_delay_layout.addWidget(QLabel('AOM Delay:'))
+            self.aom_delay_spinbox = QSpinBox()
+            self.aom_delay_spinbox.setRange(0, 1000)
+            self.aom_delay_spinbox.setValue(self.app_state.acquisition_parameters.get('aom_delay', 0))
+            self.aom_delay_spinbox.setSuffix(' µs')
+            self.aom_delay_spinbox.valueChanged.connect(
+                lambda value: self.signals.acquisition_parameter_changed.emit('aom_delay', value))
+            aom_delay_layout.addWidget(self.aom_delay_spinbox)
+            self.layout.addLayout(aom_delay_layout)
+            
+
+            self.add_galvo_parameters()
+            self.add_prior_stage_parameters()
+
+        elif modality == 'simulated':
+            self.add_pixel_parameters()
+
         else:
-            widget = QLineEdit()
-            widget.setText(str(current_value))
+            self.add_galvo_parameters()
+
+    def add_galvo_parameters(self):
+        galvo_group = QGroupBox("Galvo Parameters")
+        galvo_layout = QFormLayout()
         
-        # Connect to signal
-        widget.valueChanged.connect(
-            lambda value: self.signals.acquisition_parameter_changed.emit(param_name, value)
-        )
+        self.dwell_time_spin = QDoubleSpinBox()
+        self.dwell_time_spin.setRange(1, 1000)
+        self.dwell_time_spin.setValue(self.app_state.acquisition_parameters.get('dwell_time', 10))
+        self.dwell_time_spin.setSuffix(" \u03BCs")
+        self.dwell_time_spin.setDecimals(0)
+        self.dwell_time_spin.setSingleStep(1)
+        self.dwell_time_spin.valueChanged.connect(
+            lambda value: self.signals.acquisition_parameter_changed.emit('dwell_time', value))
+        galvo_layout.addRow("Dwell Time:", self.dwell_time_spin)
         
-        # Add to layout with label
-        label = QLabel(f"{param_name.replace('_', ' ').title()}:")
-        if 'unit' in param_meta:
-            label.setText(f"{label.text()} ({param_meta['unit']})")
+        self.extrasteps_left_spin = QSpinBox()
+        self.extrasteps_left_spin.setRange(0, 10000)
+        self.extrasteps_left_spin.setValue(self.app_state.acquisition_parameters.get('extrasteps_left', 50))
+        self.extrasteps_left_spin.valueChanged.connect(
+            lambda value: self.signals.acquisition_parameter_changed.emit('extrasteps_left', value))
+        galvo_layout.addRow("Extra Steps Left:", self.extrasteps_left_spin)
         
-        layout = QHBoxLayout()
-        layout.addWidget(label)
-        layout.addWidget(widget)
-        self.layout.addLayout(layout)
+        self.extrasteps_right_spin = QSpinBox()
+        self.extrasteps_right_spin.setRange(0, 10000)
+        self.extrasteps_right_spin.setValue(self.app_state.acquisition_parameters.get('extrasteps_right', 50))
+        self.extrasteps_right_spin.valueChanged.connect(
+            lambda value: self.signals.acquisition_parameter_changed.emit('extrasteps_right', value))
+        galvo_layout.addRow("Extra Steps Right:", self.extrasteps_right_spin)
 
-
-
-
-
-
-
-
+        self.amplitude_x_spin = QDoubleSpinBox()
+        self.amplitude_x_spin.setRange(0.0, 10.0)
+        self.amplitude_x_spin.setDecimals(1)
+        self.amplitude_x_spin.setSingleStep(0.1)
+        self.amplitude_x_spin.setValue(self.app_state.acquisition_parameters.get('amplitude_x', 0.5))
+        self.amplitude_x_spin.setSuffix(" V")
+        self.amplitude_x_spin.valueChanged.connect(
+            lambda value: self.signals.acquisition_parameter_changed.emit('amplitude_x', value))
+        galvo_layout.addRow("Amplitude X:", self.amplitude_x_spin)
         
+        self.amplitude_y_spin = QDoubleSpinBox()
+        self.amplitude_y_spin.setRange(0.0, 10.0)
+        self.amplitude_y_spin.setDecimals(1)
+        self.amplitude_y_spin.setSingleStep(0.1)
+        self.amplitude_y_spin.setValue(self.app_state.acquisition_parameters.get('amplitude_y', 0.5))
+        self.amplitude_y_spin.setSuffix(" V")
+        self.amplitude_y_spin.valueChanged.connect(
+            lambda value: self.signals.acquisition_parameter_changed.emit('amplitude_y', value))
+        galvo_layout.addRow("Amplitude Y:", self.amplitude_y_spin)
 
+        self.offset_x_spin = QDoubleSpinBox()
+        self.offset_x_spin.setRange(-10.0, 10.0)
+        self.offset_x_spin.setDecimals(1)
+        self.offset_x_spin.setSingleStep(0.1)
+        self.offset_x_spin.setValue(self.app_state.acquisition_parameters.get('offset_x', 0.0))
+        self.offset_x_spin.setSuffix(" V")
+        self.offset_x_spin.valueChanged.connect(
+            lambda value: self.signals.acquisition_parameter_changed.emit('offset_x', value))
+        galvo_layout.addRow("Offset X:", self.offset_x_spin)
         
-
+        self.offset_y_spin = QDoubleSpinBox()
+        self.offset_y_spin.setRange(-10.0, 10.0)
+        self.offset_y_spin.setDecimals(1)
+        self.offset_y_spin.setSingleStep(0.1)
+        self.offset_y_spin.setValue(self.app_state.acquisition_parameters.get('offset_y', 0.0))
+        self.offset_y_spin.setSuffix(" V")
+        self.offset_y_spin.valueChanged.connect(
+            lambda value: self.signals.acquisition_parameter_changed.emit('offset_y', value))
+        galvo_layout.addRow("Offset Y:", self.offset_y_spin)
         
-
+        self.x_pixels_spin = QSpinBox()
+        self.x_pixels_spin.setRange(64, 4096)
+        self.x_pixels_spin.setValue(self.app_state.acquisition_parameters.get('x_pixels', 512))
+        self.x_pixels_spin.valueChanged.connect(
+            lambda value: self.signals.acquisition_parameter_changed.emit('x_pixels', value))
+        galvo_layout.addRow("X Pixels:", self.x_pixels_spin)
         
+        self.y_pixels_spin = QSpinBox()
+        self.y_pixels_spin.setRange(64, 4096)
+        self.y_pixels_spin.setValue(self.app_state.acquisition_parameters.get('y_pixels', 512))
+        self.y_pixels_spin.valueChanged.connect(
+            lambda value: self.signals.acquisition_parameter_changed.emit('y_pixels', value))
+        galvo_layout.addRow("Y Pixels:", self.y_pixels_spin)
+        
+        galvo_group.setLayout(galvo_layout)
+        self.layout.addWidget(galvo_group)
 
+    def add_pixel_parameters(self): # not used if galvo parameters are used
+        pixel_group = QGroupBox("Image Parameters")
+        pixel_layout = QFormLayout()
+        
+        self.x_pixels_spin = QSpinBox()
+        self.x_pixels_spin.setRange(64, 4096)
+        self.x_pixels_spin.setValue(self.app_state.acquisition_parameters.get('x_pixels', 512))
+        self.x_pixels_spin.valueChanged.connect(
+            lambda value: self.signals.acquisition_parameter_changed.emit('x_pixels', value))
+        pixel_layout.addRow("X Pixels:", self.x_pixels_spin)
+        
+        self.y_pixels_spin = QSpinBox()
+        self.y_pixels_spin.setRange(64, 4096)
+        self.y_pixels_spin.setValue(self.app_state.acquisition_parameters.get('y_pixels', 512))
+        self.y_pixels_spin.valueChanged.connect(
+            lambda value: self.signals.acquisition_parameter_changed.emit('y_pixels', value))
+        pixel_layout.addRow("Y Pixels:", self.y_pixels_spin)
+        
+        pixel_group.setLayout(pixel_layout)
+        self.layout.addWidget(pixel_group)
+
+    def add_prior_stage_parameters(self):
+        prior_group = QGroupBox("Prior Stage Parameters")
+        prior_layout = QFormLayout()
+
+        self.numtiles_x_spin = QSpinBox()
+        self.numtiles_x_spin.setRange(1, 1000)
+        self.numtiles_x_spin.setValue(self.app_state.acquisition_parameters.get('numtiles_x', 10))
+        self.numtiles_x_spin.valueChanged.connect(
+            lambda value: self.signals.acquisition_parameter_changed.emit('numtiles_x', value))
+        prior_layout.addRow("X Tiles:", self.numtiles_x_spin)
+        
+        self.numtiles_y_spin = QSpinBox()
+        self.numtiles_y_spin.setRange(1, 1000)
+        self.numtiles_y_spin.setValue(self.app_state.acquisition_parameters.get('numtiles_y', 10))
+        self.numtiles_y_spin.valueChanged.connect(
+            lambda value: self.signals.acquisition_parameter_changed.emit('numtiles_y', value))
+        prior_layout.addRow("Y Tiles:", self.numtiles_y_spin)
+        
+        self.numtiles_z_spin = QSpinBox()
+        self.numtiles_z_spin.setRange(1, 1000)
+        self.numtiles_z_spin.setValue(self.app_state.acquisition_parameters.get('numtiles_z', 5))
+        self.numtiles_z_spin.valueChanged.connect(
+            lambda value: self.signals.acquisition_parameter_changed.emit('numtiles_z', value))
+        prior_layout.addRow("Z Tiles:", self.numtiles_z_spin)
+        
+        self.tile_size_x_spin = QDoubleSpinBox()
+        self.tile_size_x_spin.setRange(-10000, 10000)
+        self.tile_size_x_spin.setValue(self.app_state.acquisition_parameters.get('tile_size_x', 100))
+        self.tile_size_x_spin.setSuffix(" µm")
+        self.tile_size_x_spin.valueChanged.connect(
+            lambda value: self.signals.acquisition_parameter_changed.emit('tile_size_x', value))
+        prior_layout.addRow("X Tile Size:", self.tile_size_x_spin)
+        
+        self.tile_size_y_spin = QDoubleSpinBox()
+        self.tile_size_y_spin.setRange(-10000, 10000)
+        self.tile_size_y_spin.setValue(self.app_state.acquisition_parameters.get('tile_size_y', 100))
+        self.tile_size_y_spin.setSuffix(" µm")
+        self.tile_size_y_spin.valueChanged.connect(
+            lambda value: self.signals.acquisition_parameter_changed.emit('tile_size_y', value))
+        prior_layout.addRow("Y Tile Size:", self.tile_size_y_spin)
+        
+        self.tile_size_z_spin = QDoubleSpinBox()
+        self.tile_size_z_spin.setRange(-10000, 10000)
+        self.tile_size_z_spin.setValue(self.app_state.acquisition_parameters.get('tile_size_z', 50))
+        self.tile_size_z_spin.setSuffix(" µm")
+        self.tile_size_z_spin.valueChanged.connect(
+            lambda value: self.signals.acquisition_parameter_changed.emit('tile_size_z', value))
+        prior_layout.addRow("Z Tile Size:", self.tile_size_z_spin)
+        
+        prior_group.setLayout(prior_layout)
+        self.layout.addWidget(prior_group)
 
     def add_common_parameters(self):
         frames_layout = QHBoxLayout()
@@ -412,10 +519,6 @@ class InstrumentControls(QWidget):
 
         self.signals.instrument_removed.connect(self.remove_instrument)
     
-    def on_modality_changed(self, new_modality):
-        """Handle modality changes by rebuilding the instrument controls"""
-        self.rebuild()
-    
     def rebuild(self):
         # clear any existing modality specific instrument buttons
         while self.modality_buttons_layout.count():
@@ -423,17 +526,32 @@ class InstrumentControls(QWidget):
             if child.widget():
                 child.widget().deleteLater()
 
-        # Use modality registry to determine required instruments
-        from pyrpoc.modalities import modality_registry
-        
-        modality = modality_registry.get_modality(self.app_state.modality)
-        if modality is not None:
-            for instrument_type in modality.required_instruments:
-                if not self.has_instrument_type(instrument_type):
-                    btn = QPushButton(f'Add {instrument_type.title()}')
-                    btn.clicked.connect(lambda checked, it=instrument_type: self.signals.add_modality_instrument.emit(it))
-                    self.modality_buttons_layout.addWidget(btn)
-        
+        modality = self.app_state.modality.lower()
+        if modality == 'confocal':
+            if not self.has_instrument_type('galvo'):
+                galvo_btn = QPushButton('Add Galvos')
+                galvo_btn.clicked.connect(lambda: self.signals.add_modality_instrument.emit('galvo'))
+                self.modality_buttons_layout.addWidget(galvo_btn)
+            
+            if not self.has_instrument_type('data input'):
+                data_input_btn = QPushButton('Add Data Inputs')
+                data_input_btn.clicked.connect(lambda: self.signals.add_modality_instrument.emit('data input'))
+                self.modality_buttons_layout.addWidget(data_input_btn)
+        elif modality == 'split data stream':
+            if not self.has_instrument_type('galvo'):
+                galvo_btn = QPushButton('Add Galvos')
+                galvo_btn.clicked.connect(lambda: self.signals.add_modality_instrument.emit('galvo'))
+                self.modality_buttons_layout.addWidget(galvo_btn)
+            
+            if not self.has_instrument_type('data input'):
+                data_input_btn = QPushButton('Add Data Inputs')
+                data_input_btn.clicked.connect(lambda: self.signals.add_modality_instrument.emit('data input'))
+                self.modality_buttons_layout.addWidget(data_input_btn)
+            
+            if not self.has_instrument_type('prior stage'):
+                prior_stage_btn = QPushButton('Add Prior Stage')
+                prior_stage_btn.clicked.connect(lambda: self.signals.add_modality_instrument.emit('prior stage'))
+                self.modality_buttons_layout.addWidget(prior_stage_btn)
         self.rebuild_instrument_list()
     
     def has_instrument_type(self, instrument_type):
@@ -601,12 +719,6 @@ class InstrumentWidget(QWidget):
             else:
                 current_name = getattr(self.instrument, 'name', 'Unknown Instrument')
                 self.signals.console_message.emit(f"Failed to update {current_name} - invalid parameters")
-    
-    def on_modality_changed(self, new_modality):
-        """Handle modality changes without rebuilding the instrument widget"""
-        # This method will be enhanced later to handle modality-specific instrument requirements
-        # For now, it does nothing, keeping the instrument widget independent of modality changes
-        pass
 
 class DisplayControls(QWidget):
     def __init__(self, app_state: AppState, signals: StateSignalBus):
@@ -629,118 +741,23 @@ class DisplayControls(QWidget):
         main_layout.addWidget(self.group)
         self.setLayout(main_layout)
         self.display_params_widget = None
-        
-        # Add display selection dropdown
-        self.add_display_selection_dropdown()
-        
-        # Show placeholder after adding the dropdown
         self.show_placeholder()
 
     def show_placeholder(self):
-        # Clear only the display parameters widget, not the entire layout
-        # The display selection dropdown should remain
-        if self.display_params_widget and hasattr(self.display_params_widget, 'parent'):
-            if self.display_params_widget.parent():
-                self.display_params_widget.parent().layout().removeWidget(self.display_params_widget)
-            self.display_params_widget.deleteLater()
-        
+        while self.layout.count():
+            child = self.layout.takeAt(0)
+            if child.widget():
+                child.widget().deleteLater()
         placeholder = QLabel('No display settings available for this display type.')
         placeholder.setStyleSheet('color: #888; font-style: italic;')
         self.display_params_widget = placeholder
         self.layout.addWidget(self.display_params_widget)
-    
-    def on_modality_changed(self, new_modality):
-        """Handle modality changes by updating the display selection dropdown"""
-        # Rebuild the display selection dropdown for the new modality
-        self.rebuild_display_selection_dropdown()
-    
-    def rebuild_display_selection_dropdown(self):
-        """Rebuild the display selection dropdown for the current modality"""
-        from pyrpoc.modalities import modality_registry
-        
-        # Get current modality
-        modality = modality_registry.get_modality(self.app_state.modality)
-        if modality is None:
-            return
-        
-        # Clear existing dropdown items
-        if hasattr(self, 'display_dropdown'):
-            self.display_dropdown.clear()
-            
-            # Get compatible displays for current modality
-            compatible_displays = modality.compatible_displays
-            display_names = [display.__name__ for display in compatible_displays]
-            
-            # Add display options
-            self.display_dropdown.addItems(display_names)
-            
-            # Set current selection (try to keep current if compatible, otherwise use first)
-            current_display = self.app_state.selected_display
-            index = self.display_dropdown.findText(current_display)
-            if index >= 0:
-                self.display_dropdown.setCurrentIndex(index)
-            else:
-                # Current display not compatible with new modality, use first compatible one
-                self.app_state.selected_display = display_names[0]
-                self.display_dropdown.setCurrentIndex(0)
 
-    def add_display_selection_dropdown(self):
-        """Add display selection dropdown to the display controls"""
-        from pyrpoc.modalities import modality_registry
-        
-        # Get current modality
-        modality = modality_registry.get_modality(self.app_state.modality)
-        if modality is None:
-            return
-        
-        # Create display selection group
-        display_selection_group = QGroupBox('Display Type')
-        display_selection_layout = QVBoxLayout()
-        
-        # Create dropdown
-        self.display_dropdown = QComboBox()
-        
-        # Get compatible displays for current modality
-        compatible_displays = modality.compatible_displays
-        display_names = [display.__name__ for display in compatible_displays]
-        
-        # Add display options
-        self.display_dropdown.addItems(display_names)
-        
-        # Set current selection
-        current_display = self.app_state.selected_display
-        index = self.display_dropdown.findText(current_display)
-        if index >= 0:
-            self.display_dropdown.setCurrentIndex(index)
-        
-        # Connect signal
-        self.display_dropdown.currentTextChanged.connect(self.on_display_selection_changed)
-        
-        display_selection_layout.addWidget(self.display_dropdown)
-        display_selection_group.setLayout(display_selection_layout)
-        
-        # Add to main layout (before the placeholder)
-        self.layout.addWidget(display_selection_group)
-    
-    def on_display_selection_changed(self, display_name):
-        """Handle display selection change"""
-        self.app_state.selected_display = display_name
-        self.signals.console_message.emit(f"Display type changed to {display_name}")
-    
-    def update_display_selection(self, display_name):
-        """Update the display selection dropdown to reflect external changes"""
-        if hasattr(self, 'display_dropdown'):
-            index = self.display_dropdown.findText(display_name)
-            if index >= 0:
-                self.display_dropdown.setCurrentIndex(index)
-    
     def set_display_params_widget(self, display_widget):
-        # Remove only the display parameters widget, not the entire layout
-        if self.display_params_widget and hasattr(self.display_params_widget, 'parent'):
-            if self.display_params_widget.parent():
-                self.display_params_widget.parent().layout().removeWidget(self.display_params_widget)
-            self.display_params_widget.deleteLater()
-        
+        while self.layout.count():
+            child = self.layout.takeAt(0)
+            if child.widget():
+                child.widget().deleteLater()
         self.display_params_widget = None
 
         if display_widget is not None and display_widget.__class__.__name__ == 'MultichannelImageDisplayWidget':
@@ -797,6 +814,11 @@ class RightPanel(QWidget):
     def add_common_controls(self, layout):
         rpoc_group = QGroupBox('RPOC Controls')
         rpoc_layout = QVBoxLayout()
+        
+        rpoc_enabled_checkbox = QCheckBox('RPOC Enabled')
+        rpoc_enabled_checkbox.setChecked(self.app_state.rpoc_enabled)
+        rpoc_enabled_checkbox.toggled.connect(lambda checked: self.signals.rpoc_enabled_changed.emit(checked))
+        rpoc_layout.addWidget(rpoc_enabled_checkbox)
         
         add_channel_btn = QPushButton('Add RPOC Channel')
         add_channel_btn.clicked.connect(self.add_rpoc_channel)
@@ -879,12 +901,6 @@ class RightPanel(QWidget):
         
         # Update next_channel_id to be higher than any existing channel
         self.next_channel_id = max_channel_id + 1
-    
-    def on_modality_changed(self, new_modality):
-        """Handle modality changes without rebuilding RPOC channels"""
-        # This method will be enhanced later to handle modality-specific RPOC requirements
-        # For now, it does nothing, keeping RPOC channels independent of modality changes
-        pass
 
 class LeftPanel(QWidget):
     def __init__(self, app_state: AppState, signals: StateSignalBus):
@@ -929,30 +945,6 @@ class LeftPanel(QWidget):
         self.content_layout.addWidget(self.display_controls)
         
         self.content_layout.addStretch()
-    
-    def on_modality_changed(self, new_modality):
-        """Handle modality changes by rebuilding only modality-specific components"""
-        self.rebuild_modality_specific()
-
-    def rebuild_modality_specific(self):
-        """Rebuild only the components that change with modality changes"""
-        # Rebuild modality controls
-        if hasattr(self, 'modality_controls'):
-            self.modality_controls.deleteLater()
-        self.modality_controls = ModalityControls(self.app_state, self.signals)
-        self.content_layout.insertWidget(0, self.modality_controls)
-        
-        # Rebuild acquisition parameters
-        if hasattr(self, 'acquisition_parameters'):
-            self.acquisition_parameters.deleteLater()
-        self.acquisition_parameters = AcquisitionParameters(self.app_state, self.signals)
-        self.content_layout.insertWidget(1, self.acquisition_parameters)
-        
-        # Rebuild instrument controls since they are modality-specific
-        if hasattr(self, 'instrument_controls'):
-            self.instrument_controls.deleteLater()
-        self.instrument_controls = InstrumentControls(self.app_state, self.signals)
-        self.content_layout.insertWidget(2, self.instrument_controls)
 
 
 class DockableMiddlePanel(QMainWindow):
@@ -978,12 +970,30 @@ class DockableMiddlePanel(QMainWindow):
         self.setCentralWidget(central_widget)
 
 
+        self.lines_dock = QDockWidget('Lines', self)
+        self.lines_widget = LinesWidget(self.app_state, self.signals)
+        self.lines_dock.setWidget(self.lines_widget)
+        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.lines_dock)
+        self.lines_dock.hide()
+        
+        self.on_lines_toggled(self.app_state.ui_state['lines_enabled'])
+
 
     def create_image_display_widget(self):
-        # For now, use a default display that works with all modalities
-        # This will be enhanced later to handle modality-specific display requirements
-        # without requiring a full rebuild
-        return MultichannelImageDisplayWidget(self.app_state, self.signals)
+        modality = self.app_state.modality.lower()
+        
+        if modality in ['confocal', 'split data stream']:
+            return MultichannelImageDisplayWidget(self.app_state, self.signals)
+        else:
+            return ImageDisplayWidget(self.app_state, self.signals)
+
+    def on_lines_toggled(self, enabled):        
+        if enabled:
+            self.lines_dock.show()
+            self.lines_widget.update_status(True)
+        else:
+            self.lines_dock.hide()
+            self.lines_widget.update_status(False)
 
     def set_image_display_widget(self, widget):
         layout = self.centralWidget().layout()
@@ -992,12 +1002,6 @@ class DockableMiddlePanel(QMainWindow):
             self.image_display_widget.deleteLater()
         self.image_display_widget = widget
         layout.addWidget(self.image_display_widget)
-    
-    def on_modality_changed(self, new_modality):
-        """Handle modality changes without rebuilding the entire display"""
-        # This method will be enhanced later to handle modality-specific display requirements
-        # For now, it does nothing, keeping the display independent of modality changes
-        pass
 
 
 class MainWindow(QMainWindow):
@@ -1010,7 +1014,6 @@ class MainWindow(QMainWindow):
         
         self.central_widget = None
         self.central_layout = None
-        self.vertical_splitter = None
         self.main_splitter = None
         self.left_widget = None
         self.mid_layout = None
@@ -1024,7 +1027,6 @@ class MainWindow(QMainWindow):
     def build_gui(self):
         self.clear_existing_gui()
         self.create_central_widget()
-        self.create_vertical_splitter()
         self.create_top_bar()
         self.create_main_splitter()
         self.setup_splitter_sizes()
@@ -1040,16 +1042,9 @@ class MainWindow(QMainWindow):
         self.central_layout.setContentsMargins(5, 5, 5, 5)
         self.central_layout.setSpacing(5)
 
-    def create_vertical_splitter(self):
-        self.vertical_splitter = QSplitter(Qt.Orientation.Vertical)
-        self.vertical_splitter.setStyleSheet(SPLITTER_STYLE)
-
     def create_top_bar(self):
         self.top_bar = TopBar(self.app_state, self.signals)
-        # Remove fixed height constraint to allow resizing
-        self.top_bar.setMinimumHeight(50)
-        self.top_bar.setMaximumHeight(300)
-        self.vertical_splitter.addWidget(self.top_bar)
+        self.central_layout.addWidget(self.top_bar, stretch=0)
 
     def create_main_splitter(self):
         self.main_splitter = QSplitter(Qt.Orientation.Horizontal)
@@ -1059,108 +1054,40 @@ class MainWindow(QMainWindow):
         self.mid_layout = DockableMiddlePanel(self.app_state, self.signals)
         self.right_layout = RightPanel(self.app_state, self.signals)
 
-        # Set the display parameters widget - this will be enhanced later to handle
-        # modality-specific display requirements without requiring a full rebuild
         self.left_widget.display_controls.set_display_params_widget(self.mid_layout.image_display_widget)
         
         self.main_splitter.addWidget(self.left_widget)
         self.main_splitter.addWidget(self.mid_layout)
         self.main_splitter.addWidget(self.right_layout)
-        
-        self.vertical_splitter.addWidget(self.main_splitter)
 
     def setup_splitter_sizes(self):
-        # Set initial sizes for the vertical splitter (top bar vs main content)
-        if 'vertical_splitter_sizes' in self.app_state.ui_state:
-            self.vertical_splitter.setSizes(self.app_state.ui_state['vertical_splitter_sizes'])
-        else:
-            # Default: top bar takes 100px, rest goes to main content
-            # Use a reasonable default if window height is not available yet
-            default_height = 900  # Default window height
-            self.vertical_splitter.setSizes([100, default_height - 100])
-        
-        # Set initial sizes for the main horizontal splitter
         self.main_splitter.setSizes([200, 800, 200])
         if 'main_splitter_sizes' in self.app_state.ui_state:
             self.main_splitter.setSizes(self.app_state.ui_state['main_splitter_sizes'])
-        
-        # Connect splitter movement signals
-        self.vertical_splitter.splitterMoved.connect(lambda: self.save_splitter_sizes())
         self.main_splitter.splitterMoved.connect(lambda: self.save_splitter_sizes())
 
     def finalize_gui(self):
-        self.central_layout.addWidget(self.vertical_splitter, stretch=1)
+        self.central_layout.addWidget(self.main_splitter, stretch=1)
         self.central_widget.setLayout(self.central_layout)
         self.setCentralWidget(self.central_widget)
 
+    def rebuild_gui(self):
+        if self.main_splitter:
+            sizes = self.main_splitter.sizes()
+            self.app_state.ui_state['main_splitter_sizes'] = sizes
+        
+        self.build_gui()
+        
+        self.signals.console_message.emit(f"GUI rebuilt for {self.app_state.modality} modality")
 
-
-    def rebuild_display(self):
-        try:
-            # Get the selected display class
-            from pyrpoc.modalities import modality_registry
-            modality = modality_registry.get_modality(self.app_state.modality)
-            if modality is None:
-                return
-            
-            # Find the selected display class
-            selected_display_class = None
-            for display_class in modality.compatible_displays:
-                if display_class.__name__ == self.app_state.selected_display:
-                    selected_display_class = display_class
-                    break
-            
-            if selected_display_class is None:
-                # Fallback to first compatible display
-                selected_display_class = modality.compatible_displays[0]
-                self.app_state.selected_display = selected_display_class.__name__
-            
-            # Create new display widget
-            new_display_widget = selected_display_class(self.app_state, self.signals)
-            
-            # Update the middle layout with the new display widget
-            if self.mid_layout:
-                self.mid_layout.set_image_display_widget(new_display_widget)
-                
-                # Update the display parameters widget in the left panel
-                if self.left_widget and hasattr(self.left_widget, 'display_controls'):
-                    self.left_widget.display_controls.set_display_params_widget(new_display_widget)
-            
-            
-        except Exception as e:
-            self.signals.console_message.emit(f"Error rebuilding display: {e}")
-    
     def on_modality_changed(self, new_modality):
         self.app_state.modality = new_modality.lower()
-        # Notify all widgets of the modality change instead of rebuilding the entire GUI
-        self.notify_modality_changed(new_modality.lower())
-        self.signals.console_message.emit(f"Modality changed to {self.app_state.modality}")
-    
-    def notify_modality_changed(self, new_modality):
-        """Notify all relevant widgets of modality changes without rebuilding the entire GUI"""
-        # Notify top bar
-        if self.top_bar:
-            self.top_bar.on_modality_changed(new_modality)
-        
-        # Notify left panel components
-        if self.left_widget:
-            self.left_widget.on_modality_changed(new_modality)
-        
-        # Notify middle panel (display)
-        if self.mid_layout:
-            self.mid_layout.on_modality_changed(new_modality)
-        
-        # Notify right panel (RPOC)
-        if self.right_layout:
-            self.right_layout.on_modality_changed(new_modality)
+        self.rebuild_gui()
 
     def save_splitter_sizes(self):
-        if self.vertical_splitter:
-            vertical_sizes = self.vertical_splitter.sizes()
-            self.signals.ui_state_changed.emit('vertical_splitter_sizes', vertical_sizes)
         if self.main_splitter:
-            horizontal_sizes = self.main_splitter.sizes()
-            self.signals.ui_state_changed.emit('main_splitter_sizes', horizontal_sizes)
+            sizes = self.main_splitter.sizes()
+            self.signals.ui_state_changed.emit('main_splitter_sizes', sizes)
 
 if __name__ == '__main__':
     app_state = AppState()

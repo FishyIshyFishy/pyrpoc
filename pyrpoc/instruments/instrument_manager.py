@@ -62,7 +62,7 @@ def show_add_instrument_dialog(parent=None):
     layout.addWidget(QLabel("Select instrument type:"))
     
     combo = QComboBox()
-    combo.addItems(['prior stage'])
+    combo.addItems(['delay stage', 'prior stage'])
     layout.addWidget(combo)
     
     button_layout = QHBoxLayout()
