@@ -376,18 +376,15 @@ class SplitDataStream(Acquisition):
             else:
                 raise ValueError(f"Unexpected data shape: {data.shape}")
             
-            num_input_channels = num_channels // 3
-            if num_channels % 3 != 0:
-                raise ValueError(f"Split stream data should have 3 channels per input, got {num_channels} total channels")
+            num_input_channels = num_channels // 2
             
             input_channel_names = self._get_input_channel_names()
             
             for input_ch_idx in range(num_input_channels):
                 input_channel_name = input_channel_names.get(input_ch_idx, f"input{input_ch_idx}")
                 
-                first_ch_idx = input_ch_idx * 3
-                second_ch_idx = input_ch_idx * 3 + 1
-                full_ch_idx = input_ch_idx * 3 + 2
+                first_ch_idx = input_ch_idx * 2
+                second_ch_idx = input_ch_idx * 2 + 1
   
                 first_data = data[:, first_ch_idx, :, :]
                 first_filename = f"{Path(self.save_path).stem}_{input_channel_name}_first.tiff"
@@ -398,11 +395,6 @@ class SplitDataStream(Acquisition):
                 second_filename = f"{Path(self.save_path).stem}_{input_channel_name}_second.tiff"
                 second_filepath = save_dir / second_filename
                 tifffile.imwrite(second_filepath, second_data)
-                
-                full_data = data[:, full_ch_idx, :, :]
-                full_filename = f"{Path(self.save_path).stem}_{input_channel_name}_full.tiff"
-                full_filepath = save_dir / full_filename
-                tifffile.imwrite(full_filepath, full_data)
                 
                 if self.signal_bus:
                     self.signal_bus.console_message.emit(f"Saved split stream data for {input_channel_name}: first, second, and full channels")
