@@ -356,7 +356,7 @@ class SplitDataStream(Acquisition):
                 return np.stack(input_results)
         except Exception as e:
             self.signal_bus.console_message.emit(f'Error in DAQ acquisition: {e}')
-            return self.generate_simulated_confocal()
+            return None
     
     def save_data(self, data):
         if not self.save_enabled or not self.save_path:
