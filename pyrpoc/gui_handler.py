@@ -428,7 +428,6 @@ def handle_single_acquisition(app_state, signal_bus, continuous=False):
     elif modality == 'split data stream':
         galvo = instruments.get('galvo', [])
         data_inputs = instruments.get('data input', [])
-        prior_stage = instruments.get('prior stage', [])
         
         if not galvo:
             signal_bus.console_message.emit("Error: Split Data Stream acquisition requires at least one galvo instrument. Please add a galvo scanner.")
@@ -436,10 +435,6 @@ def handle_single_acquisition(app_state, signal_bus, continuous=False):
         
         if not data_inputs:
             signal_bus.console_message.emit("Error: Split Data Stream acquisition requires at least one data input instrument. Please add a data input.")
-            return
-        
-        if not prior_stage:
-            signal_bus.console_message.emit("Error: Split Data Stream acquisition requires at least one prior stage instrument. Please add a prior stage.")
             return
 
     acquisition = None
@@ -486,13 +481,11 @@ def handle_single_acquisition(app_state, signal_bus, continuous=False):
                 # have already verified that the instruments exist, no need to .get() here
                 galvo = instruments['galvo'][0] # returned as a list because there are multiple of each instrument in general
                 data_inputs = instruments['data input']
-                prior_stage = instruments['prior stage'][0] if 'prior stage' in instruments else None
                 split_percentage = parameters.get('split_percentage', 50)
                 
                 acquisition = SplitDataStream(
                     galvo=galvo, 
                     data_inputs=data_inputs,
-                    prior_stage=prior_stage,
                     num_frames=parameters['num_frames'],
                     split_percentage=split_percentage,
                     signal_bus=signal_bus,
@@ -555,8 +548,6 @@ def validate_acquisition_parameters(parameters, modality):
             'x_pixels', 'y_pixels', 'num_frames', 'split_percentage', 'aom_delay',
             'dwell_time', 'extrasteps_left', 'extrasteps_right',
             'amplitude_x', 'amplitude_y', 'offset_x', 'offset_y',
-            'numtiles_x', 'numtiles_y', 'numtiles_z',
-            'tile_size_x', 'tile_size_y', 'tile_size_z'
         ],
         'custom': ['x_pixels', 'y_pixels', 'num_frames']
     }

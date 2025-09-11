@@ -122,69 +122,22 @@ class SplitDataStream(Acquisition):
         if not ai_channels:
             ai_channels = ["Dev1/ai0"] 
 
-        numtiles_x = int(self.acquisition_parameters.get('numtiles_x', 1))
-        numtiles_y = int(self.acquisition_parameters.get('numtiles_y', 1))
-        numtiles_z = int(self.acquisition_parameters.get('numtiles_z', 1))
-        tile_size_x = int(self.acquisition_parameters.get('tile_size_x', 100))  # in microns
-        tile_size_y = int(self.acquisition_parameters.get('tile_size_y', 100))  # in microns
-        tile_size_z = float(self.acquisition_parameters.get('tile_size_z', 50))  # in microns
-        
-        try:
-            start_x, start_y = self.prior_stage.get_xy()  # in microns (int)
-            start_z = self.prior_stage.get_z()  # in 0.1 micron units (int)
-        except Exception as e:
-            if self.signal_bus:
-                self.signal_bus.console_message.emit(f"Error getting current stage position: {e}")
-            raise RuntimeError(f"Failed to get current stage position: {e}")
-        
-        stage_positions = []
-        tile_indices = []
-        for z_idx in range(numtiles_z):
-            for y_idx in range(numtiles_y):
-                for x_idx in range(numtiles_x):
-                    x_pos = int(start_x + x_idx * tile_size_x)  # int microns
-                    y_pos = int(start_y + y_idx * tile_size_y)  # int microns
-                    # z is in 0.1 micron units, so convert tile_size_z (microns) to 0.1 micron units
-                    z_pos = int(start_z + z_idx * tile_size_z * 10)  # int 0.1 micron units
-                    stage_positions.append((x_pos, y_pos, z_pos))
-                    tile_indices.append((x_idx, y_idx, z_idx))
 
         all_frames = []
-        total_positions = len(stage_positions) * self.num_frames
-        current_position = 0
         
-        for frame_idx in range(self.num_frames):
-            if self._stop_flag and self._stop_flag():
-                break
-            
-            for pos_idx, (x_pos, y_pos, z_pos) in enumerate(stage_positions):
-                if self._stop_flag and self._stop_flag():
-                    break
+        for _ in range(self.num_frames):
+            frame_data = self.collect_split_data(self.galvo, ai_channels)
                 
-                try:
-                    if self.signal_bus:
-                        self.signal_bus.console_message.emit(f"Moving to position {pos_idx + 1}/{len(stage_positions)}: X={x_pos} µm, Y={y_pos} µm, Z={z_pos/10:.1f} µm")
-                    self.prior_stage.move_xy(x_pos, y_pos)
-                    self.prior_stage.move_z(z_pos)
-                    time.sleep(0.5)
-                except Exception as e:
-                    if self.signal_bus:
-                        self.signal_bus.console_message.emit(f"Error moving stage: {e}")
-                    raise RuntimeError(f"Failed to move stage to position {pos_idx + 1}: {e}")
-
-                frame_data = self.collect_split_data(self.galvo, ai_channels)
-                
-                if self.signal_bus:
-                    self.signal_bus.data_signal.emit(frame_data, current_position, total_positions, False)
-                all_frames.append(frame_data)
-                current_position += 1
+            if self.signal_bus:
+                self.signal_bus.data_signal.emit(frame_data, current_position, self.num_frames, False)
+            all_frames.append(frame_data)
+            current_position += 1
         
         if all_frames:
             final_data = np.stack(all_frames)
             if self.signal_bus:
-                self.signal_bus.data_signal.emit(final_data, len(all_frames)-1, total_positions, True)
-            
-            self.metadata['tile_order'] = tile_indices            
+                self.signal_bus.data_signal.emit(final_data, len(all_frames)-1, self.num_frames, True)
+         
             self.save_data(final_data)
             return final_data
         else:
