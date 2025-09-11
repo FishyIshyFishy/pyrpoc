@@ -541,7 +541,8 @@ def handle_single_acquisition(app_state, signal_bus, continuous=False):
         
         # emit signal to update button states
         signal_bus.acquisition_started.emit()
-    else:
+    
+    except:
         signal_bus.console_message.emit("Error: Failed to create acquisition object")
 
 def validate_acquisition_parameters(parameters, modality):
