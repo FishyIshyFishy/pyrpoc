@@ -11,11 +11,10 @@ from .base_acquisition import Acquisition
 
 
 class SplitDataStream(Acquisition):
-    def __init__(self, galvo=None, data_inputs=None, prior_stage=None, num_frames=1, split_percentage=50, signal_bus=None, acquisition_parameters=None, **kwargs):
+    def __init__(self, galvo=None, data_inputs=None, num_frames=1, split_percentage=50, signal_bus=None, acquisition_parameters=None, **kwargs):
         super().__init__(**kwargs)
         self.galvo = galvo
         self.data_inputs = data_inputs or []
-        self.prior_stage = prior_stage
         self.num_frames = num_frames
         self.split_percentage = split_percentage
         self.signal_bus = signal_bus
@@ -26,9 +25,7 @@ class SplitDataStream(Acquisition):
             raise ValueError("Galvo is required for SplitDataStream acquisition")
         if not self.data_inputs:
             raise ValueError("At least one DataInput is required for SplitDataStream acquisition")
-        if self.prior_stage is None:
-            raise ValueError("Prior stage is required for SplitDataStream acquisition")
-        
+
         self.rpoc_enabled = False
         self.rpoc_mask_channels = {}
         self.rpoc_static_channels = {}
@@ -125,6 +122,7 @@ class SplitDataStream(Acquisition):
 
         all_frames = []
         
+        current_position = 0
         for _ in range(self.num_frames):
             frame_data = self.collect_split_data(self.galvo, ai_channels)
                 

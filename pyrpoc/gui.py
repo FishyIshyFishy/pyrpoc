@@ -261,7 +261,6 @@ class AcquisitionParameters(QWidget):
             
 
             self.add_galvo_parameters()
-            self.add_prior_stage_parameters()
 
         elif modality == 'simulated':
             self.add_pixel_parameters()
@@ -547,11 +546,7 @@ class InstrumentControls(QWidget):
                 data_input_btn = QPushButton('Add Data Inputs')
                 data_input_btn.clicked.connect(lambda: self.signals.add_modality_instrument.emit('data input'))
                 self.modality_buttons_layout.addWidget(data_input_btn)
-            
-            if not self.has_instrument_type('prior stage'):
-                prior_stage_btn = QPushButton('Add Prior Stage')
-                prior_stage_btn.clicked.connect(lambda: self.signals.add_modality_instrument.emit('prior stage'))
-                self.modality_buttons_layout.addWidget(prior_stage_btn)
+
         self.rebuild_instrument_list()
     
     def has_instrument_type(self, instrument_type):
