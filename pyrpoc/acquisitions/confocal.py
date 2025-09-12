@@ -346,6 +346,7 @@ class Confocal(Acquisition):
                 ai_task.wait_until_done(timeout=timeout)
                 if do_task:
                     do_task.wait_until_done(timeout=timeout)
+                    do_task.close()
 
                 if static_do:
                     # off_vals = [not v for v in stat_vals]

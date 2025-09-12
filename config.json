@@ -1,5 +1,5 @@
 {
-  "modality": "split data stream",
+  "modality": "confocal",
   "acquisition_parameters": {
     "num_frames": 1,
     "split_percentage": 50,
@@ -7,12 +7,12 @@
     "save_enabled": false,
     "save_path": "",
     "dwell_time": 2.0,
-    "extrasteps_left": 50,
-    "extrasteps_right": 50,
-    "amplitude_x": 0.5,
-    "amplitude_y": 0.5,
-    "offset_x": 0.0,
-    "offset_y": 0.0,
+    "extrasteps_left": 800,
+    "extrasteps_right": 10,
+    "amplitude_x": 1.4999999999999996,
+    "amplitude_y": 1.4999999999999996,
+    "offset_x": -1.4000000000000001,
+    "offset_y": -1.2,
     "x_pixels": 512,
     "y_pixels": 512,
     "numtiles_x": 10,
@@ -23,16 +23,16 @@
     "tile_size_z": 50
   },
   "display_parameters": {},
-  "rpoc_enabled": false,
+  "rpoc_enabled": true,
   "ui_state": {
     "acquisition_parameters_visible": true,
     "instrument_controls_visible": true,
     "display_controls_visible": true,
     "lines_enabled": false,
     "main_splitter_sizes": [
-      104,
-      418,
-      104
+      421,
+      1535,
+      580
     ]
   },
   "instruments": [
@@ -42,7 +42,7 @@
       "parameters": {
         "slow_axis_channel": 0,
         "fast_axis_channel": 1,
-        "sample_rate": 1000000,
+        "sample_rate": 2000000,
         "device_name": "Dev1",
         "name": "Galvo Scanner"
       }
@@ -52,14 +52,12 @@
       "instrument_type": "data input",
       "parameters": {
         "input_channels": [
-          0,
-          1
+          0
         ],
         "channel_names": {
-          "0": "ch0",
-          "1": "ch1"
+          "0": "ch0"
         },
-        "sample_rate": 1000000,
+        "sample_rate": 2000000,
         "device_name": "Dev1",
         "name": "Data Input"
       }
@@ -67,5 +65,11 @@
   ],
   "rpoc_mask_channels": {},
   "rpoc_script_channels": {},
-  "rpoc_static_channels": {}
+  "rpoc_static_channels": {
+    "1": {
+      "device": "Dev1",
+      "port_line": "port1/line0",
+      "level": "Static High"
+    }
+  }
 }
