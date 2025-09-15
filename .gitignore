@@ -3,9 +3,13 @@ __pycache__/
 *.so
 
 venv/
+rpoc_env/
+pyrpoc_env/
 pyrpoc_venv/
 .env/
 .venv/
+.cursor/
+
 
 *.egg-info/
 dist/
