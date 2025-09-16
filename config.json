@@ -4,15 +4,15 @@
     "num_frames": 1,
     "split_percentage": 50,
     "aom_delay": 0,
-    "save_enabled": false,
-    "save_path": "",
-    "dwell_time": 2.0,
-    "extrasteps_left": 800,
-    "extrasteps_right": 10,
-    "amplitude_x": 1.4999999999999996,
-    "amplitude_y": 1.4999999999999996,
-    "offset_x": -1.4000000000000001,
-    "offset_y": -1.2,
+    "save_enabled": true,
+    "save_path": "C:\\Users\\Lab Admin\\Box\\(L2 Sensitive) zhan2017\\Zhang lab data\\Ishaan\\091225\\aom_test\\new",
+    "dwell_time": 1.0,
+    "extrasteps_left": 0,
+    "extrasteps_right": 0,
+    "amplitude_x": 0.1,
+    "amplitude_y": 0.1,
+    "offset_x": 0.1,
+    "offset_y": 0.1,
     "x_pixels": 512,
     "y_pixels": 512,
     "numtiles_x": 10,
@@ -30,9 +30,9 @@
     "display_controls_visible": true,
     "lines_enabled": false,
     "main_splitter_sizes": [
-      421,
-      1535,
-      580
+      104,
+      418,
+      104
     ]
   },
   "instruments": [
@@ -42,7 +42,7 @@
       "parameters": {
         "slow_axis_channel": 0,
         "fast_axis_channel": 1,
-        "sample_rate": 2000000,
+        "sample_rate": 1000000,
         "device_name": "Dev1",
         "name": "Galvo Scanner"
       }
@@ -52,24 +52,33 @@
       "instrument_type": "data input",
       "parameters": {
         "input_channels": [
-          0
+          3,
+          5
         ],
         "channel_names": {
-          "0": "ch0"
+          "3": "ttl",
+          "5": "photodiode"
         },
-        "sample_rate": 2000000,
+        "sample_rate": 1000000,
         "device_name": "Dev1",
         "name": "Data Input"
       }
     }
   ],
-  "rpoc_mask_channels": {},
-  "rpoc_script_channels": {},
-  "rpoc_static_channels": {
+  "rpoc_mask_channels": {
     "1": {
       "device": "Dev1",
-      "port_line": "port1/line0",
-      "level": "Static High"
+      "port_line": "port0/line5",
+      "mask_metadata": {
+        "shape": [
+          512,
+          512
+        ],
+        "dtype": "uint8",
+        "has_mask": true
+      }
     }
-  }
+  },
+  "rpoc_script_channels": {},
+  "rpoc_static_channels": {}
 }
