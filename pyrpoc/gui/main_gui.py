@@ -5,14 +5,14 @@ qtads.CDockManager.setConfigFlag(qtads.CDockManager.eConfigFlag.DisableTabTextEl
 # qtads.CDockManager.setConfigFlag(qtads.CDockManager.eConfigFlag.FocusHighlighting, True)
 qtads.CDockManager.setConfigFlag(qtads.CDockManager.eConfigFlag.OpaqueSplitterResize, False)
 
-from main_widgets.acquisition_mgr import AcquisitionManagerWidget
-from main_widgets.instrument_mgr import InstrumentManagerWidget
-from main_widgets.laser_mod_mgr import LaserModManagerWidget
-from main_widgets.console import ConsoleWidget
-from main_widgets.menubar import MainMenuBar
+from pyrpoc.gui.main_widgets.acquisition_mgr import AcquisitionManagerWidget
+from pyrpoc.gui.main_widgets.instrument_mgr import InstrumentManagerWidget
+from pyrpoc.gui.main_widgets.laser_mod_mgr import LaserModManagerWidget
+from pyrpoc.gui.main_widgets.console import ConsoleWidget
+from pyrpoc.gui.main_widgets.menubar import MainMenuBar
 from pyrpoc.gui.signals.signals import UISignals
 
-from styles.theme_manager import ThemeManager
+from pyrpoc.gui.styles.theme_manager import ThemeManager
 
 
 class MainGUI(QWidget):
@@ -29,7 +29,7 @@ class MainGUI(QWidget):
         self.docks: list[qtads.CDockWidget] = []
         self.menubar = MainMenuBar(self.ui_signals, self)
 
-        dock_acq = self.add_dock("Acquisition Manager", AcquisitionManagerWidget(), qtads.DockWidgetArea.LeftDockWidgetArea)
+        dock_acq = self.add_dock("Acquisition Manager", AcquisitionManagerWidget(self.ui_signals), qtads.DockWidgetArea.LeftDockWidgetArea)
         dock_instr = self.add_dock("Instrument Manager", InstrumentManagerWidget(), qtads.DockWidgetArea.LeftDockWidgetArea, tab_with=dock_acq)
         dock_laser = self.add_dock("Laser Modulation Manager", LaserModManagerWidget(), qtads.DockWidgetArea.LeftDockWidgetArea, tab_with=dock_acq)
         dock_console = self.add_dock("Console", ConsoleWidget(), qtads.DockWidgetArea.BottomDockWidgetArea)

@@ -1,2 +1,3 @@
 from .base_modality import *
-from modality_registry import *
+from .confocal import *
+from .mod_registry import *

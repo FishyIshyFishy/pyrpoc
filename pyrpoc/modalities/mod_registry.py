@@ -6,3 +6,4 @@ class ModalityRegistry(Registry):
         super().__init__(name='ModalityRegistry', base_class=BaseModality)
 
 modality_registry = ModalityRegistry()
+

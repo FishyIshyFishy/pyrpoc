@@ -1,5 +1,5 @@
 from .base_modality import BaseModality
-from .modality_registry import modality_registry
+from .mod_registry import modality_registry
 from pyrpoc.backend_utils.data import DataImage
 from pyrpoc.instruments import BaseInstrument, Galvo, DAQInput
 from pyrpoc.gui.signals import AcquisitionSignals

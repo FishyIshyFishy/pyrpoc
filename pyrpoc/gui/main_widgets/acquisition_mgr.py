@@ -10,7 +10,7 @@ from PyQt6.QtWidgets import (
     QDoubleSpinBox, QScrollArea, QMessageBox
 )
 
-from pyrpoc.modalities.modality_registry import modality_registry
+# from pyrpoc.modalities.mod_registry import modality_registry
 from pyrpoc.backend_utils.data import BaseData
 from pyrpoc.instruments import BaseInstrument
 from pyrpoc.laser_modulations.base_laser_mod import BaseLaserModulation
