@@ -4,11 +4,11 @@ from nidaqmx.constants import AcquisitionType
 import matplotlib.pyplot as plt
 
 DEVICE      = 'Dev1'
-DO_LINE     = 'port0/line0'     # hardware-timed DO line
-AI_CHANNELS = ['ai0']           # list of channels to read
+DO_LINE     = 'port0/line5'     # hardware-timed DO line
+AI_CHANNELS = ['ai5']           # list of channels to read
 RATE_HZ     = 1_000_000         # sample rate
-N_SAMPLES   = 50                # number of samples high (and low)
-REPS        = 20                # number of high/low periods to repeat
+N_SAMPLES   = 20             # number of samples high (and low)
+REPS        = 1                # number of high/low periods to repeat
 
 one_cycle = np.concatenate([np.ones(N_SAMPLES, dtype=np.uint8),
                             np.zeros(N_SAMPLES, dtype=np.uint8)])
@@ -29,22 +29,30 @@ with nidaqmx.Task() as ai_task, nidaqmx.Task() as do_task:
                                        source=f"/{DEVICE}/ai/SampleClock",
                                        sample_mode=AcquisitionType.FINITE,
                                        samps_per_chan=total_samps)
-    do_task.triggers.start_trigger.cfg_dig_edge_start_trig(f"/{DEVICE}/ai/StartTrigger")
 
-    do_task.write(ttl.tolist())
+    do_task.write(ttl.astype(bool).tolist(), auto_start=False)
 
     do_task.start()
     ai_task.start()
-    ai_data = ai_task.read()
+    ai_data = ai_task.read(number_of_samples_per_channel=total_samps)
 
-ai_data = np.atleast_2d(np.array(ai_data))
+# Normalize AI data shape to (num_channels, total_samps)
+ai_data = np.array(ai_data)
+if ai_data.ndim == 1:
+    ai_data = np.atleast_2d(ai_data)
+    ai_data = ai_data - np.min(ai_data)
+elif ai_data.ndim == 2 and ai_data.shape[0] == total_samps and ai_data.shape[1] == len(AI_CHANNELS):
+    ai_data = ai_data.T
+    ai_data = ai_data - np.min(ai_data)
 t = np.arange(total_samps) / RATE_HZ * 1e6
 
 plt.figure()
-plt.plot(t, ttl * np.max(np.abs(ai_data)), 'k--', label='TTL (scaled)')
+plt.plot(t, ttl * np.max(np.abs(ai_data)), marker='o', color='black', label='TTL (scaled)')
+
+colors = ['r', 'g', 'b', 'm']
 for i, ch in enumerate(AI_CHANNELS):
-    plt.plot(t, ai_data[i], label=f"AI {ch}")
-plt.xlabel("Time (µs)")
+    plt.plot(t, ai_data[i],  marker='o', color=colors[i], label=f"{ch}")
+plt.xlabel("Time (us)")
 plt.ylabel("Voltage (V)")
 plt.legend()
 plt.tight_layout()
