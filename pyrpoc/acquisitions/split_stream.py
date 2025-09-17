@@ -278,7 +278,7 @@ class SplitDataStream(Acquisition):
                 
                 # Calculate AOM delay in samples
                 aom_delay_us = self.acquisition_parameters.get('aom_delay', 0)
-                aom_delay_samples = max(0, int(aom_delay_us / dwell_time * pixel_samples))
+                aom_delay_samples = max(0, int((aom_delay_us / dwell_time) * pixel_samples))
                 
                 # Validate that we have enough samples for both portions
                 split_percentage = self.acquisition_parameters.get('split_percentage', 50)
@@ -288,16 +288,13 @@ class SplitDataStream(Acquisition):
                 for i in range(len(ai_channels)):
                     channel_data = acq_data if len(ai_channels) == 1 else acq_data[i]
                     reshaped = channel_data.reshape(total_y, total_x, pixel_samples)
-                    
-                    # First portion: from start to split_point
+
                     first_portion = np.mean(reshaped[:, :, :split_point], axis=2)
-                    
-                    # Second portion: from split_point + aom_delay_samples to end
+
                     second_start = split_point + aom_delay_samples
                     if second_start < pixel_samples:
                         second_portion = np.mean(reshaped[:, :, second_start:], axis=2)
                     else:
-                        # If no samples left, create zero array
                         second_portion = np.zeros_like(first_portion)
                     
                     cropped_first = first_portion[:, extra_left:extra_left + numsteps_x]
