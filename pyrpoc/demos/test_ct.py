@@ -5,13 +5,12 @@ import matplotlib.pyplot as plt
 
 DEVICE      = 'Dev1'
 DO_LINE     = 'port0/line5'     # hardware-timed DO line
-AI_CHANNELS = ['ai5']           # list of channels to read
+AI_CHANNELS = ['ai0', 'ai5']           # list of channels to read
 RATE_HZ     = 1_000_000         # sample rate
-N_SAMPLES   = 20             # number of samples high (and low)
 REPS        = 1                # number of high/low periods to repeat
 
-one_cycle = np.concatenate([np.ones(N_SAMPLES, dtype=np.uint8),
-                            np.zeros(N_SAMPLES, dtype=np.uint8)])
+one_cycle = np.concatenate([np.ones(5, dtype=np.uint8),
+                            np.zeros(10, dtype=np.uint8)])
 ttl = np.tile(one_cycle, REPS)
 total_samps = len(ttl)
 
@@ -46,7 +45,7 @@ elif ai_data.ndim == 2 and ai_data.shape[0] == total_samps and ai_data.shape[1] 
     ai_data = ai_data - np.min(ai_data)
 t = np.arange(total_samps) / RATE_HZ * 1e6
 
-plt.figure()
+plt.figure(figsize=(3,3))
 plt.plot(t, ttl * np.max(np.abs(ai_data)), marker='o', color='black', label='TTL (scaled)')
 
 colors = ['r', 'g', 'b', 'm']
