@@ -9,8 +9,8 @@ AI_CHANNELS = ['ai0', 'ai5']           # list of channels to read
 RATE_HZ     = 1_000_000         # sample rate
 REPS        = 1                # number of high/low periods to repeat
 
-one_cycle = np.concatenate([np.ones(5, dtype=np.uint8),
-                            np.zeros(10, dtype=np.uint8)])
+one_cycle = np.concatenate([np.ones(500000, dtype=np.uint8),
+                            np.zeros(500000, dtype=np.uint8)])
 ttl = np.tile(one_cycle, REPS)
 total_samps = len(ttl)
 
@@ -45,14 +45,14 @@ elif ai_data.ndim == 2 and ai_data.shape[0] == total_samps and ai_data.shape[1] 
     ai_data = ai_data - np.min(ai_data)
 t = np.arange(total_samps) / RATE_HZ * 1e6
 
-plt.figure(figsize=(3,3))
-plt.plot(t, ttl * np.max(np.abs(ai_data)), marker='o', color='black', label='TTL (scaled)')
+# plt.figure(figsize=(3,3))
+# plt.plot(t, ttl * np.max(np.abs(ai_data)), marker='o', color='black', label='TTL (scaled)')
 
-colors = ['r', 'g', 'b', 'm']
-for i, ch in enumerate(AI_CHANNELS):
-    plt.plot(t, ai_data[i],  marker='o', color=colors[i], label=f"{ch}")
-plt.xlabel("Time (us)")
-plt.ylabel("Voltage (V)")
-plt.legend()
-plt.tight_layout()
-plt.show()
+# colors = ['r', 'g', 'b', 'm']
+# for i, ch in enumerate(AI_CHANNELS):
+#     plt.plot(t, ai_data[i],  marker='o', color=colors[i], label=f"{ch}")
+# plt.xlabel("Time (us)")
+# plt.ylabel("Voltage (V)")
+# plt.legend()
+# plt.tight_layout()
+# plt.show()
