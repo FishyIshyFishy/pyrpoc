@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Dict, List, Type, Optional
+from typing import Any, Type, Optional
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
@@ -15,15 +15,15 @@ from pyrpoc.backend_utils.data import BaseData
 from pyrpoc.instruments import BaseInstrument
 from pyrpoc.laser_modulations.base_laser_mod import BaseLaserModulation
 from pyrpoc.modalities.base_modality import BaseModality
-from pyrpoc.gui.signals.signals import UISignals
+from pyrpoc.gui.signals.signal_manager import UISignals
 
 class AcquisitionManagerWidget(QWidget):
     def __init__(self, ui_signals: UISignals, parent: Optional[QWidget] = None):
         super().__init__(parent)
         self.ui_signals = ui_signals
 
-        self.modality_classes: Dict[str, Type[BaseModality]] = {}
-        self.param_widgets: Dict[str, Dict[str, QWidget]] = {}
+        self.modality_classes: dict[str, Type[BaseModality]] = {}
+        self.param_widgets: dict[str, dict[str, QWidget]] = {}
 
         self.build_ui()
         self.populate_modalities()
@@ -72,7 +72,7 @@ class AcquisitionManagerWidget(QWidget):
         # little spacer at bottom
         root.addStretch(1)
 
-    def load_modalities(self) -> None | Dict[str, Type[BaseModality]]:
+    def load_modalities(self) -> None | dict[str, Type[BaseModality]]:
         # get rid of None
         # need to figure out how registries actually report things, should be 'str': class
         pass
@@ -84,5 +84,18 @@ class AcquisitionManagerWidget(QWidget):
 
     # function to create a group of parameters
     # function to create the whole parameters widget
+
+    def get_acquisition_params(self) -> dict[str, Any]:
+        '''
+        description:
+            function to get currently entered parameters from the GUI and return them to the ui_signal
+
+            eventually params gets put into a context object which is sent with instruments/laser_mods 
+            to acq_signals
+        '''
+        params = {}
+        for name, widget in self.param_widgets.items():
+            params[name] = widget.value()
+        return params
 
 

@@ -10,7 +10,7 @@ from pyrpoc.gui.main_widgets.instrument_mgr import InstrumentManagerWidget
 from pyrpoc.gui.main_widgets.laser_mod_mgr import LaserModManagerWidget
 from pyrpoc.gui.main_widgets.console import ConsoleWidget
 from pyrpoc.gui.main_widgets.menubar import MainMenuBar
-from pyrpoc.gui.signals.signals import UISignals
+from pyrpoc.gui.signals.signal_manager import SignalManager, UISignals
 
 from pyrpoc.gui.styles.theme_manager import ThemeManager
 
@@ -87,8 +87,8 @@ if __name__ == "__main__":
     import sys
     app = QApplication(sys.argv)
 
-    ui_signals = UISignals()
-    win = MainGUI(ui_signals)
+    signals = SignalManager()
+    win = MainGUI(signals.ui_signals)
     win.resize(1400, 850)
     win.show()
     sys.exit(app.exec())

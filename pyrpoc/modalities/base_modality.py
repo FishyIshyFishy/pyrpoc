@@ -3,16 +3,19 @@ from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Type
 
 from pyrpoc.backend_utils.data import BaseData
+from pyrpoc.backend_utils.parameter import BaseParameter
 from pyrpoc.instruments import BaseInstrument
 from pyrpoc.laser_modulations.base_laser_mod import BaseLaserModulation
 
-
 class BaseModality(ABC):
-    REQUIRED_PARAMETERS: Dict[str, Dict[str, Dict[str, Any]]] = {}
-    REQUIRED_INSTRUMENTS: List[Type[BaseInstrument]] = []
-    ALLOWED_DISPLAYS: List[str] = []
-    ALLOWED_MODULATONS: List[Type[BaseLaserModulation]] = []
-    DATA_TYPE: Type[BaseData] = BaseData
+    '''
+    description:
+        high level Modality that the GUI sees and communicates with
+    '''
+    required_parameters: List[Type[BaseParameter]] = [] 
+    required_instruments: List[Type[BaseInstrument]] = []
+    allowed_modulations: List[Type[BaseLaserModulation]] = []
+    emission_data_type: Type[BaseData] = BaseData
 
     def __init__(self, name: str, **kwargs):
         self.name = name
@@ -23,48 +26,66 @@ class BaseModality(ABC):
     @classmethod
     def get_contract(cls) -> dict:
         return {
-            'parameters': cls.REQUIRED_PARAMETERS,
-            'instruments': cls.REQUIRED_INSTRUMENTS,
-            'displays': cls.ALLOWED_DISPLAYS,
-            'data_type': cls.DATA_TYPE,
+            'parameters': cls.required_parameters,
+            'instruments': cls.required_instruments,
+            'modulations': cls.allowed_modulations,
+            'emission_data_type': cls.emission_data_type,
         }
 
     @classmethod
-    def get_required_parameters(cls) -> Dict[str, Dict[str, Dict[str, Any]]]:
-        return cls.REQUIRED_PARAMETERS
+    def get_required_parameters(cls) -> List[Type[BaseParameter]]:
+        return cls.required_parameters
 
     @classmethod
     def get_required_instruments(cls) -> List[Type[BaseInstrument]]:
-        return cls.REQUIRED_INSTRUMENTS
+        return cls.required_instruments
+    
+    @classmethod
+    def get_allowed_modulations(cls) -> List[Type[BaseLaserModulation]]:
+        return cls.allowed_modulations
 
     @classmethod
-    def get_allowed_displays(cls) -> List[str]:
-        return cls.ALLOWED_DISPLAYS
+    def get_emission_data_type(cls) -> Type[BaseData]:
+        return cls.emission_data_type
 
-    @classmethod
-    def get_data_type(cls) -> Type[BaseData]:
-        return cls.DATA_TYPE
 
-    @abstractmethod
-    def start(self):
+    def start_acquisition(self, context):
         pass
 
-    @abstractmethod
-    def stop(self):
+    def stop_acquisition(self):
         pass
 
-    def emit_data_object(self, data: BaseData):
-        if not isinstance(data, self.DATA_TYPE):
-            raise TypeError(
-                f'emit_data_object expected {self.DATA_TYPE.__name__}, '
-                f'got {type(data).__name__}'
-            )
-        print(f'[{self.name}] emitted {data}')
+    def set_acquisition_params(self, params: dict[str, Any]):
+        self.acquisition_params = params
+
+    def set_acquisition_instruments(self, instruments: List[BaseInstrument]):
+        '''
+        description:
+            Given a list of connected instrument instances, this function assigns
+            the ones matching each required instrument type defined by the modality.
+
+        args:
+            instruments: list of BaseInstrument instances currently connected.
+        '''
+        self.acquisition_instruments: Dict[Type[BaseInstrument], BaseInstrument] = {}
+
+        for req_cls in self.required_instruments:
+            matched = None
+            for inst in instruments:
+                if isinstance(inst, req_cls):
+                    matched = inst
+                    break
+
+            if matched is not None:
+                self.acquisition_instruments[req_cls] = matched
+            else:
+                raise RuntimeError(f'[{self.name}] missing required instrument: {req_cls.__name__}')
+
+    def set_acquisition_modulations(self, modulations: List[BaseLaserModulation]):
+        pass
 
 
-    def get_metadata(self) -> dict:
-        return {
-            'name': self.name,
-            'parameters': self.params,
-            'contract': self.get_contract(),
-        }
+
+    @abstractmethod
+    def perform_acquisition(self):
+        pass
