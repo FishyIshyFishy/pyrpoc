@@ -1,5 +1,5 @@
 from PyQt6.QtCore import QObject, pyqtSignal
-from pyrpoc.backend_utils.data import BaseData
+from pyrpoc.utils.data import BaseData
 
 class LaserModulationSignals(QObject):
     style_selected = pyqtSignal(str) # theme name

@@ -2,24 +2,26 @@ from PyQt6.QtCore import QObject, pyqtSignal
 from typing import Any
 from dataclasses import dataclass
 
-from pyrpoc.backend_utils.data import BaseData
+from pyrpoc.utils.data import BaseData
+from pyrpoc.utils.parameter import BaseParameter
+from pyrpoc.utils.context import AcquisitionContext
+
+from pyrpoc.displays.base_display import BaseDisplay
 from pyrpoc.gui.signals.acq_signals import AcquisitionSignals
 from pyrpoc.gui.signals.instr_signals import InstrumentSignals
 from pyrpoc.gui.signals.app_state_signals import AppStateSignals
 from pyrpoc.gui.signals.laser_mod_signals import LaserModulationSignals
 from pyrpoc.gui.signals.ui_signals import UISignals
 
-class UISignalMediator:
-    acq: AcquisitionSignals
-    instr: InstrumentSignals
-    app_state: AppStateSignals
-    mod: LaserModulationSignals
 
 class UISignals(QObject):
+    '''
+    interface between GUI and backend
+    all functions implemented here will solely read things from the GUI to the backend
+    there should be no functional code here - that must be from other signal types.
+    '''
     style_selected = pyqtSignal(str) # theme name
 
-    # from acquisition manager
-    modality_changed = pyqtSignal()
     start_clicked = pyqtSignal()
     continuous_clicked = pyqtSignal()
     stop_clicked = pyqtSignal()
@@ -42,8 +44,24 @@ class UISignals(QObject):
         pass
         
 
-    def prepare_acquisition_context(self) -> dict[str, Any]:
-        return {'params': 1, 'instruments': 2}
+    def prepare_acquisition_context(self) -> AcquisitionContext:
+        '''
+        read everything from GUI
+        
+        need to implement readers on frontend
+        '''
+        temp = AcquisitionContext(
+            params=[
+                BaseParameter(name='placeholder', value=0)
+            ],
+            
+            instruments = [],
+            mods = [],
+            display_type=BaseDisplay(),
+            save=False
+            )
+        
+        return temp
         
     def handle_stop_clicked(self):
         pass

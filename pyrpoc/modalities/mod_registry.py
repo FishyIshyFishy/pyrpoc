@@ -1,4 +1,4 @@
-from pyrpoc.backend_utils.registry import Registry
+from pyrpoc.utils.registry import Registry
 from .base_modality import BaseModality
 
 class ModalityRegistry(Registry):
