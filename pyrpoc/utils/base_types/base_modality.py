@@ -2,9 +2,9 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import Any
 
-from pyrpoc.utils.data import BaseData
-from pyrpoc.utils.parameter import BaseParameter
-from pyrpoc.utils.context import AcquisitionContext
+from pyrpoc.utils.datas import BaseData
+from pyrpoc.utils.parameters import BaseParameter
+from pyrpoc.utils.contexts import AcquisitionContext
 from pyrpoc.instruments import BaseInstrument
 from pyrpoc.laser_modulations.base_laser_mod import BaseLaserModulation
 
@@ -28,9 +28,6 @@ class BaseModality(ABC):
         self.acquisition_instruments: dict[type[BaseInstrument], BaseInstrument] = {}
         self.acquisition_modulations: list[BaseLaserModulation] = []
 
-    # -------------------------------------------------------------------------
-    # --- Acquisition Lifecycle ----------------------------------------------
-    # -------------------------------------------------------------------------
 
     def start_acquisition(self, context: AcquisitionContext):
         '''
@@ -47,8 +44,7 @@ class BaseModality(ABC):
     def set_params(self, parameters: list[BaseParameter]):
         '''
         description:
-            Converts BaseParameter objects into plain attributes
-            and stores them for internal use.
+            convert BaseParameter objects into plain attributes
         '''
         for param in parameters:
             setattr(self, param.name, param.value)

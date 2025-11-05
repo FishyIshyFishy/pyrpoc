@@ -1,4 +1,4 @@
-from pyrpoc.utils.registry import Registry
+from pyrpoc.utils.base_types.registries import Registry
 from .base_laser_mod import BaseLaserModulation
 
 class ModalityRegistry(Registry):

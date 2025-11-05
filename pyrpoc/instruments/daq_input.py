@@ -1,4 +1,4 @@
-from .base_instrument import BaseInstrument
+from ..utils.base_types.base_instrument import BaseInstrument
 
 class DAQInput(BaseInstrument):
     def __init__(self):

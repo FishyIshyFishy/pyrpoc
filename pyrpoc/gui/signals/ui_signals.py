@@ -2,11 +2,11 @@ from PyQt6.QtCore import QObject, pyqtSignal
 from typing import Any
 from dataclasses import dataclass
 
-from pyrpoc.utils.data import BaseData
-from pyrpoc.utils.parameter import BaseParameter
-from pyrpoc.utils.context import AcquisitionContext
+from pyrpoc.utils.datas import BaseData
+from pyrpoc.utils.parameters import BaseParameter
+from pyrpoc.utils.contexts import AcquisitionContext
 
-from pyrpoc.displays.base_display import BaseDisplay
+from pyrpoc.utils.base_types.base_display import BaseDisplay
 from pyrpoc.gui.signals.acq_signals import AcquisitionSignals
 from pyrpoc.gui.signals.instr_signals import InstrumentSignals
 from pyrpoc.gui.signals.app_state_signals import AppStateSignals

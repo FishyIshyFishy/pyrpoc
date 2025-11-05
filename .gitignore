@@ -6,6 +6,8 @@ venv/
 rpoc_env/
 pyrpoc_env/
 pyrpoc_venv/
+mokupro_testing/
+data_processing/
 .env/
 .venv/
 .cursor/

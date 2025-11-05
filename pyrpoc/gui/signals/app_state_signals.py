@@ -1,5 +1,5 @@
 from PyQt6.QtCore import QObject, pyqtSignal
-from pyrpoc.utils.data import BaseData
+from pyrpoc.utils.datas import BaseData
 
 
 class AppStateSignals(QObject):

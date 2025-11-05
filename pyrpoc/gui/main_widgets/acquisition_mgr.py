@@ -11,10 +11,10 @@ from PyQt6.QtWidgets import (
 )
 
 # from pyrpoc.modalities.mod_registry import modality_registry
-from pyrpoc.utils.data import BaseData
+from pyrpoc.utils.datas import BaseData
 from pyrpoc.instruments import BaseInstrument
 from pyrpoc.laser_modulations.base_laser_mod import BaseLaserModulation
-from pyrpoc.modalities.base_modality import BaseModality
+from pyrpoc.utils.base_types.base_modality import BaseModality
 from pyrpoc.gui.signals.signal_manager import UISignals
 
 class AcquisitionManagerWidget(QWidget):

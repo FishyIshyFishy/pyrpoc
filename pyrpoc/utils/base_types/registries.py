@@ -71,3 +71,4 @@ class Registry:
             --> returns ['camera', 'stage', 'TCSPC']
         '''
         return list(self.entries.keys())
+

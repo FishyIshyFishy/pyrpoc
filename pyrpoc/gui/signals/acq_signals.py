@@ -1,8 +1,8 @@
 from PyQt6.QtCore import QObject, pyqtSignal
 from typing import Any
 
-from pyrpoc.utils.data import BaseData
-from pyrpoc.utils.context import AcquisitionContext
+from pyrpoc.utils.datas import BaseData
+from pyrpoc.utils.contexts import AcquisitionContext
 from pyrpoc.modalities import BaseModality
 from pyrpoc.instruments import BaseInstrument
 from pyrpoc.laser_modulations import BaseLaserModulation

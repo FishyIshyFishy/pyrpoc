@@ -6,8 +6,8 @@ from pyrpoc.utils import DataImage, BaseParameter, AcquisitionContext
 from pyrpoc.instruments import BaseInstrument
 from pyrpoc.laser_modulations.base_laser_mod import BaseLaserModulation
 
-from .base_modality import BaseModality
-from .mod_registry import modality_registry
+from ..utils.base_types.base_modality import BaseModality
+from ..utils.base_types.modality_registry import modality_registry
 
 
 @modality_registry.register('simulated')
