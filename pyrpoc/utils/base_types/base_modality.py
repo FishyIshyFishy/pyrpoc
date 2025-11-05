@@ -6,7 +6,7 @@ from pyrpoc.utils.datas import BaseData
 from pyrpoc.utils.parameters import BaseParameter
 from pyrpoc.utils.contexts import AcquisitionContext
 from pyrpoc.instruments import BaseInstrument
-from pyrpoc.laser_modulations.base_laser_mod import BaseLaserModulation
+from .base_laser_mod import BaseLaserModulation
 
 
 class BaseModality(ABC):

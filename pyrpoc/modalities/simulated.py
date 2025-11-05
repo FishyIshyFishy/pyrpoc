@@ -1,13 +1,8 @@
 from __future__ import annotations
-from datetime import datetime
 import numpy as np
 
-from pyrpoc.utils import DataImage, BaseParameter, AcquisitionContext
-from pyrpoc.instruments import BaseInstrument
-from pyrpoc.laser_modulations.base_laser_mod import BaseLaserModulation
-
-from ..utils.base_types.base_modality import BaseModality
-from ..utils.base_types.modality_registry import modality_registry
+from pyrpoc.utils import DataImage, BaseParameter, AcquisitionContext, ModalityContext, DataContext
+from pyrpoc.utils.base_types import BaseLaserModulation, BaseModality, BaseInstrument, modality_registry
 
 
 @modality_registry.register('simulated')
@@ -19,10 +14,6 @@ class SimulatedModality(BaseModality):
     '''
 
     required_parameters: list[BaseParameter] = [
-        BaseParameter(name='x_pixels', value=256),
-        BaseParameter(name='y_pixels', value=256),
-        BaseParameter(name='average_value', value=0.5),
-        BaseParameter(name='std_value', value=0.1),
     ]
 
     required_instruments: list[type[BaseInstrument]] = []

@@ -1,4 +1,4 @@
-from ..utils.base_types.base_instrument import BaseInstrument
+from pyrpoc.utils.base_types import BaseInstrument
 
 class DAQInput(BaseInstrument):
     def __init__(self):
