@@ -74,8 +74,9 @@ class BaseModality(ABC):
     def set_modulations(self, modulations: list[BaseLaserModulation]):
         '''
         description:
-            Assigns available laser modulations to this modality.
-            Validation ensures only allowed modulation types are included.
+            assign available laser modulations to this modality.
+            ensures only allowed modulation types are included,
+            although acquisitioncontext should take care of that
         '''
         self.acquisition_modulations = []
         for mod in modulations:

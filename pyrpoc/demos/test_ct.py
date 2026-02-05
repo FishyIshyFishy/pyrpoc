@@ -30,11 +30,11 @@ with nidaqmx.Task() as ai_task, nidaqmx.Task() as do_task:
                                        sample_mode=AcquisitionType.FINITE,
                                        samps_per_chan=total_samps)
 
-    do_task.write(ttl.astype(bool).tolist(), auto_start=False)
+    do_task.write(ttl.astype(bool).tolist(), auto_start=False) # pyright:ignore
 
     do_task.start()
     ai_task.start()
-    ai_data = ai_task.read(number_of_samples_per_channel=total_samps)
+    ai_data = ai_task.read(number_of_samples_per_channel=total_samps) # pyright:ignore
 
 # Normalize AI data shape to (num_channels, total_samps)
 ai_data = np.array(ai_data)

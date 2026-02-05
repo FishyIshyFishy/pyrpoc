@@ -5,9 +5,7 @@ from abc import ABC, abstractmethod
 
 from pyrpoc.utils.parameters import BaseParameter
 from pyrpoc.utils.datas import BaseData
-from pyrpoc.utils.base_types.base_instrument import BaseInstrument
-from pyrpoc.laser_modulations.base_laser_mod import BaseLaserModulation
-from pyrpoc.utils.base_types.base_display import BaseDisplay
+from pyrpoc.utils.base_types import BaseInstrument, BaseLaserModulation, BaseDisplay
 
 
 @dataclass
@@ -19,9 +17,9 @@ class BaseContext(ABC):
 
 @dataclass
 class AcquisitionContext(BaseContext):
-    parameters: dict[str, BaseParameter] = field(default_factory=dict)
-    instruments: list[BaseInstrument] = field(default_factory=list)
-    laser_modulations: list[BaseLaserModulation] = field(default_factory=list)
+    parameters: dict[str, BaseParameter]
+    instruments: list[BaseInstrument] = []
+    laser_modulations: list[BaseLaserModulation] = []
 
     def to_dict(self) -> dict[str, Any]:
         return self.__dict__
@@ -29,9 +27,10 @@ class AcquisitionContext(BaseContext):
 
 @dataclass
 class DataContext(BaseContext):
-    data: BaseData
+    data: dict[str, BaseData] # name: data
+    final: bool
 
-    final: bool = False
+
     display_params: dict[str, Any] = {}
 
     def to_dict(self) -> dict[str, Any]:
