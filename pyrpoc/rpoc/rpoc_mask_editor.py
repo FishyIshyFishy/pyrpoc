@@ -3,12 +3,13 @@ import numpy as np
 from PIL import Image, ImageDraw 
 import cv2 
 import random
+from pyrpoc.rpoc.segmentation_methods import segment, labels_to_contours
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QPushButton, QFileDialog,
     QGraphicsView, QGraphicsScene, QGraphicsEllipseItem,
     QVBoxLayout, QWidget, QTableWidget, QTableWidgetItem,
     QHBoxLayout, QCheckBox, QLabel, QMenu, QGraphicsTextItem, 
-    QDialog, QSpinBox, QGroupBox
+    QDialog, QSpinBox, QGroupBox, QComboBox
 )
 from PyQt6.QtGui import QPixmap, QPainterPath, QPen, QBrush, QPainter, QFont, QColor, QPalette, QImage
 from PyQt6.QtCore import Qt, QPointF, QRectF, QPoint, QVariant, pyqtSignal
@@ -286,8 +287,18 @@ class RPOCMaskEditor(QMainWindow):
         self.create_mask_button = QPushButton("Create Mask")
         self.create_mask_button.clicked.connect(self.create_and_close)
 
-        self.cellpose_button = QPushButton("Segment with Cellpose")
-        self.cellpose_button.clicked.connect(self.run_cellpose_segmentation)
+        self.seg_method_combo = QComboBox()
+        self.seg_method_combo.addItems([
+            'threshold + components',
+            'watershed',
+            'adaptive threshold'
+        ])
+        self.segment_button = QPushButton('Segment')
+        self.segment_button.clicked.connect(self.run_segmentation)
+        seg_controls = QHBoxLayout()
+        seg_controls.addWidget(self.seg_method_combo)
+        seg_controls.addWidget(self.segment_button)
+
 
         middle_controls_layout = QHBoxLayout()
         middle_controls_layout.addWidget(self.mask_checkbox)
@@ -310,7 +321,7 @@ class RPOCMaskEditor(QMainWindow):
         left_layout.addLayout(self.toggle_layout)
         left_layout.addLayout(middle_controls_layout)
         left_layout.addWidget(self.image_view)
-        left_layout.addWidget(self.cellpose_button)
+        left_layout.addLayout(seg_controls)
 
         layout.addLayout(left_layout)
         layout.addWidget(self.roi_table)
@@ -432,74 +443,118 @@ class RPOCMaskEditor(QMainWindow):
         else:
             super().keyPressEvent(event)
 
-    def run_cellpose_segmentation(self):
-        try:
-            from cellpose import models
-        except ImportError:
-            return
-
+    def _get_composite_for_segmentation(self):
         if not self.image_layers:
+            return None
+
+        visible_imgs = [img for img, vis in zip(self.image_layers, self.image_visibility) if vis]
+        if not visible_imgs:
+            return None
+
+        composite = np.mean(visible_imgs, axis=0).astype(np.float32)
+        mx = float(np.max(composite)) if composite.size else 0.0
+        if mx > 1.0:
+            composite = composite / mx
+        composite = np.clip(composite, 0, 1)
+        return composite
+
+
+    def run_segmentation(self):
+        method = self.seg_method_combo.currentText()
+
+        # if method.startswith('cellpose'):
+        #     self.run_cellpose_segmentation()
+        #     return
+
+        composite = self._get_composite_for_segmentation()
+        if composite is None:
             return
 
-        self.cellpose_button.setText("Segmenting...")
-        self.cellpose_button.setEnabled(False)
+        # convert slider thresholds into [0,1] (composite is float01)
+        low, high = self.threshold_slider.value()
+        max_slider = self.threshold_slider.maximum()
+        if max_slider == 1000:
+            low = low / 1000.0
+            high = high / 1000.0
+        else:
+            # if slider is 0..255 etc, map into 0..1
+            low = low / float(max_slider) if max_slider else 0.0
+            high = high / float(max_slider) if max_slider else 1.0
+
+        self.segment_button.setText('Segmenting...')
+        self.segment_button.setEnabled(False)
         QApplication.processEvents()
 
-        visible_imgs = [
-            img for img, visible in zip(self.image_layers, self.image_visibility) if visible
-        ]
-        if not visible_imgs:
-            return
+        try:
+            if method == 'threshold + components':
+                labels = segment(
+                    composite,
+                    'threshold + components',
+                    low=low,
+                    high=high,
+                    min_area=120,
+                    open_ksize=3,
+                    close_ksize=9,
+                )
+            elif method == 'watershed':
+                labels = segment(
+                    composite,
+                    'watershed',
+                    low=low,
+                    high=high,
+                    min_area=120,
+                    min_distance=10,
+                    open_ksize=3,
+                    close_ksize=9,
+                )
+            elif method == 'adaptive threshold':
+                labels = segment(
+                    composite,
+                    'adaptive threshold',
+                    block_size=61,
+                    C=-5,
+                    min_area=120,
+                    open_ksize=3,
+                    close_ksize=9,
+                )
+            else:
+                return
 
-        # Normalize the composite image to [0, 255] for cellpose
-        composite = np.mean(visible_imgs, axis=0)
-        if composite.max() <= 1.0:
-            # Data is in [0,1] range, scale to [0,255]
-            composite = (composite * 255).astype(np.uint8)
-        else:
-            # Data is already in [0,255] range or higher, clip to [0,255]
-            composite = np.clip(composite, 0, 255).astype(np.uint8)
-
-        model = models.Cellpose(model_type='cyto3')
-        masks, _, _, _ = model.eval([composite], diameter=None, channels=[0, 0])
-        masks = masks[0]
-
-        n_rois = len(self.image_view.roi_items)
-
-        for mask_val in range(1, masks.max() + 1):
-            binary_mask = np.uint8(masks == mask_val) * 255
-            contours, _ = cv2.findContours(binary_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            contours = labels_to_contours(labels, min_area=120)
             if not contours:
-                continue
+                return
 
-            contour = contours[0]
-            path = QPainterPath()
-            points = []
+            n_rois = len(self.image_view.roi_items)
 
-            for i, pt in enumerate(contour):
-                x, y = pt[0]
-                qpt = QPointF(x, y)
-                points.append(qpt)
-                if i == 0:
-                    path.moveTo(qpt)
-                else:
-                    path.lineTo(qpt)
-            path.closeSubpath()
+            for contour in contours:
+                path = QPainterPath()
+                points = []
 
-            color = self.image_view.get_random_color()
-            roi_item = self.image_scene.addPath(path, QPen(color, 2), QBrush(color))
-            roi_item.setOpacity(self.image_view.roi_opacity if self.image_view.show_rois else 0)
-            self.image_view.roi_items.append(roi_item)
+                for i, (x, y) in enumerate(contour):
+                    qpt = QPointF(float(x), float(y))
+                    points.append(qpt)
+                    if i == 0:
+                        path.moveTo(qpt)
+                    else:
+                        path.lineTo(qpt)
+                path.closeSubpath()
 
-            label_item = self.image_view.create_roi_label(n_rois + 1, points)
-            self.image_view.roi_label_items.append(label_item)
+                color = self.image_view.get_random_color()
+                roi_item = self.image_scene.addPath(path, QPen(color, 2), QBrush(color))
+                roi_item.setOpacity(self.image_view.roi_opacity if self.image_view.show_rois else 0)
+                self.image_view.roi_items.append(roi_item)
 
-            self.image_view.add_roi_to_table(n_rois + 1, points)
-            self.roi_channel_flags.append(self.image_visibility.copy())
-            n_rois += 1
+                label_item = self.image_view.create_roi_label(n_rois + 1, points)
+                self.image_view.roi_label_items.append(label_item)
 
-        self.cellpose_button.setText("Segment with Cellpose")
-        self.cellpose_button.setEnabled(True)
+                self.image_view.add_roi_to_table(n_rois + 1, points)
+                self.roi_channel_flags.append(self.image_visibility.copy())
+                n_rois += 1
+
+        finally:
+            self.segment_button.setText('Segment')
+            self.segment_button.setEnabled(True)
+            
 
     def load_image(self):
         file_path, _ = QFileDialog.getOpenFileName(self, 'Open Image', '', 'Images (*.png *.jpg *.bmp)')
