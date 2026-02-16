@@ -7,6 +7,7 @@ import numpy as np
 from pyrpoc.backend_utils.contracts import Parameter
 from pyrpoc.backend_utils.data import DataImage
 from pyrpoc.instruments.galvo import SimGalvoInstrument
+from pyrpoc.optocontrols.mask import MaskOptoControl
 from .base_modality import BaseModality
 from .mod_registry import modality_registry
 
@@ -56,6 +57,7 @@ class SimConfocalModality(BaseModality):
     }
     REQUIRED_INSTRUMENTS = [SimGalvoInstrument]
     OPTIONAL_INSTRUMENTS = []
+    ALLOWED_OPTOCONTROLS = [MaskOptoControl]
     OUTPUT_DATA_TYPE = DataImage
     ALLOWED_DISPLAYS = ["sim_image"]
 

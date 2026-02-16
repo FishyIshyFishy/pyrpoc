@@ -6,11 +6,13 @@ from PyQt6.QtCore import QObject
 import pyrpoc.displays  # noqa: F401
 import pyrpoc.instruments  # noqa: F401
 import pyrpoc.modalities  # noqa: F401
+import pyrpoc.optocontrols  # noqa: F401
 
 from pyrpoc.gui.main_gui import MainGUI
 from .display_service import DisplayService
 from .instrument_service import InstrumentService
 from .modality_service import ModalityService
+from .opto_control_service import OptoControlService
 
 
 class AppController(QObject):
@@ -20,6 +22,7 @@ class AppController(QObject):
         self.instrument_service = InstrumentService(self)
         self.modality_service = ModalityService(self.instrument_service, self)
         self.display_service = DisplayService(self)
+        self.opto_control_service = OptoControlService(self)
 
         self.modality_service.data_ready.connect(self.display_service.push_data)
         self.instrument_service.connection_changed.connect(
@@ -30,6 +33,7 @@ class AppController(QObject):
             instrument_service=self.instrument_service,
             modality_service=self.modality_service,
             display_service=self.display_service,
+            opto_control_service=self.opto_control_service,
         )
 
     def show(self) -> None:

@@ -8,10 +8,12 @@ from pyrpoc.gui.main_widgets.console import ConsoleWidget
 from pyrpoc.gui.main_widgets.display_mgr import DisplayManagerWidget
 from pyrpoc.gui.main_widgets.instrument_mgr import InstrumentManagerWidget
 from pyrpoc.gui.main_widgets.menubar import MainMenuBar
+from pyrpoc.gui.main_widgets.opto_control_mgr import OptoControlManagerWidget
 from pyrpoc.gui.styles.theme_manager import ThemeManager
 from pyrpoc.services.display_service import DisplayService
 from pyrpoc.services.instrument_service import InstrumentService
 from pyrpoc.services.modality_service import ModalityService
+from pyrpoc.services.opto_control_service import OptoControlService
 
 qtads.CDockManager.setConfigFlag(qtads.CDockManager.eConfigFlag.DisableTabTextEliding, True)
 qtads.CDockManager.setConfigFlag(qtads.CDockManager.eConfigFlag.OpaqueSplitterResize, False)
@@ -23,6 +25,7 @@ class MainGUI(QWidget):
         instrument_service: InstrumentService,
         modality_service: ModalityService,
         display_service: DisplayService,
+        opto_control_service: OptoControlService,
     ):
         super().__init__()
         self.setWindowTitle("pyrpoc")
@@ -30,6 +33,7 @@ class MainGUI(QWidget):
         self.instrument_service = instrument_service
         self.modality_service = modality_service
         self.display_service = display_service
+        self.opto_control_service = opto_control_service
         self.theme_mgr = ThemeManager()
 
         self.dock_manager = qtads.CDockManager(self)
@@ -51,6 +55,12 @@ class MainGUI(QWidget):
         self.add_dock(
             "Display Manager",
             DisplayManagerWidget(self.display_service, self.modality_service),
+            qtads.DockWidgetArea.LeftDockWidgetArea,
+            tab_with=dock_acq,
+        )
+        self.add_dock(
+            "Opto-Control Manager",
+            OptoControlManagerWidget(self.opto_control_service, self.modality_service),
             qtads.DockWidgetArea.LeftDockWidgetArea,
             tab_with=dock_acq,
         )

@@ -7,6 +7,7 @@ from pyrpoc.backend_utils.contracts import ParameterGroups
 from pyrpoc.backend_utils.data import BaseData
 from pyrpoc.backend_utils.parameter_utils import validate_parameter_groups
 from pyrpoc.instruments.base_instrument import BaseInstrument
+from pyrpoc.optocontrols.base_optocontrol import BaseOptoControl
 
 
 class BaseModality(ABC):
@@ -15,6 +16,7 @@ class BaseModality(ABC):
     PARAMETERS: ParameterGroups = {}
     REQUIRED_INSTRUMENTS: list[type[BaseInstrument]] = []
     OPTIONAL_INSTRUMENTS: list[type[BaseInstrument]] = []
+    ALLOWED_OPTOCONTROLS: list[type[BaseOptoControl]] = []
     OUTPUT_DATA_TYPE: type[BaseData] = BaseData
     ALLOWED_DISPLAYS: list[str] = []
 
@@ -23,16 +25,24 @@ class BaseModality(ABC):
 
         required = getattr(cls, "REQUIRED_INSTRUMENTS", [])
         optional = getattr(cls, "OPTIONAL_INSTRUMENTS", [])
+        allowed_opto = getattr(cls, "ALLOWED_OPTOCONTROLS", [])
 
         if not isinstance(required, list):
             raise TypeError("REQUIRED_INSTRUMENTS must be a list")
         if not isinstance(optional, list):
             raise TypeError("OPTIONAL_INSTRUMENTS must be a list")
+        if not isinstance(allowed_opto, list):
+            raise TypeError("ALLOWED_OPTOCONTROLS must be a list")
 
         for instrument_cls in [*required, *optional]:
             if not isinstance(instrument_cls, type) or not issubclass(instrument_cls, BaseInstrument):
                 raise TypeError(
                     f"{cls.__name__} instrument requirements must contain BaseInstrument subclasses"
+                )
+        for optocontrol_cls in allowed_opto:
+            if not isinstance(optocontrol_cls, type) or not issubclass(optocontrol_cls, BaseOptoControl):
+                raise TypeError(
+                    f"{cls.__name__} ALLOWED_OPTOCONTROLS must contain BaseOptoControl subclasses"
                 )
 
         validate_parameter_groups(getattr(cls, "PARAMETERS", {}))
@@ -55,6 +65,7 @@ class BaseModality(ABC):
             "parameters": cls.PARAMETERS,
             "required_instruments": cls.REQUIRED_INSTRUMENTS,
             "optional_instruments": cls.OPTIONAL_INSTRUMENTS,
+            "allowed_optocontrols": cls.ALLOWED_OPTOCONTROLS,
             "output_data_type": cls.OUTPUT_DATA_TYPE,
             "allowed_displays": cls.ALLOWED_DISPLAYS,
         }
