@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
+import numpy as np
 from PyQt6.QtCore import QObject, pyqtSignal
 
 from pyrpoc.backend_utils.parameter_utils import (
@@ -114,6 +115,19 @@ class OptoControlService(QObject):
     def get_instance_key(self, instance_id: str) -> str:
         self._require_instance(instance_id)
         return self._instance_types[instance_id]
+
+    def set_mask_data(
+        self,
+        instance_id: str,
+        mask_data: np.ndarray,
+        source_path: str | None = None,
+    ) -> None:
+        instance = self._require_instance(instance_id)
+        setter = getattr(instance, "set_mask_data", None)
+        if not callable(setter):
+            raise RuntimeError(f"opto-control '{instance_id}' does not support in-memory masks")
+        setter(mask_data, source_path=source_path)
+        self.connection_changed.emit(instance_id, instance.is_connected())
 
     def _require_instance(self, instance_id: str) -> BaseOptoControl:
         if instance_id not in self._instances:

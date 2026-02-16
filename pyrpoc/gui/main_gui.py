@@ -4,7 +4,6 @@ from PyQt6.QtWidgets import QVBoxLayout, QWidget
 import PyQt6Ads as qtads
 
 from pyrpoc.gui.main_widgets.acquisition_mgr import AcquisitionManagerWidget
-from pyrpoc.gui.main_widgets.console import ConsoleWidget
 from pyrpoc.gui.main_widgets.display_mgr import DisplayManagerWidget
 from pyrpoc.gui.main_widgets.instrument_mgr import InstrumentManagerWidget
 from pyrpoc.gui.main_widgets.menubar import MainMenuBar
@@ -60,14 +59,13 @@ class MainGUI(QWidget):
         )
         self.add_dock(
             "Opto-Control Manager",
-            OptoControlManagerWidget(self.opto_control_service, self.modality_service),
+            OptoControlManagerWidget(
+                self.opto_control_service,
+                self.modality_service,
+                self.display_service,
+            ),
             qtads.DockWidgetArea.LeftDockWidgetArea,
             tab_with=dock_acq,
-        )
-        self.add_dock(
-            "Console",
-            ConsoleWidget(),
-            qtads.DockWidgetArea.BottomDockWidgetArea,
         )
 
         layout = QVBoxLayout(self)

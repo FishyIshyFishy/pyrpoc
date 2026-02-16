@@ -8,6 +8,7 @@ from PyQt6.QtGui import QImage, QPixmap
 from PyQt6.QtWidgets import QLabel, QVBoxLayout
 
 from pyrpoc.backend_utils.data import BaseData, DataImage
+from pyrpoc.rpoc.types import RPOCImageInput
 from .base_display import BaseDisplay
 from .display_registry import display_registry
 
@@ -28,6 +29,8 @@ class SimImageDisplay(BaseDisplay):
         self._image_label.setStyleSheet("border: 1px solid #888;")
         layout.addWidget(self._image_label)
         self._last_pixmap: QPixmap | None = None
+        self._last_image: np.ndarray | None = None
+        self._last_data_name: str = "sim_image"
 
     def configure(self, params: dict[str, Any]) -> None:
         return None
@@ -39,6 +42,8 @@ class SimImageDisplay(BaseDisplay):
         image = np.asarray(data.value, dtype=float)
         if image.ndim != 2:
             raise ValueError("SimImageDisplay expects a 2D array")
+        self._last_image = image.astype(np.float32, copy=True)
+        self._last_data_name = str(getattr(data, "name", "sim_image"))
 
         min_val = float(np.min(image))
         max_val = float(np.max(image))
@@ -61,8 +66,18 @@ class SimImageDisplay(BaseDisplay):
 
     def clear(self) -> None:
         self._last_pixmap = None
+        self._last_image = None
         self._image_label.setText("No image yet")
         self._image_label.setPixmap(QPixmap())
+
+    def export_rpoc_input(self) -> RPOCImageInput | None:
+        if self._last_image is None:
+            return None
+        return RPOCImageInput(
+            data=self._last_image[None, ...],
+            channel_labels=[self._last_data_name],
+            source_id=self.DISPLAY_KEY,
+        )
 
     def resizeEvent(self, event):
         super().resizeEvent(event)

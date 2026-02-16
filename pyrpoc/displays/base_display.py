@@ -7,6 +7,7 @@ from PyQt6.QtWidgets import QWidget
 from pyrpoc.backend_utils.contracts import ParameterGroups
 from pyrpoc.backend_utils.data import BaseData
 from pyrpoc.backend_utils.parameter_utils import validate_parameter_groups
+from pyrpoc.rpoc.types import RPOCImageInput
 
 
 class BaseDisplay(QWidget):
@@ -46,3 +47,6 @@ class BaseDisplay(QWidget):
 
     def clear(self) -> None:
         raise NotImplementedError
+
+    def export_rpoc_input(self) -> RPOCImageInput | None:
+        return None

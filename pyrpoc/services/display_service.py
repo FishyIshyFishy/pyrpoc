@@ -8,6 +8,7 @@ from pyrpoc.backend_utils.data import BaseData
 from pyrpoc.backend_utils.parameter_utils import ParameterValidationError, coerce_parameter_values
 from pyrpoc.displays.base_display import BaseDisplay
 from pyrpoc.displays.display_registry import display_registry
+from pyrpoc.rpoc.types import RPOCImageInput
 
 
 class DisplayService(QObject):
@@ -23,6 +24,7 @@ class DisplayService(QObject):
         self._attached: set[str] = set()
         self._reported_incompatibilities: set[tuple[str, str]] = set()
         self._next_display_index: int = 1
+        self._last_data: BaseData | None = None
 
     def list_available(self) -> list[dict[str, Any]]:
         return display_registry.describe_all()
@@ -75,6 +77,7 @@ class DisplayService(QObject):
         self._attached.discard(display_id)
 
     def push_data(self, data: BaseData) -> None:
+        self._last_data = data
         for display_id in list(self._attached):
             widget = self._instances.get(display_id)
             if widget is None:
@@ -96,6 +99,9 @@ class DisplayService(QObject):
             except Exception as exc:
                 self.display_error.emit(display_id, str(exc))
 
+    def get_latest_data(self) -> BaseData | None:
+        return self._last_data
+
     def list_instances(self) -> list[dict[str, Any]]:
         rows: list[dict[str, Any]] = []
         for display_id in sorted(self._instances.keys()):
@@ -115,6 +121,21 @@ class DisplayService(QObject):
         if display_id not in self._instances:
             raise KeyError(f"display '{display_id}' does not exist")
         return self._instances[display_id]
+
+    def get_rpoc_input(self, display_id: str) -> RPOCImageInput | None:
+        widget = self.get_widget(display_id)
+        exporter = getattr(widget, "export_rpoc_input", None)
+        if not callable(exporter):
+            return None
+        payload = exporter()
+        if payload is None:
+            return None
+        if not isinstance(payload, RPOCImageInput):
+            raise TypeError(
+                f"display '{display_id}' export_rpoc_input returned {type(payload).__name__}, "
+                "expected RPOCImageInput or None"
+            )
+        return payload
 
     def _allocate_display_id(self) -> str:
         while True:

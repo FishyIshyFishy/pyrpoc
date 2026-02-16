@@ -1,13 +1,17 @@
 from __future__ import annotations
 
+import tempfile
 from pathlib import Path
 from typing import Any
 
+import cv2
+import numpy as np
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QDoubleSpinBox,
+    QFileDialog,
     QFormLayout,
     QGroupBox,
     QHBoxLayout,
@@ -24,6 +28,8 @@ from PyQt6.QtWidgets import (
 
 from pyrpoc.backend_utils.contracts import Action, Parameter
 from pyrpoc.optocontrols.opto_control_registry import opto_control_registry
+from pyrpoc.rpoc.editor import RPOCMaskEditor
+from pyrpoc.services.display_service import DisplayService
 from pyrpoc.services.modality_service import ModalityService
 from pyrpoc.services.opto_control_service import OptoControlService
 
@@ -33,11 +39,13 @@ class OptoControlManagerWidget(QWidget):
         self,
         opto_control_service: OptoControlService,
         modality_service: ModalityService,
+        display_service: DisplayService,
         parent: QWidget | None = None,
     ):
         super().__init__(parent)
         self.opto_control_service = opto_control_service
         self.modality_service = modality_service
+        self.display_service = display_service
 
         self._config_widgets: dict[str, QWidget] = {}
         self._config_parameters: dict[str, Parameter] = {}
@@ -46,6 +54,9 @@ class OptoControlManagerWidget(QWidget):
         self._method_to_action: dict[str, Action] = {}
         self._enable_checkbox: QCheckBox | None = None
         self._enable_guard = False
+        self._mask_editor_window: QWidget | None = None
+        self._rpoc_source_combo: QComboBox | None = None
+        self._rpoc_source_display_id: str = ""
 
         self._build_ui()
         self._wire_signals()
@@ -83,6 +94,8 @@ class OptoControlManagerWidget(QWidget):
         self.opto_control_service.inventory_changed.connect(self._refresh_instances)
         self.opto_control_service.connection_changed.connect(self._on_connection_changed)
         self.modality_service.modality_selected.connect(self._on_modality_selected)
+        self.display_service.display_added.connect(self._refresh_rpoc_source_options)
+        self.display_service.display_removed.connect(self._refresh_rpoc_source_options)
 
     def _refresh_available(self) -> None:
         current_key = self._selected_type_key()
@@ -154,6 +167,7 @@ class OptoControlManagerWidget(QWidget):
         self._actions_by_label.clear()
         self._method_to_action.clear()
         self._enable_checkbox = None
+        self._rpoc_source_combo = None
         while self.controls_layout.count():
             item = self.controls_layout.takeAt(0)
             widget = item.widget()
@@ -217,18 +231,28 @@ class OptoControlManagerWidget(QWidget):
             self._actions_by_label[action.label] = action
             self._method_to_action[action.method_name] = action
 
+        source_row = QHBoxLayout()
+        source_row.addWidget(QLabel("RPOC Source Display:", self.controls_box))
+        self._rpoc_source_combo = QComboBox(self.controls_box)
+        self._rpoc_source_combo.currentIndexChanged.connect(self._on_rpoc_source_changed)
+        source_row.addWidget(self._rpoc_source_combo, 1)
+        source_wrap = QWidget(self.controls_box)
+        source_wrap.setLayout(source_row)
+        self.controls_layout.addWidget(source_wrap)
+        self._refresh_rpoc_source_options()
+
         button_row = QHBoxLayout()
 
         load_action = self._method_to_action.get("load_mask_image")
         if load_action is not None:
             load_btn = QPushButton("Load Mask", self.controls_box)
-            load_btn.clicked.connect(lambda: self._run_action(load_action.label))
+            load_btn.clicked.connect(self._on_load_mask_clicked)
             button_row.addWidget(load_btn)
 
         create_action = self._method_to_action.get("create_mask")
         if create_action is not None:
             create_btn = QPushButton("Create Mask", self.controls_box)
-            create_btn.clicked.connect(lambda: self._run_action(create_action.label))
+            create_btn.clicked.connect(self._on_create_mask_clicked)
             button_row.addWidget(create_btn)
 
         button_row.addStretch(1)
@@ -240,6 +264,41 @@ class OptoControlManagerWidget(QWidget):
             self._enable_checkbox = QCheckBox("Enable", self.controls_box)
             self._enable_checkbox.toggled.connect(self._on_enable_toggled)
             self.controls_layout.addWidget(self._enable_checkbox)
+
+    def _refresh_rpoc_source_options(self, *_args) -> None:
+        combo = self._rpoc_source_combo
+        if combo is None:
+            return
+
+        previous = combo.currentData()
+        preferred = (
+            previous
+            if isinstance(previous, str) and previous
+            else self._rpoc_source_display_id
+        )
+        combo.blockSignals(True)
+        combo.clear()
+        combo.addItem("Select display", "")
+        for row in self.display_service.list_instances():
+            display_id = str(row["display_id"])
+            display_name = str(row["name"])
+            combo.addItem(f"{display_name} [{display_id}]", display_id)
+
+        if isinstance(preferred, str) and preferred:
+            idx = combo.findData(preferred)
+            if idx >= 0:
+                combo.setCurrentIndex(idx)
+        combo.blockSignals(False)
+        current = combo.currentData()
+        self._rpoc_source_display_id = current if isinstance(current, str) else ""
+
+    def _on_rpoc_source_changed(self, _index: int) -> None:
+        combo = self._rpoc_source_combo
+        if combo is None:
+            self._rpoc_source_display_id = ""
+            return
+        current = combo.currentData()
+        self._rpoc_source_display_id = current if isinstance(current, str) else ""
 
     def _build_control_panel(self, key: str, cls: type) -> None:
         self._actions_by_label = {}
@@ -353,6 +412,126 @@ class OptoControlManagerWidget(QWidget):
         except Exception as exc:
             self._show_error(str(exc))
             self._sync_controls_from_status(instance_id)
+
+    def _on_load_mask_clicked(self) -> None:
+        instance_id = self._selected_instance_id()
+        if not instance_id:
+            self._show_error("Select an opto-control instance first")
+            return
+
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Load Mask Image",
+            "",
+            "Image Files (*.png *.jpg *.jpeg *.bmp *.tif *.tiff)",
+        )
+        if not file_path:
+            return
+
+        path_widget = self._config_widgets.get("Mask Path")
+        if isinstance(path_widget, QLineEdit):
+            path_widget.setText(file_path)
+
+        action = self._method_to_action.get("load_mask_image")
+        if action is None:
+            self._show_error("Mask opto-control has no load action")
+            return
+
+        try:
+            self._ensure_configured(instance_id)
+            self.opto_control_service.run_action(
+                instance_id,
+                action.label,
+                {"Mask Path": file_path},
+            )
+            self.status_label.setText(f"Status: loaded mask for {instance_id}")
+            self._sync_controls_from_status(instance_id)
+        except Exception as exc:
+            self._show_error(str(exc))
+
+    def _on_create_mask_clicked(self) -> None:
+        instance_id = self._selected_instance_id()
+        if not instance_id:
+            self._show_error("Select an opto-control instance first")
+            return
+
+        if self._mask_editor_window is not None:
+            try:
+                if self._mask_editor_window.isVisible():
+                    self._mask_editor_window.raise_()
+                    self._mask_editor_window.activateWindow()
+                    return
+            except RuntimeError:
+                pass
+            self._mask_editor_window = None
+
+        try:
+            source_combo = self._rpoc_source_combo
+            if source_combo is None:
+                self._show_error("RPOC source display selector is unavailable")
+                return
+            source_display_id = source_combo.currentData()
+            if not isinstance(source_display_id, str) or not source_display_id:
+                self._show_error("Select an RPOC source display before creating a mask")
+                return
+            self._rpoc_source_display_id = source_display_id
+
+            self._ensure_configured(instance_id)
+
+            image_data = self.display_service.get_rpoc_input(source_display_id)
+            if image_data is None:
+                self._show_error(
+                    f"Display '{source_display_id}' cannot export RPOC editor input"
+                )
+                return
+
+            editor = RPOCMaskEditor(image_data=image_data, parent=self.window())
+            self._mask_editor_window = editor
+            if hasattr(editor, "mask_created"):
+                editor.mask_created.connect(
+                    lambda mask_data, iid=instance_id: self._on_mask_editor_created(iid, mask_data)
+                )
+            editor.destroyed.connect(self._on_mask_editor_closed)
+            editor.show()
+            self.status_label.setText("Status: mask editor opened")
+        except Exception as exc:
+            self._mask_editor_window = None
+            self._show_error(str(exc))
+
+    def _on_mask_editor_created(self, instance_id: str, mask_data: Any) -> None:
+        try:
+            mask_array = np.asarray(mask_data)
+            if mask_array.ndim != 2:
+                raise RuntimeError("created mask must be a 2D image")
+            if mask_array.dtype != np.uint8:
+                mask_array = np.clip(mask_array, 0, 255).astype(np.uint8)
+
+            with tempfile.NamedTemporaryFile(
+                prefix="pyrpoc_mask_",
+                suffix=".png",
+                delete=False,
+            ) as tmp_file:
+                temp_path = tmp_file.name
+            if not cv2.imwrite(temp_path, mask_array):
+                raise RuntimeError("failed to save generated mask to temporary file")
+
+            path_widget = self._config_widgets.get("Mask Path")
+            if isinstance(path_widget, QLineEdit):
+                path_widget.setText(temp_path)
+
+            self._ensure_configured(instance_id)
+            self.opto_control_service.set_mask_data(
+                instance_id,
+                mask_array,
+                source_path=temp_path,
+            )
+            self.status_label.setText(f"Status: created mask for {instance_id}")
+            self._sync_controls_from_status(instance_id)
+        except Exception as exc:
+            self._show_error(str(exc))
+
+    def _on_mask_editor_closed(self, _obj: object) -> None:
+        self._mask_editor_window = None
 
     def _run_action(self, action_label: str) -> None:
         instance_id = self._selected_instance_id()
