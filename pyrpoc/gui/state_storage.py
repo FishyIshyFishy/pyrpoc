@@ -1,6 +1,5 @@
 from dataclasses import dataclass, field
 from typing import Optional, Dict, Any
-from .signals import AppStateSignals
 
 @dataclass
 class AppState:

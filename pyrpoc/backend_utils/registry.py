@@ -1,73 +1,52 @@
+from __future__ import annotations
+
+from typing import Any
+
+
 class Registry:
     def __init__(self, name: str, base_class: type):
-        '''
-        description:
-            generic registry for which different component types can inhereit
-
-
-            each registry enforces a decorator and a base class, so that using
-            the decorator on each SubClass(BaseClass) immediately populates the registry
-            on startup of the GUI
-
-        args: 
-            name: string name for the registry 
-            base_class: the base_class that corresponds to the registry type
-
-        attributes:
-            entries: a dictionary of names and classes for each SubClass (e.g., 'camera': CameraInstrument)
-
-        example:
-            InstrumentRegistry(Registry):
-                def __init__(self)
-                    super().__init__(self, parent)
-        '''
         self.name = name
-        self.base_class = base_class # BaseInstrument, BaseModality, whatever
-        self.entries = {}
-        
+        self.base_class = base_class
+        self.entries: dict[str, type] = {}
+
     def register(self, key: str):
-        '''
-        description:
-            register a class given a key corresponding to that class for its parent registry
-
-            this function is used as a decorator. Upon import, the decorator will add the key
-            to self.entries
-        
-        args:
-            key: the name to store the class under (e.g., 'camera')
-
-        returns:
-            decorator: the decorator function to save the class into the registry
-
-        example:
-            @InstrumentRegistry.register('camera')
-            class CameraInstrument(BaseInstrument):
-                ...
-        '''
-        def decorator(cls):
+        def decorator(cls: type):
             if not issubclass(cls, self.base_class):
-                raise TypeError(f'{cls.__name__} must inheret from {self.base_class.__name__}')
-
+                raise TypeError(f"{cls.__name__} must inherit from {self.base_class.__name__}")
             if key in self.entries:
-                raise KeyError(f'{key!r} is already registered within the registry: {self.name}')
-            
+                raise KeyError(f"{key!r} is already registered in {self.name}")
             self.entries[key] = cls
             return cls
-        
+
         return decorator
-    
-    def get_registered(self):
-        '''
-        description:
-            list all the registered things (for example, to directly list in GUI)
 
-        args: none    
-        
-        returns: 
-            list: a list of the keys in the entries dictionary
+    def list_keys(self) -> list[str]:
+        return sorted(self.entries.keys())
 
-        example:
-            InstrumentRegistry.get_registered()
-            --> returns ['camera', 'stage', 'TCSPC']
-        '''
-        return list(self.entries.keys())
+    def get_registered(self) -> list[str]:
+        return self.list_keys()
+
+    def get_class(self, key: str) -> type:
+        if key not in self.entries:
+            raise KeyError(f"{key!r} is not registered in {self.name}")
+        return self.entries[key]
+
+    def create(self, key: str, **kwargs: Any) -> Any:
+        cls = self.get_class(key)
+        return cls(**kwargs)
+
+    def describe(self, key: str) -> dict[str, Any]:
+        cls = self.get_class(key)
+        return {
+            "key": key,
+            "class_name": cls.__name__,
+            "display_name": getattr(cls, "DISPLAY_NAME", cls.__name__),
+            "parameters": getattr(cls, "PARAMETERS", {}),
+            "config_parameters": getattr(cls, "CONFIG_PARAMETERS", {}),
+            "display_parameters": getattr(cls, "DISPLAY_PARAMETERS", {}),
+            "actions": getattr(cls, "ACTIONS", []),
+            "contract": cls.get_contract() if hasattr(cls, "get_contract") else {},
+        }
+
+    def describe_all(self) -> list[dict[str, Any]]:
+        return [self.describe(key) for key in self.list_keys()]

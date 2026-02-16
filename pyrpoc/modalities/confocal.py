@@ -1,46 +1,105 @@
-from .base_modality import BaseModality
-from .mod_registry import modality_registry
-from pyrpoc.backend_utils.data import DataImage
-from pyrpoc.instruments import BaseInstrument, Galvo, DAQInput
-from pyrpoc.gui.signals import AcquisitionSignals
+from __future__ import annotations
 
-import json
-import time
-from pathlib import Path
-from datetime import datetime
-from typing import Type, List, Dict, Any
-import nidaqmx
+from typing import Any
+
 import numpy as np
 
-@modality_registry.register('confocal')
-class ConfocalModality(BaseModality):
-    REQUIRED_PARAMETERS: Dict[str, Dict[str, Dict[str, Any]]] = {
-        'scan': {
-            'x_pixels':      {'type': int,   'default': 512,  'min': 1, 'tooltip': 'Number of pixels in X'},
-            'y_pixels':      {'type': int,   'default': 512,  'min': 1, 'tooltip': 'Number of pixels in Y'},
-            'extra_left':    {'type': int,   'default': 50,   'min': 0, 'tooltip': 'Pre-scan padding in X'},
-            'extra_right':   {'type': int,   'default': 50,   'min': 0, 'tooltip': 'Post-scan padding in X'},
-            'dwell_time': {'type': float, 'default': 10.0, 'min': 0.1, 'tooltip': 'Dwell time per pixel (µs)'},
-            'frames':        {'type': int,   'default': 1,    'min': 1, 'tooltip': 'Number of frames to acquire'},
-        }, # i think i want savestuff always present, but i need to keep that implementation standardized
+from pyrpoc.backend_utils.contracts import Parameter
+from pyrpoc.backend_utils.data import DataImage
+from pyrpoc.instruments.galvo import SimGalvoInstrument
+from .base_modality import BaseModality
+from .mod_registry import modality_registry
+
+
+@modality_registry.register("sim_confocal")
+class SimConfocalModality(BaseModality):
+    MODALITY_KEY = "sim_confocal"
+    DISPLAY_NAME = "Simulated Confocal"
+    PARAMETERS = {
+        "scan": [
+            Parameter(
+                label="X Pixels",
+                param_type=int,
+                default=256,
+                minimum=8,
+                tooltip="Number of pixels in X",
+            ),
+            Parameter(
+                label="Y Pixels",
+                param_type=int,
+                default=256,
+                minimum=8,
+                tooltip="Number of pixels in Y",
+            ),
+            Parameter(
+                label="Dwell Time (us)",
+                param_type=float,
+                default=10.0,
+                minimum=0.1,
+                tooltip="Pixel dwell time for simulated scan",
+            ),
+            Parameter(
+                label="Frames",
+                param_type=int,
+                default=1,
+                minimum=1,
+                tooltip="Number of frames per acquisition cycle",
+            ),
+        ],
+        "save": [
+            Parameter(
+                label='Save Path',
+                param_type = str,
+                default = None,
+            ),
+        ]
     }
+    REQUIRED_INSTRUMENTS = [SimGalvoInstrument]
+    OPTIONAL_INSTRUMENTS = []
+    OUTPUT_DATA_TYPE = DataImage
+    ALLOWED_DISPLAYS = ["sim_image"]
 
-    REQUIRED_INSTRUMENTS: List[Type[BaseInstrument]] = [
-        Galvo,
-        DAQInput
-    ]
+    def __init__(self):
+        super().__init__()
+        self._frame_idx = 0
 
-    ALLOWED_DISPLAYS: List[str] = [
-        'tiled_image',
-        'stacked_image'
-    ]
+    def configure(
+        self,
+        params: dict[str, Any],
+        instruments: dict[type[SimGalvoInstrument], SimGalvoInstrument],
+    ) -> None:
+        self._params = dict(params)
+        self._instruments = dict(instruments)
+        self._configured = True
 
-    DATA_TYPE = DataImage
-    def __init__(self, galvo: Galvo, inputs: list[DAQInput], acq_signals: AcquisitionSignals, 
-                 num_frames: int, x_pixels: int, y_pixels: int, extrapixels_left: int, extrapixels_right: int, dwell_time: float, 
-                 save_enabled: bool, save_path: str):
-        super().__init__(name='confocal', data_type=self.DATA_TYPE)
+    def start(self) -> None:
+        if not self._configured:
+            raise RuntimeError("modality must be configured before start")
+        self._running = True
 
-    def do_something(self):
-        print('do something')
+    def acquire_once(self) -> DataImage:
+        if not self._running:
+            raise RuntimeError("modality is not running")
 
+        x_pixels = int(self._params["X Pixels"])
+        y_pixels = int(self._params["Y Pixels"])
+
+        x = np.linspace(0, 1, x_pixels, dtype=float)
+        y = np.linspace(0, 1, y_pixels, dtype=float)
+        xx, yy = np.meshgrid(x, y)
+        image = (np.sin((xx + self._frame_idx * 0.03) * 12.0) + np.cos(yy * 8.0)) * 0.5
+        noise = np.random.normal(loc=0.0, scale=0.05, size=(y_pixels, x_pixels))
+        self._frame_idx += 1
+
+        metadata = {
+            "frame_index": self._frame_idx,
+            "dwell_time_us": float(self._params["Dwell Time (us)"]),
+            "frames": int(self._params["Frames"]),
+        }
+        return DataImage(name="sim_confocal_frame", value=image + noise, metadata=metadata)
+
+    def stop(self) -> None:
+        self._running = False
+
+
+ConfocalModality = SimConfocalModality

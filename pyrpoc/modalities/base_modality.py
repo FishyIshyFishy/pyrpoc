@@ -1,70 +1,80 @@
 from __future__ import annotations
-from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Type
 
+from abc import ABC, abstractmethod
+from typing import Any
+
+from pyrpoc.backend_utils.contracts import ParameterGroups
 from pyrpoc.backend_utils.data import BaseData
-from pyrpoc.instruments import BaseInstrument
-from pyrpoc.laser_modulations.base_laser_mod import BaseLaserModulation
+from pyrpoc.backend_utils.parameter_utils import validate_parameter_groups
+from pyrpoc.instruments.base_instrument import BaseInstrument
 
 
 class BaseModality(ABC):
-    REQUIRED_PARAMETERS: Dict[str, Dict[str, Dict[str, Any]]] = {}
-    REQUIRED_INSTRUMENTS: List[Type[BaseInstrument]] = []
-    ALLOWED_DISPLAYS: List[str] = []
-    ALLOWED_MODULATONS: List[Type[BaseLaserModulation]] = []
-    DATA_TYPE: Type[BaseData] = BaseData
+    MODALITY_KEY: str = "base_modality"
+    DISPLAY_NAME: str = "Base Modality"
+    PARAMETERS: ParameterGroups = {}
+    REQUIRED_INSTRUMENTS: list[type[BaseInstrument]] = []
+    OPTIONAL_INSTRUMENTS: list[type[BaseInstrument]] = []
+    OUTPUT_DATA_TYPE: type[BaseData] = BaseData
+    ALLOWED_DISPLAYS: list[str] = []
 
-    def __init__(self, name: str, **kwargs):
-        self.name = name
-        for key, val in kwargs.items():
-            setattr(self, key, val)
-        self.params = kwargs  # keep a copy for metadata / saving, but this is not to be read from in general
+    def __init_subclass__(cls, **kwargs):
+        super().__init_subclass__(**kwargs)
+
+        required = getattr(cls, "REQUIRED_INSTRUMENTS", [])
+        optional = getattr(cls, "OPTIONAL_INSTRUMENTS", [])
+
+        if not isinstance(required, list):
+            raise TypeError("REQUIRED_INSTRUMENTS must be a list")
+        if not isinstance(optional, list):
+            raise TypeError("OPTIONAL_INSTRUMENTS must be a list")
+
+        for instrument_cls in [*required, *optional]:
+            if not isinstance(instrument_cls, type) or not issubclass(instrument_cls, BaseInstrument):
+                raise TypeError(
+                    f"{cls.__name__} instrument requirements must contain BaseInstrument subclasses"
+                )
+
+        validate_parameter_groups(getattr(cls, "PARAMETERS", {}))
+
+        output_type = getattr(cls, "OUTPUT_DATA_TYPE", BaseData)
+        if not isinstance(output_type, type) or not issubclass(output_type, BaseData):
+            raise TypeError("OUTPUT_DATA_TYPE must be a BaseData subclass")
+
+    def __init__(self):
+        self._running = False
+        self._configured = False
+        self._params: dict[str, Any] = {}
+        self._instruments: dict[type[BaseInstrument], BaseInstrument] = {}
 
     @classmethod
-    def get_contract(cls) -> dict:
+    def get_contract(cls) -> dict[str, Any]:
         return {
-            'parameters': cls.REQUIRED_PARAMETERS,
-            'instruments': cls.REQUIRED_INSTRUMENTS,
-            'displays': cls.ALLOWED_DISPLAYS,
-            'data_type': cls.DATA_TYPE,
+            "modality_key": cls.MODALITY_KEY,
+            "display_name": cls.DISPLAY_NAME,
+            "parameters": cls.PARAMETERS,
+            "required_instruments": cls.REQUIRED_INSTRUMENTS,
+            "optional_instruments": cls.OPTIONAL_INSTRUMENTS,
+            "output_data_type": cls.OUTPUT_DATA_TYPE,
+            "allowed_displays": cls.ALLOWED_DISPLAYS,
         }
 
-    @classmethod
-    def get_required_parameters(cls) -> Dict[str, Dict[str, Dict[str, Any]]]:
-        return cls.REQUIRED_PARAMETERS
-
-    @classmethod
-    def get_required_instruments(cls) -> List[Type[BaseInstrument]]:
-        return cls.REQUIRED_INSTRUMENTS
-
-    @classmethod
-    def get_allowed_displays(cls) -> List[str]:
-        return cls.ALLOWED_DISPLAYS
-
-    @classmethod
-    def get_data_type(cls) -> Type[BaseData]:
-        return cls.DATA_TYPE
+    @abstractmethod
+    def configure(
+        self,
+        params: dict[str, Any],
+        instruments: dict[type[BaseInstrument], BaseInstrument],
+    ) -> None:
+        raise NotImplementedError
 
     @abstractmethod
-    def start(self):
-        pass
+    def start(self) -> None:
+        raise NotImplementedError
 
     @abstractmethod
-    def stop(self):
-        pass
+    def acquire_once(self) -> BaseData:
+        raise NotImplementedError
 
-    def emit_data_object(self, data: BaseData):
-        if not isinstance(data, self.DATA_TYPE):
-            raise TypeError(
-                f'emit_data_object expected {self.DATA_TYPE.__name__}, '
-                f'got {type(data).__name__}'
-            )
-        print(f'[{self.name}] emitted {data}')
-
-
-    def get_metadata(self) -> dict:
-        return {
-            'name': self.name,
-            'parameters': self.params,
-            'contract': self.get_contract(),
-        }
+    @abstractmethod
+    def stop(self) -> None:
+        raise NotImplementedError
