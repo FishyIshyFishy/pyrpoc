@@ -9,6 +9,7 @@ import pyrpoc.modalities  # noqa: F401
 import pyrpoc.optocontrols  # noqa: F401
 
 from pyrpoc.gui.main_gui import MainGUI
+from pyrpoc.gui.styles.theme_manager import ThemeController
 from .display_service import DisplayService
 from .instrument_service import InstrumentService
 from .modality_service import ModalityService
@@ -16,7 +17,7 @@ from .opto_control_service import OptoControlService
 
 
 class AppController(QObject):
-    def __init__(self, parent=None):
+    def __init__(self, theme_controller: ThemeController, parent=None):
         super().__init__(parent)
 
         self.instrument_service = InstrumentService(self)
@@ -34,6 +35,7 @@ class AppController(QObject):
             modality_service=self.modality_service,
             display_service=self.display_service,
             opto_control_service=self.opto_control_service,
+            theme_controller=theme_controller,
         )
 
     def show(self) -> None:

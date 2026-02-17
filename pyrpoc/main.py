@@ -4,12 +4,16 @@ import sys
 
 from PyQt6.QtWidgets import QApplication
 
+from pyrpoc.gui.styles.theme_manager import ThemeController
 from pyrpoc.services.app_controller import AppController
 
 
 def main() -> int:
     app = QApplication(sys.argv)
-    controller = AppController()
+    theme_controller = ThemeController(app)
+    theme_controller.apply_saved_or_default()
+
+    controller = AppController(theme_controller=theme_controller)
     controller.main_window.resize(1400, 850)
     controller.show()
     return app.exec()

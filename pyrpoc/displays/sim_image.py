@@ -26,7 +26,7 @@ class SimImageDisplay(BaseDisplay):
         self._image_label = QLabel("No image yet", self)
         self._image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._image_label.setMinimumSize(320, 240)
-        self._image_label.setStyleSheet("border: 1px solid #888;")
+        self._image_label.setStyleSheet("border: 1px solid palette(mid);")
         layout.addWidget(self._image_label)
         self._last_pixmap: QPixmap | None = None
         self._last_image: np.ndarray | None = None

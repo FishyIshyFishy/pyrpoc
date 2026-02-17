@@ -18,7 +18,6 @@ dependencies = [
   "pyqt6",       
   "PyQt6Ads",
   "pyqtgraph",
-  "qdarkstyle",
   "pyqtdarktheme",
   "superqt",    
   "nidaqmx",   

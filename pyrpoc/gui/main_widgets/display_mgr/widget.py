@@ -1,0 +1,109 @@
+from __future__ import annotations
+
+from PyQt6.QtCore import Qt
+from PyQt6.QtWidgets import QListWidgetItem, QWidget
+
+from pyrpoc.gui.main_widgets.display_mgr.handlers import (
+    on_add_clicked,
+    on_attach_clicked,
+    on_detach_clicked,
+    on_display_added,
+    on_display_error,
+    on_display_removed,
+    on_modality_selected,
+    on_remove_clicked,
+    refresh_available,
+    refresh_instances,
+    show_error,
+)
+from pyrpoc.gui.main_widgets.display_mgr.state import DisplayManagerState
+from pyrpoc.gui.main_widgets.display_mgr.ui import build_display_manager_ui
+from pyrpoc.services.display_service import DisplayService
+from pyrpoc.services.modality_service import ModalityService
+
+
+class DisplayManagerWidget(QWidget):
+    def __init__(
+        self,
+        display_service: DisplayService,
+        modality_service: ModalityService,
+        parent: QWidget | None = None,
+    ):
+        super().__init__(parent)
+        self.display_service = display_service
+        self.modality_service = modality_service
+        self.state = DisplayManagerState()
+        self.ui = build_display_manager_ui(self)
+
+        # Compatibility aliases for existing callers.
+        self.display_combo = self.ui.display_combo
+        self.add_btn = self.ui.add_btn
+        self.instances_list = self.ui.instances_list
+        self.attach_btn = self.ui.attach_btn
+        self.detach_btn = self.ui.detach_btn
+        self.remove_btn = self.ui.remove_btn
+        self.status_label = self.ui.status_label
+        self.display_tabs = self.ui.display_tabs
+
+        self._wire_signals()
+        self._refresh_available()
+        self._refresh_instances()
+
+    def _wire_signals(self) -> None:
+        self.add_btn.clicked.connect(self._on_add_clicked)
+        self.attach_btn.clicked.connect(self._on_attach_clicked)
+        self.detach_btn.clicked.connect(self._on_detach_clicked)
+        self.remove_btn.clicked.connect(self._on_remove_clicked)
+
+        self.display_service.display_added.connect(self._on_display_added)
+        self.display_service.display_removed.connect(self._on_display_removed)
+        self.display_service.display_error.connect(self._on_display_error)
+        self.modality_service.modality_selected.connect(self._on_modality_selected)
+
+    def _refresh_available(self) -> None:
+        refresh_available(self)
+
+    def _refresh_instances(self) -> None:
+        refresh_instances(self)
+
+    def _on_add_clicked(self) -> None:
+        on_add_clicked(self)
+
+    def _on_attach_clicked(self) -> None:
+        on_attach_clicked(self)
+
+    def _on_detach_clicked(self) -> None:
+        on_detach_clicked(self)
+
+    def _on_remove_clicked(self) -> None:
+        on_remove_clicked(self)
+
+    def _on_display_added(self, display_id: str) -> None:
+        on_display_added(self, display_id)
+
+    def _on_display_removed(self, display_id: str) -> None:
+        on_display_removed(self, display_id)
+
+    def _on_display_error(self, display_id: str, message: str) -> None:
+        on_display_error(self, display_id, message)
+
+    def _on_modality_selected(self, key: str) -> None:
+        on_modality_selected(self, key)
+
+    def _selected_display_id(self) -> str:
+        item = self.instances_list.currentItem()
+        if item is None:
+            return ""
+        value = item.data(Qt.ItemDataRole.UserRole)
+        if isinstance(value, str):
+            return value
+        return ""
+
+    def _selected_display_key(self) -> str:
+        data = self.display_combo.currentData()
+        if isinstance(data, str):
+            return data
+        return self.display_combo.currentText().strip()
+
+    def _show_error(self, message: str) -> None:
+        show_error(self, message)

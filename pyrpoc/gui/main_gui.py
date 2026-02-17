@@ -8,7 +8,7 @@ from pyrpoc.gui.main_widgets.display_mgr import DisplayManagerWidget
 from pyrpoc.gui.main_widgets.instrument_mgr import InstrumentManagerWidget
 from pyrpoc.gui.main_widgets.menubar import MainMenuBar
 from pyrpoc.gui.main_widgets.opto_control_mgr import OptoControlManagerWidget
-from pyrpoc.gui.styles.theme_manager import ThemeManager
+from pyrpoc.gui.styles.theme_manager import ThemeController
 from pyrpoc.services.display_service import DisplayService
 from pyrpoc.services.instrument_service import InstrumentService
 from pyrpoc.services.modality_service import ModalityService
@@ -25,6 +25,7 @@ class MainGUI(QWidget):
         modality_service: ModalityService,
         display_service: DisplayService,
         opto_control_service: OptoControlService,
+        theme_controller: ThemeController,
     ):
         super().__init__()
         self.setWindowTitle("pyrpoc")
@@ -33,7 +34,7 @@ class MainGUI(QWidget):
         self.modality_service = modality_service
         self.display_service = display_service
         self.opto_control_service = opto_control_service
-        self.theme_mgr = ThemeManager()
+        self.theme_controller = theme_controller
 
         self.dock_manager = qtads.CDockManager(self)
         self.dock_manager.setStyleSheet("")
@@ -73,9 +74,9 @@ class MainGUI(QWidget):
         layout.addWidget(self.dock_manager)
 
         self.menubar.populate_view_menu(self.docks)
-        self.menubar.populate_style_menu(self.theme_mgr.get_available_themes())
+        selected_mode = self.theme_controller.get_saved_mode()
+        self.menubar.populate_style_menu(selected_mode)
         self.menubar.style_selected.connect(self.set_style)
-        self.set_style("qdarkstyle-dark")
 
     def add_dock(
         self,
@@ -95,9 +96,6 @@ class MainGUI(QWidget):
 
         return dock
 
-    def set_style(self, theme_name: str) -> None:
-        try:
-            qss = self.theme_mgr.load_theme(theme_name)
-            self.setStyleSheet(qss)
-        except FileNotFoundError:
-            print(f"Theme '{theme_name}' not found")
+    def set_style(self, theme_mode: str) -> None:
+        applied = self.theme_controller.apply(theme_mode)
+        self.menubar.set_active_style(applied)

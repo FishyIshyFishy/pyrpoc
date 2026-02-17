@@ -1,140 +1,48 @@
-from pathlib import Path
-import qdarkstyle
+from __future__ import annotations
+
+from typing import Literal
+
 import qdarktheme
+from PyQt6.QtCore import QSettings
+from PyQt6.QtWidgets import QApplication
 
-class ThemeManager:
-    '''
-    Manages .qss themes in the styles/ folder, plus a few hardcoded programmatic themes.
-    '''
+ThemeMode = Literal["system", "dark", "light"]
 
-    def __init__(self, base_dir: str | None = None):
-        if base_dir is None:
-            self.base_path = Path(__file__).resolve().parent
-        else:
-            self.base_path = Path(base_dir)
-
-    def get_available_themes(self) -> list[str]:
-        file_themes = [f.stem for f in self.base_path.glob('*.qss')]
-        hardcoded = [
-            'qdarkstyle-dark', 'qdarkstyle-light',
-            'qdarktheme-dark', 'qdarktheme-light'
-        ]
-        return sorted(file_themes + hardcoded)
+_SETTINGS_ORG = "pyrpoc"
+_SETTINGS_APP = "pyrpoc"
+_SETTINGS_KEY_THEME_MODE = "ui/theme_mode"
 
 
-    def load_theme(self, theme_name: str) -> str:
-        qss_file = self.base_path / f'{theme_name}.qss'
-        if qss_file.exists():
-            return qss_file.read_text(encoding='utf-8')
+class ThemeController:
+    """Single source of truth for app theme mode and application."""
 
-        # --- qdarkstyle themes ---
-        if theme_name == 'qdarkstyle-dark':
-            base = qdarkstyle.load_stylesheet(qt_api='pyqt6', palette=qdarkstyle.DarkPalette())
-            return base + '\n' + self._ads_overrides_dark()
+    AVAILABLE_MODES: tuple[ThemeMode, ...] = ("system", "dark", "light")
 
-        if theme_name == 'qdarkstyle-light':
-            base = qdarkstyle.load_stylesheet(qt_api='pyqt6', palette=qdarkstyle.LightPalette())
-            return base + '\n' + self._ads_overrides_light()
+    def __init__(self, app: QApplication):
+        self.app = app
+        self.settings = QSettings(_SETTINGS_ORG, _SETTINGS_APP)
 
-        # --- qdarktheme themes ---
-        if theme_name == 'qdarktheme-dark':
-            return qdarktheme.load_stylesheet('dark')
+    def get_available_modes(self) -> list[ThemeMode]:
+        return list(self.AVAILABLE_MODES)
 
-        if theme_name == 'qdarktheme-light':
-            return qdarktheme.load_stylesheet('light')
+    def get_saved_mode(self) -> ThemeMode:
+        raw = self.settings.value(_SETTINGS_KEY_THEME_MODE, "system")
+        mode = str(raw).strip().lower()
+        if mode in self.AVAILABLE_MODES:
+            return mode  # type: ignore[return-value]
+        return "system"
 
-        raise FileNotFoundError(f'Theme {theme_name} not found (dir={self.base_path})')
+    def apply_saved_or_default(self) -> ThemeMode:
+        return self.apply(self.get_saved_mode(), persist=False)
 
-    # ------------------------------------------------------------------
-    # ADS overrides (keep them private helpers for now)
-    # ------------------------------------------------------------------
-    def _ads_overrides_dark(self) -> str:
-        return '''
-        /* ADS DockWidget frame */
-        ads--CDockWidget {
-            background: #2b2b2b;
-            border: 1px solid #444;
-        }
+    def apply(self, mode: str, persist: bool = True) -> ThemeMode:
+        normalized = mode.strip().lower()
+        if normalized not in self.AVAILABLE_MODES:
+            normalized = "system"
+        selected_mode: ThemeMode = normalized  # type: ignore[assignment]
 
-        /* Base tab style (inactive tabs) */
-        ads--CDockWidgetTab {
-            background-color: #3c3f41;
-            color: #bbb;
-            padding: 4px 8px;
-            border: 1px solid #444;
-            border-bottom: none;
-            border-radius: 2px 2px 0 0;
-            margin-right: 2px;
-        }
+        if persist:
+            self.settings.setValue(_SETTINGS_KEY_THEME_MODE, selected_mode)
 
-        /* Active tab */
-        ads--CDockWidgetTab[activeTab="true"] {
-            background-color: #073763;      /* lighter blue highlight */
-            color: #ffffff;
-            border: 1px solid #259AE9;
-            border-bottom: 2px solid #259AE9;
-            font-weight: bold;
-        }
-
-        /* Hovered tab */
-        ads--CDockWidgetTab:hover {
-            background-color: #4a4d50;
-            color: #fff;
-        }
-
-        /* Titlebar buttons inside dock */
-        ads--CDockWidgetTitleBar QPushButton {
-            border: none;
-            background: transparent;
-        }
-
-        ads--CDockWidgetTitleBar QPushButton:hover {
-            background: #505357;
-            border-radius: 2px;
-        }
-
-        ads--CDockWidgetTab QLabel {
-            background: transparent;   /* removes extra highlight */
-            color: #bbb;            /* inherits from the tab */
-            padding: 0;                /* prevents extra spacing */
-        }
-
-        ads--CDockWidgetTab[activeTab="true"] QLabel {
-            color: #ffffff;   /* white text for active tab */
-        }
-        '''
-    
-    def _ads_overrides_light(self) -> str:
-        return '''
-        ads--CDockWidget {
-            background: #f2f2f2;
-            border: 1px solid #aaa;
-        }
-
-        ads--CDockWidgetTab {
-            background-color: #e0e0e0;
-            color: #333;
-            padding: 4px 8px;
-            border: 1px solid #aaa;
-            border-bottom: none;
-        }
-
-        ads--CDockWidgetTab[activeTab="true"] {
-            background-color: #ffffff;
-            color: #000;
-            border-bottom: 2px solid #259AE9;
-        }
-
-        ads--CDockWidgetTab:hover {
-            background-color: #f5f5f5;
-        }
-
-        ads--CDockWidgetTitleBar QPushButton {
-            border: none;
-            background: transparent;
-        }
-
-        ads--CDockWidgetTitleBar QPushButton:hover {
-            background: #ddd;
-        }
-        '''
+        qdarktheme_mode = "auto" if selected_mode == "system" else selected_mode
+        qdarktheme.setup_theme(qdarktheme_mode)
