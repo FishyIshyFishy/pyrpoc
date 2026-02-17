@@ -1,11 +1,17 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
+import tempfile
 from typing import TYPE_CHECKING, Any
 
+import cv2
+import numpy as np
 from PyQt6.QtWidgets import (
     QFormLayout,
     QHBoxLayout,
+    QFileDialog,
+    QLabel,
     QLineEdit,
     QMessageBox,
     QPushButton,
@@ -18,6 +24,7 @@ from PyQt6.QtWidgets import (
 from pyrpoc.backend_utils.contracts import Action, Parameter
 from pyrpoc.gui.main_widgets.opto_control_mgr.forms import collect_values, make_editor
 from pyrpoc.gui.main_widgets.opto_control_mgr.instance_card import InstanceCardWidget
+from pyrpoc.gui.main_widgets.opto_control_mgr.mask_editor import MaskEditorWidget
 from pyrpoc.optocontrols.opto_control_registry import opto_control_registry
 
 if TYPE_CHECKING:
@@ -42,6 +49,53 @@ def refresh_available(widget: OptoControlManagerWidget) -> None:
         widget.type_combo.setCurrentIndex(0)
 
 
+def init_editor_host(widget: OptoControlManagerWidget) -> None:
+    _set_editor_host_placeholder(widget)
+
+
+def _detach_editor_layout_items(layout: QVBoxLayout) -> None:
+    while layout.count():
+        item = layout.takeAt(0)
+        child = item.widget()
+        if child is not None:
+            child.setParent(None)
+            child.deleteLater()
+
+
+def _set_editor_host_placeholder(widget: OptoControlManagerWidget) -> None:
+    _detach_editor_layout_items(widget.editor_host_layout)
+    placeholder = QLabel("Mask editor area reserved.", widget.ui.editor_host_box)
+    widget.editor_host_layout.addWidget(placeholder)
+    widget.editor_host_layout.addStretch(1)
+
+
+def _mount_editor(widget: OptoControlManagerWidget, editor: QWidget, instance_id: str) -> None:
+    _detach_editor_layout_items(widget.editor_host_layout)
+    widget.editor_host_layout.addWidget(editor)
+    widget.state.active_mask_editor_widget = editor
+    widget.state.active_mask_editor_instance_id = instance_id
+
+
+def _unmount_editor(widget: OptoControlManagerWidget) -> None:
+    editor = widget.state.active_mask_editor_widget
+    widget.state.active_mask_editor_widget = None
+    widget.state.active_mask_editor_instance_id = None
+    if editor is not None:
+        editor.setParent(None)
+        editor.deleteLater()
+    _set_editor_host_placeholder(widget)
+
+
+def _cleanup_temp_mask_file(widget: OptoControlManagerWidget, instance_id: str) -> None:
+    path = widget.state.mask_tempfile_by_instance.pop(instance_id, None)
+    if path is None:
+        return
+    try:
+        os.remove(path)
+    except OSError:
+        pass
+
+
 def _detach_layout_items(layout: QVBoxLayout) -> None:
     while layout.count():
         item = layout.takeAt(0)
@@ -57,6 +111,9 @@ def _remove_instance_state(widget: OptoControlManagerWidget, instance_id: str) -
     widget.state.actions_by_label_by_instance.pop(instance_id, None)
     widget.state.method_to_action_by_instance.pop(instance_id, None)
     widget.state.enable_guard_by_instance.pop(instance_id, None)
+    widget.state.mask_path_widgets_by_instance.pop(instance_id, None)
+    widget.state.mask_create_buttons_by_instance.pop(instance_id, None)
+    _cleanup_temp_mask_file(widget, instance_id)
 
 
 def _clear_instance_form_state(widget: OptoControlManagerWidget, instance_id: str) -> None:
@@ -65,6 +122,8 @@ def _clear_instance_form_state(widget: OptoControlManagerWidget, instance_id: st
     widget.state.action_widgets_by_instance.pop(instance_id, None)
     widget.state.actions_by_label_by_instance.pop(instance_id, None)
     widget.state.method_to_action_by_instance.pop(instance_id, None)
+    widget.state.mask_path_widgets_by_instance.pop(instance_id, None)
+    widget.state.mask_create_buttons_by_instance.pop(instance_id, None)
 
 
 def refresh_instances(widget: OptoControlManagerWidget) -> None:
@@ -74,6 +133,8 @@ def refresh_instances(widget: OptoControlManagerWidget) -> None:
     new_ids = set(row_by_id.keys())
 
     for removed_id in sorted(current_ids - new_ids):
+        if widget.state.active_mask_editor_instance_id == removed_id:
+            _close_mask_editor(widget, force_discard=True)
         card = widget.state.card_widgets.pop(removed_id)
         card.setParent(None)
         card.deleteLater()
@@ -197,6 +258,7 @@ def _build_config_form(
             widget.state.config_params_by_instance[instance_id][param.label] = param
 
             if param.label == "Mask Path" and isinstance(editor, QLineEdit):
+                widget.state.mask_path_widgets_by_instance[instance_id] = editor
                 row_widget = QWidget(form_wrap)
                 row_layout = QHBoxLayout(row_widget)
                 row_layout.setContentsMargins(0, 0, 0, 0)
@@ -206,12 +268,19 @@ def _build_config_form(
                 browse_btn = QToolButton(row_widget)
                 browse_btn.setIcon(form_wrap.style().standardIcon(QStyle.StandardPixmap.SP_FileIcon))
                 browse_btn.setToolTip("Browse for mask file")
+                browse_btn.clicked.connect(
+                    lambda _checked=False, target=editor, owner=widget: _on_browse_mask_path(owner, target)
+                )
                 row_layout.addWidget(browse_btn)
 
                 create_btn = QToolButton(row_widget)
                 create_btn.setText("+")
                 create_btn.setToolTip("Create mask")
+                create_btn.clicked.connect(
+                    lambda _checked=False, iid=instance_id, owner=widget: on_mask_editor_open_requested(owner, iid)
+                )
                 row_layout.addWidget(create_btn)
+                widget.state.mask_create_buttons_by_instance[instance_id] = create_btn
 
                 config_form.addRow(param.label, row_widget)
             else:
@@ -291,6 +360,10 @@ def _set_expanded_card(widget: OptoControlManagerWidget, instance_id: str | None
 
 
 def on_card_expand_requested(widget: OptoControlManagerWidget, instance_id: str) -> None:
+    if widget.state.ui_locked_for_editor:
+        widget.status_label.setText("Status: close/discard active mask editor first")
+        return
+
     if widget._expanded_instance_id() == instance_id:
         _set_expanded_card(widget, None)
         return
@@ -327,6 +400,10 @@ def ensure_configured(widget: OptoControlManagerWidget, instance_id: str) -> Non
 
 
 def on_add_clicked(widget: OptoControlManagerWidget) -> None:
+    if widget.state.ui_locked_for_editor:
+        widget.status_label.setText("Status: close/discard active mask editor first")
+        return
+
     key = widget._selected_type_key()
     if not key:
         return
@@ -361,8 +438,13 @@ def on_card_enable_toggled(widget: OptoControlManagerWidget, instance_id: str, c
 
 
 def on_card_remove_requested(widget: OptoControlManagerWidget, instance_id: str) -> None:
+    if widget.state.ui_locked_for_editor:
+        widget.status_label.setText("Status: close/discard active mask editor first")
+        return
+
     try:
         widget.opto_control_service.remove_opto_control(instance_id)
+        _cleanup_temp_mask_file(widget, instance_id)
         widget.status_label.setText(f"Status: removed {instance_id}")
     except Exception as exc:
         show_error(widget, str(exc), instance_id=instance_id)
@@ -421,6 +503,146 @@ def sync_controls_from_status(widget: OptoControlManagerWidget, instance_id: str
     card.set_enable_checked(bool(status.get("enabled", False)), guarded=False)
     widget.state.enable_guard_by_instance[instance_id] = False
     card.set_local_status(f"Status: {status.get('last_action', 'idle')}")
+
+
+def _set_editor_lock(widget: OptoControlManagerWidget, locked: bool) -> None:
+    widget.state.ui_locked_for_editor = locked
+    widget.type_combo.setEnabled(not locked)
+    widget.add_btn.setEnabled(not locked)
+    widget.ui.instances_scroll.setEnabled(not locked)
+
+
+def _on_browse_mask_path(widget: OptoControlManagerWidget, editor: QLineEdit) -> None:
+    path, _ = QFileDialog.getOpenFileName(
+        widget,
+        "Select Mask Image",
+        "",
+        "Images (*.png *.jpg *.jpeg *.bmp *.tif *.tiff);;All Files (*)",
+    )
+    if not path:
+        return
+    editor.setText(str(Path(path)))
+
+
+def on_mask_editor_open_requested(widget: OptoControlManagerWidget, instance_id: str) -> None:
+    if widget.state.active_mask_editor_widget is not None:
+        widget.status_label.setText("Status: close/discard active mask editor first")
+        return
+
+    try:
+        key = widget.opto_control_service.get_instance_key(instance_id)
+    except Exception as exc:
+        show_error(widget, str(exc), instance_id=instance_id)
+        return
+    if key != "mask":
+        show_error(widget, "mask editor is only available for Mask Opto-Control", instance_id=instance_id)
+        return
+
+    editor = MaskEditorWidget(parent=widget.ui.editor_host_box)
+    editor.create_mask_requested.connect(
+        lambda mask, iid=instance_id, owner=widget: on_mask_editor_create_requested(owner, iid, mask)
+    )
+    editor.cancel_requested.connect(lambda iid=instance_id, owner=widget: on_mask_editor_cancel_requested(owner, iid))
+
+    _mount_editor(widget, editor, instance_id)
+    _set_editor_lock(widget, True)
+    widget.status_label.setText(f"Status: mask editor open for {instance_id}")
+
+
+def _close_mask_editor(widget: OptoControlManagerWidget, force_discard: bool = False) -> bool:
+    editor = widget.state.active_mask_editor_widget
+    if editor is None:
+        return True
+    if force_discard:
+        _unmount_editor(widget)
+        _set_editor_lock(widget, False)
+        widget.status_label.setText("Status: mask editor closed")
+        return True
+    if not isinstance(editor, MaskEditorWidget):
+        _unmount_editor(widget)
+        _set_editor_lock(widget, False)
+        return True
+    if not editor.is_dirty():
+        _unmount_editor(widget)
+        _set_editor_lock(widget, False)
+        widget.status_label.setText("Status: mask editor closed")
+        return True
+
+    prompt = QMessageBox(widget)
+    prompt.setIcon(QMessageBox.Icon.Question)
+    prompt.setWindowTitle("Unsaved Mask")
+    prompt.setText("You have unsaved mask edits.")
+    prompt.setInformativeText("Create mask now, discard edits, or cancel closing?")
+    create_btn = prompt.addButton("Create Mask", QMessageBox.ButtonRole.AcceptRole)
+    discard_btn = prompt.addButton("Discard", QMessageBox.ButtonRole.DestructiveRole)
+    cancel_btn = prompt.addButton("Cancel", QMessageBox.ButtonRole.RejectRole)
+    prompt.setDefaultButton(create_btn)
+    prompt.exec()
+    clicked = prompt.clickedButton()
+    if clicked == create_btn:
+        mask = editor.generate_mask()
+        if mask is None:
+            QMessageBox.warning(widget, "No ROI", "Draw at least one ROI before creating a mask.")
+            return False
+        on_mask_editor_create_requested(widget, widget.state.active_mask_editor_instance_id or "", mask)
+        return widget.state.active_mask_editor_widget is None
+    if clicked == discard_btn:
+        _unmount_editor(widget)
+        _set_editor_lock(widget, False)
+        widget.status_label.setText("Status: discarded mask editor changes")
+        return True
+    if clicked == cancel_btn:
+        return False
+    return False
+
+
+def on_mask_editor_cancel_requested(widget: OptoControlManagerWidget, instance_id: str) -> None:
+    if widget.state.active_mask_editor_instance_id != instance_id:
+        return
+    _close_mask_editor(widget, force_discard=False)
+
+
+def on_mask_editor_create_requested(
+    widget: OptoControlManagerWidget,
+    instance_id: str,
+    mask: np.ndarray,
+) -> None:
+    if widget.state.active_mask_editor_instance_id != instance_id:
+        return
+    try:
+        ensure_configured(widget, instance_id)
+        if not isinstance(mask, np.ndarray):
+            raise TypeError("mask must be a numpy array")
+        if mask.ndim != 2:
+            raise ValueError("mask must be 2D")
+        mask_u8 = (mask > 0).astype(np.uint8) * 255
+
+        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
+        temp_path = Path(temp_file.name)
+        temp_file.close()
+        write_ok = cv2.imwrite(str(temp_path), mask_u8)
+        if not write_ok:
+            raise RuntimeError(f"failed to write mask image to '{temp_path}'")
+
+        old_path = widget.state.mask_tempfile_by_instance.get(instance_id)
+        widget.state.mask_tempfile_by_instance[instance_id] = temp_path
+        if old_path is not None and old_path != temp_path:
+            try:
+                os.remove(old_path)
+            except OSError:
+                pass
+
+        widget.opto_control_service.set_mask_data(instance_id, mask_u8, source_path=str(temp_path))
+        path_widget = widget.state.mask_path_widgets_by_instance.get(instance_id)
+        if path_widget is not None:
+            path_widget.setText(str(temp_path))
+
+        sync_controls_from_status(widget, instance_id)
+        _unmount_editor(widget)
+        _set_editor_lock(widget, False)
+        widget.status_label.setText(f"Status: created mask for {instance_id}")
+    except Exception as exc:
+        show_error(widget, str(exc), instance_id=instance_id)
 
 
 def on_modality_selected(widget: OptoControlManagerWidget, key: str) -> None:

@@ -3,6 +3,7 @@ from __future__ import annotations
 from PyQt6.QtWidgets import QWidget
 
 from pyrpoc.gui.main_widgets.opto_control_mgr.handlers import (
+    init_editor_host,
     on_add_clicked,
     on_card_enable_toggled,
     on_card_expand_requested,
@@ -45,6 +46,7 @@ class OptoControlManagerWidget(QWidget):
         self.editor_host_layout = self.ui.editor_host_layout
 
         self._wire_signals()
+        self._init_editor_host()
         self._refresh_available()
         self._refresh_instances()
 
@@ -56,6 +58,9 @@ class OptoControlManagerWidget(QWidget):
 
     def _refresh_available(self) -> None:
         refresh_available(self)
+
+    def _init_editor_host(self) -> None:
+        init_editor_host(self)
 
     def _refresh_instances(self) -> None:
         refresh_instances(self)

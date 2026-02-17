@@ -68,8 +68,6 @@ def build_opto_control_manager_ui(owner: QWidget) -> OptoControlManagerUI:
     editor_host_layout = QVBoxLayout(editor_host_box)
     editor_host_layout.setContentsMargins(8, 8, 8, 8)
     editor_host_layout.setSpacing(8)
-    editor_host_layout.addWidget(QLabel("Mask editor area reserved.", editor_host_box))
-    editor_host_layout.addStretch(1)
 
     splitter.addWidget(instances_container)
     splitter.addWidget(editor_host_box)
