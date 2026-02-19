@@ -89,6 +89,7 @@ class SessionCoordinator(QObject):
                 OptoControlSessionState(
                     type_key=row.type_key,
                     connected=row.connected,
+                    enabled=row.enabled,
                     config_values=list(row.config_values),
                     user_label=row.user_label,
                 )
@@ -147,6 +148,11 @@ class SessionCoordinator(QObject):
             if row.connected:
                 try:
                     self.opto_control_service.connect(state, self._values_to_raw(row.config_values))
+                except Exception:
+                    pass
+            if row.enabled:
+                try:
+                    self.opto_control_service.set_enabled(state, True, self._values_to_raw(row.config_values))
                 except Exception:
                     pass
 

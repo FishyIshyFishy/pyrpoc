@@ -59,6 +59,7 @@ class SessionCodec:
             {
                 "type_key": row.type_key,
                 "connected": row.connected,
+                "enabled": row.enabled,
                 "config_values": cls._encode_param_values(row.config_values),
                 "user_label": row.user_label,
             }
@@ -87,7 +88,8 @@ class SessionCodec:
         if not isinstance(raw, dict):
             raise ValueError("session data must be an object")
 
-        if int(raw.get("schema_version", -1)) != SCHEMA_VERSION:
+        schema_version = int(raw.get("schema_version", -1))
+        if schema_version not in (1, SCHEMA_VERSION):
             raise ValueError("unsupported session schema version")
 
         instruments = [
@@ -103,6 +105,7 @@ class SessionCodec:
             OptoControlSessionState(
                 type_key=str(item["type_key"]),
                 connected=bool(item.get("connected", False)),
+                enabled=bool(item.get("enabled", False)),
                 config_values=cls._decode_param_values(item.get("config_values", [])),
                 user_label=item.get("user_label"),
             )

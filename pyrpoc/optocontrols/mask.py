@@ -15,6 +15,9 @@ from .opto_control_registry import opto_control_registry
 class MaskOptoControl(BaseOptoControl):
     OPTOCONTROL_KEY = "mask"
     DISPLAY_NAME = "Mask Opto-Control"
+    EDITOR_KEY = "mask"
+    EDITOR_ANCHOR_PARAM = "Mask Path"
+    EDITOR_APPLY_METHOD = "set_mask_data"
     CONFIG_PARAMETERS = {
         "connection": [
             Parameter(
@@ -145,6 +148,12 @@ class MaskOptoControl(BaseOptoControl):
         del args
         self.enabled = False
         self.last_action = "disable_mask"
+
+    def on_enabled_changed(self, enabled: bool) -> None:
+        if enabled and not self.has_mask:
+            raise RuntimeError("cannot enable mask before a mask is loaded or created")
+        self.enabled = bool(enabled)
+        self.last_action = "enable_mask" if self.enabled else "disable_mask"
 
     def set_mask_data(self, mask_data: np.ndarray, source_path: str | Path | None = None) -> None:
         if not isinstance(mask_data, np.ndarray):

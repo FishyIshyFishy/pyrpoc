@@ -1,9 +1,7 @@
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Any
 
-import numpy as np
 from PyQt6.QtCore import QObject, pyqtSignal
 
 from pyrpoc.backend_utils.parameter_utils import (
@@ -12,8 +10,8 @@ from pyrpoc.backend_utils.parameter_utils import (
     coerce_parameter_values,
 )
 from pyrpoc.domain.app_state import AppState, OptoControlState, ParameterValue
-from pyrpoc.optocontrols.base_optocontrol import BaseOptoControl
 from pyrpoc.optocontrols.opto_control_registry import opto_control_registry
+from .opto_control_types import ActionExecutionResult, OptoInstanceRow, OptoInstanceSchema, OptoStatusSnapshot
 
 
 class OptoControlService(QObject):
@@ -96,52 +94,112 @@ class OptoControlService(QObject):
             self.opto_control_error.emit(state, str(exc))
             raise
 
-    def list_instances(self) -> list[dict[str, Any]]:
-        rows: list[dict[str, Any]] = []
+    def list_instance_rows(self, contract: dict[str, Any] | None) -> list[OptoInstanceRow]:
+        rows: list[OptoInstanceRow] = []
         for state in self.app_state.optocontrols:
             key = state.type_key
             cls = opto_control_registry.get_class(key)
             rows.append(
-                {
-                    "state": state,
-                    "key": key,
-                    "name": getattr(cls, "DISPLAY_NAME", key),
-                    "connected": state.connected,
-                    "status": state.instance.get_status(),
-                }
+                OptoInstanceRow(
+                    state=state,
+                    key=key,
+                    display_name=getattr(cls, "DISPLAY_NAME", key),
+                    connected=state.connected,
+                    compatible_with_selected_modality=self._is_instance_compatible(key, contract),
+                    status=self.get_status_snapshot(state),
+                )
             )
         return rows
 
-    def get_instance(self, state: OptoControlState) -> BaseOptoControl:
+    def get_instance_schema(self, state: OptoControlState) -> OptoInstanceSchema:
         self._require_state(state)
-        return state.instance
+        key = state.type_key
+        cls = opto_control_registry.get_class(key)
+        return OptoInstanceSchema(
+            type_key=key,
+            display_name=getattr(cls, "DISPLAY_NAME", key),
+            config_parameters=getattr(cls, "CONFIG_PARAMETERS", {}),
+            actions=tuple(getattr(cls, "ACTIONS", [])),
+            editor_key=getattr(cls, "EDITOR_KEY", None),
+            editor_anchor_param=getattr(cls, "EDITOR_ANCHOR_PARAM", None),
+            editor_apply_method=getattr(cls, "EDITOR_APPLY_METHOD", None),
+        )
 
-    def get_instance_key(self, state: OptoControlState) -> str:
+    def ensure_connected(self, state: OptoControlState, raw_config: dict[str, Any]) -> None:
         self._require_state(state)
-        return state.type_key
+        if state.connected:
+            return
+        config = raw_config
+        if not config:
+            config = {entry.label: entry.value for entry in state.config_values}
+        self.connect(state, config)
 
-    def set_mask_data(
+    def run_action_with_auto_connect(
         self,
         state: OptoControlState,
-        mask_data: np.ndarray,
-        source_path: str | None = None,
-    ) -> None:
+        action_label: str,
+        raw_args: dict[str, Any],
+        raw_config: dict[str, Any],
+    ) -> ActionExecutionResult:
+        self.ensure_connected(state, raw_config)
+        self.run_action(state, action_label, raw_args)
+        return ActionExecutionResult(
+            state=state,
+            action_label=action_label,
+            status=self.get_status_snapshot(state),
+        )
+
+    def set_enabled(self, state: OptoControlState, enabled: bool, raw_config: dict[str, Any]) -> OptoStatusSnapshot:
         self._require_state(state)
-        setter = getattr(state.instance, "set_mask_data", None)
-        if not callable(setter):
-            raise RuntimeError("opto-control does not support in-memory masks")
-        setter(mask_data, source_path=source_path)
-        if source_path is not None:
-            updated = False
-            for entry in state.config_values:
-                if entry.label == "Mask Path":
-                    entry.value = Path(source_path)
-                    updated = True
-                    break
-            if not updated:
-                state.config_values.append(ParameterValue(label="Mask Path", value=Path(source_path)))
-        state.connected = state.instance.is_connected()
+        self.ensure_connected(state, raw_config)
+        state.enabled = bool(enabled)
+        try:
+            state.instance.on_enabled_changed(state.enabled)
+        except Exception as exc:
+            state.last_error = str(exc)
+            self.opto_control_error.emit(state, str(exc))
+            raise
         self.connection_changed.emit(state, state.connected)
+        return self.get_status_snapshot(state)
+
+    def apply_editor_payload(
+        self,
+        state: OptoControlState,
+        payload: object,
+        raw_config: dict[str, Any],
+    ) -> OptoStatusSnapshot:
+        self._require_state(state)
+        schema = self.get_instance_schema(state)
+        method_name = schema.editor_apply_method
+        if not method_name:
+            raise RuntimeError(f"opto-control '{schema.type_key}' does not support editor payload apply")
+
+        self.ensure_connected(state, raw_config)
+        method = getattr(state.instance, method_name, None)
+        if method is None or not callable(method):
+            raise RuntimeError(
+                f"opto-control '{schema.type_key}' has invalid editor apply method '{method_name}'"
+            )
+
+        try:
+            method(payload)
+        except Exception as exc:
+            state.last_error = str(exc)
+            self.opto_control_error.emit(state, str(exc))
+            raise
+
+        self.connection_changed.emit(state, state.connected)
+        return self.get_status_snapshot(state)
+
+    def get_status_snapshot(self, state: OptoControlState) -> OptoStatusSnapshot:
+        self._require_state(state)
+        raw_status = state.instance.get_status()
+        status = raw_status if isinstance(raw_status, dict) else {}
+        return OptoStatusSnapshot(
+            last_action=str(status.get("last_action", "idle")),
+            enabled=bool(state.enabled),
+            raw=status,
+        )
 
     def _require_state(self, state: OptoControlState) -> None:
         if state not in self.app_state.optocontrols:
@@ -150,3 +208,17 @@ class OptoControlService(QObject):
     def clear_all(self) -> None:
         for state in list(self.app_state.optocontrols):
             self.remove_opto_control(state)
+
+    def _is_instance_compatible(self, instance_key: str, contract: dict[str, Any] | None) -> bool:
+        if not contract:
+            return True
+
+        allowed = contract.get("allowed_optocontrols", [])
+        if not allowed:
+            return False
+
+        cls = opto_control_registry.get_class(instance_key)
+        for allowed_cls in allowed:
+            if isinstance(allowed_cls, type) and issubclass(cls, allowed_cls):
+                return True
+        return False

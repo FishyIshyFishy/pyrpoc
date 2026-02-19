@@ -12,6 +12,9 @@ class BaseOptoControl(ABC):
     DISPLAY_NAME: str = "Base Opto-Control"
     CONFIG_PARAMETERS: ParameterGroups = {}
     ACTIONS: list[Action] = []
+    EDITOR_KEY: str | None = None
+    EDITOR_ANCHOR_PARAM: str | None = None
+    EDITOR_APPLY_METHOD: str | None = None
 
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
@@ -29,18 +32,10 @@ class BaseOptoControl(ABC):
             "display_name": cls.DISPLAY_NAME,
             "config_parameters": cls.CONFIG_PARAMETERS,
             "actions": cls.ACTIONS,
+            "editor_key": cls.EDITOR_KEY,
+            "editor_anchor_param": cls.EDITOR_ANCHOR_PARAM,
+            "editor_apply_method": cls.EDITOR_APPLY_METHOD,
         }
-
-    @abstractmethod
-    def connect(self, config: dict[str, Any]) -> None:
-        raise NotImplementedError
-
-    @abstractmethod
-    def disconnect(self) -> None:
-        raise NotImplementedError
-
-    def is_connected(self) -> bool:
-        return self._connected
 
     @abstractmethod
     def get_status(self) -> dict[str, Any]:
@@ -53,3 +48,9 @@ class BaseOptoControl(ABC):
         if not callable(method):
             raise TypeError(f"attribute '{method_name}' on {self.__class__.__name__} is not callable")
         method(args)
+
+    def is_connected(self) -> bool:
+        return bool(self._connected)
+
+    def on_enabled_changed(self, enabled: bool) -> None:
+        del enabled

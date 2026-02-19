@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 
 from .app_state import ParameterValue
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
 @dataclass
@@ -19,6 +19,7 @@ class InstrumentSessionState:
 class OptoControlSessionState:
     type_key: str
     connected: bool = False
+    enabled: bool = False
     config_values: list[ParameterValue] = field(default_factory=list)
     user_label: str | None = None
 

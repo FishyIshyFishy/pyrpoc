@@ -63,7 +63,7 @@ def build_opto_control_manager_ui(owner: QWidget) -> OptoControlManagerUI:
     instances_container_layout.addWidget(instances_scroll, 1)
     instances_container.setMinimumHeight(120)
 
-    editor_host_box = QGroupBox("Mask Editor Host", splitter)
+    editor_host_box = QGroupBox("Editor Host", splitter)
     editor_host_box.setMinimumHeight(80)
     editor_host_layout = QVBoxLayout(editor_host_box)
     editor_host_layout.setContentsMargins(8, 8, 8, 8)

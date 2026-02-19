@@ -30,6 +30,7 @@ class OptoControlState:
     type_key: str
     instance: BaseOptoControl
     connected: bool = False
+    enabled: bool = False
     config_values: list[ParameterValue] = field(default_factory=list)
     last_error: str | None = None
     user_label: str | None = None
