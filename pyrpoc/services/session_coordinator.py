@@ -54,7 +54,6 @@ class SessionCoordinator(QObject):
         self.instrument_service.inventory_changed.connect(self.autosave_debounced)
         self.instrument_service.connection_changed.connect(lambda *_: self.autosave_debounced())
         self.opto_control_service.inventory_changed.connect(self.autosave_debounced)
-        self.opto_control_service.connection_changed.connect(lambda *_: self.autosave_debounced())
         self.display_service.display_added.connect(lambda *_: self.autosave_debounced())
         self.display_service.display_removed.connect(lambda *_: self.autosave_debounced())
         self.display_service.display_changed.connect(lambda *_: self.autosave_debounced())
@@ -145,16 +144,6 @@ class SessionCoordinator(QObject):
             state = self.opto_control_service.create_opto_control(row.type_key)
             state.user_label = row.user_label
             state.config_values = list(row.config_values)
-            if row.connected:
-                try:
-                    self.opto_control_service.connect(state, self._values_to_raw(row.config_values))
-                except Exception:
-                    pass
-            if row.enabled:
-                try:
-                    self.opto_control_service.set_enabled(state, True, self._values_to_raw(row.config_values))
-                except Exception:
-                    pass
 
         if session.modality and session.modality.selected_key:
             try:
