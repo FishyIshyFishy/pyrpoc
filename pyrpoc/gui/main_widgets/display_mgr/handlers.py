@@ -6,6 +6,7 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QListWidgetItem, QMessageBox
 
 from pyrpoc.backend_utils.data import BaseData
+from pyrpoc.domain.app_state import DisplayState
 from pyrpoc.displays.display_registry import display_registry
 from pyrpoc.gui.main_widgets.display_mgr.forms import prompt_display_parameters
 
@@ -40,15 +41,16 @@ def refresh_available(widget: DisplayManagerWidget) -> None:
 
 
 def refresh_instances(widget: DisplayManagerWidget) -> None:
-    current = widget._selected_display_id()
+    current = widget._selected_display()
     widget.instances_list.clear()
-    for row in widget.display_service.list_instances():
+    for idx, row in enumerate(widget.display_service.list_instances(), start=1):
+        state: DisplayState = row["state"]
         marker = "attached" if row["attached"] else "detached"
-        item = QListWidgetItem(f"{row['name']} [{row['display_id']}] ({marker})")
-        item.setData(Qt.ItemDataRole.UserRole, row["display_id"])
+        item = QListWidgetItem(f"{row['name']} [{idx}] ({marker})")
+        item.setData(Qt.ItemDataRole.UserRole, state)
         widget.instances_list.addItem(item)
 
-    if current:
+    if current is not None:
         for idx in range(widget.instances_list.count()):
             item = widget.instances_list.item(idx)
             if item.data(Qt.ItemDataRole.UserRole) == current:
@@ -71,57 +73,73 @@ def on_add_clicked(widget: DisplayManagerWidget) -> None:
         raw_settings = settings
 
     try:
-        display_id, display_widget = widget.display_service.create_display(key, raw_settings)
-        widget.display_tabs.addTab(display_widget, display_id)
-        widget.status_label.setText(f"Status: added {display_id}")
+        widget.display_service.create_display(key, raw_settings)
+        widget.status_label.setText("Status: added display")
     except Exception as exc:
         show_error(widget, str(exc))
 
 
 def on_attach_clicked(widget: DisplayManagerWidget) -> None:
-    display_id = widget._selected_display_id()
-    if not display_id:
+    state = widget._selected_display()
+    if state is None:
         return
-    widget.display_service.attach(display_id)
-    widget.status_label.setText(f"Status: attached {display_id}")
+    widget.display_service.attach(state)
+    widget.status_label.setText("Status: attached display")
     refresh_instances(widget)
 
 
 def on_detach_clicked(widget: DisplayManagerWidget) -> None:
-    display_id = widget._selected_display_id()
-    if not display_id:
+    state = widget._selected_display()
+    if state is None:
         return
-    widget.display_service.detach(display_id)
-    widget.status_label.setText(f"Status: detached {display_id}")
+    widget.display_service.detach(state)
+    widget.status_label.setText("Status: detached display")
     refresh_instances(widget)
 
 
 def on_remove_clicked(widget: DisplayManagerWidget) -> None:
-    display_id = widget._selected_display_id()
-    if not display_id:
+    state = widget._selected_display()
+    if state is None:
         return
-    widget.display_service.remove_display(display_id)
-    widget.status_label.setText(f"Status: removed {display_id}")
+    widget.display_service.remove_display(state)
+    widget.status_label.setText("Status: removed display")
 
 
-def on_display_added(widget: DisplayManagerWidget, display_id: str) -> None:
-    widget.status_label.setText(f"Status: display added {display_id}")
+def row_tab_title(state: DisplayState, widget: DisplayManagerWidget) -> str:
+    cls = display_registry.get_class(state.type_key)
+    return f"{getattr(cls, 'DISPLAY_NAME', state.type_key)} [{id(state)}]"
+
+
+def on_display_added(widget: DisplayManagerWidget, state: object) -> None:
+    if isinstance(state, DisplayState):
+        marker = str(id(state))
+        exists = False
+        for idx in range(widget.display_tabs.count()):
+            if widget.display_tabs.tabToolTip(idx) == marker:
+                exists = True
+                break
+        if not exists:
+            widget.display_tabs.addTab(state.instance, row_tab_title(state, widget))
+            widget.display_tabs.setTabToolTip(widget.display_tabs.count() - 1, marker)
+    widget.status_label.setText("Status: display added")
     refresh_instances(widget)
 
 
-def on_display_removed(widget: DisplayManagerWidget, display_id: str) -> None:
+def on_display_removed(widget: DisplayManagerWidget, state: object) -> None:
+    if not isinstance(state, DisplayState):
+        refresh_instances(widget)
+        return
     for idx in range(widget.display_tabs.count()):
-        if widget.display_tabs.tabText(idx) == display_id:
+        if widget.display_tabs.tabToolTip(idx) == str(id(state)):
             tab = widget.display_tabs.widget(idx)
             widget.display_tabs.removeTab(idx)
-            if tab is not None:
-                tab.deleteLater()
+            del tab
             break
     refresh_instances(widget)
 
 
-def on_display_error(widget: DisplayManagerWidget, display_id: str, message: str) -> None:
-    widget.status_label.setText(f"Status: {display_id} error - {message}")
+def on_display_error(widget: DisplayManagerWidget, _state: object, message: str) -> None:
+    widget.status_label.setText(f"Status: display error - {message}")
 
 
 def on_modality_selected(widget: DisplayManagerWidget, key: str) -> None:

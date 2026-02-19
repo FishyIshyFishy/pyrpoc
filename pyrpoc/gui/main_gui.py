@@ -1,8 +1,13 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
+from enum import Enum
+
+from PyQt6.QtCore import QByteArray
 from PyQt6.QtWidgets import QVBoxLayout, QWidget
 import PyQt6Ads as qtads
 
+from pyrpoc.domain.session_state import GuiLayoutSessionState
 from pyrpoc.gui.main_widgets.acquisition_mgr import AcquisitionManagerWidget
 from pyrpoc.gui.main_widgets.display_mgr import DisplayManagerWidget
 from pyrpoc.gui.main_widgets.instrument_mgr import InstrumentManagerWidget
@@ -16,6 +21,20 @@ from pyrpoc.services.opto_control_service import OptoControlService
 
 qtads.CDockManager.setConfigFlag(qtads.CDockManager.eConfigFlag.DisableTabTextEliding, True)
 qtads.CDockManager.setConfigFlag(qtads.CDockManager.eConfigFlag.OpaqueSplitterResize, False)
+
+
+class DockKey(str, Enum):
+    ACQUISITION = "acquisition"
+    INSTRUMENTS = "instruments"
+    DISPLAYS = "displays"
+    OPTOCONTROLS = "optocontrols"
+
+
+@dataclass(frozen=True)
+class DockSpec:
+    key: DockKey
+    title: str
+    area: qtads.DockWidgetArea
 
 
 class MainGUI(QWidget):
@@ -39,35 +58,9 @@ class MainGUI(QWidget):
         self.dock_manager = qtads.CDockManager(self)
         self.dock_manager.setStyleSheet("")
         self.docks: list[qtads.CDockWidget] = []
+        self.dock_by_key: dict[DockKey, qtads.CDockWidget] = {}
         self.menubar = MainMenuBar(self)
-
-        dock_acq = self.add_dock(
-            "Acquisition Manager",
-            AcquisitionManagerWidget(self.modality_service),
-            qtads.DockWidgetArea.LeftDockWidgetArea,
-        )
-        self.add_dock(
-            "Instrument Manager",
-            InstrumentManagerWidget(self.instrument_service),
-            qtads.DockWidgetArea.LeftDockWidgetArea,
-            tab_with=dock_acq,
-        )
-        self.add_dock(
-            "Display Manager",
-            DisplayManagerWidget(self.display_service, self.modality_service),
-            qtads.DockWidgetArea.LeftDockWidgetArea,
-            tab_with=dock_acq,
-        )
-        self.add_dock(
-            "Opto-Control Manager",
-            OptoControlManagerWidget(
-                self.opto_control_service,
-                self.modality_service,
-                self.display_service,
-            ),
-            qtads.DockWidgetArea.LeftDockWidgetArea,
-            tab_with=dock_acq,
-        )
+        self._build_default_docks()
 
         layout = QVBoxLayout(self)
         layout.setMenuBar(self.menubar)
@@ -77,6 +70,49 @@ class MainGUI(QWidget):
         selected_mode = self.theme_controller.get_saved_mode()
         self.menubar.populate_style_menu(selected_mode)
         self.menubar.style_selected.connect(self.set_style)
+
+    def _build_default_docks(self) -> None:
+        dock_specs = [
+            DockSpec(DockKey.ACQUISITION, "Acquisition Manager", qtads.DockWidgetArea.LeftDockWidgetArea),
+            DockSpec(DockKey.INSTRUMENTS, "Instrument Manager", qtads.DockWidgetArea.LeftDockWidgetArea),
+            DockSpec(DockKey.DISPLAYS, "Display Manager", qtads.DockWidgetArea.LeftDockWidgetArea),
+            DockSpec(DockKey.OPTOCONTROLS, "Opto-Control Manager", qtads.DockWidgetArea.LeftDockWidgetArea),
+        ]
+
+        dock_acq = self.add_dock(
+            dock_specs[0].title,
+            AcquisitionManagerWidget(self.modality_service),
+            dock_specs[0].area,
+        )
+        self.dock_by_key[dock_specs[0].key] = dock_acq
+
+        dock_instruments = self.add_dock(
+            dock_specs[1].title,
+            InstrumentManagerWidget(self.instrument_service),
+            dock_specs[1].area,
+            tab_with=dock_acq,
+        )
+        self.dock_by_key[dock_specs[1].key] = dock_instruments
+
+        dock_displays = self.add_dock(
+            dock_specs[2].title,
+            DisplayManagerWidget(self.display_service, self.modality_service),
+            dock_specs[2].area,
+            tab_with=dock_acq,
+        )
+        self.dock_by_key[dock_specs[2].key] = dock_displays
+
+        dock_opto = self.add_dock(
+            dock_specs[3].title,
+            OptoControlManagerWidget(
+                self.opto_control_service,
+                self.modality_service,
+                self.display_service,
+            ),
+            dock_specs[3].area,
+            tab_with=dock_acq,
+        )
+        self.dock_by_key[dock_specs[3].key] = dock_opto
 
     def add_dock(
         self,
@@ -99,3 +135,30 @@ class MainGUI(QWidget):
     def set_style(self, theme_mode: str) -> None:
         applied = self.theme_controller.apply(theme_mode)
         self.menubar.set_active_style(applied)
+
+    def capture_layout_state(self) -> GuiLayoutSessionState:
+        raw = self.dock_manager.saveState()
+        encoded = bytes(raw.toBase64()).decode("ascii") if isinstance(raw, QByteArray) else None
+        dock_visibility = {
+            key.value: bool(dock.toggleViewAction().isChecked()) for key, dock in self.dock_by_key.items()
+        }
+        return GuiLayoutSessionState(ads_state_base64=encoded, dock_visibility=dock_visibility)
+
+    def restore_layout_state(self, state: GuiLayoutSessionState) -> None:
+        restored = False
+        if state.ads_state_base64:
+            raw = QByteArray.fromBase64(QByteArray(state.ads_state_base64.encode("ascii")))
+            restored = bool(self.dock_manager.restoreState(raw))
+        if not restored:
+            self.restore_default_layout()
+            for key, visible in state.dock_visibility.items():
+                for dock_key, dock in self.dock_by_key.items():
+                    if dock_key.value == key:
+                        dock.toggleView(visible)
+                        break
+
+    def restore_default_layout(self) -> None:
+        for key in (DockKey.ACQUISITION, DockKey.INSTRUMENTS, DockKey.DISPLAYS, DockKey.OPTOCONTROLS):
+            dock = self.dock_by_key.get(key)
+            if dock is not None:
+                dock.toggleView(True)

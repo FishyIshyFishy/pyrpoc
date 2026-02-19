@@ -9,127 +9,126 @@ from pyrpoc.backend_utils.parameter_utils import (
     coerce_action_values,
     coerce_parameter_values,
 )
+from pyrpoc.domain.app_state import AppState, InstrumentState, ParameterValue
 from pyrpoc.instruments.base_instrument import BaseInstrument
 from pyrpoc.instruments.instrument_registry import instrument_registry
 
 
 class InstrumentService(QObject):
     inventory_changed = pyqtSignal()
-    connection_changed = pyqtSignal(str, bool)
-    instrument_error = pyqtSignal(str, str)
+    connection_changed = pyqtSignal(object, bool)
+    instrument_error = pyqtSignal(object, str)
 
-    def __init__(self, parent=None):
+    def __init__(self, app_state: AppState, parent=None):
         super().__init__(parent)
-        self._instances: dict[str, BaseInstrument] = {}
-        self._instance_types: dict[str, str] = {}
-        self._next_instance_index: int = 1
+        self.app_state = app_state
 
     def list_available(self) -> list[dict[str, Any]]:
         return instrument_registry.describe_all()
 
-    def create_instrument(self, key: str) -> tuple[str, BaseInstrument]:
-        instance_id = self._allocate_instance_id()
+    def create_instrument(self, key: str) -> InstrumentState:
         cls = instrument_registry.get_class(key)
-        instance = cls(alias=instance_id)
-        self._instances[instance_id] = instance
-        self._instance_types[instance_id] = key
+        instance = cls(alias=key)
+        state = InstrumentState(type_key=key, instance=instance)
+        self.app_state.instruments.append(state)
         self.inventory_changed.emit()
-        return instance_id, instance
+        return state
 
-    def remove_instrument(self, instance_id: str) -> None:
-        instance = self._instances.get(instance_id)
-        if instance is None:
+    def remove_instrument(self, state: InstrumentState) -> None:
+        if state not in self.app_state.instruments:
             return
 
-        if instance.is_connected():
-            instance.disconnect()
-            self.connection_changed.emit(instance_id, False)
+        if state.connected:
+            state.instance.disconnect()
+            state.connected = False
+            self.connection_changed.emit(state, False)
 
-        del self._instances[instance_id]
-        del self._instance_types[instance_id]
+        self.app_state.instruments.remove(state)
         self.inventory_changed.emit()
 
-    def connect(self, instance_id: str, raw_config: dict[str, Any]) -> None:
-        instance = self._require_instance(instance_id)
-        parameter_groups = instance.__class__.CONFIG_PARAMETERS
+    def connect(self, state: InstrumentState, raw_config: dict[str, Any]) -> None:
+        self._require_state(state)
+        parameter_groups = state.instance.__class__.CONFIG_PARAMETERS
 
         try:
             config = coerce_parameter_values(parameter_groups, raw_config)
-            instance.connect(config)
-            self.connection_changed.emit(instance_id, instance.is_connected())
+            state.instance.connect(config)
+            state.connected = state.instance.is_connected()
+            state.config_values = [ParameterValue(label=k, value=v) for k, v in config.items()]
+            self.connection_changed.emit(state, state.connected)
         except (ParameterValidationError, Exception) as exc:
-            self.instrument_error.emit(instance_id, str(exc))
+            state.last_error = str(exc)
+            self.instrument_error.emit(state, str(exc))
             raise
 
-    def disconnect(self, instance_id: str) -> None:
-        instance = self._require_instance(instance_id)
+    def disconnect(self, state: InstrumentState) -> None:
+        self._require_state(state)
         try:
-            instance.disconnect()
-            self.connection_changed.emit(instance_id, False)
+            state.instance.disconnect()
+            state.connected = False
+            self.connection_changed.emit(state, False)
         except Exception as exc:
-            self.instrument_error.emit(instance_id, str(exc))
+            state.last_error = str(exc)
+            self.instrument_error.emit(state, str(exc))
             raise
 
-    def run_action(self, instance_id: str, action_label: str, raw_args: dict[str, Any]) -> None:
-        instance = self._require_instance(instance_id)
-        if not instance.is_connected():
-            msg = f"instrument '{instance_id}' is not connected"
-            self.instrument_error.emit(instance_id, msg)
+    def run_action(self, state: InstrumentState, action_label: str, raw_args: dict[str, Any]) -> None:
+        self._require_state(state)
+        if not state.connected:
+            msg = "instrument is not connected"
+            self.instrument_error.emit(state, msg)
             raise RuntimeError(msg)
 
-        actions = instance.__class__.ACTIONS
+        actions = state.instance.__class__.ACTIONS
         action = next((candidate for candidate in actions if candidate.label == action_label), None)
         if action is None:
-            msg = f"instrument '{instance_id}' has no action '{action_label}'"
-            self.instrument_error.emit(instance_id, msg)
+            msg = f"instrument has no action '{action_label}'"
+            self.instrument_error.emit(state, msg)
             raise KeyError(msg)
 
         try:
             args = coerce_action_values(action, raw_args)
-            instance.execute_action(action.method_name, args)
+            state.instance.execute_action(action.method_name, args)
         except (ParameterValidationError, Exception) as exc:
-            self.instrument_error.emit(instance_id, str(exc))
+            state.last_error = str(exc)
+            self.instrument_error.emit(state, str(exc))
             raise
 
     def get_connected_by_class(self, cls: type[BaseInstrument]) -> list[BaseInstrument]:
         return [
-            instance
-            for instance in self._instances.values()
-            if isinstance(instance, cls) and instance.is_connected()
+            entry.instance
+            for entry in self.app_state.instruments
+            if isinstance(entry.instance, cls) and entry.connected
         ]
 
     def list_instances(self) -> list[dict[str, Any]]:
         rows: list[dict[str, Any]] = []
-        for instance_id in sorted(self._instances.keys()):
-            instance = self._instances[instance_id]
-            key = self._instance_types[instance_id]
+        for state in self.app_state.instruments:
+            key = state.type_key
             cls = instrument_registry.get_class(key)
             rows.append(
                 {
-                    "instance_id": instance_id,
+                    "state": state,
                     "key": key,
                     "name": getattr(cls, "DISPLAY_NAME", key),
-                    "connected": instance.is_connected(),
-                    "status": instance.get_status(),
+                    "connected": state.connected,
+                    "status": state.instance.get_status(),
                 }
             )
         return rows
 
-    def get_instance(self, instance_id: str) -> BaseInstrument:
-        return self._require_instance(instance_id)
+    def get_instance(self, state: InstrumentState) -> BaseInstrument:
+        self._require_state(state)
+        return state.instance
 
-    def get_instance_key(self, instance_id: str) -> str:
-        self._require_instance(instance_id)
-        return self._instance_types[instance_id]
+    def get_instance_key(self, state: InstrumentState) -> str:
+        self._require_state(state)
+        return state.type_key
 
-    def _require_instance(self, instance_id: str) -> BaseInstrument:
-        if instance_id not in self._instances:
-            raise KeyError(f"instrument instance '{instance_id}' is not registered")
-        return self._instances[instance_id]
+    def clear_all(self) -> None:
+        for state in list(self.app_state.instruments):
+            self.remove_instrument(state)
 
-    def _allocate_instance_id(self) -> str:
-        while True:
-            candidate = f"instrument_{self._next_instance_index}"
-            self._next_instance_index += 1
-            if candidate not in self._instances:
-                return candidate
+    def _require_state(self, state: InstrumentState) -> None:
+        if state not in self.app_state.instruments:
+            raise KeyError("instrument state is not registered")

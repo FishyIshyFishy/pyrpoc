@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QListWidgetItem, QMessageBox
 
+from pyrpoc.domain.app_state import InstrumentState
 from pyrpoc.gui.main_widgets.instrument_mgr.forms import (
     build_actions_area,
     build_config_form,
@@ -36,18 +37,19 @@ def refresh_available(widget: InstrumentManagerWidget) -> None:
 
 
 def refresh_instances(widget: InstrumentManagerWidget) -> None:
-    previous = widget._selected_instance_id()
+    previous = widget._selected_instance()
     selected_found = False
     widget.instances_list.blockSignals(True)
     widget.instances_list.clear()
-    for row in widget.instrument_service.list_instances():
+    for idx, row in enumerate(widget.instrument_service.list_instances(), start=1):
+        state: InstrumentState = row["state"]
         marker = "connected" if row["connected"] else "disconnected"
-        item = QListWidgetItem(f"{row['name']} [{row['instance_id']}] ({marker})")
-        item.setData(Qt.ItemDataRole.UserRole, row["instance_id"])
+        item = QListWidgetItem(f"{row['name']} [{idx}] ({marker})")
+        item.setData(Qt.ItemDataRole.UserRole, state)
         widget.instances_list.addItem(item)
     widget.instances_list.blockSignals(False)
 
-    if previous:
+    if previous is not None:
         for idx in range(widget.instances_list.count()):
             item = widget.instances_list.item(idx)
             if item.data(Qt.ItemDataRole.UserRole) == previous:
@@ -64,47 +66,47 @@ def on_add_clicked(widget: InstrumentManagerWidget) -> None:
         return
 
     try:
-        instance_id, _ = widget.instrument_service.create_instrument(key)
-        widget.status_label.setText(f"Status: added {instance_id}")
+        widget.instrument_service.create_instrument(key)
+        widget.status_label.setText("Status: added instrument")
         refresh_instances(widget)
     except Exception as exc:
         show_error(widget, str(exc))
 
 
 def on_connect_clicked(widget: InstrumentManagerWidget) -> None:
-    instance_id = widget._selected_instance_id()
-    if not instance_id:
+    state = widget._selected_instance()
+    if state is None:
         show_error(widget, "Select an instrument instance first")
         return
     try:
         config = collect_values(widget.state.config_widgets)
-        widget.instrument_service.connect(instance_id, config)
+        widget.instrument_service.connect(state, config)
     except Exception as exc:
         show_error(widget, str(exc))
 
 
 def on_disconnect_clicked(widget: InstrumentManagerWidget) -> None:
-    instance_id = widget._selected_instance_id()
-    if not instance_id:
+    state = widget._selected_instance()
+    if state is None:
         show_error(widget, "Select an instrument instance first")
         return
     try:
-        widget.instrument_service.disconnect(instance_id)
+        widget.instrument_service.disconnect(state)
     except Exception as exc:
         show_error(widget, str(exc))
 
 
 def on_remove_clicked(widget: InstrumentManagerWidget) -> None:
-    instance_id = widget._selected_instance_id()
-    if not instance_id:
+    state = widget._selected_instance()
+    if state is None:
         return
-    widget.instrument_service.remove_instrument(instance_id)
-    widget.status_label.setText(f"Status: removed {instance_id}")
+    widget.instrument_service.remove_instrument(state)
+    widget.status_label.setText("Status: removed instrument")
 
 
 def run_action(widget: InstrumentManagerWidget, action_label: str) -> None:
-    instance_id = widget._selected_instance_id()
-    if not instance_id:
+    state = widget._selected_instance()
+    if state is None:
         show_error(widget, "Select an instrument instance first")
         return
 
@@ -126,8 +128,8 @@ def run_action(widget: InstrumentManagerWidget, action_label: str) -> None:
 
     raw_args = collect_values(widget.state.action_widgets.get(action_label, {}))
     try:
-        widget.instrument_service.run_action(instance_id, action_label, raw_args)
-        widget.status_label.setText(f"Status: ran '{action_label}' on {instance_id}")
+        widget.instrument_service.run_action(state, action_label, raw_args)
+        widget.status_label.setText(f"Status: ran '{action_label}'")
     except Exception as exc:
         show_error(widget, str(exc))
 
@@ -142,13 +144,13 @@ def on_instance_selected(
         clear_dynamic_panels(widget.ui, widget.state)
         return
 
-    instance_id = widget._selected_instance_id()
-    if not instance_id:
+    state = widget._selected_instance()
+    if state is None:
         clear_dynamic_panels(widget.ui, widget.state)
         return
 
     try:
-        key = widget.instrument_service.get_instance_key(instance_id)
+        key = widget.instrument_service.get_instance_key(state)
         cls = instrument_registry.get_class(key)
         build_config_form(widget.ui, widget.state, cls.CONFIG_PARAMETERS)
         build_actions_area(
@@ -161,9 +163,9 @@ def on_instance_selected(
         clear_dynamic_panels(widget.ui, widget.state)
 
 
-def on_connection_changed(widget: InstrumentManagerWidget, instance_id: str, connected: bool) -> None:
+def on_connection_changed(widget: InstrumentManagerWidget, _state: object, connected: bool) -> None:
     state = "connected" if connected else "disconnected"
-    widget.status_label.setText(f"Status: {instance_id} {state}")
+    widget.status_label.setText(f"Status: instrument {state}")
     refresh_instances(widget)
 
 

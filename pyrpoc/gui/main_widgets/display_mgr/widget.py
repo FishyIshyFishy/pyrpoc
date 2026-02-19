@@ -3,6 +3,7 @@ from __future__ import annotations
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QListWidgetItem, QWidget
 
+from pyrpoc.domain.app_state import DisplayState
 from pyrpoc.gui.main_widgets.display_mgr.handlers import (
     on_add_clicked,
     on_attach_clicked,
@@ -57,6 +58,7 @@ class DisplayManagerWidget(QWidget):
 
         self.display_service.display_added.connect(self._on_display_added)
         self.display_service.display_removed.connect(self._on_display_removed)
+        self.display_service.display_changed.connect(lambda _state: self._refresh_instances())
         self.display_service.display_error.connect(self._on_display_error)
         self.modality_service.modality_selected.connect(self._on_modality_selected)
 
@@ -78,26 +80,26 @@ class DisplayManagerWidget(QWidget):
     def _on_remove_clicked(self) -> None:
         on_remove_clicked(self)
 
-    def _on_display_added(self, display_id: str) -> None:
-        on_display_added(self, display_id)
+    def _on_display_added(self, state: object) -> None:
+        on_display_added(self, state)
 
-    def _on_display_removed(self, display_id: str) -> None:
-        on_display_removed(self, display_id)
+    def _on_display_removed(self, state: object) -> None:
+        on_display_removed(self, state)
 
-    def _on_display_error(self, display_id: str, message: str) -> None:
-        on_display_error(self, display_id, message)
+    def _on_display_error(self, state: object, message: str) -> None:
+        on_display_error(self, state, message)
 
     def _on_modality_selected(self, key: str) -> None:
         on_modality_selected(self, key)
 
-    def _selected_display_id(self) -> str:
+    def _selected_display(self) -> DisplayState | None:
         item = self.instances_list.currentItem()
         if item is None:
-            return ""
+            return None
         value = item.data(Qt.ItemDataRole.UserRole)
-        if isinstance(value, str):
+        if isinstance(value, DisplayState):
             return value
-        return ""
+        return None
 
     def _selected_display_key(self) -> str:
         data = self.display_combo.currentData()

@@ -46,3 +46,4 @@ class ThemeController:
 
         qdarktheme_mode = "auto" if selected_mode == "system" else selected_mode
         qdarktheme.setup_theme(qdarktheme_mode)
+        return selected_mode

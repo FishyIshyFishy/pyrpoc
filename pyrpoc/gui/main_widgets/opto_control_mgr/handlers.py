@@ -22,6 +22,7 @@ from PyQt6.QtWidgets import (
 )
 
 from pyrpoc.backend_utils.contracts import Action, Parameter
+from pyrpoc.domain.app_state import ParameterValue
 from pyrpoc.gui.main_widgets.opto_control_mgr.forms import collect_values, make_editor
 from pyrpoc.gui.main_widgets.opto_control_mgr.instance_card import InstanceCardWidget
 from pyrpoc.gui.main_widgets.opto_control_mgr.mask_editor import MaskEditorWidget
@@ -69,24 +70,24 @@ def _set_editor_host_placeholder(widget: OptoControlManagerWidget) -> None:
     widget.editor_host_layout.addStretch(1)
 
 
-def _mount_editor(widget: OptoControlManagerWidget, editor: QWidget, instance_id: str) -> None:
+def _mount_editor(widget: OptoControlManagerWidget, editor: QWidget, instance_id: object) -> None:
     _detach_editor_layout_items(widget.editor_host_layout)
     widget.editor_host_layout.addWidget(editor)
     widget.state.active_mask_editor_widget = editor
-    widget.state.active_mask_editor_instance_id = instance_id
+    widget.state.active_mask_editor_instance = instance_id
 
 
 def _unmount_editor(widget: OptoControlManagerWidget) -> None:
     editor = widget.state.active_mask_editor_widget
     widget.state.active_mask_editor_widget = None
-    widget.state.active_mask_editor_instance_id = None
+    widget.state.active_mask_editor_instance = None
     if editor is not None:
         editor.setParent(None)
         editor.deleteLater()
     _set_editor_host_placeholder(widget)
 
 
-def _cleanup_temp_mask_file(widget: OptoControlManagerWidget, instance_id: str) -> None:
+def _cleanup_temp_mask_file(widget: OptoControlManagerWidget, instance_id: object) -> None:
     path = widget.state.mask_tempfile_by_instance.pop(instance_id, None)
     if path is None:
         return
@@ -104,7 +105,7 @@ def _detach_layout_items(layout: QVBoxLayout) -> None:
             child.setParent(None)
 
 
-def _remove_instance_state(widget: OptoControlManagerWidget, instance_id: str) -> None:
+def _remove_instance_state(widget: OptoControlManagerWidget, instance_id: object) -> None:
     widget.state.config_widgets_by_instance.pop(instance_id, None)
     widget.state.config_params_by_instance.pop(instance_id, None)
     widget.state.action_widgets_by_instance.pop(instance_id, None)
@@ -116,7 +117,7 @@ def _remove_instance_state(widget: OptoControlManagerWidget, instance_id: str) -
     _cleanup_temp_mask_file(widget, instance_id)
 
 
-def _clear_instance_form_state(widget: OptoControlManagerWidget, instance_id: str) -> None:
+def _clear_instance_form_state(widget: OptoControlManagerWidget, instance_id: object) -> None:
     widget.state.config_widgets_by_instance.pop(instance_id, None)
     widget.state.config_params_by_instance.pop(instance_id, None)
     widget.state.action_widgets_by_instance.pop(instance_id, None)
@@ -128,27 +129,27 @@ def _clear_instance_form_state(widget: OptoControlManagerWidget, instance_id: st
 
 def refresh_instances(widget: OptoControlManagerWidget) -> None:
     rows = widget.opto_control_service.list_instances()
-    row_by_id = {row["instance_id"]: row for row in rows}
+    row_by_id = {row["state"]: row for row in rows}
     current_ids = set(widget.state.card_widgets.keys())
     new_ids = set(row_by_id.keys())
 
-    for removed_id in sorted(current_ids - new_ids):
-        if widget.state.active_mask_editor_instance_id == removed_id:
+    for removed_id in list(current_ids - new_ids):
+        if widget.state.active_mask_editor_instance == removed_id:
             _close_mask_editor(widget, force_discard=True)
         card = widget.state.card_widgets.pop(removed_id)
         card.setParent(None)
         card.deleteLater()
         _remove_instance_state(widget, removed_id)
-        if widget._expanded_instance_id() == removed_id:
-            widget._set_expanded_instance_id(None)
+        if widget._expanded_instance() == removed_id:
+            widget._set_expanded_instance(None)
 
-    for row in rows:
-        instance_id = row["instance_id"]
+    for idx, row in enumerate(rows, start=1):
+        instance_id = row["state"]
         card = widget.state.card_widgets.get(instance_id)
         if card is None:
             card = InstanceCardWidget(
-                instance_id=instance_id,
-                title=f"{row['name']} [{instance_id}]",
+                state_obj=instance_id,
+                title=f"{row['name']} [{idx}]",
                 parent=widget.ui.instances_content,
             )
             card.expand_requested.connect(widget._on_card_expand_requested)
@@ -159,15 +160,15 @@ def refresh_instances(widget: OptoControlManagerWidget) -> None:
         try:
             card.set_marker_text(_marker_text(widget, row))
             card.set_local_status(_status_text(row))
-            card.set_expanded(widget._expanded_instance_id() == instance_id)
+            card.set_expanded(widget._expanded_instance() == instance_id)
             _sync_card_enable_visibility(widget, instance_id, row["key"])
             sync_controls_from_status(widget, instance_id)
         except RuntimeError:
             _remove_instance_state(widget, instance_id)
             widget.state.card_widgets.pop(instance_id, None)
             replacement = InstanceCardWidget(
-                instance_id=instance_id,
-                title=f"{row['name']} [{instance_id}]",
+                state_obj=instance_id,
+                title=f"{row['name']} [{idx}]",
                 parent=widget.ui.instances_content,
             )
             replacement.expand_requested.connect(widget._on_card_expand_requested)
@@ -177,21 +178,21 @@ def refresh_instances(widget: OptoControlManagerWidget) -> None:
             widget.state.enable_guard_by_instance[instance_id] = False
             replacement.set_marker_text(_marker_text(widget, row))
             replacement.set_local_status(_status_text(row))
-            replacement.set_expanded(widget._expanded_instance_id() == instance_id)
+            replacement.set_expanded(widget._expanded_instance() == instance_id)
             _sync_card_enable_visibility(widget, instance_id, row["key"])
             sync_controls_from_status(widget, instance_id)
 
     _rebuild_cards_layout(widget)
 
-    expanded = widget._expanded_instance_id()
+    expanded = widget._expanded_instance()
     if expanded and expanded not in new_ids:
-        widget._set_expanded_instance_id(None)
+        widget._set_expanded_instance(None)
 
 
 def _rebuild_cards_layout(widget: OptoControlManagerWidget) -> None:
     layout = widget.instances_layout
     _detach_layout_items(layout)
-    for instance_id in sorted(widget.state.card_widgets.keys()):
+    for instance_id in widget.state.card_widgets.keys():
         layout.addWidget(widget.state.card_widgets[instance_id])
     layout.addStretch(1)
 
@@ -225,7 +226,7 @@ def is_instance_compatible(widget: OptoControlManagerWidget, instance_key: str) 
     return False
 
 
-def _sync_card_enable_visibility(widget: OptoControlManagerWidget, instance_id: str, key: str) -> None:
+def _sync_card_enable_visibility(widget: OptoControlManagerWidget, instance_id: object, key: str) -> None:
     card = widget._card_for(instance_id)
     if card is None:
         return
@@ -238,7 +239,7 @@ def _sync_card_enable_visibility(widget: OptoControlManagerWidget, instance_id: 
 def _build_config_form(
     widget: OptoControlManagerWidget,
     parent: QWidget,
-    instance_id: str,
+    instance_id: object,
     parameter_groups: dict[str, list[Parameter]],
 ) -> QWidget:
     widget.state.config_widgets_by_instance.setdefault(instance_id, {})
@@ -298,7 +299,7 @@ def _filtered_actions(instance_key: str, actions: list[Action]) -> list[Action]:
 def _build_actions_area(
     widget: OptoControlManagerWidget,
     parent: QWidget,
-    instance_id: str,
+    instance_id: object,
     instance_key: str,
     actions: list[Action],
 ) -> QWidget:
@@ -338,7 +339,7 @@ def _build_actions_area(
     return root
 
 
-def build_instance_body(widget: OptoControlManagerWidget, instance_id: str, key: str, cls: type) -> QWidget:
+def build_instance_body(widget: OptoControlManagerWidget, instance_id: object, key: str, cls: type) -> QWidget:
     body = QWidget(widget.ui.instances_content)
     layout = QVBoxLayout(body)
     layout.setContentsMargins(0, 0, 0, 0)
@@ -349,22 +350,22 @@ def build_instance_body(widget: OptoControlManagerWidget, instance_id: str, key:
     return body
 
 
-def _set_expanded_card(widget: OptoControlManagerWidget, instance_id: str | None) -> None:
-    current = widget._expanded_instance_id()
+def _set_expanded_card(widget: OptoControlManagerWidget, instance_id: object | None) -> None:
+    current = widget._expanded_instance()
     if current and current in widget.state.card_widgets and current != instance_id:
         old_card = widget.state.card_widgets[current]
         _clear_instance_form_state(widget, current)
         old_card.set_expanded(False)
         old_card.set_body_widget(None)
-    widget._set_expanded_instance_id(instance_id)
+    widget._set_expanded_instance(instance_id)
 
 
-def on_card_expand_requested(widget: OptoControlManagerWidget, instance_id: str) -> None:
+def on_card_expand_requested(widget: OptoControlManagerWidget, instance_id: object) -> None:
     if widget.state.ui_locked_for_editor:
         widget.status_label.setText("Status: close/discard active mask editor first")
         return
 
-    if widget._expanded_instance_id() == instance_id:
+    if widget._expanded_instance() == instance_id:
         _set_expanded_card(widget, None)
         return
 
@@ -382,7 +383,7 @@ def on_card_expand_requested(widget: OptoControlManagerWidget, instance_id: str)
         show_error(widget, str(exc), instance_id=instance_id)
 
 
-def collect_config_values(widget: OptoControlManagerWidget, instance_id: str) -> dict[str, Any]:
+def collect_config_values(widget: OptoControlManagerWidget, instance_id: object) -> dict[str, Any]:
     raw_values = collect_values(widget.state.config_widgets_by_instance.get(instance_id, {}))
     values: dict[str, Any] = {}
     for label, raw_value in raw_values.items():
@@ -395,8 +396,31 @@ def collect_config_values(widget: OptoControlManagerWidget, instance_id: str) ->
     return values
 
 
-def ensure_configured(widget: OptoControlManagerWidget, instance_id: str) -> None:
-    widget.opto_control_service.connect(instance_id, collect_config_values(widget, instance_id))
+def _state_config_values_to_raw(instance_obj: object) -> dict[str, Any]:
+    config_values = getattr(instance_obj, "config_values", [])
+    if not isinstance(config_values, list):
+        return {}
+    raw: dict[str, Any] = {}
+    for entry in config_values:
+        label = getattr(entry, "label", None)
+        if isinstance(label, str):
+            raw[label] = getattr(entry, "value", None)
+    return raw
+
+
+def ensure_configured(widget: OptoControlManagerWidget, instance_id: object) -> None:
+    instance = widget.opto_control_service.get_instance(instance_id)
+    if instance.is_connected():
+        return
+
+    if instance_id in widget.state.config_widgets_by_instance:
+        raw_config = collect_config_values(widget, instance_id)
+        if hasattr(instance_id, "config_values"):
+            instance_id.config_values = [ParameterValue(label=k, value=v) for k, v in raw_config.items()]
+    else:
+        raw_config = _state_config_values_to_raw(instance_id)
+
+    widget.opto_control_service.connect(instance_id, raw_config)
 
 
 def on_add_clicked(widget: OptoControlManagerWidget) -> None:
@@ -408,15 +432,15 @@ def on_add_clicked(widget: OptoControlManagerWidget) -> None:
     if not key:
         return
     try:
-        instance_id, _ = widget.opto_control_service.create_opto_control(key)
-        widget.status_label.setText(f"Status: added {instance_id}")
+        instance_id = widget.opto_control_service.create_opto_control(key)
+        widget.status_label.setText("Status: added opto-control")
         refresh_instances(widget)
         on_card_expand_requested(widget, instance_id)
     except Exception as exc:
         show_error(widget, str(exc))
 
 
-def on_card_enable_toggled(widget: OptoControlManagerWidget, instance_id: str, checked: bool) -> None:
+def on_card_enable_toggled(widget: OptoControlManagerWidget, instance_id: object, checked: bool) -> None:
     if widget.state.enable_guard_by_instance.get(instance_id, False):
         return
     try:
@@ -437,7 +461,7 @@ def on_card_enable_toggled(widget: OptoControlManagerWidget, instance_id: str, c
         sync_controls_from_status(widget, instance_id)
 
 
-def on_card_remove_requested(widget: OptoControlManagerWidget, instance_id: str) -> None:
+def on_card_remove_requested(widget: OptoControlManagerWidget, instance_id: object) -> None:
     if widget.state.ui_locked_for_editor:
         widget.status_label.setText("Status: close/discard active mask editor first")
         return
@@ -445,12 +469,12 @@ def on_card_remove_requested(widget: OptoControlManagerWidget, instance_id: str)
     try:
         widget.opto_control_service.remove_opto_control(instance_id)
         _cleanup_temp_mask_file(widget, instance_id)
-        widget.status_label.setText(f"Status: removed {instance_id}")
+        widget.status_label.setText("Status: removed opto-control")
     except Exception as exc:
         show_error(widget, str(exc), instance_id=instance_id)
 
 
-def run_action(widget: OptoControlManagerWidget, instance_id: str, action_label: str) -> None:
+def run_action(widget: OptoControlManagerWidget, instance_id: object, action_label: str) -> None:
     action = widget.state.actions_by_label_by_instance.get(instance_id, {}).get(action_label)
     if action is None:
         show_error(widget, f"Unknown action '{action_label}'", instance_id=instance_id)
@@ -471,13 +495,13 @@ def run_action(widget: OptoControlManagerWidget, instance_id: str, action_label:
     try:
         ensure_configured(widget, instance_id)
         widget.opto_control_service.run_action(instance_id, action_label, raw_args)
-        widget.status_label.setText(f"Status: ran '{action_label}' on {instance_id}")
+        widget.status_label.setText(f"Status: ran '{action_label}'")
         sync_controls_from_status(widget, instance_id)
     except Exception as exc:
         show_error(widget, str(exc), instance_id=instance_id)
 
 
-def sync_controls_from_status(widget: OptoControlManagerWidget, instance_id: str) -> None:
+def sync_controls_from_status(widget: OptoControlManagerWidget, instance_id: object) -> None:
     card = widget._card_for(instance_id)
     if card is None:
         return
@@ -524,7 +548,7 @@ def _on_browse_mask_path(widget: OptoControlManagerWidget, editor: QLineEdit) ->
     editor.setText(str(Path(path)))
 
 
-def on_mask_editor_open_requested(widget: OptoControlManagerWidget, instance_id: str) -> None:
+def on_mask_editor_open_requested(widget: OptoControlManagerWidget, instance_id: object) -> None:
     if widget.state.active_mask_editor_widget is not None:
         widget.status_label.setText("Status: close/discard active mask editor first")
         return
@@ -546,7 +570,7 @@ def on_mask_editor_open_requested(widget: OptoControlManagerWidget, instance_id:
 
     _mount_editor(widget, editor, instance_id)
     _set_editor_lock(widget, True)
-    widget.status_label.setText(f"Status: mask editor open for {instance_id}")
+    widget.status_label.setText("Status: mask editor open")
 
 
 def _close_mask_editor(widget: OptoControlManagerWidget, force_discard: bool = False) -> bool:
@@ -584,7 +608,7 @@ def _close_mask_editor(widget: OptoControlManagerWidget, force_discard: bool = F
         if mask is None:
             QMessageBox.warning(widget, "No ROI", "Draw at least one ROI before creating a mask.")
             return False
-        on_mask_editor_create_requested(widget, widget.state.active_mask_editor_instance_id or "", mask)
+        on_mask_editor_create_requested(widget, widget.state.active_mask_editor_instance, mask)
         return widget.state.active_mask_editor_widget is None
     if clicked == discard_btn:
         _unmount_editor(widget)
@@ -596,18 +620,18 @@ def _close_mask_editor(widget: OptoControlManagerWidget, force_discard: bool = F
     return False
 
 
-def on_mask_editor_cancel_requested(widget: OptoControlManagerWidget, instance_id: str) -> None:
-    if widget.state.active_mask_editor_instance_id != instance_id:
+def on_mask_editor_cancel_requested(widget: OptoControlManagerWidget, instance_id: object) -> None:
+    if widget.state.active_mask_editor_instance != instance_id:
         return
     _close_mask_editor(widget, force_discard=False)
 
 
 def on_mask_editor_create_requested(
     widget: OptoControlManagerWidget,
-    instance_id: str,
+    instance_id: object,
     mask: np.ndarray,
 ) -> None:
-    if widget.state.active_mask_editor_instance_id != instance_id:
+    if widget.state.active_mask_editor_instance != instance_id:
         return
     try:
         ensure_configured(widget, instance_id)
@@ -640,7 +664,7 @@ def on_mask_editor_create_requested(
         sync_controls_from_status(widget, instance_id)
         _unmount_editor(widget)
         _set_editor_lock(widget, False)
-        widget.status_label.setText(f"Status: created mask for {instance_id}")
+        widget.status_label.setText("Status: created mask")
     except Exception as exc:
         show_error(widget, str(exc), instance_id=instance_id)
 
@@ -650,7 +674,7 @@ def on_modality_selected(widget: OptoControlManagerWidget, key: str) -> None:
     refresh_instances(widget)
 
 
-def show_error(widget: OptoControlManagerWidget, message: str, instance_id: str | None = None) -> None:
+def show_error(widget: OptoControlManagerWidget, message: str, instance_id: object | None = None) -> None:
     widget.status_label.setText(f"Status: error - {message}")
     if instance_id:
         card = widget._card_for(instance_id)

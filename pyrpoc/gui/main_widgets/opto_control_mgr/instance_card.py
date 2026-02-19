@@ -14,13 +14,13 @@ from PyQt6.QtWidgets import (
 
 
 class InstanceCardWidget(QFrame):
-    expand_requested = pyqtSignal(str)
-    enable_toggled = pyqtSignal(str, bool)
-    remove_requested = pyqtSignal(str)
+    expand_requested = pyqtSignal(object)
+    enable_toggled = pyqtSignal(object, bool)
+    remove_requested = pyqtSignal(object)
 
-    def __init__(self, instance_id: str, title: str, parent: QWidget | None = None):
+    def __init__(self, state_obj: object, title: str, parent: QWidget | None = None):
         super().__init__(parent)
-        self.instance_id = instance_id
+        self.state_obj = state_obj
         self._expanded = False
         self._enable_guard = False
 
@@ -51,7 +51,7 @@ class InstanceCardWidget(QFrame):
         header_row.addWidget(self.enable_checkbox)
 
         self.remove_btn = QPushButton("Remove", self)
-        self.remove_btn.clicked.connect(lambda: self.remove_requested.emit(self.instance_id))
+        self.remove_btn.clicked.connect(lambda: self.remove_requested.emit(self.state_obj))
         header_row.addWidget(self.remove_btn)
 
         root.addLayout(header_row)
@@ -67,12 +67,12 @@ class InstanceCardWidget(QFrame):
         root.addWidget(self.body_container)
 
     def _on_expand_clicked(self) -> None:
-        self.expand_requested.emit(self.instance_id)
+        self.expand_requested.emit(self.state_obj)
 
     def _on_enable_toggled(self, checked: bool) -> None:
         if self._enable_guard:
             return
-        self.enable_toggled.emit(self.instance_id, checked)
+        self.enable_toggled.emit(self.state_obj, checked)
 
     def set_expanded(self, expanded: bool) -> None:
         self._expanded = expanded

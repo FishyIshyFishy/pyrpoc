@@ -3,6 +3,7 @@ from __future__ import annotations
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QListWidgetItem, QWidget
 
+from pyrpoc.domain.app_state import InstrumentState
 from pyrpoc.gui.main_widgets.instrument_mgr.forms import clear_dynamic_panels
 from pyrpoc.gui.main_widgets.instrument_mgr.handlers import (
     on_add_clicked,
@@ -89,8 +90,8 @@ class InstrumentManagerWidget(QWidget):
     ) -> None:
         on_instance_selected(self, current, previous)
 
-    def _on_connection_changed(self, instance_id: str, connected: bool) -> None:
-        on_connection_changed(self, instance_id, connected)
+    def _on_connection_changed(self, state: object, connected: bool) -> None:
+        on_connection_changed(self, state, connected)
 
     def _selected_type_key(self) -> str:
         data = self.type_combo.currentData()
@@ -98,14 +99,14 @@ class InstrumentManagerWidget(QWidget):
             return data
         return self.type_combo.currentText().strip()
 
-    def _selected_instance_id(self) -> str:
+    def _selected_instance(self) -> InstrumentState | None:
         item = self.instances_list.currentItem()
         if item is None:
-            return ""
+            return None
         value = item.data(Qt.ItemDataRole.UserRole)
-        if isinstance(value, str):
+        if isinstance(value, InstrumentState):
             return value
-        return ""
+        return None
 
     def _show_error(self, message: str) -> None:
         show_error(self, message)
