@@ -1,323 +1,181 @@
-"""Minimal Swabian raw-FLIM acquisition helpers.
-
-This module expects:
-- channel 1: laser sync
-- channel 2: detector clicks
-- channel 3: a narrow TTL pulse at the start of each real image pixel
-
-Detector clicks are assigned into a pixel by using the known pixel dwell time,
-not by waiting for the next pixel pulse.
-"""
-
 from __future__ import annotations
 
+import json
 import time
+from datetime import datetime
+from pathlib import Path
 
 import numpy as np
-
-LASER_CH = 1
-DET_CH = 2
-PIXEL_CH = 3
-
-X_PIXELS = 512
-Y_PIXELS = 512
-N_FRAMES = 1
-
-LASER_FREQ_HZ = 80e6
-PIXEL_DWELL_PS = int(10e6)
-
-STREAM_BUFFER_SIZE = 1_000_000
-LASER_TRIGGER_V = 1.0
-DET_TRIGGER_V = 1.0
-PIXEL_TRIGGER_V = 1.0
-USE_CONDITIONAL_FILTER = True
-
-LASER_INPUT_DELAY_PS = 0
-DET_INPUT_DELAY_PS = 0
-PIXEL_INPUT_DELAY_PS = 0
-
-FINAL_PIXEL_MARGIN_S = 1e-3
-POLL_SLEEP_S = 1e-4
-
-__all__ = ["acquire_one_frame", "acquire_n_frames"]
+import tifffile
 
 
-def _require_timetagger():
-    try:
-        from Swabian import TimeTagger
-    except ModuleNotFoundError as exc:
-        raise ModuleNotFoundError(
-            "Swabian Python bindings are not installed. Import failed at "
-            "'from Swabian import TimeTagger'."
-        ) from exc
-    return TimeTagger
-
-
-def _laser_period_ps(laser_frequency_hz):
-    return int(round(1e12 / float(laser_frequency_hz)))
-
-
-def _final_pixel_timeout_s(pixel_dwell_ps):
-    return (pixel_dwell_ps / 1e12) + FINAL_PIXEL_MARGIN_S
-
-
-def _new_pixel_lists(total_pixels):
-    return [[] for _ in range(total_pixels)]
-
-
-def _pixel_lists_to_frame(pixel_lists, y_pixels, x_pixels):
-    frame = np.empty((y_pixels, x_pixels), dtype=object)
-    for flat_index, pixel_values in enumerate(pixel_lists):
-        y_index, x_index = divmod(flat_index, x_pixels)
-        frame[y_index, x_index] = np.asarray(pixel_values, dtype=np.int64)
-    return frame
-
-
-def _configure_tagger(
-    tagger,
-    laser_ch,
-    det_ch,
-    pixel_ch,
-    laser_trigger_v,
-    det_trigger_v,
-    pixel_trigger_v,
-    use_conditional_filter,
-):
-    tagger.setTriggerLevel(laser_ch, laser_trigger_v)
-    tagger.setTriggerLevel(det_ch, det_trigger_v)
-    tagger.setTriggerLevel(pixel_ch, pixel_trigger_v)
-
-    laser_delay_ps = int(LASER_INPUT_DELAY_PS)
-    if use_conditional_filter:
-        # Conditional filtering on the detector typically passes the next laser
-        # pulse. Shift it back by one laser period so detector - laser gives a
-        # normal FLIM delay.
-        laser_delay_ps -= _laser_period_ps(LASER_FREQ_HZ)
-        tagger.setConditionalFilter(trigger=[det_ch], filtered=[laser_ch])
-
-    if laser_delay_ps:
-        tagger.setInputDelay(laser_ch, laser_delay_ps)
-    if DET_INPUT_DELAY_PS:
-        tagger.setInputDelay(det_ch, int(DET_INPUT_DELAY_PS))
-    if PIXEL_INPUT_DELAY_PS:
-        tagger.setInputDelay(pixel_ch, int(PIXEL_INPUT_DELAY_PS))
-
-
-def _raise_on_bad_chunk(data, buffer_size):
-    if data.size == buffer_size:
-        raise RuntimeError(
-            "TimeTagStream buffer filled completely. Increase STREAM_BUFFER_SIZE "
-            "or reduce the incoming tag rate."
-        )
-
-    event_types = data.getEventTypes()
-    non_timetag = event_types != 0
-    if np.any(non_timetag):
-        bad_types = np.unique(event_types[non_timetag]).tolist()
-        missed = data.getMissedEvents()
-        missed_total = int(np.sum(missed[non_timetag]))
-        raise RuntimeError(
-            "Received non-TimeTag events from the Time Tagger stream. "
-            f"event_types={bad_types}, missed_events={missed_total}"
-        )
-
-
-def _process_chunk(
-    channels,
-    timestamps,
-    laser_ch,
-    det_ch,
-    pixel_ch,
-    total_pixels,
-    pixel_dwell_ps,
-    pixel_lists,
-    current_pixel_index,
-    pixel_count_in_frame,
-    current_pixel_start_ps,
-    current_pixel_end_ps,
-    last_laser_time,
-    frames,
-    x_pixels,
-    y_pixels,
-    n_frames,
-):
-    finalize_deadline = None
-
-    for timestamp, channel in zip(timestamps, channels):
-        timestamp = int(timestamp)
-        channel = int(channel)
-
-        if channel == pixel_ch:
-            if pixel_count_in_frame == total_pixels:
-                frames.append(_pixel_lists_to_frame(pixel_lists, y_pixels, x_pixels))
-                if len(frames) >= n_frames:
-                    return (
-                        pixel_lists,
-                        current_pixel_index,
-                        pixel_count_in_frame,
-                        current_pixel_start_ps,
-                        current_pixel_end_ps,
-                        last_laser_time,
-                        finalize_deadline,
-                        True,
-                    )
-
-                pixel_lists = _new_pixel_lists(total_pixels)
-                current_pixel_index = -1
-                pixel_count_in_frame = 0
-                current_pixel_start_ps = None
-                current_pixel_end_ps = None
-                last_laser_time = None
-
-            current_pixel_index += 1
-            pixel_count_in_frame += 1
-            current_pixel_start_ps = timestamp
-            current_pixel_end_ps = timestamp + int(pixel_dwell_ps)
-
-            if pixel_count_in_frame == total_pixels:
-                finalize_deadline = time.monotonic() + _final_pixel_timeout_s(pixel_dwell_ps)
-
-        elif channel == laser_ch:
-            last_laser_time = timestamp
-
-        elif channel == det_ch:
-            if current_pixel_index < 0 or current_pixel_index >= total_pixels:
-                continue
-            if last_laser_time is None:
-                continue
-            if current_pixel_start_ps is None or current_pixel_end_ps is None:
-                continue
-            if timestamp < current_pixel_start_ps or timestamp >= current_pixel_end_ps:
-                continue
-            if timestamp < last_laser_time:
-                continue
-
-            pixel_lists[current_pixel_index].append(timestamp - last_laser_time)
-
-    return (
-        pixel_lists,
-        current_pixel_index,
-        pixel_count_in_frame,
-        current_pixel_start_ps,
-        current_pixel_end_ps,
-        last_laser_time,
-        finalize_deadline,
-        False,
-    )
-
-
-def _acquire_frames(
+def acquire_raw_flim(
     x_pixels,
     y_pixels,
     n_frames,
     pixel_dwell_ps,
+    extra_left,
+    extra_right,
+    laser_frequency_hz,
     laser_ch,
-    det_ch,
+    detector_ch,
     pixel_ch,
     laser_trigger_v,
-    det_trigger_v,
+    detector_trigger_v,
     pixel_trigger_v,
-    use_conditional_filter,
+    laser_input_delay_ps=0,
+    detector_input_delay_ps=0,
+    pixel_input_delay_ps=0,
+    use_conditional_filter=True,
+    stream_buffer_size=1_000_000,
+    poll_sleep_s=1e-4,
+    final_pixel_margin_s=1e-3,
 ):
+    from Swabian import TimeTagger
+
     if x_pixels <= 0 or y_pixels <= 0:
-        raise ValueError("x_pixels and y_pixels must both be positive.")
+        raise ValueError("x_pixels and y_pixels must be positive.")
+    if extra_left < 0 or extra_right < 0:
+        raise ValueError("extra_left and extra_right must be non-negative.")
     if n_frames <= 0:
         raise ValueError("n_frames must be positive.")
     if pixel_dwell_ps <= 0:
         raise ValueError("pixel_dwell_ps must be positive.")
 
-    TimeTagger = _require_timetagger()
+    total_x_pixels = int(x_pixels) + int(extra_left) + int(extra_right)
+    total_pixels = total_x_pixels * int(y_pixels)
+    laser_period_ps = int(round(1e12 / float(laser_frequency_hz)))
+
+    def new_pixel_lists():
+        return [[] for _ in range(total_pixels)]
+
+    def finalize_frame(pixel_lists):
+        frame = np.empty((y_pixels, total_x_pixels), dtype=object)
+        for flat_index, delays in enumerate(pixel_lists):
+            y_index, x_index = divmod(flat_index, total_x_pixels)
+            frame[y_index, x_index] = np.asarray(delays, dtype=np.int64)
+        return frame[:, extra_left:extra_left + x_pixels]
+
     tagger = TimeTagger.createTimeTagger()
     stream = None
     frames = []
 
-    total_pixels = int(x_pixels) * int(y_pixels)
-    pixel_lists = _new_pixel_lists(total_pixels)
+    pixel_lists = new_pixel_lists()
     current_pixel_index = -1
     pixel_count_in_frame = 0
     current_pixel_start_ps = None
     current_pixel_end_ps = None
-    last_laser_time = None
+    last_laser_time_ps = None
     finalize_deadline = None
 
     try:
-        _configure_tagger(
-            tagger,
-            laser_ch=laser_ch,
-            det_ch=det_ch,
-            pixel_ch=pixel_ch,
-            laser_trigger_v=laser_trigger_v,
-            det_trigger_v=det_trigger_v,
-            pixel_trigger_v=pixel_trigger_v,
-            use_conditional_filter=use_conditional_filter,
-        )
+        tagger.setTriggerLevel(laser_ch, laser_trigger_v)
+        tagger.setTriggerLevel(detector_ch, detector_trigger_v)
+        tagger.setTriggerLevel(pixel_ch, pixel_trigger_v)
+
+        adjusted_laser_delay_ps = int(laser_input_delay_ps)
+        if use_conditional_filter:
+            adjusted_laser_delay_ps -= laser_period_ps
+            tagger.setConditionalFilter(trigger=[detector_ch], filtered=[laser_ch])
+
+        if adjusted_laser_delay_ps:
+            tagger.setInputDelay(laser_ch, adjusted_laser_delay_ps)
+        if detector_input_delay_ps:
+            tagger.setInputDelay(detector_ch, int(detector_input_delay_ps))
+        if pixel_input_delay_ps:
+            tagger.setInputDelay(pixel_ch, int(pixel_input_delay_ps))
 
         stream = TimeTagger.TimeTagStream(
             tagger=tagger,
-            n_max_events=STREAM_BUFFER_SIZE,
-            channels=[laser_ch, det_ch, pixel_ch],
+            n_max_events=stream_buffer_size,
+            channels=[laser_ch, detector_ch, pixel_ch],
         )
         stream.start()
 
         while len(frames) < n_frames:
             data = stream.getData()
-            if data.size > 0:
-                _raise_on_bad_chunk(data, STREAM_BUFFER_SIZE)
 
-                (
-                    pixel_lists,
-                    current_pixel_index,
-                    pixel_count_in_frame,
-                    current_pixel_start_ps,
-                    current_pixel_end_ps,
-                    last_laser_time,
-                    new_finalize_deadline,
-                    done,
-                ) = _process_chunk(
-                    channels=data.getChannels(),
-                    timestamps=data.getTimestamps(),
-                    laser_ch=laser_ch,
-                    det_ch=det_ch,
-                    pixel_ch=pixel_ch,
-                    total_pixels=total_pixels,
-                    pixel_dwell_ps=pixel_dwell_ps,
-                    pixel_lists=pixel_lists,
-                    current_pixel_index=current_pixel_index,
-                    pixel_count_in_frame=pixel_count_in_frame,
-                    current_pixel_start_ps=current_pixel_start_ps,
-                    current_pixel_end_ps=current_pixel_end_ps,
-                    last_laser_time=last_laser_time,
-                    frames=frames,
-                    x_pixels=x_pixels,
-                    y_pixels=y_pixels,
-                    n_frames=n_frames,
+            if data.size == stream_buffer_size:
+                raise RuntimeError(
+                    "TimeTagStream buffer filled completely. Increase stream_buffer_size."
                 )
 
-                if new_finalize_deadline is not None:
-                    finalize_deadline = new_finalize_deadline
+            if data.size > 0:
+                event_types = data.getEventTypes()
+                if np.any(event_types != 0):
+                    raise RuntimeError(
+                        f"Received non-TimeTag events: {np.unique(event_types[event_types != 0]).tolist()}"
+                    )
 
-                if done:
+                for timestamp_ps, channel in zip(data.getTimestamps(), data.getChannels()):
+                    timestamp_ps = int(timestamp_ps)
+                    channel = int(channel)
+
+                    if channel == pixel_ch:
+                        if pixel_count_in_frame == total_pixels:
+                            frames.append(finalize_frame(pixel_lists))
+                            if len(frames) >= n_frames:
+                                break
+
+                            pixel_lists = new_pixel_lists()
+                            current_pixel_index = -1
+                            pixel_count_in_frame = 0
+                            current_pixel_start_ps = None
+                            current_pixel_end_ps = None
+                            last_laser_time_ps = None
+                            finalize_deadline = None
+
+                        current_pixel_index += 1
+                        pixel_count_in_frame += 1
+                        current_pixel_start_ps = timestamp_ps
+                        current_pixel_end_ps = timestamp_ps + int(pixel_dwell_ps)
+
+                        if pixel_count_in_frame == total_pixels:
+                            finalize_deadline = time.monotonic() + (
+                                pixel_dwell_ps / 1e12
+                            ) + final_pixel_margin_s
+
+                    elif channel == laser_ch:
+                        last_laser_time_ps = timestamp_ps
+
+                    elif channel == detector_ch:
+                        if current_pixel_index < 0 or current_pixel_index >= total_pixels:
+                            continue
+                        if last_laser_time_ps is None:
+                            continue
+                        if current_pixel_start_ps is None or current_pixel_end_ps is None:
+                            continue
+                        if timestamp_ps < current_pixel_start_ps:
+                            continue
+                        if timestamp_ps >= current_pixel_end_ps:
+                            continue
+                        if timestamp_ps < last_laser_time_ps:
+                            continue
+
+                        pixel_lists[current_pixel_index].append(timestamp_ps - last_laser_time_ps)
+
+                if len(frames) >= n_frames:
                     break
 
             if pixel_count_in_frame == total_pixels and finalize_deadline is not None:
                 if time.monotonic() >= finalize_deadline:
-                    frames.append(_pixel_lists_to_frame(pixel_lists, y_pixels, x_pixels))
+                    frames.append(finalize_frame(pixel_lists))
                     if len(frames) >= n_frames:
                         break
 
-                    pixel_lists = _new_pixel_lists(total_pixels)
+                    pixel_lists = new_pixel_lists()
                     current_pixel_index = -1
                     pixel_count_in_frame = 0
                     current_pixel_start_ps = None
                     current_pixel_end_ps = None
-                    last_laser_time = None
+                    last_laser_time_ps = None
                     finalize_deadline = None
-                    continue
 
             if data.size == 0:
-                time.sleep(POLL_SLEEP_S)
+                time.sleep(poll_sleep_s)
 
         return frames
+
     finally:
         if stream is not None:
             try:
@@ -327,64 +185,123 @@ def _acquire_frames(
         TimeTagger.freeTimeTagger(tagger)
 
 
-def acquire_one_frame(
-    x_pixels,
-    y_pixels,
-    pixel_dwell_ps=PIXEL_DWELL_PS,
-    laser_ch=LASER_CH,
-    det_ch=DET_CH,
-    pixel_ch=PIXEL_CH,
-    laser_trigger_v=LASER_TRIGGER_V,
-    det_trigger_v=DET_TRIGGER_V,
-    pixel_trigger_v=PIXEL_TRIGGER_V,
-    use_conditional_filter=USE_CONDITIONAL_FILTER,
-):
-    """Acquire one frame of per-pixel FLIM delays.
+def save_raw_flim_data(frames, output_dir, run_name, acquisition_parameters):
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
 
-    Returns a `(y_pixels, x_pixels)` object array where each element is a 1D
-    `np.int64` array of laser-relative photon delays in ps.
-    """
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    stem = output_dir / f"{timestamp}_{run_name}"
+    frame_stack = np.asarray(frames, dtype=object)
 
-    return _acquire_frames(
-        x_pixels=x_pixels,
-        y_pixels=y_pixels,
-        n_frames=1,
-        pixel_dwell_ps=pixel_dwell_ps,
-        laser_ch=laser_ch,
-        det_ch=det_ch,
-        pixel_ch=pixel_ch,
-        laser_trigger_v=laser_trigger_v,
-        det_trigger_v=det_trigger_v,
-        pixel_trigger_v=pixel_trigger_v,
-        use_conditional_filter=use_conditional_filter,
-    )[0]
+    intensity = np.zeros((len(frame_stack), frame_stack.shape[1], frame_stack.shape[2]), dtype=np.uint32)
+    mean_delay_ps = np.full((len(frame_stack), frame_stack.shape[1], frame_stack.shape[2]), np.nan, dtype=np.float32)
+
+    for frame_index, frame in enumerate(frame_stack):
+        for y_index in range(frame.shape[0]):
+            for x_index in range(frame.shape[1]):
+                delays = frame[y_index, x_index]
+                intensity[frame_index, y_index, x_index] = len(delays)
+                if len(delays):
+                    mean_delay_ps[frame_index, y_index, x_index] = float(np.mean(delays))
+
+    np.savez_compressed(
+        stem.with_name(f"{stem.name}_raw.npz"),
+        frames=frame_stack,
+        acquisition_parameters=np.asarray(acquisition_parameters, dtype=object),
+    )
+    tifffile.imwrite(stem.with_name(f"{stem.name}_intensity.tiff"), intensity)
+    tifffile.imwrite(stem.with_name(f"{stem.name}_mean_delay_ps.tiff"), mean_delay_ps)
+    stem.with_name(f"{stem.name}_metadata.json").write_text(
+        json.dumps(
+            {
+                "timestamp": datetime.now().isoformat(),
+                "run_name": run_name,
+                "acquisition_parameters": acquisition_parameters,
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    return stem
 
 
-def acquire_n_frames(
-    x_pixels,
-    y_pixels,
-    n_frames=N_FRAMES,
-    pixel_dwell_ps=PIXEL_DWELL_PS,
-    laser_ch=LASER_CH,
-    det_ch=DET_CH,
-    pixel_ch=PIXEL_CH,
-    laser_trigger_v=LASER_TRIGGER_V,
-    det_trigger_v=DET_TRIGGER_V,
-    pixel_trigger_v=PIXEL_TRIGGER_V,
-    use_conditional_filter=USE_CONDITIONAL_FILTER,
-):
-    """Acquire multiple frames of per-pixel FLIM delays."""
+if __name__ == "__main__":
+    run_name = "flim_test_001"
+    output_dir = Path("data") / "swabian_raw_flim"
 
-    return _acquire_frames(
+    x_pixels = 542
+    y_pixels = 512
+    extra_left = 50
+    extra_right = 50
+    n_frames = 1
+    pixel_dwell_ps = int(10e6)
+    laser_frequency_hz = 80e6
+
+    laser_ch = 1
+    detector_ch = 2
+    pixel_ch = 3
+
+    laser_trigger_v = 0.2
+    detector_trigger_v = 0.2
+    pixel_trigger_v = 0.2
+
+    laser_input_delay_ps = 0
+    detector_input_delay_ps = 0
+    pixel_input_delay_ps = 0
+    use_conditional_filter = True
+
+    acquisition_parameters = {
+        "x_pixels": x_pixels,
+        "y_pixels": y_pixels,
+        "extra_left": extra_left,
+        "extra_right": extra_right,
+        "n_frames": n_frames,
+        "pixel_dwell_ps": pixel_dwell_ps,
+        "laser_frequency_hz": laser_frequency_hz,
+        "laser_ch": laser_ch,
+        "detector_ch": detector_ch,
+        "pixel_ch": pixel_ch,
+        "laser_trigger_v": laser_trigger_v,
+        "detector_trigger_v": detector_trigger_v,
+        "pixel_trigger_v": pixel_trigger_v,
+        "laser_input_delay_ps": laser_input_delay_ps,
+        "detector_input_delay_ps": detector_input_delay_ps,
+        "pixel_input_delay_ps": pixel_input_delay_ps,
+        "use_conditional_filter": use_conditional_filter,
+    }
+
+    print("Starting raw FLIM acquisition.")
+    print("Run this script first, then start the DAQ-side scan.")
+
+    start_time = time.perf_counter()
+    frames = acquire_raw_flim(
         x_pixels=x_pixels,
         y_pixels=y_pixels,
         n_frames=n_frames,
         pixel_dwell_ps=pixel_dwell_ps,
+        extra_left=extra_left,
+        extra_right=extra_right,
+        laser_frequency_hz=laser_frequency_hz,
         laser_ch=laser_ch,
-        det_ch=det_ch,
+        detector_ch=detector_ch,
         pixel_ch=pixel_ch,
         laser_trigger_v=laser_trigger_v,
-        det_trigger_v=det_trigger_v,
+        detector_trigger_v=detector_trigger_v,
         pixel_trigger_v=pixel_trigger_v,
+        laser_input_delay_ps=laser_input_delay_ps,
+        detector_input_delay_ps=detector_input_delay_ps,
+        pixel_input_delay_ps=pixel_input_delay_ps,
         use_conditional_filter=use_conditional_filter,
     )
+    elapsed_s = time.perf_counter() - start_time
+
+    stem = save_raw_flim_data(
+        frames=frames,
+        output_dir=output_dir,
+        run_name=run_name,
+        acquisition_parameters=acquisition_parameters,
+    )
+
+    print(f"Finished in {elapsed_s:.3f} s")
+    print(f"Saved raw data to {stem.with_name(f'{stem.name}_raw.npz')}")
