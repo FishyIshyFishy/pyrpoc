@@ -110,6 +110,11 @@ if __name__ == "__main__":
     data = np.load(npz_path, allow_pickle=True)
     frames = data["frames"]  # (1, 512, 512) object array of int64 arrays (ps)
 
+    for i in range(512):
+        for j in range(512):
+            for k in range(len(frames[0,i,j])):
+                if frames[0,i,j][k] > 12500: print('aa')
+
     # choose a median/spatial window size (odd), and some reasonable photon threshold
     window_n = 11  # NxN aggregation for robustness
     min_photons = 100
