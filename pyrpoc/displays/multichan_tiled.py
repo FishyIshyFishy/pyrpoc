@@ -146,7 +146,7 @@ class MultichannelImageDisplayWidget(BaseImageDisplayWidget):
         if channel_names and len(channel_names) >= self.num_channels:
             self.channel_names = channel_names[:self.num_channels]
         else:
-            if modality == 'confocal':
+            if modality == 'confocal' or modality == 'flim':
                 self.channel_names = [f'Channel {i+1}' for i in range(self.num_channels)]
             elif modality == 'split data stream':
                 # Use real channel names from data input instrument

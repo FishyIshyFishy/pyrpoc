@@ -165,11 +165,12 @@ class ModalityControls(QWidget):
         layout.addWidget(ms_label)
 
         ms_dropdown = QComboBox()
-        ms_dropdown.addItems(['Simulated', 'Confocal', 'Split data stream'])
-        current_modality = self.app_state.modality.capitalize()
-        index = ms_dropdown.findText(current_modality)
-        if index >= 0:
-            ms_dropdown.setCurrentIndex(index)
+        ms_dropdown.addItems(['Simulated', 'Confocal', 'flim', 'Split data stream'])
+        current_modality = self.app_state.modality.lower()
+        for index in range(ms_dropdown.count()):
+            if ms_dropdown.itemText(index).lower() == current_modality:
+                ms_dropdown.setCurrentIndex(index)
+                break
         ms_dropdown.currentTextChanged.connect(self.signals.modality_dropdown_changed)
         layout.addWidget(ms_dropdown)
 
@@ -232,6 +233,9 @@ class AcquisitionParameters(QWidget):
         modality = self.app_state.modality.lower()
         
         if modality == 'confocal':
+            self.add_galvo_parameters()
+        
+        elif modality == 'flim':
             self.add_galvo_parameters()
 
         elif modality == 'split data stream':
@@ -536,6 +540,18 @@ class InstrumentControls(QWidget):
                 data_input_btn = QPushButton('Add Data Inputs')
                 data_input_btn.clicked.connect(lambda: self.signals.add_modality_instrument.emit('data input'))
                 self.modality_buttons_layout.addWidget(data_input_btn)
+        elif modality == 'flim': 
+            if not self.has_instrument_type('galvo'):
+                galvo_btn = QPushButton('Add Galvos')
+                galvo_btn.clicked.connect(lambda: self.signals.add_modality_instrument.emit('galvo'))
+                self.modality_buttons_layout.addWidget(galvo_btn)
+            
+            if not self.has_instrument_type('data input'):
+                data_input_btn = QPushButton('Add Data Inputs')
+                data_input_btn.clicked.connect(lambda: self.signals.add_modality_instrument.emit('data input'))
+                self.modality_buttons_layout.addWidget(data_input_btn)
+            
+
         elif modality == 'split data stream':
             if not self.has_instrument_type('galvo'):
                 galvo_btn = QPushButton('Add Galvos')
@@ -977,7 +993,7 @@ class DockableMiddlePanel(QMainWindow):
     def create_image_display_widget(self):
         modality = self.app_state.modality.lower()
         
-        if modality in ['confocal', 'split data stream']:
+        if modality in ['confocal', 'split data stream', 'flim']:
             return MultichannelImageDisplayWidget(self.app_state, self.signals)
         else:
             return ImageDisplayWidget(self.app_state, self.signals)
@@ -1016,8 +1032,6 @@ class MainWindow(QMainWindow):
         self.top_bar = None
         
         self.build_gui()
-
-        self.signals.modality_dropdown_changed.connect(self.on_modality_changed)
 
     def build_gui(self):
         self.clear_existing_gui()
@@ -1074,10 +1088,6 @@ class MainWindow(QMainWindow):
         self.build_gui()
         
         self.signals.console_message.emit(f"GUI rebuilt for {self.app_state.modality} modality")
-
-    def on_modality_changed(self, new_modality):
-        self.app_state.modality = new_modality.lower()
-        self.rebuild_gui()
 
     def save_splitter_sizes(self):
         if self.main_splitter:

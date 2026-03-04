@@ -424,6 +424,20 @@ def handle_single_acquisition(app_state, signal_bus, continuous=False):
         if not data_inputs:
             signal_bus.console_message.emit("Error: Confocal acquisition requires at least one data input instrument. Please add a data input.")
             return
+
+    elif modality == 'flim': 
+        galvo = instruments.get('galvo', []) # .get() returns [] instead of None here, which is easier to look at in if statement that follows
+        data_inputs = instruments.get('data input', [])
+        
+        if not galvo: 
+            signal_bus.console_message.emit("Error: FLIM requires at least one galvo instrument. Please add a galvo scanner.")
+            return
+        
+        if not data_inputs:
+            signal_bus.console_message.emit("Error: FLIM requires at least one data input instrument. Please add a data input.")
+            return
+
+
     
     elif modality == 'split data stream':
         galvo = instruments.get('galvo', [])
@@ -474,6 +488,34 @@ def handle_single_acquisition(app_state, signal_bus, continuous=False):
                     acquisition.configure_rpoc(rpoc_enabled, rpoc_mask_channels=rpoc_mask_channels, rpoc_static_channels=rpoc_static_channels, rpoc_script_channels=rpoc_script_channels)
                 else:
                     signal_bus.console_message.emit(f"Acquisition RPOC - disabled")
+
+            case 'flim':
+                signal_bus.console_message.emit("FLIM acquisition started")
+
+                # have already verified that the instruments exist, no need to .get() here
+                galvo = instruments['galvo'][0] # returned as a list because there are multiple of each instrument in general
+                data_inputs = instruments['data input']
+                
+                acquisition = FLIM(
+                    galvo=galvo, 
+                    data_inputs=data_inputs,
+                    num_frames=parameters['num_frames'],
+                    signal_bus=signal_bus,
+                    acquisition_parameters=parameters,
+                    save_enabled=save_enabled,
+                    save_path=save_path
+                )
+                
+                # configure RPOC with masks, channels, and static channel information
+                if rpoc_enabled:
+                    rpoc_mask_channels = getattr(app_state, 'rpoc_mask_channels', {})
+                    rpoc_static_channels = getattr(app_state, 'rpoc_static_channels', {})
+                    rpoc_script_channels = getattr(app_state, 'rpoc_script_channels', {})
+                    signal_bus.console_message.emit(f"Acquisition RPOC - enabled: {rpoc_enabled}, masks: {len(rpoc_mask_channels)}, static: {len(rpoc_static_channels)}, script: {len(rpoc_script_channels)}")
+                    acquisition.configure_rpoc(rpoc_enabled, rpoc_mask_channels=rpoc_mask_channels, rpoc_static_channels=rpoc_static_channels, rpoc_script_channels=rpoc_script_channels)
+                else:
+                    signal_bus.console_message.emit(f"Acquisition RPOC - disabled")
+
                 
             case 'split data stream':
                 signal_bus.console_message.emit("Split Data Stream acquisition started")
@@ -541,6 +583,10 @@ def validate_acquisition_parameters(parameters, modality):
         'simulated': ['x_pixels', 'y_pixels', 'num_frames'],
         'confocal': [
             'x_pixels', 'y_pixels', 'num_frames',
+            'dwell_time', 'extrasteps_left', 'extrasteps_right',
+            'amplitude_x', 'amplitude_y', 'offset_x', 'offset_y'
+        ],
+        'flim': ['x_pixels', 'y_pixels', 'num_frames',
             'dwell_time', 'extrasteps_left', 'extrasteps_right',
             'amplitude_x', 'amplitude_y', 'offset_x', 'offset_y'
         ],
