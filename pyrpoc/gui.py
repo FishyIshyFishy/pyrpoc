@@ -237,6 +237,7 @@ class AcquisitionParameters(QWidget):
         
         elif modality == 'flim':
             self.add_galvo_parameters()
+            self.add_flim_pixel_start_parameters()
 
         elif modality == 'split data stream':
             # Split percentage parameter for split data stream modality
@@ -356,6 +357,62 @@ class AcquisitionParameters(QWidget):
         
         galvo_group.setLayout(galvo_layout)
         self.layout.addWidget(galvo_group)
+
+    def add_flim_pixel_start_parameters(self):
+        pixel_start_group = QGroupBox("FLIM Pixel Start TTL")
+        pixel_start_layout = QFormLayout()
+
+        self.pixel_start_enabled_checkbox = QCheckBox()
+        self.pixel_start_enabled_checkbox.setChecked(
+            self.app_state.acquisition_parameters.get('pixel_start_enabled', True)
+        )
+        self.pixel_start_enabled_checkbox.toggled.connect(
+            lambda checked: self.signals.acquisition_parameter_changed.emit('pixel_start_enabled', checked)
+        )
+        pixel_start_layout.addRow("Enabled:", self.pixel_start_enabled_checkbox)
+
+        self.pixel_start_device_edit = QLineEdit(
+            self.app_state.acquisition_parameters.get('pixel_start_device_name', 'Dev1')
+        )
+        self.pixel_start_device_edit.editingFinished.connect(
+            lambda: self.signals.acquisition_parameter_changed.emit(
+                'pixel_start_device_name', self.pixel_start_device_edit.text()
+            )
+        )
+        pixel_start_layout.addRow("Device:", self.pixel_start_device_edit)
+
+        self.pixel_start_port_edit = QLineEdit(
+            self.app_state.acquisition_parameters.get('pixel_start_port', 'port0')
+        )
+        self.pixel_start_port_edit.editingFinished.connect(
+            lambda: self.signals.acquisition_parameter_changed.emit(
+                'pixel_start_port', self.pixel_start_port_edit.text()
+            )
+        )
+        pixel_start_layout.addRow("Port:", self.pixel_start_port_edit)
+
+        self.pixel_start_line_spin = QSpinBox()
+        self.pixel_start_line_spin.setRange(0, 31)
+        self.pixel_start_line_spin.setValue(
+            self.app_state.acquisition_parameters.get('pixel_start_line', 0)
+        )
+        self.pixel_start_line_spin.valueChanged.connect(
+            lambda value: self.signals.acquisition_parameter_changed.emit('pixel_start_line', value)
+        )
+        pixel_start_layout.addRow("Line:", self.pixel_start_line_spin)
+
+        self.pixel_start_pulse_spin = QSpinBox()
+        self.pixel_start_pulse_spin.setRange(1, 100000)
+        self.pixel_start_pulse_spin.setValue(
+            self.app_state.acquisition_parameters.get('pixel_start_pulse_samples', 1)
+        )
+        self.pixel_start_pulse_spin.valueChanged.connect(
+            lambda value: self.signals.acquisition_parameter_changed.emit('pixel_start_pulse_samples', value)
+        )
+        pixel_start_layout.addRow("Pulse Samples:", self.pixel_start_pulse_spin)
+
+        pixel_start_group.setLayout(pixel_start_layout)
+        self.layout.addWidget(pixel_start_group)
 
     def add_pixel_parameters(self): # not used if galvo parameters are used
         pixel_group = QGroupBox("Image Parameters")

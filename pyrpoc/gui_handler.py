@@ -32,6 +32,11 @@ class AppState:
             'offset_y': 0.0,  # Offset for Y axis
             'x_pixels': 512,  # Number of X pixels for galvo scanning
             'y_pixels': 512,  # Number of Y pixels for galvo scanning
+            'pixel_start_enabled': True,  # Emit a TTL pulse at the start of each real image pixel
+            'pixel_start_device_name': 'Dev1',  # NI device for pixel-start output
+            'pixel_start_port': 'port0',  # NI digital port for pixel-start output
+            'pixel_start_line': 0,  # NI digital line index for pixel-start output
+            'pixel_start_pulse_samples': 1,  # Pulse width in AO sample-clock ticks
             
             # Prior stage acquisition parameters (moved from prior stage instrument)
             'numtiles_x': 10,  # Number of X tiles for acquisition
@@ -505,16 +510,12 @@ def handle_single_acquisition(app_state, signal_bus, continuous=False):
                     save_enabled=save_enabled,
                     save_path=save_path
                 )
-                
-                # configure RPOC with masks, channels, and static channel information
-                if rpoc_enabled:
-                    rpoc_mask_channels = getattr(app_state, 'rpoc_mask_channels', {})
-                    rpoc_static_channels = getattr(app_state, 'rpoc_static_channels', {})
-                    rpoc_script_channels = getattr(app_state, 'rpoc_script_channels', {})
-                    signal_bus.console_message.emit(f"Acquisition RPOC - enabled: {rpoc_enabled}, masks: {len(rpoc_mask_channels)}, static: {len(rpoc_static_channels)}, script: {len(rpoc_script_channels)}")
-                    acquisition.configure_rpoc(rpoc_enabled, rpoc_mask_channels=rpoc_mask_channels, rpoc_static_channels=rpoc_static_channels, rpoc_script_channels=rpoc_script_channels)
-                else:
-                    signal_bus.console_message.emit(f"Acquisition RPOC - disabled")
+                signal_bus.console_message.emit(
+                    "FLIM pixel-start TTL configured on "
+                    f"{parameters.get('pixel_start_device_name', 'Dev1')}/"
+                    f"{parameters.get('pixel_start_port', 'port0')}/"
+                    f"line{parameters.get('pixel_start_line', 0)}"
+                )
 
                 
             case 'split data stream':
@@ -588,7 +589,9 @@ def validate_acquisition_parameters(parameters, modality):
         ],
         'flim': ['x_pixels', 'y_pixels', 'num_frames',
             'dwell_time', 'extrasteps_left', 'extrasteps_right',
-            'amplitude_x', 'amplitude_y', 'offset_x', 'offset_y'
+            'amplitude_x', 'amplitude_y', 'offset_x', 'offset_y',
+            'pixel_start_enabled', 'pixel_start_device_name',
+            'pixel_start_port', 'pixel_start_line', 'pixel_start_pulse_samples'
         ],
         'split data stream': [
             'x_pixels', 'y_pixels', 'num_frames', 'split_percentage', 'aom_delay',
@@ -620,6 +623,8 @@ def validate_acquisition_parameters(parameters, modality):
         'amplitude_y': (0.01, 10.0, "amplitude_y must be between 0.01V and 10V"),
         'offset_x': (-10.0, 10.0, "offset_x must be between -10V and 10V"),
         'offset_y': (-10.0, 10.0, "offset_y must be between -10V and 10V"),
+        'pixel_start_line': (0, 31, "pixel_start_line must be between 0 and 31"),
+        'pixel_start_pulse_samples': (1, 100000, "pixel_start_pulse_samples must be between 1 and 100000"),
         'numtiles_x': (1, 1000, "numtiles_x must be between 1 and 1000"),
         'numtiles_y': (1, 1000, "numtiles_y must be between 1 and 1000"),
         'numtiles_z': (1, 1000, "numtiles_z must be between 1 and 1000"),
@@ -634,6 +639,14 @@ def validate_acquisition_parameters(parameters, modality):
             min_val, max_val, error_msg = validation_rules[param_name]
             if param_value < min_val or param_value > max_val:
                 raise ValueError(error_msg)
+
+    if modality == 'flim':
+        pixel_start_port = parameters.get('pixel_start_port', '')
+        pixel_start_device_name = parameters.get('pixel_start_device_name', '')
+        if not isinstance(pixel_start_port, str) or not pixel_start_port.strip():
+            raise ValueError("pixel_start_port must be a non-empty string")
+        if not isinstance(pixel_start_device_name, str) or not pixel_start_device_name.strip():
+            raise ValueError("pixel_start_device_name must be a non-empty string")
 
 def handle_acquisition_thread_finished(data, signal_bus, thread, worker):
     # for continuous acquisition, don't clean up the thread - let it continue
