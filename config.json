@@ -6,16 +6,16 @@
     "aom_delay": 0,
     "save_enabled": false,
     "save_path": "",
-    "dwell_time": 5.0,
-    "extrasteps_left": 300,
+    "dwell_time": 10.0,
+    "extrasteps_left": 30,
     "extrasteps_right": 10,
     "amplitude_x": 1.0,
     "amplitude_y": 1.0,
-    "offset_x": 0.2,
+    "offset_x": 0.4,
     "offset_y": -0.5,
     "x_pixels": 512,
     "y_pixels": 512,
-    "pixel_start_enabled": true,
+    "pixel_start_enabled": false,
     "pixel_start_device_name": "Dev1",
     "pixel_start_port": "port0",
     "pixel_start_line": 4,
@@ -58,11 +58,11 @@
       "parameters": {
         "input_channels": [
           2,
-          3
+          1
         ],
         "channel_names": {
           "2": "spad",
-          "3": "pmt"
+          "1": "pmt"
         },
         "sample_rate": 1000000,
         "device_name": "Dev1",
