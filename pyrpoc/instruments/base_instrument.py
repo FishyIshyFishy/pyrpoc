@@ -1,55 +1,80 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from typing import Any
 
-from pyrpoc.backend_utils.contracts import Action, ParameterGroups
-from pyrpoc.backend_utils.parameter_utils import validate_action_list, validate_parameter_groups
+from PyQt6.QtWidgets import QWidget
 
 
 class BaseInstrument(ABC):
     INSTRUMENT_KEY: str = "base_instrument"
     DISPLAY_NAME: str = "Base Instrument"
-    CONFIG_PARAMETERS: ParameterGroups = {}
-    ACTIONS: list[Action] = []
-
-    def __init_subclass__(cls, **kwargs):
-        super().__init_subclass__(**kwargs)
-        validate_parameter_groups(getattr(cls, "CONFIG_PARAMETERS", {}))
-        validate_action_list(getattr(cls, "ACTIONS", []))
 
     def __init__(self, alias: str | None = None):
         self.alias = alias or self.INSTRUMENT_KEY
-        self._connected = False
 
     @classmethod
     def get_contract(cls) -> dict[str, Any]:
         return {
             "instrument_key": cls.INSTRUMENT_KEY,
             "display_name": cls.DISPLAY_NAME,
-            "config_parameters": cls.CONFIG_PARAMETERS,
-            "actions": cls.ACTIONS,
         }
 
-    @abstractmethod
-    def connect(self, config: dict[str, Any]) -> None:
-        raise NotImplementedError
+    @classmethod
+    def get_widget_contract(cls) -> dict[str, Any]:
+        """Return only UI-related metadata for discovery-driven widgets.
+
+        Call flow:
+        - UI code queries `instrument_service.list_available()`
+        - `Registry.describe()` returns `get_widget_contract()` in addition to `get_contract()`
+        - Managers can use this to skip special-case imports while deciding how to render.
+        """
+        return {}
 
     @abstractmethod
-    def disconnect(self) -> None:
+    def get_widget(
+        self,
+        parent: QWidget | None = None,
+        on_change: Callable[[], None] | None = None,
+    ) -> "BaseInstrumentWidget":
+        """Create or reuse a concrete widget for this instance.
+
+        Call flow:
+        - user expands an instance card in InstrumentManager
+        - instrument_mgr.handlers.on_expand_requested asks InstrumentService for the widget
+        - InstrumentService delegates to this method to keep all concrete imports localized.
+        """
         raise NotImplementedError
 
-    def is_connected(self) -> bool:
-        return self._connected
+    def prepare_for_acquisition(self) -> tuple[Any, ...]:
+        """Return a compact acquisition payload for future modality hooks.
 
-    @abstractmethod
-    def get_status(self) -> dict[str, Any]:
-        raise NotImplementedError
+        Call flow:
+        - modality code may call this after requirements validation
+        - default payload includes only stable identifiers to keep phase-1 minimal.
+        """
+        return (self.alias,)
 
-    def execute_action(self, method_name: str, args: dict[str, Any]) -> None:
-        method = getattr(self, method_name, None)
-        if method is None:
-            raise AttributeError(f"{self.__class__.__name__} does not implement action method '{method_name}'")
-        if not callable(method):
-            raise TypeError(f"attribute '{method_name}' on {self.__class__.__name__} is not callable")
-        method(args)
+
+class BaseInstrumentWidget(QWidget):
+    """Base Qt widget for a single instrument instance.
+
+    Call flow:
+    - user clicks Expand in InstrumentManager card
+    - instrument_mgr.handlers.on_expand_requested -> InstrumentService.get_widget
+    - that call returns a `BaseInstrumentWidget` from concrete `BaseInstrument.get_widget`
+    """
+
+    def __init__(self, instrument: BaseInstrument, on_change: Callable[[], None] | None = None, parent: QWidget | None = None):
+        super().__init__(parent)
+        self.instrument = instrument
+        self.on_change = on_change
+
+    def refresh_from_model(self) -> None:
+        """Load current instrument-level model state after restore/rebuild."""
+        return None
+
+    def _request_model_persist(self) -> None:
+        if self.on_change is not None:
+            self.on_change()

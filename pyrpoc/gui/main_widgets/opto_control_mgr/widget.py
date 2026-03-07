@@ -48,6 +48,10 @@ class OptoControlManagerWidget(QWidget):
         handlers.refresh_available(self)
 
     def _refresh_instances(self) -> None:
+        '''
+        Service inventory changes should only diff cards.
+        This preserves expanded card bodies and avoids stale QObject deref on add/remove.
+        '''
         handlers.refresh_instances(self)
 
     def _on_add_clicked(self) -> None:

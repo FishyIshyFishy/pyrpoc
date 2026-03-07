@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-from typing import Any
+from collections.abc import Callable
 
-from pyrpoc.backend_utils.contracts import Action, Parameter
-from .base_instrument import BaseInstrument
+from PyQt6.QtWidgets import QDoubleSpinBox, QLabel, QVBoxLayout, QWidget
+
+from .base_instrument import BaseInstrument, BaseInstrumentWidget
 from .instrument_registry import instrument_registry
 
 
@@ -11,86 +12,70 @@ from .instrument_registry import instrument_registry
 class SimGalvoInstrument(BaseInstrument):
     INSTRUMENT_KEY = "sim_galvo"
     DISPLAY_NAME = "Simulated Galvo"
-    CONFIG_PARAMETERS = {
-        "connection": [
-            Parameter(
-                label="Device Name",
-                param_type=str,
-                default="Dev1",
-                tooltip="Simulated NI device identifier",
-            ),
-            Parameter(
-                label="Sample Rate (Hz)",
-                param_type=float,
-                default=100000.0,
-                minimum=1.0,
-                tooltip="Simulated output sample rate",
-            ),
-        ]
-    }
-    ACTIONS = [
-        Action(
-            label="Home Galvos",
-            method_name="home_galvos",
-            parameters=[],
-            tooltip="Set simulated galvo offsets to zero",
-        ),
-        Action(
-            label="Set Offsets",
-            method_name="set_offsets",
-            parameters=[
-                Parameter(
-                    label="X Offset (V)",
-                    param_type=float,
-                    default=0.0,
-                    minimum=-10.0,
-                    maximum=10.0,
-                ),
-                Parameter(
-                    label="Y Offset (V)",
-                    param_type=float,
-                    default=0.0,
-                    minimum=-10.0,
-                    maximum=10.0,
-                ),
-            ],
-            tooltip="Set simulated galvo X/Y offsets",
-        ),
-    ]
 
     def __init__(self, alias: str | None = None):
         super().__init__(alias=alias)
-        self.device_name = ""
-        self.sample_rate = 0.0
         self.x_offset = 0.0
         self.y_offset = 0.0
 
-    def connect(self, config: dict[str, Any]) -> None:
-        self.device_name = str(config["Device Name"])
-        self.sample_rate = float(config["Sample Rate (Hz)"])
-        self._connected = True
+        self.widget: BaseInstrumentWidget | None = None
 
-    def disconnect(self) -> None:
-        self._connected = False
+    def get_widget(
+        self,
+        parent: QWidget | None = None,
+        on_change: Callable[[], None] | None = None,
+    ) -> BaseInstrumentWidget:
+        """Called from the expanded instrument card handler.
 
-    def get_status(self) -> dict[str, Any]:
-        return {
-            "alias": self.alias,
-            "connected": self._connected,
-            "device_name": self.device_name,
-            "sample_rate": self.sample_rate,
-            "x_offset": self.x_offset,
-            "y_offset": self.y_offset,
-        }
+        The widget is reused and reparented into the card body if the card is reopened.
+        """
+        if self.widget is None:
+            self.widget = SimGalvoInstrumentWidget(self, on_change=on_change, parent=parent)
+        elif parent is not None:
+            self.widget.setParent(parent)
+        if on_change is not None:
+            self.widget.on_change = on_change
+        return self.widget
 
-    def home_galvos(self, args: dict[str, Any]) -> None:
-        del args
-        self.x_offset = 0.0
-        self.y_offset = 0.0
 
-    def set_offsets(self, args: dict[str, Any]) -> None:
-        self.x_offset = float(args["X Offset (V)"])
-        self.y_offset = float(args["Y Offset (V)"])
+class SimGalvoInstrumentWidget(BaseInstrumentWidget):
+    """Minimal placeholder controls for the galvo instrument.
+
+    Call flow:
+    - created when user expands a card in InstrumentManager
+    - spinboxes can trigger on_change to mark dirty state in future persistence paths
+    """
+
+    def __init__(
+        self,
+        instrument: SimGalvoInstrument,
+        on_change: Callable[[], None] | None = None,
+        parent: QWidget | None = None,
+    ) -> None:
+        super().__init__(instrument, on_change=on_change, parent=parent)
+        self.instrument = instrument
+        layout = QVBoxLayout(self)
+        layout.addWidget(QLabel("Simulated Galvo", self))
+
+        self.x_spin = QDoubleSpinBox(self)
+        self.x_spin.setRange(-10.0, 10.0)
+        self.x_spin.setValue(float(self.instrument.x_offset))
+        self.x_spin.valueChanged.connect(self._on_offsets_changed)
+
+        self.y_spin = QDoubleSpinBox(self)
+        self.y_spin.setRange(-10.0, 10.0)
+        self.y_spin.setValue(float(self.instrument.y_offset))
+        self.y_spin.valueChanged.connect(self._on_offsets_changed)
+
+        layout.addWidget(QLabel("X Offset (V)", self))
+        layout.addWidget(self.x_spin)
+        layout.addWidget(QLabel("Y Offset (V)", self))
+        layout.addWidget(self.y_spin)
+
+    def _on_offsets_changed(self, _value: float) -> None:
+        self.instrument.x_offset = float(self.x_spin.value())
+        self.instrument.y_offset = float(self.y_spin.value())
+        self._request_model_persist()
 
 
 Galvo = SimGalvoInstrument

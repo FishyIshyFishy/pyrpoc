@@ -7,7 +7,6 @@ from PyQt6.QtCore import QObject, QTimer
 from pyrpoc.domain.app_state import AppState, ParameterValue
 from pyrpoc.domain.session_state import (
     DisplaySessionState,
-    InstrumentSessionState,
     ModalitySessionState,
     OptoControlSessionState,
     SessionState,
@@ -52,7 +51,6 @@ class SessionCoordinator(QObject):
 
     def _wire_autosave_signals(self) -> None:
         self.instrument_service.inventory_changed.connect(self.autosave_debounced)
-        self.instrument_service.connection_changed.connect(lambda *_: self.autosave_debounced())
         self.opto_control_service.inventory_changed.connect(self.autosave_debounced)
         self.opto_control_service.control_state_changed.connect(self.autosave_debounced)
         self.display_service.display_added.connect(lambda *_: self.autosave_debounced())
@@ -81,15 +79,9 @@ class SessionCoordinator(QObject):
 
         return SessionState(
             theme_mode=self.theme_controller.get_saved_mode(),
-            instruments=[
-                InstrumentSessionState(
-                    type_key=row.type_key,
-                    connected=row.connected,
-                    config_values=list(row.config_values),
-                    user_label=row.user_label,
-                )
-                for row in self.app_state.instruments
-            ],
+            # Temporary migration policy: do not persist instrument rows while we
+            # refactor toward a minimal add/remove+widget model.
+            instruments=[],
             optocontrols=[
                 OptoControlSessionState(
                     type_key=row.type_key,
@@ -129,10 +121,11 @@ class SessionCoordinator(QObject):
         self.save_now()
 
     def restore_on_startup(self) -> None:
-        '''Rebuild app state from saved `SessionState` rows.
+        '''Rebuild app state from saved rows with a simplified instrument phase.
 
-        Optocontrol rows become fresh subclasses via registry keys and then restored
-        with persisted generic fields (enabled, user label).
+        Opto-controls and displays are restored as before. Instrument rows are
+        intentionally not reconstructed here while the add/remove model is in
+        migration.
         '''
         session = self.repository.load_or_default()
         self.theme_controller.apply(session.theme_mode)
@@ -141,15 +134,11 @@ class SessionCoordinator(QObject):
         self.opto_control_service.clear_all()
         self.instrument_service.clear_all()
 
-        for row in session.instruments:
-            state = self.instrument_service.create_instrument(row.type_key)
-            state.user_label = row.user_label
-            state.config_values = list(row.config_values)
-            if row.connected:
-                try:
-                    self.instrument_service.connect(state, self._values_to_raw(row.config_values))
-                except Exception:
-                    pass
+        # Legacy instrument rows are intentionally ignored during this migration.
+        # This avoids rehydration/auto-connect behavior and keeps startup behavior
+        # stable while the simplified inventory contract is being built out.
+        for _row in getattr(session, "instruments", []):
+            continue
 
         for row in session.optocontrols:
             state = self.opto_control_service.create_opto_control(row.type_key)

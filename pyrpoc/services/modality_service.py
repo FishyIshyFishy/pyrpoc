@@ -71,14 +71,14 @@ class ModalityService(QObject):
 
         missing = []
         for required_cls in self.app_state.modality.selected_class.REQUIRED_INSTRUMENTS:
-            connected = self.instrument_service.get_connected_by_class(required_cls)
-            if not connected:
+            instances = self.instrument_service.get_instances_by_class(required_cls)
+            if not instances:
                 missing.append(required_cls)
 
         ok = len(missing) == 0
         self.requirements_changed.emit(ok, [cls.__name__ for cls in missing])
         if self.app_state.modality.running and not ok:
-            self.acq_error.emit("required instrument disconnected during acquisition")
+            self.acq_error.emit("required instrument removed during acquisition")
             self.stop()
         return ok, missing
 
@@ -104,11 +104,14 @@ class ModalityService(QObject):
 
         bound: dict[type[BaseInstrument], BaseInstrument] = {}
         for required_cls in self.app_state.modality.selected_class.REQUIRED_INSTRUMENTS:
-            bound[required_cls] = self.instrument_service.get_connected_by_class(required_cls)[0]
+            bound_instances = self.instrument_service.get_instances_by_class(required_cls)
+            if not bound_instances:
+                raise RuntimeError(f"required instrument {required_cls.__name__} disappeared before configure")
+            bound[required_cls] = bound_instances[0]
         for optional_cls in self.app_state.modality.selected_class.OPTIONAL_INSTRUMENTS:
-            connected = self.instrument_service.get_connected_by_class(optional_cls)
-            if connected:
-                bound[optional_cls] = connected[0]
+            optional_instances = self.instrument_service.get_instances_by_class(optional_cls)
+            if optional_instances:
+                bound[optional_cls] = optional_instances[0]
 
         self.app_state.modality.instance.configure(cleaned_params, bound)
         self.app_state.modality.configured_params = [

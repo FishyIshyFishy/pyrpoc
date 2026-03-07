@@ -30,7 +30,7 @@ class AppController(QObject):
         self.opto_control_service = OptoControlService(self.app_state, self)
 
         self.modality_service.data_ready.connect(self.display_service.push_data)
-        self.instrument_service.connection_changed.connect(
+        self.instrument_service.inventory_changed.connect(
             lambda *_: self.modality_service.validate_required_instruments()
         )
 

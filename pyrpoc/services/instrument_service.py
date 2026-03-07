@@ -3,30 +3,41 @@ from __future__ import annotations
 from typing import Any
 
 from PyQt6.QtCore import QObject, pyqtSignal
+from PyQt6.QtWidgets import QWidget
 
-from pyrpoc.backend_utils.parameter_utils import (
-    ParameterValidationError,
-    coerce_action_values,
-    coerce_parameter_values,
-)
-from pyrpoc.domain.app_state import AppState, InstrumentState, ParameterValue
-from pyrpoc.instruments.base_instrument import BaseInstrument
+from pyrpoc.domain.app_state import AppState, InstrumentState
+from pyrpoc.instruments.base_instrument import BaseInstrument, BaseInstrumentWidget
 from pyrpoc.instruments.instrument_registry import instrument_registry
 
 
 class InstrumentService(QObject):
+    """Service managing active instrument instances as a lightweight inventory."""
+
     inventory_changed = pyqtSignal()
-    connection_changed = pyqtSignal(object, bool)
-    instrument_error = pyqtSignal(object, str)
 
     def __init__(self, app_state: AppState, parent=None):
         super().__init__(parent)
         self.app_state = app_state
 
     def list_available(self) -> list[dict[str, Any]]:
+        """
+        List all registered instruments for dropdown population.
+
+        Call flow:
+        - `InstrumentManagerWidget._refresh_available` asks for this list
+        - dropdown is populated from returned rows so UI never imports instrument classes.
+        """
         return instrument_registry.describe_all()
 
     def create_instrument(self, key: str) -> InstrumentState:
+        """
+        Instantiate instrument class from registry key and register in app state.
+
+        Call flow:
+        - user clicks Add in `InstrumentManagerWidget`
+        - widget handler calls this method
+        - emitted `inventory_changed` repopulates cards in the manager.
+        """
         cls = instrument_registry.get_class(key)
         instance = cls(alias=key)
         state = InstrumentState(type_key=key, instance=instance)
@@ -34,74 +45,44 @@ class InstrumentService(QObject):
         self.inventory_changed.emit()
         return state
 
-    def remove_instrument(self, state: InstrumentState) -> None:
-        if state not in self.app_state.instruments:
+    def remove_instrument(self, state_or_instance: InstrumentState | BaseInstrument) -> None:
+        """
+        Remove an instrument from app state and drop it from UI list.
+
+        Call flow:
+        - card "Remove" button -> handler -> this method
+        - card is recreated after `inventory_changed`.
+        """
+        state = self._resolve_state(state_or_instance)
+        if state is None:
             return
-
-        if state.connected:
-            state.instance.disconnect()
-            state.connected = False
-            self.connection_changed.emit(state, False)
-
         self.app_state.instruments.remove(state)
         self.inventory_changed.emit()
 
-    def connect(self, state: InstrumentState, raw_config: dict[str, Any]) -> None:
-        self._require_state(state)
-        parameter_groups = state.instance.__class__.CONFIG_PARAMETERS
+    def get_instances_by_class(self, cls: type[BaseInstrument]) -> list[BaseInstrument]:
+        """
+        Return all current instances for a required/injected instrument class.
 
-        try:
-            config = coerce_parameter_values(parameter_groups, raw_config)
-            state.instance.connect(config)
-            state.connected = state.instance.is_connected()
-            state.config_values = [ParameterValue(label=k, value=v) for k, v in config.items()]
-            self.connection_changed.emit(state, state.connected)
-        except (ParameterValidationError, Exception) as exc:
-            state.last_error = str(exc)
-            self.instrument_error.emit(state, str(exc))
-            raise
-
-    def disconnect(self, state: InstrumentState) -> None:
-        self._require_state(state)
-        try:
-            state.instance.disconnect()
-            state.connected = False
-            self.connection_changed.emit(state, False)
-        except Exception as exc:
-            state.last_error = str(exc)
-            self.instrument_error.emit(state, str(exc))
-            raise
-
-    def run_action(self, state: InstrumentState, action_label: str, raw_args: dict[str, Any]) -> None:
-        self._require_state(state)
-        if not state.connected:
-            msg = "instrument is not connected"
-            self.instrument_error.emit(state, msg)
-            raise RuntimeError(msg)
-
-        actions = state.instance.__class__.ACTIONS
-        action = next((candidate for candidate in actions if candidate.label == action_label), None)
-        if action is None:
-            msg = f"instrument has no action '{action_label}'"
-            self.instrument_error.emit(state, msg)
-            raise KeyError(msg)
-
-        try:
-            args = coerce_action_values(action, raw_args)
-            state.instance.execute_action(action.method_name, args)
-        except (ParameterValidationError, Exception) as exc:
-            state.last_error = str(exc)
-            self.instrument_error.emit(state, str(exc))
-            raise
-
-    def get_connected_by_class(self, cls: type[BaseInstrument]) -> list[BaseInstrument]:
+        Call flow:
+        - `ModalityService.validate_required_instruments` asks for this list
+        - modality gating checks only instance presence now, no connection state.
+        """
         return [
             entry.instance
             for entry in self.app_state.instruments
-            if isinstance(entry.instance, cls) and entry.connected
+            if isinstance(entry.instance, cls)
         ]
 
+    def get_connected_by_class(self, cls: type[BaseInstrument]) -> list[BaseInstrument]:
+        """
+        Compatibility alias retained for existing modality logic.
+        """
+        return self.get_instances_by_class(cls)
+
     def list_instances(self) -> list[dict[str, Any]]:
+        """
+        Return card-friendly rows for inventory UI rendering.
+        """
         rows: list[dict[str, Any]] = []
         for state in self.app_state.instruments:
             key = state.type_key
@@ -112,10 +93,27 @@ class InstrumentService(QObject):
                     "key": key,
                     "name": getattr(cls, "DISPLAY_NAME", key),
                     "connected": state.connected,
-                    "status": state.instance.get_status(),
                 }
             )
         return rows
+
+    def get_widget(
+        self,
+        state_or_instance: InstrumentState | BaseInstrument,
+        parent: QWidget | None = None,
+        on_change=None,
+    ) -> BaseInstrumentWidget:
+        """
+        Resolve instance and return its expanded-card widget.
+
+        Call flow:
+        - manager toggles card expand -> handler -> this method
+        - concrete instance supplies its own widget class via BaseInstrument.get_widget.
+        """
+        state = self._resolve_state(state_or_instance)
+        if state is None:
+            raise KeyError("instrument state is not registered")
+        return state.instance.get_widget(parent=parent, on_change=on_change)
 
     def get_instance(self, state: InstrumentState) -> BaseInstrument:
         self._require_state(state)
@@ -132,3 +130,17 @@ class InstrumentService(QObject):
     def _require_state(self, state: InstrumentState) -> None:
         if state not in self.app_state.instruments:
             raise KeyError("instrument state is not registered")
+
+    def _resolve_state(self, state_or_instance: InstrumentState | BaseInstrument) -> InstrumentState | None:
+        """
+        Resolve either a state object or concrete instrument into a registered state.
+        """
+        if isinstance(state_or_instance, InstrumentState):
+            if state_or_instance in self.app_state.instruments:
+                return state_or_instance
+            return None
+
+        for state in self.app_state.instruments:
+            if state.instance is state_or_instance:
+                return state
+        return None

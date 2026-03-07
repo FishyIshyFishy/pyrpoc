@@ -2,13 +2,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from PyQt6.QtWidgets import QWidget
-
-from pyrpoc.backend_utils.contracts import Action
+from pyrpoc.gui.main_widgets.opto_control_mgr.instance_card import InstanceCardWidget
 
 
 @dataclass
 class InstrumentManagerState:
-    config_widgets: dict[str, QWidget] = field(default_factory=dict)
-    action_widgets: dict[str, dict[str, QWidget]] = field(default_factory=dict)
-    actions_by_label: dict[str, Action] = field(default_factory=dict)
+    card_widgets: dict[object, InstanceCardWidget] = field(default_factory=dict)
