@@ -5,12 +5,14 @@ from typing import Any
 from PyQt6.QtCore import QObject, pyqtSignal
 from PyQt6.QtWidgets import QWidget
 
-from pyrpoc.domain.app_state import AppState, OptoControlState
+from pyrpoc.domain.app_state import AppState
+from pyrpoc.optocontrols.base_optocontrol import BaseOptoControl
 from pyrpoc.optocontrols.opto_control_registry import opto_control_registry
 
 
 class OptoControlService(QObject):
     inventory_changed = pyqtSignal()
+    control_state_changed = pyqtSignal(object, bool)
     opto_control_error = pyqtSignal(object, str)
 
     def __init__(self, app_state: AppState, parent=None):
@@ -20,18 +22,29 @@ class OptoControlService(QObject):
     def list_available(self) -> list[dict[str, Any]]:
         return opto_control_registry.describe_all()
 
-    def create_opto_control(self, key: str) -> OptoControlState:
+    def create_opto_control(self, key: str) -> BaseOptoControl:
+        '''Create a control instance from dropdown selection and add it to app state.
+
+        Called by `opto_control_mgr.handlers.on_add_clicked`, then rendered by
+        `refresh_instances` in the same file.
+        '''
         cls = opto_control_registry.get_class(key)
         instance = cls(alias=key)
-        state = OptoControlState(type_key=key, instance=instance)
-        self.app_state.optocontrols.append(state)
+        self.app_state.optocontrols.append(instance)
         self.inventory_changed.emit()
-        return state
+        return instance
 
-    def remove_opto_control(self, state: OptoControlState) -> None:
-        if state not in self.app_state.optocontrols:
+    def remove_opto_control(self, control: BaseOptoControl) -> None:
+        '''Remove a control and release any resources it owns.
+
+        Called from the manager remove button handler. This keeps persistence and UI list
+        in sync by deleting the same object referenced by `AppState`.
+        '''
+        if control not in self.app_state.optocontrols:
             return
-        self.app_state.optocontrols.remove(state)
+        self.app_state.optocontrols.remove(control)
+        control.cleanup()
+        self.control_state_changed.emit(control, False)
         self.inventory_changed.emit()
 
     def clear_all(self) -> None:
@@ -40,39 +53,54 @@ class OptoControlService(QObject):
 
     def list_instances(self) -> list[dict[str, Any]]:
         rows: list[dict[str, Any]] = []
-        for state in self.app_state.optocontrols:
-            key = state.type_key
+        for control in self.app_state.optocontrols:
+            key = control.type_key
             cls = opto_control_registry.get_class(key)
             rows.append(
                 {
-                    "state": state,
+                    "state": control,
                     "key": key,
                     "name": getattr(cls, "DISPLAY_NAME", key),
+                    "enabled": control.enabled,
                 }
             )
         return rows
 
-    def get_widget(self, state: OptoControlState, parent: QWidget | None = None) -> QWidget:
-        self._require_state(state)
-        return state.instance.get_widget(parent=parent)
+    def get_widget(self, control: BaseOptoControl, parent: QWidget | None = None) -> QWidget:
+        '''Return the concrete control widget for list rows and editors.
 
-    def collect_data_for_acquisition(self) -> list[dict[str, Any]]:
-        rows: list[dict[str, Any]] = []
-        for state in self.app_state.optocontrols:
+        Called by `refresh_instances` during UI rebuild, after which signals from the
+        card bind user actions back into the service.
+        '''
+        self._require_control(control)
+        return control.get_widget(parent=parent)
+
+    def set_enabled(self, control: BaseOptoControl, enabled: bool) -> None:
+        '''Track enabled state in the control instance and notify persistence/autosave path.
+
+        Called when the row checkbox changes.
+        '''
+        self._require_control(control)
+        control.enabled = enabled
+        self.control_state_changed.emit(control, enabled)
+
+    def collect_data_for_acquisition(self) -> list[tuple[Any, ...]]:
+        '''Collect enabled control payloads in UI order.
+
+        This is the handoff point from GUI config to modality-specific execution.
+        '''
+        rows: list[tuple[Any, ...]] = []
+        for control in self.app_state.optocontrols:
+            if not control.enabled:
+                continue
             try:
-                rows.append(
-                    {
-                        "type_key": state.type_key,
-                        "alias": state.instance.alias,
-                        "data": state.instance.prepare_data_for_acquisition(),
-                    }
-                )
+                rows.append(control.prepare_for_acquisition())
             except Exception as exc:
-                state.last_error = str(exc)
-                self.opto_control_error.emit(state, str(exc))
+                control.last_error = str(exc)
+                self.opto_control_error.emit(control, str(exc))
                 raise
         return rows
 
-    def _require_state(self, state: OptoControlState) -> None:
-        if state not in self.app_state.optocontrols:
-            raise KeyError("opto-control state is not registered")
+    def _require_control(self, control: BaseOptoControl) -> None:
+        if control not in self.app_state.optocontrols:
+            raise KeyError("opto-control is not registered")

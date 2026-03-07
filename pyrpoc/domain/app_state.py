@@ -26,17 +26,6 @@ class InstrumentState:
 
 
 @dataclass(eq=False)
-class OptoControlState:
-    type_key: str
-    instance: BaseOptoControl
-    connected: bool = False
-    enabled: bool = False
-    config_values: list[ParameterValue] = field(default_factory=list)
-    last_error: str | None = None
-    user_label: str | None = None
-
-
-@dataclass(eq=False)
 class DisplayState:
     type_key: str
     instance: BaseDisplay
@@ -66,7 +55,7 @@ class GuiLayoutState:
 @dataclass
 class AppState:
     instruments: list[InstrumentState] = field(default_factory=list)
-    optocontrols: list[OptoControlState] = field(default_factory=list)
+    optocontrols: list[BaseOptoControl] = field(default_factory=list)
     displays: list[DisplayState] = field(default_factory=list)
     modality: ModalityState = field(default_factory=ModalityState)
     gui_layout: GuiLayoutState = field(default_factory=GuiLayoutState)

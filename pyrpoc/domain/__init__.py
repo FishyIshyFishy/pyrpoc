@@ -4,7 +4,6 @@ from .app_state import (
     GuiLayoutState,
     InstrumentState,
     ModalityState,
-    OptoControlState,
     ParameterValue,
 )
 from .session_state import (
@@ -29,7 +28,6 @@ __all__ = [
     "ModalityState",
     "ObjectStore",
     "OptoControlSessionState",
-    "OptoControlState",
     "ParameterValue",
     "SessionState",
 ]

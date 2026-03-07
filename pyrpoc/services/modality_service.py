@@ -56,6 +56,9 @@ class ModalityService(QObject):
         return self.app_state.modality.selected_class.PARAMETERS
 
     def get_selected_contract(self) -> dict[str, Any]:
+        '''
+        read the selected contract from app_state
+        '''
         if self.app_state.modality.selected_class is None:
             return {}
         return self.app_state.modality.selected_class.get_contract()

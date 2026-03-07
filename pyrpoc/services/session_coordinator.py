@@ -54,6 +54,7 @@ class SessionCoordinator(QObject):
         self.instrument_service.inventory_changed.connect(self.autosave_debounced)
         self.instrument_service.connection_changed.connect(lambda *_: self.autosave_debounced())
         self.opto_control_service.inventory_changed.connect(self.autosave_debounced)
+        self.opto_control_service.control_state_changed.connect(self.autosave_debounced)
         self.display_service.display_added.connect(lambda *_: self.autosave_debounced())
         self.display_service.display_removed.connect(lambda *_: self.autosave_debounced())
         self.display_service.display_changed.connect(lambda *_: self.autosave_debounced())
@@ -66,6 +67,11 @@ class SessionCoordinator(QObject):
         return {entry.label: entry.value for entry in values}
 
     def capture_snapshot(self) -> SessionState:
+        '''Collect runtime app state into session payload for persistence.
+
+        Called by autosave and explicit Save; the optocontrols here are serialized as
+        `OptoControlSessionState` rows and restored later via `restore_on_startup`.
+        '''
         modality_state = None
         if self.app_state.modality.selected_key is not None:
             modality_state = ModalitySessionState(
@@ -87,9 +93,9 @@ class SessionCoordinator(QObject):
             optocontrols=[
                 OptoControlSessionState(
                     type_key=row.type_key,
-                    connected=row.connected,
+                    connected=False,
                     enabled=row.enabled,
-                    config_values=list(row.config_values),
+                    config_values=[],
                     user_label=row.user_label,
                 )
                 for row in self.app_state.optocontrols
@@ -123,6 +129,11 @@ class SessionCoordinator(QObject):
         self.save_now()
 
     def restore_on_startup(self) -> None:
+        '''Rebuild app state from saved `SessionState` rows.
+
+        Optocontrol rows become fresh subclasses via registry keys and then restored
+        with persisted generic fields (enabled, user label).
+        '''
         session = self.repository.load_or_default()
         self.theme_controller.apply(session.theme_mode)
 
@@ -143,7 +154,7 @@ class SessionCoordinator(QObject):
         for row in session.optocontrols:
             state = self.opto_control_service.create_opto_control(row.type_key)
             state.user_label = row.user_label
-            state.config_values = list(row.config_values)
+            state.enabled = row.enabled
 
         if session.modality and session.modality.selected_key:
             try:

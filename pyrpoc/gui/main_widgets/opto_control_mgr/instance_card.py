@@ -79,6 +79,10 @@ class InstanceCardWidget(QFrame):
         self.body_container.setVisible(expanded)
         self.expand_btn.setText("Collapse" if expanded else "Expand")
 
+    def is_expanded(self) -> bool:
+        '''Report current expanded state for expand toggle handlers in manager logic.'''
+        return self._expanded
+
     def set_marker_text(self, text: str) -> None:
         self.marker_label.setText(text)
 
