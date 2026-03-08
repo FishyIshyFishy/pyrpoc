@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QWidget
+from PyQt6.QtWidgets import QAbstractItemView, QWidget
 
 from pyrpoc.displays.base_display import BaseDisplay
 from pyrpoc.gui.main_widgets.display_mgr.handlers import (
     on_add_clicked,
     on_attach_clicked,
     on_detach_clicked,
+    on_display_name_edited,
     on_display_error,
     on_modality_selected,
     on_remove_clicked,
@@ -38,6 +39,9 @@ class DisplayManagerWidget(QWidget):
         self.display_combo = self.ui.display_combo
         self.add_btn = self.ui.add_btn
         self.instances_list = self.ui.instances_list
+        self.instances_list.setEditTriggers(
+            QAbstractItemView.EditTrigger.DoubleClicked | QAbstractItemView.EditTrigger.EditKeyPressed
+        )
         self.attach_btn = self.ui.attach_btn
         self.detach_btn = self.ui.detach_btn
         self.remove_btn = self.ui.remove_btn
@@ -58,6 +62,7 @@ class DisplayManagerWidget(QWidget):
         self.display_service.display_removed.connect(lambda _state: self._refresh_instances())
         self.display_service.display_changed.connect(lambda _state: self._refresh_instances())
         self.display_service.display_error.connect(self._on_display_error)
+        self.instances_list.itemChanged.connect(self._on_display_name_edited)
         self.modality_service.modality_selected.connect(self._on_modality_selected)
 
     def _refresh_available(self) -> None:
@@ -89,9 +94,10 @@ class DisplayManagerWidget(QWidget):
         if item is None:
             return None
         value = item.data(Qt.ItemDataRole.UserRole)
-        if isinstance(value, BaseDisplay):
-            return value
-        return None
+        if not isinstance(value, int):
+            return None
+        display = self.display_service.get_display_by_id(value)
+        return display
 
     def _selected_display_key(self) -> str:
         data = self.display_combo.currentData()
@@ -101,3 +107,6 @@ class DisplayManagerWidget(QWidget):
 
     def _show_error(self, message: str) -> None:
         show_error(self, message)
+
+    def _on_display_name_edited(self, item) -> None:
+        on_display_name_edited(self, item)

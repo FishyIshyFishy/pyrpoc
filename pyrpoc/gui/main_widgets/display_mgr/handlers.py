@@ -6,7 +6,6 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QListWidgetItem, QMessageBox
 
 from pyrpoc.backend_utils.data import BaseData
-from pyrpoc.displays.base_display import BaseDisplay
 from pyrpoc.displays.display_registry import display_registry
 from pyrpoc.gui.main_widgets.display_mgr.forms import prompt_display_parameters
 
@@ -58,20 +57,58 @@ def refresh_instances(widget: DisplayManagerWidget) -> None:
     - -> list widget rows with stable object identity in UserRole.
     """
     current = widget._selected_display()
-    widget.instances_list.clear()
-    for idx, row in enumerate(widget.display_service.list_instances(), start=1):
-        state: BaseDisplay = row["state"]
-        marker = "attached" if row["attached"] else "detached"
-        item = QListWidgetItem(f"{row['name']} [{idx}] ({marker})")
-        item.setData(Qt.ItemDataRole.UserRole, state)
-        widget.instances_list.addItem(item)
+    current_id = id(current) if current is not None else None
+    widget.instances_list.blockSignals(True)
+    try:
+        widget.instances_list.clear()
+        for idx, row in enumerate(widget.display_service.list_instances(), start=1):
+            raw_display_id = row.get("display_id")
+            display_id: int | None = None
+            if isinstance(raw_display_id, int):
+                display_id = raw_display_id
+            elif isinstance(raw_display_id, bool):
+                display_id = int(raw_display_id)
+            else:
+                state_value = row.get("state")
+                if isinstance(state_value, int):
+                    display_id = state_value
+                elif state_value is not None:
+                    try:
+                        display_id = id(state_value)
+                    except Exception:
+                        display_id = None
 
-    if current is not None:
-        for idx in range(widget.instances_list.count()):
-            item = widget.instances_list.item(idx)
-            if item.data(Qt.ItemDataRole.UserRole) == current:
-                widget.instances_list.setCurrentRow(idx)
-                break
+            if display_id is None:
+                continue
+            marker = "attached" if row["attached"] else "detached"
+            item = QListWidgetItem(f"{row['name']} [{idx}] ({marker})")
+            item.setFlags(item.flags() | Qt.ItemFlag.ItemIsEditable)
+            item.setData(Qt.ItemDataRole.UserRole, display_id)
+            widget.instances_list.addItem(item)
+
+        if current_id is not None:
+            for idx in range(widget.instances_list.count()):
+                item = widget.instances_list.item(idx)
+                if item.data(Qt.ItemDataRole.UserRole) == current_id:
+                    widget.instances_list.setCurrentRow(idx)
+                    break
+    finally:
+        widget.instances_list.blockSignals(False)
+
+
+def on_display_name_edited(widget: DisplayManagerWidget, item: Any) -> None:
+    if not isinstance(item, QListWidgetItem):
+        return
+    raw = item.text().strip()
+    display_id = item.data(Qt.ItemDataRole.UserRole)
+    if not isinstance(display_id, int):
+        return
+    display = widget.display_service.get_display_by_id(display_id)
+    if display is None:
+        return
+
+    name = raw.split(" [", 1)[0].strip()
+    widget.display_service.set_display_name(display, name)
 
 
 def on_add_clicked(widget: DisplayManagerWidget) -> None:

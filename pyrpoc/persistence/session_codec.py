@@ -10,7 +10,6 @@ from pyrpoc.domain.session_state import (
     InstrumentSessionState,
     ModalitySessionState,
     OptoControlSessionState,
-    DisplaySessionState,
     SessionState,
     SCHEMA_VERSION,
 )
@@ -98,16 +97,8 @@ class SessionCodec:
             }
             for row in state.optocontrols
         ]
-        raw["displays"] = [
-            {
-                "type_key": row.type_key,
-                "attached": row.attached,
-                "dock_visible": row.dock_visible,
-                "config_values": cls._encode_param_values(row.config_values),
-                "user_label": row.user_label,
-            }
-            for row in state.displays
-        ]
+        raw.pop("displays", None)
+        raw["displays"] = []
         if state.modality is None:
             raw["modality"] = None
         else:
@@ -154,23 +145,6 @@ class SessionCodec:
                     type_key=type_key,
                     connected=bool(item.get("connected", False)),
                     enabled=bool(item.get("enabled", False)),
-                    config_values=cls._decode_config_values_with_legacy_fallback(item),
-                    user_label=item.get("user_label"),
-                )
-            )
-
-        displays: list[DisplaySessionState] = []
-        for item in raw.get("displays", []):
-            if not isinstance(item, dict):
-                continue
-            type_key = cls._pick_type_key(item, "display_key", "key")
-            if not type_key:
-                continue
-            displays.append(
-                DisplaySessionState(
-                    type_key=type_key,
-                    attached=bool(item.get("attached", True)),
-                    dock_visible=bool(item.get("dock_visible", True)),
                     config_values=cls._decode_config_values_with_legacy_fallback(item),
                     user_label=item.get("user_label"),
                 )

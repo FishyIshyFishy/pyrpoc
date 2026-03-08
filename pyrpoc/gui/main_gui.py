@@ -3,9 +3,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 
-from PyQt6.QtCore import QByteArray
 from PyQt6.QtGui import QAction
 from PyQt6.QtWidgets import QVBoxLayout, QWidget
+from PyQt6 import sip
 import PyQt6Ads as qtads
 
 from pyrpoc.displays.base_display import BaseDisplay
@@ -21,6 +21,7 @@ from pyrpoc.services.display_service import DisplayService
 from pyrpoc.services.instrument_service import InstrumentService
 from pyrpoc.services.modality_service import ModalityService
 from pyrpoc.services.opto_control_service import OptoControlService
+
 
 qtads.CDockManager.setConfigFlag(qtads.CDockManager.eConfigFlag.DisableTabTextEliding, True)
 qtads.CDockManager.setConfigFlag(qtads.CDockManager.eConfigFlag.OpaqueSplitterResize, False)
@@ -146,32 +147,18 @@ class MainGUI(QWidget):
         self.menubar.set_active_style(applied)
 
     def capture_layout_state(self) -> GuiLayoutSessionState:
-        raw = self.dock_manager.saveState()
-        encoded = bytes(raw.toBase64()).decode("ascii") if isinstance(raw, QByteArray) else None
         dock_visibility = {
             key.value: bool(dock.toggleViewAction().isChecked()) for key, dock in self.dock_by_key.items()
         }
-        return GuiLayoutSessionState(ads_state_base64=encoded, dock_visibility=dock_visibility)
+        return GuiLayoutSessionState(ads_state_base64=None, dock_visibility=dock_visibility)
 
     def restore_layout_state(self, state: GuiLayoutSessionState) -> None:
-        restored = False
-        if state.ads_state_base64:
-            raw = QByteArray.fromBase64(QByteArray(state.ads_state_base64.encode("ascii")))
-            restored = bool(self.dock_manager.restoreState(raw))
-
-        if not restored:
-            self.restore_default_layout()
-            for key, visible in state.dock_visibility.items():
-                for dock_key, dock in self.dock_by_key.items():
-                    if dock_key.value == key:
-                        dock.toggleView(visible)
-                        break
-
-        for row in self.display_service.list_instances():
-            state_obj = row["state"]
-            visible = bool(row.get("docked_visible", True))
-            self._set_display_visibility(state_obj, visible, update_action=False)
-
+        self.restore_default_layout()
+        for key, visible in state.dock_visibility.items():
+            for dock_key, dock in self.dock_by_key.items():
+                if dock_key.value == key:
+                    dock.toggleView(visible)
+                    break
         self._refresh_view_menu()
 
     def restore_default_layout(self) -> None:
@@ -181,6 +168,11 @@ class MainGUI(QWidget):
                 dock.toggleView(True)
 
     def _refresh_view_menu(self) -> None:
+        for display in list(self.display_dock_actions):
+            action = self.display_dock_actions.get(display)
+            if action is None or sip.isdeleted(action):
+                self.display_dock_actions.pop(display, None)
+                continue
         self.menubar.populate_view_menu(
             [dock for dock in self.dock_by_key.values()],
             list(self.display_dock_actions.values()),
@@ -223,13 +215,12 @@ class MainGUI(QWidget):
             except Exception:
                 pass
 
-        action = dock.toggleViewAction()
-        action.setText(self._display_title(state))
+        action = QAction(self._display_title(state), self)
         action.setCheckable(True)
         visible = bool(getattr(state, "docked_visible", True))
         action.setChecked(visible)
-        self.display_dock_actions[state] = action
         action.toggled.connect(lambda checked, display=state: self._on_display_dock_toggled(display, checked))
+        self.display_dock_actions[state] = action
 
         if not visible:
             self._set_display_visibility(state, False, update_action=False)
@@ -252,15 +243,19 @@ class MainGUI(QWidget):
                 action.toggled.disconnect()
             except Exception:
                 pass
+            try:
+                self.menubar.view_menu.removeAction(action)
+            except Exception:
+                pass
             action.setParent(None)
             action.deleteLater()
 
         if dock is not None:
-            if hasattr(self.dock_manager, "removeDockWidget"):
-                try:
+            try:
+                if hasattr(self.dock_manager, "removeDockWidget"):
                     self.dock_manager.removeDockWidget(dock)
-                except Exception:
-                    pass
+            except Exception:
+                pass
             dock.setWidget(None)
             dock.deleteLater()
 
@@ -271,6 +266,10 @@ class MainGUI(QWidget):
             return
         dock = self.display_docks.get(state)
         action = self.display_dock_actions.get(state)
+        if action is not None and sip.isdeleted(action):
+            self.display_dock_actions.pop(state, None)
+            action = None
+
         name = self._display_title(state)
         if dock is not None:
             try:
@@ -305,6 +304,9 @@ class MainGUI(QWidget):
         if dock is not None:
             dock.toggleView(visible)
         action = self.display_dock_actions.get(display)
+        if action is not None and sip.isdeleted(action):
+            self.display_dock_actions.pop(display, None)
+            action = None
         if action is not None and update_action:
             if action.isChecked() != visible:
                 action.blockSignals(True)

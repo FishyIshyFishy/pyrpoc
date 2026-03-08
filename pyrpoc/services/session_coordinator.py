@@ -6,7 +6,6 @@ from PyQt6.QtCore import QObject, QTimer
 
 from pyrpoc.domain.app_state import AppState, ParameterValue
 from pyrpoc.domain.session_state import (
-    DisplaySessionState,
     InstrumentSessionState,
     ModalitySessionState,
     OptoControlSessionState,
@@ -107,18 +106,9 @@ class SessionCoordinator(QObject):
                     config_values=[],
                     user_label=row.user_label,
                 )
-                for row in self.app_state.optocontrols
-            ],
-            displays=[
-                DisplaySessionState(
-                    type_key=display.type_key,
-                    attached=bool(getattr(display, "attached", True)),
-                    dock_visible=bool(getattr(display, "docked_visible", True)),
-                    config_values=list(getattr(display, "config_values", [])),
-                    user_label=getattr(display, "user_label", None),
-                )
-                for display in self.app_state.displays
-            ],
+            for row in self.app_state.optocontrols
+        ],
+            displays=[],
             modality=modality_state,
             gui_layout=self.main_window.capture_layout_state(),
         )
@@ -172,20 +162,6 @@ class SessionCoordinator(QObject):
                 self.modality_service.select_modality(session.modality.selected_key)
                 if session.modality.configured_params:
                     self.modality_service.configure(self._values_to_raw(session.modality.configured_params))
-            except Exception:
-                pass
-
-        for row in session.displays:
-            try:
-                display = self.display_service.create_display(
-                    row.type_key,
-                    self._values_to_raw(row.config_values),
-                    user_label=row.user_label,
-                )
-                display.user_label = row.user_label
-                self.display_service.set_dock_visibility(display, bool(row.dock_visible))
-                if not row.attached:
-                    self.display_service.detach(display)
             except Exception:
                 pass
 

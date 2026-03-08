@@ -3,6 +3,7 @@ from __future__ import annotations
 from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtGui import QAction, QActionGroup
 from PyQt6.QtWidgets import QMenu, QMenuBar
+from PyQt6 import sip
 
 
 class MainMenuBar(QMenuBar):
@@ -58,6 +59,8 @@ class MainMenuBar(QMenuBar):
             if docks:
                 self.view_menu.addSeparator()
             for action in display_actions:
+                if sip.isdeleted(action):
+                    continue
                 if not action.isCheckable():
                     action.setCheckable(True)
                 self.view_menu.addAction(action)

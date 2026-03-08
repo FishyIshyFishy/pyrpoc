@@ -147,6 +147,7 @@ class DisplayService(QObject):
             rows.append(
                 {
                     "state": display,
+                    "display_id": id(display),
                     "key": key,
                     "name": name,
                     "attached": bool(getattr(display, "attached", True)),
@@ -154,6 +155,18 @@ class DisplayService(QObject):
                 }
             )
         return rows
+
+    def get_display_by_id(self, display_id: int) -> BaseDisplay | None:
+        for display in self.app_state.displays:
+            if id(display) == display_id:
+                return display
+        return None
+
+    def set_display_name(self, display: BaseDisplay, user_label: str) -> None:
+        self._require_state(display)
+        label = (user_label or "").strip()
+        display.user_label = label or None
+        self.display_changed.emit(display)
 
     def get_widget(self, display: BaseDisplay) -> BaseDisplay:
         self._require_state(display)
