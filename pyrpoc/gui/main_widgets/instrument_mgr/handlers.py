@@ -233,7 +233,7 @@ def _reorder_cards(
     current_cards: list[InstanceCardWidget] = []
     while widget.instances_layout.count() > 0:
         item = widget.instances_layout.takeAt(0)
-        card = item.widget()
+        card = item.widget() # pyright: ignore
         if card is not None:
             current_cards.append(card)
 
