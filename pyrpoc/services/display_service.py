@@ -6,14 +6,16 @@ from PyQt6.QtCore import QObject, pyqtSignal
 
 from pyrpoc.backend_utils.data import BaseData
 from pyrpoc.backend_utils.parameter_utils import ParameterValidationError, coerce_parameter_values
-from pyrpoc.domain.app_state import AppState, DisplayState, ParameterValue
+from pyrpoc.domain.app_state import AppState, ParameterValue
 from pyrpoc.displays.base_display import BaseDisplay
 from pyrpoc.displays.display_registry import display_registry
 from pyrpoc.rpoc.types import RPOCImageInput
 
 
 class DisplayService(QObject):
-    # declare all signals at the top
+    # from display manager actions / modality data stream
+    # through service inventory + push_data routing
+    # to live display widgets and UI refresh/autosave signals.
     display_added = pyqtSignal(object)
     display_removed = pyqtSignal(object)
     display_changed = pyqtSignal(object)
@@ -36,7 +38,21 @@ class DisplayService(QObject):
                 compatible.append(key)
         return compatible
 
-    def create_display(self, key: str, raw_settings: dict[str, Any]) -> DisplayState:
+    def create_display(
+        self,
+        key: str,
+        raw_settings: dict[str, Any],
+        user_label: str | None = None,
+    ) -> BaseDisplay:
+        """
+        Build one display instance, configure it, and register it in runtime inventory.
+
+        Route:
+        - DisplayManager add click
+        - -> `display_mgr.handlers.on_add_clicked`
+        - -> this method
+        - -> `display_added` signal for tab/list rendering.
+        """
         display_cls = display_registry.get_class(key)
         settings_parameters = display_cls.DISPLAY_PARAMETERS
 
@@ -48,82 +64,103 @@ class DisplayService(QObject):
             self.display_error.emit(None, str(exc))
             raise
 
-        state = DisplayState(
-            type_key=key,
-            instance=widget,
-            attached=True,
-            config_values=[ParameterValue(label=k, value=v) for k, v in settings.items()],
+        widget.attached = True
+        widget.docked_visible = True
+        widget.config_values = [ParameterValue(label=k, value=v) for k, v in settings.items()]
+        widget.last_error = None
+        widget.user_label = user_label if isinstance(user_label, str) and user_label.strip() else getattr(
+            widget,
+            "user_label",
+            None,
         )
-        self.app_state.displays.append(state)
-        self.display_added.emit(state)
-        return state
 
-    def remove_display(self, state: DisplayState) -> None:
-        if state not in self.app_state.displays:
+        self.app_state.displays.append(widget)
+        self.display_added.emit(widget)
+        return widget
+
+    def remove_display(self, display: BaseDisplay) -> None:
+        if display not in self.app_state.displays:
             return
+        self.app_state.displays.remove(display)
+        self.display_removed.emit(display)
+        display.deleteLater()
 
-        self.app_state.displays.remove(state)
-        self.display_removed.emit(state)
-        state.instance.deleteLater()
+    def attach(self, display: BaseDisplay) -> None:
+        self._require_state(display)
+        display.attached = True
+        self.display_changed.emit(display)
 
-    def attach(self, state: DisplayState) -> None:
-        self._require_state(state)
-        state.attached = True
-        self.display_changed.emit(state)
+    def detach(self, display: BaseDisplay) -> None:
+        self._require_state(display)
+        display.attached = False
+        self.display_changed.emit(display)
 
-    def detach(self, state: DisplayState) -> None:
-        self._require_state(state)
-        state.attached = False
-        self.display_changed.emit(state)
+    def set_dock_visibility(self, display: BaseDisplay, visible: bool) -> None:
+        self._require_state(display)
+        if bool(getattr(display, "docked_visible", True)) == bool(visible):
+            return
+        display.docked_visible = bool(visible)
+        self.display_changed.emit(display)
 
     def push_data(self, data: BaseData) -> None:
+        """
+        Fan out one modality frame to all attached compatible displays.
+
+        Route:
+        - `AppController` wires `ModalityService.data_ready`
+        - -> this method
+        - -> per-display render calls + error signals.
+        """
         self._last_data = data
-        for state in self.app_state.displays:
-            if not state.attached:
+        for display in self.app_state.displays:
+            if not getattr(display, "attached", True):
+                continue
+            if not bool(getattr(display, "docked_visible", True)):
                 continue
 
-            widget = state.instance
-            compatible = any(isinstance(data, accepted) for accepted in widget.ACCEPTED_DATA_TYPES)
+            compatible = any(isinstance(data, accepted) for accepted in display.ACCEPTED_DATA_TYPES)
             if not compatible:
-                key = (id(state), type(data).__name__)
+                key = (id(display), type(data).__name__)
                 if key not in self._reported_incompatibilities:
                     self._reported_incompatibilities.add(key)
                     self.display_error.emit(
-                        state,
+                        display,
                         f"display cannot render data type {type(data).__name__}",
                     )
                 continue
 
             try:
-                widget.render(data)
+                display.render(data)
             except Exception as exc:
-                state.last_error = str(exc)
-                self.display_error.emit(state, str(exc))
+                display.last_error = str(exc)
+                self.display_error.emit(display, str(exc))
 
     def get_latest_data(self) -> BaseData | None:
         return self._last_data
 
     def list_instances(self) -> list[dict[str, Any]]:
         rows: list[dict[str, Any]] = []
-        for state in self.app_state.displays:
-            key = state.type_key
+        for display in self.app_state.displays:
+            key = display.type_key
             cls = display_registry.get_class(key)
+            name = getattr(display, "user_label", None) or getattr(cls, "DISPLAY_NAME", key)
             rows.append(
                 {
-                    "state": state,
+                    "state": display,
                     "key": key,
-                    "name": getattr(cls, "DISPLAY_NAME", key),
-                    "attached": state.attached,
+                    "name": name,
+                    "attached": bool(getattr(display, "attached", True)),
+                    "docked_visible": bool(getattr(display, "docked_visible", True)),
                 }
             )
         return rows
 
-    def get_widget(self, state: DisplayState) -> BaseDisplay:
-        self._require_state(state)
-        return state.instance
+    def get_widget(self, display: BaseDisplay) -> BaseDisplay:
+        self._require_state(display)
+        return display
 
-    def get_rpoc_input(self, state: DisplayState) -> RPOCImageInput | None:
-        widget = self.get_widget(state)
+    def get_rpoc_input(self, display: BaseDisplay) -> RPOCImageInput | None:
+        widget = self.get_widget(display)
         exporter = getattr(widget, "export_rpoc_input", None)
         if not callable(exporter):
             return None
@@ -137,10 +174,11 @@ class DisplayService(QObject):
             )
         return payload
 
-    def _require_state(self, state: DisplayState) -> None:
-        if state not in self.app_state.displays:
-            raise KeyError("display state does not exist")
+    def _require_state(self, display: BaseDisplay) -> None:
+        if display not in self.app_state.displays:
+            raise KeyError("display does not exist")
 
     def clear_all(self) -> None:
-        for state in list(self.app_state.displays):
-            self.remove_display(state)
+        # from session reset/restore -> through clear_all -> to empty display inventory
+        for display in list(self.app_state.displays):
+            self.remove_display(display)

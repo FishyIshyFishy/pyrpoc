@@ -1,11 +1,10 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
-from collections.abc import Callable
 
 from PyQt6.QtWidgets import QMessageBox
 
-from pyrpoc.domain.app_state import InstrumentState
+from pyrpoc.instruments.base_instrument import BaseInstrument
 from pyrpoc.gui.main_widgets.opto_control_mgr.instance_card import InstanceCardWidget
 
 if TYPE_CHECKING:
@@ -16,8 +15,9 @@ def refresh_available(widget: InstrumentManagerWidget) -> None:
     """Populate dropdown from registered instrument classes.
 
     Route:
-    - widget startup / state refresh -> this function -> `InstrumentService.list_available`
-    - contract comes from registry metadata, no direct instrument imports in manager.
+    - widget startup / state refresh
+    - -> `InstrumentService.list_available`
+    - -> registry descriptors rendered in combo.
     """
     current_key = widget._selected_type_key()
     widget.type_combo.blockSignals(True)
@@ -39,19 +39,19 @@ def refresh_available(widget: InstrumentManagerWidget) -> None:
 def refresh_instances(widget: InstrumentManagerWidget) -> None:
     """Synchronize card widgets with current service inventory.
 
-    Route:
+    Signal refresh flow:
     - service emits `inventory_changed` after add/remove
-    - manager diffs desired state against existing cards and only creates/removes
-      changed rows, preserving expanded bodies for unchanged rows.
+    - -> this function diffs desired rows against current card map
+    - -> only changed cards are created/removed.
     """
-    desired_cards: dict[InstrumentState, InstanceCardWidget] = {}
+    desired_cards: dict[BaseInstrument, InstanceCardWidget] = {}
     rows = widget.instrument_service.list_instances()
     wanted_states = [row["state"] for row in rows]
 
     _remove_missing_cards(widget, set(wanted_states))
 
     for row in rows:
-        state: InstrumentState = row["state"]
+        state: BaseInstrument = row["state"]
         name = row["name"]
 
         card = widget.state.card_widgets.get(state)
@@ -69,12 +69,14 @@ def on_expand_requested(widget: InstrumentManagerWidget, state_obj: object) -> N
     """Handle lazy widget creation for a card body.
 
     Route:
-    - user presses Expand button on card -> this handler -> `InstrumentService.get_widget`
-    - result widget is inserted into card body and rendered there.
+    - card Expand click
+    - -> this handler
+    - -> `InstrumentService.get_widget`
+    - -> card body widget attach.
     """
-    if not isinstance(state_obj, InstrumentState):
+    if not isinstance(state_obj, BaseInstrument):
         return
-    card: InstanceCardWidget = widget.state.card_widgets.get(state_obj) # pyright: ignore
+    card: InstanceCardWidget = widget.state.card_widgets.get(state_obj)  # pyright: ignore
     if card is None:
         return
 
@@ -104,8 +106,10 @@ def on_add_clicked(widget: InstrumentManagerWidget) -> None:
     """Add selected instrument class into app state.
 
     Route:
-    - Add button click -> this handler -> `InstrumentService.create_instrument`
-    - service emits inventory signal for card list refresh.
+    - Add button click
+    - -> this handler
+    - -> `InstrumentService.create_instrument`
+    - -> inventory signal for card refresh.
     """
     key = widget._selected_type_key()
     if not key:
@@ -121,9 +125,11 @@ def on_remove_requested(widget: InstrumentManagerWidget, state_obj: object) -> N
     """Remove an instrument instance and persist via service.
 
     Route:
-    - card Remove button -> this handler -> `InstrumentService.remove_instrument`
+    - card Remove click
+    - -> this handler
+    - -> `InstrumentService.remove_instrument`.
     """
-    if isinstance(state_obj, InstrumentState):
+    if isinstance(state_obj, BaseInstrument):
         widget.instrument_service.remove_instrument(state_obj)
         widget.status_label.setText("Status: removed instrument")
 
@@ -134,7 +140,7 @@ def show_error(widget: InstrumentManagerWidget, message: str) -> None:
     QMessageBox.critical(widget, "Instrument Error", message)
 
 
-def _attach_widget_to_card(widget: InstrumentManagerWidget, state_obj: InstrumentState, card: InstanceCardWidget) -> bool:
+def _attach_widget_to_card(widget: InstrumentManagerWidget, state_obj: BaseInstrument, card: InstanceCardWidget) -> bool:
     """Build one concrete widget body for an expanded card.
 
     Returns True if widget could be instantiated and attached.
@@ -178,20 +184,16 @@ def _mark_stale_status(card: InstanceCardWidget, status: str) -> None:
     card.set_local_status(status)
 
 
-def _reset_instrument_widget_cache(state_obj: InstrumentState) -> None:
-    """Reset cached widget state on the concrete instrument object if present.
-
-    This is used only for stale-object recovery, e.g., when an old QWidget wrapper
-    was deleted after an aggressive card rebuild path.
-    """
-    if hasattr(state_obj.instance, "widget"):
+def _reset_instrument_widget_cache(state_obj: BaseInstrument) -> None:
+    """Reset cached widget state on the concrete instrument object if present."""
+    if hasattr(state_obj, "widget"):
         try:
-            setattr(state_obj.instance, "widget", None)
+            setattr(state_obj, "widget", None)
         except Exception:
             pass
 
 
-def _remove_missing_cards(widget: InstrumentManagerWidget, wanted_states: set[InstrumentState]) -> None:
+def _remove_missing_cards(widget: InstrumentManagerWidget, wanted_states: set[BaseInstrument]) -> None:
     """Delete only cards for states that no longer exist in service inventory."""
     for state, card in list(widget.state.card_widgets.items()):
         if state not in wanted_states:
@@ -202,7 +204,7 @@ def _remove_missing_cards(widget: InstrumentManagerWidget, wanted_states: set[In
 
 def _create_card(
     widget: InstrumentManagerWidget,
-    state: InstrumentState,
+    state: BaseInstrument,
     name: str,
     key: str,
 ) -> InstanceCardWidget:
@@ -223,17 +225,17 @@ def _refresh_card_text(card: InstanceCardWidget, name: str, key: str) -> None:
 
 def _reorder_cards(
     widget: InstrumentManagerWidget,
-    desired_cards: dict[InstrumentState, InstanceCardWidget],
+    desired_cards: dict[BaseInstrument, InstanceCardWidget],
     rows: list[dict[str, object]],
 ) -> None:
     """Rebuild layout order to match service rows without recreating card instances."""
-    desired_order: list[InstrumentState] = [row["state"] for row in rows]
+    desired_order: list[BaseInstrument] = [row["state"] for row in rows]
 
     # Lift widgets out of layout while preserving instances.
     current_cards: list[InstanceCardWidget] = []
     while widget.instances_layout.count() > 0:
         item = widget.instances_layout.takeAt(0)
-        card = item.widget() # pyright: ignore
+        card = item.widget()  # pyright: ignore
         if card is not None:
             current_cards.append(card)
 

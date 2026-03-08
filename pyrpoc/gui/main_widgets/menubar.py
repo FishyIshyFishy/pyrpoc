@@ -50,10 +50,17 @@ class MainMenuBar(QMenuBar):
         self._style_group = QActionGroup(self)
         self._style_group.setExclusive(True)
 
-    def populate_view_menu(self, docks: list) -> None:
+    def populate_view_menu(self, docks: list, display_actions: list[QAction] | None = None) -> None:
         self.view_menu.clear()
         for dock in docks:
             self.view_menu.addAction(dock.toggleViewAction())
+        if display_actions:
+            if docks:
+                self.view_menu.addSeparator()
+            for action in display_actions:
+                if not action.isCheckable():
+                    action.setCheckable(True)
+                self.view_menu.addAction(action)
 
     def populate_style_menu(self, selected_mode: str) -> None:
         self.style_menu.clear()

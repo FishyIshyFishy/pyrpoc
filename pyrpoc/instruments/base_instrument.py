@@ -14,6 +14,11 @@ class BaseInstrument(ABC):
     def __init__(self, alias: str | None = None):
         self.alias = alias or self.INSTRUMENT_KEY
 
+    @property
+    def type_key(self) -> str:
+        """Registry key used by persistence and inventory rows to recreate this instance."""
+        return self.alias
+
     @classmethod
     def get_contract(cls) -> dict[str, Any]:
         return {

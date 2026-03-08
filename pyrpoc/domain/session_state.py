@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 
 from .app_state import ParameterValue
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 4
 
 
 @dataclass
@@ -28,6 +28,7 @@ class OptoControlSessionState:
 class DisplaySessionState:
     type_key: str
     attached: bool = True
+    dock_visible: bool = True
     config_values: list[ParameterValue] = field(default_factory=list)
     user_label: str | None = None
 

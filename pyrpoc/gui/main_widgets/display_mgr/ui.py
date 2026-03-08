@@ -6,9 +6,9 @@ from PyQt6.QtWidgets import (
     QComboBox,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QListWidget,
     QPushButton,
-    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -17,13 +17,13 @@ from PyQt6.QtWidgets import (
 @dataclass
 class DisplayManagerUI:
     display_combo: QComboBox
+    name_input: QLineEdit
     add_btn: QPushButton
     instances_list: QListWidget
     attach_btn: QPushButton
     detach_btn: QPushButton
     remove_btn: QPushButton
     status_label: QLabel
-    display_tabs: QTabWidget
 
 
 def build_display_manager_ui(owner: QWidget) -> DisplayManagerUI:
@@ -34,12 +34,19 @@ def build_display_manager_ui(owner: QWidget) -> DisplayManagerUI:
     display_combo = QComboBox(owner)
     add_row.addWidget(display_combo, 1)
     add_btn = QPushButton("Add", owner)
-    add_row.addWidget(add_btn)
+    add_row.addWidget(add_btn, 0)
     root.addLayout(add_row)
+
+    name_row = QHBoxLayout()
+    name_row.addWidget(QLabel("Display Name:", owner))
+    name_input = QLineEdit(owner)
+    name_input.setPlaceholderText("Optional display name")
+    name_row.addWidget(name_input, 1)
+    root.addLayout(name_row)
 
     root.addWidget(QLabel("Active Displays:", owner))
     instances_list = QListWidget(owner)
-    root.addWidget(instances_list)
+    root.addWidget(instances_list, 1)
 
     action_row = QHBoxLayout()
     attach_btn = QPushButton("Attach", owner)
@@ -54,16 +61,14 @@ def build_display_manager_ui(owner: QWidget) -> DisplayManagerUI:
     status_label = QLabel("Status: ready", owner)
     root.addWidget(status_label)
 
-    display_tabs = QTabWidget(owner)
-    root.addWidget(display_tabs, 1)
-
+    # Remove per-widget display tabs; display widgets now live in main ADS docks.
     return DisplayManagerUI(
         display_combo=display_combo,
+        name_input=name_input,
         add_btn=add_btn,
         instances_list=instances_list,
         attach_btn=attach_btn,
         detach_btn=detach_btn,
         remove_btn=remove_btn,
         status_label=status_label,
-        display_tabs=display_tabs,
     )

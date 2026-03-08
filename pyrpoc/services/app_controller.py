@@ -29,6 +29,9 @@ class AppController(QObject):
         self.display_service = DisplayService(self.app_state, self)
         self.opto_control_service = OptoControlService(self.app_state, self)
 
+        # Acquisition-to-display flow:
+        # - modality acquires one frame and emits `data_ready`
+        # - this connection routes that payload into display fanout rendering.
         self.modality_service.data_ready.connect(self.display_service.push_data)
         self.instrument_service.inventory_changed.connect(
             lambda *_: self.modality_service.validate_required_instruments()

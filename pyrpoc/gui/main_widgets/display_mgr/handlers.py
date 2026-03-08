@@ -6,7 +6,7 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QListWidgetItem, QMessageBox
 
 from pyrpoc.backend_utils.data import BaseData
-from pyrpoc.domain.app_state import DisplayState
+from pyrpoc.displays.base_display import BaseDisplay
 from pyrpoc.displays.display_registry import display_registry
 from pyrpoc.gui.main_widgets.display_mgr.forms import prompt_display_parameters
 
@@ -15,6 +15,14 @@ if TYPE_CHECKING:
 
 
 def refresh_available(widget: DisplayManagerWidget) -> None:
+    """
+    Build display dropdown constrained by selected modality contract.
+
+    Route:
+    - modality selected signal
+    - -> this handler
+    - -> display list filtered by output type and allowed display keys.
+    """
     contract = widget.modality_service.get_selected_contract()
     output_type = contract.get("output_data_type")
     allowed_displays = set(contract.get("allowed_displays", []))
@@ -41,10 +49,18 @@ def refresh_available(widget: DisplayManagerWidget) -> None:
 
 
 def refresh_instances(widget: DisplayManagerWidget) -> None:
+    """
+    Rebuild visible instance list from service inventory rows.
+
+    Route:
+    - display add/remove/attach/detach signal
+    - -> this handler
+    - -> list widget rows with stable object identity in UserRole.
+    """
     current = widget._selected_display()
     widget.instances_list.clear()
     for idx, row in enumerate(widget.display_service.list_instances(), start=1):
-        state: DisplayState = row["state"]
+        state: BaseDisplay = row["state"]
         marker = "attached" if row["attached"] else "detached"
         item = QListWidgetItem(f"{row['name']} [{idx}] ({marker})")
         item.setData(Qt.ItemDataRole.UserRole, state)
@@ -59,6 +75,15 @@ def refresh_instances(widget: DisplayManagerWidget) -> None:
 
 
 def on_add_clicked(widget: DisplayManagerWidget) -> None:
+    """
+    Add one display using the selected registry key and optional parameter dialog.
+
+    Route:
+    - Add button click
+    - -> this handler
+    - -> `DisplayService.create_display`
+    - -> `display_added` tab/list refresh.
+    """
     key = widget._selected_display_key()
     if not key:
         show_error(widget, "No compatible display available for selected modality")
@@ -66,6 +91,12 @@ def on_add_clicked(widget: DisplayManagerWidget) -> None:
 
     raw_settings: dict[str, Any] = {}
     display_cls = display_registry.get_class(key)
+    display_name = widget.name_input.text().strip()
+    if not display_name:
+        row = widget.display_service.list_available()
+        fallback = next((row_entry for row_entry in row if row_entry["key"] == key), None)
+        display_name = str(fallback.get("display_name", key)) if isinstance(fallback, dict) else key
+
     if any(display_cls.DISPLAY_PARAMETERS.values()):
         settings = prompt_display_parameters(widget, display_cls.DISPLAY_PARAMETERS)
         if settings is None:
@@ -73,8 +104,9 @@ def on_add_clicked(widget: DisplayManagerWidget) -> None:
         raw_settings = settings
 
     try:
-        widget.display_service.create_display(key, raw_settings)
+        widget.display_service.create_display(key, raw_settings, user_label=display_name)
         widget.status_label.setText("Status: added display")
+        widget.name_input.clear()
     except Exception as exc:
         show_error(widget, str(exc))
 
@@ -105,36 +137,14 @@ def on_remove_clicked(widget: DisplayManagerWidget) -> None:
     widget.status_label.setText("Status: removed display")
 
 
-def row_tab_title(state: DisplayState, widget: DisplayManagerWidget) -> str:
-    cls = display_registry.get_class(state.type_key)
-    return f"{getattr(cls, 'DISPLAY_NAME', state.type_key)} [{id(state)}]"
-
-
-def on_display_added(widget: DisplayManagerWidget, state: object) -> None:
-    if isinstance(state, DisplayState):
-        marker = str(id(state))
-        exists = False
-        for idx in range(widget.display_tabs.count()):
-            if widget.display_tabs.tabToolTip(idx) == marker:
-                exists = True
-                break
-        if not exists:
-            widget.display_tabs.addTab(state.instance, row_tab_title(state, widget))
-            widget.display_tabs.setTabToolTip(widget.display_tabs.count() - 1, marker)
-    widget.status_label.setText("Status: display added")
+def on_display_changed(widget: DisplayManagerWidget, state: object) -> None:
+    del state
+    widget.status_label.setText("Status: display updated")
     refresh_instances(widget)
 
 
 def on_display_removed(widget: DisplayManagerWidget, state: object) -> None:
-    if not isinstance(state, DisplayState):
-        refresh_instances(widget)
-        return
-    for idx in range(widget.display_tabs.count()):
-        if widget.display_tabs.tabToolTip(idx) == str(id(state)):
-            tab = widget.display_tabs.widget(idx)
-            widget.display_tabs.removeTab(idx)
-            del tab
-            break
+    del state
     refresh_instances(widget)
 
 

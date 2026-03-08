@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from PyQt6.QtWidgets import QWidget
 
@@ -8,6 +8,9 @@ from pyrpoc.backend_utils.contracts import ParameterGroups
 from pyrpoc.backend_utils.data import BaseData
 from pyrpoc.backend_utils.parameter_utils import validate_parameter_groups
 from pyrpoc.rpoc.types import RPOCImageInput
+
+if TYPE_CHECKING:
+    from pyrpoc.domain.app_state import ParameterValue
 
 
 class BaseDisplay(QWidget):
@@ -29,6 +32,17 @@ class BaseDisplay(QWidget):
 
     def __init__(self, parent: QWidget | None = None):
         super().__init__(parent)
+        # Runtime metadata used by DisplayService/session persistence.
+        self.attached: bool = True
+        self.docked_visible: bool = True
+        self.config_values: list[ParameterValue] = []
+        self.user_label: str | None = None
+        self.last_error: str | None = None
+
+    @property
+    def type_key(self) -> str:
+        """Registry key used by session restore and inventory rows."""
+        return self.DISPLAY_KEY
 
     @classmethod
     def get_contract(cls) -> dict[str, Any]:

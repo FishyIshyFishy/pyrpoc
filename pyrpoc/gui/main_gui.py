@@ -4,9 +4,12 @@ from dataclasses import dataclass
 from enum import Enum
 
 from PyQt6.QtCore import QByteArray
+from PyQt6.QtGui import QAction
 from PyQt6.QtWidgets import QVBoxLayout, QWidget
 import PyQt6Ads as qtads
 
+from pyrpoc.displays.base_display import BaseDisplay
+from pyrpoc.displays.display_registry import display_registry
 from pyrpoc.domain.session_state import GuiLayoutSessionState
 from pyrpoc.gui.main_widgets.acquisition_mgr import AcquisitionManagerWidget
 from pyrpoc.gui.main_widgets.display_mgr import DisplayManagerWidget
@@ -59,14 +62,20 @@ class MainGUI(QWidget):
         self.dock_manager.setStyleSheet("")
         self.docks: list[qtads.CDockWidget] = []
         self.dock_by_key: dict[DockKey, qtads.CDockWidget] = {}
+        self.display_docks: dict[BaseDisplay, qtads.CDockWidget] = {}
+        self.display_dock_actions: dict[BaseDisplay, QAction] = {}
         self.menubar = MainMenuBar(self)
         self._build_default_docks()
+
+        self.display_service.display_added.connect(self._on_display_added)
+        self.display_service.display_removed.connect(self._on_display_removed)
+        self.display_service.display_changed.connect(self._on_display_changed)
 
         layout = QVBoxLayout(self)
         layout.setMenuBar(self.menubar)
         layout.addWidget(self.dock_manager)
 
-        self.menubar.populate_view_menu(self.docks)
+        self._refresh_view_menu()
         selected_mode = self.theme_controller.get_saved_mode()
         self.menubar.populate_style_menu(selected_mode)
         self.menubar.style_selected.connect(self.set_style)
@@ -149,6 +158,7 @@ class MainGUI(QWidget):
         if state.ads_state_base64:
             raw = QByteArray.fromBase64(QByteArray(state.ads_state_base64.encode("ascii")))
             restored = bool(self.dock_manager.restoreState(raw))
+
         if not restored:
             self.restore_default_layout()
             for key, visible in state.dock_visibility.items():
@@ -157,8 +167,146 @@ class MainGUI(QWidget):
                         dock.toggleView(visible)
                         break
 
+        for row in self.display_service.list_instances():
+            state_obj = row["state"]
+            visible = bool(row.get("docked_visible", True))
+            self._set_display_visibility(state_obj, visible, update_action=False)
+
+        self._refresh_view_menu()
+
     def restore_default_layout(self) -> None:
         for key in (DockKey.ACQUISITION, DockKey.INSTRUMENTS, DockKey.DISPLAYS, DockKey.OPTOCONTROLS):
             dock = self.dock_by_key.get(key)
             if dock is not None:
                 dock.toggleView(True)
+
+    def _refresh_view_menu(self) -> None:
+        self.menubar.populate_view_menu(
+            [dock for dock in self.dock_by_key.values()],
+            list(self.display_dock_actions.values()),
+        )
+
+    def _display_title(self, display: BaseDisplay) -> str:
+        name = getattr(display, "user_label", None)
+        if name:
+            return name
+        try:
+            cls = display_registry.get_class(display.type_key)
+            return getattr(cls, "DISPLAY_NAME", display.type_key)
+        except Exception:
+            return display.type_key
+
+    def _on_display_added(self, state: object) -> None:
+        if not isinstance(state, BaseDisplay):
+            return
+        if state in self.display_docks:
+            self._on_display_changed(state)
+            return
+
+        dock = qtads.CDockWidget(self._display_title(state))
+        dock.setWidget(state)
+        self.display_docks[state] = dock
+
+        try:
+            self.dock_manager.addDockWidget(qtads.DockWidgetArea.RightDockWidgetArea, dock)
+        except Exception:
+            try:
+                self.dock_manager.addDockWidget(qtads.DockWidgetArea.LeftDockWidgetArea, dock)
+            except Exception:
+                dock.deleteLater()
+                self.display_docks.pop(state, None)
+                return
+
+        if hasattr(dock, "setFloating"):
+            try:
+                dock.setFloating(True)
+            except Exception:
+                pass
+
+        action = dock.toggleViewAction()
+        action.setText(self._display_title(state))
+        action.setCheckable(True)
+        visible = bool(getattr(state, "docked_visible", True))
+        action.setChecked(visible)
+        self.display_dock_actions[state] = action
+        action.toggled.connect(lambda checked, display=state: self._on_display_dock_toggled(display, checked))
+
+        if not visible:
+            self._set_display_visibility(state, False, update_action=False)
+        else:
+            self._set_display_visibility(state, True, update_action=False)
+
+        if hasattr(dock, "closed"):
+            dock.closed.connect(lambda *_args, display=state: self._on_display_dock_closed(display))
+
+        self._refresh_view_menu()
+
+    def _on_display_removed(self, state: object) -> None:
+        if not isinstance(state, BaseDisplay):
+            return
+        dock = self.display_docks.pop(state, None)
+        action = self.display_dock_actions.pop(state, None)
+
+        if action is not None:
+            try:
+                action.toggled.disconnect()
+            except Exception:
+                pass
+            action.setParent(None)
+            action.deleteLater()
+
+        if dock is not None:
+            if hasattr(self.dock_manager, "removeDockWidget"):
+                try:
+                    self.dock_manager.removeDockWidget(dock)
+                except Exception:
+                    pass
+            dock.setWidget(None)
+            dock.deleteLater()
+
+        self._refresh_view_menu()
+
+    def _on_display_changed(self, state: object) -> None:
+        if not isinstance(state, BaseDisplay):
+            return
+        dock = self.display_docks.get(state)
+        action = self.display_dock_actions.get(state)
+        name = self._display_title(state)
+        if dock is not None:
+            try:
+                dock.setWindowTitle(name)
+            except Exception:
+                pass
+        if action is not None:
+            action.setText(name)
+            if action.isChecked() != bool(getattr(state, "docked_visible", True)):
+                action.blockSignals(True)
+                action.setChecked(bool(getattr(state, "docked_visible", True)))
+                action.blockSignals(False)
+
+        if dock is not None:
+            self._set_display_visibility(state, bool(getattr(state, "docked_visible", True)), update_action=False)
+        self._refresh_view_menu()
+
+    def _on_display_dock_toggled(self, display: BaseDisplay, visible: bool) -> None:
+        if bool(getattr(display, "docked_visible", True)) == bool(visible):
+            return
+        self.display_service.set_dock_visibility(display, visible)
+
+    def _on_display_dock_closed(self, display: BaseDisplay) -> None:
+        try:
+            self.display_service.detach(display)
+        except Exception:
+            pass
+        self.display_service.set_dock_visibility(display, False)
+
+    def _set_display_visibility(self, display: BaseDisplay, visible: bool, update_action: bool = True) -> None:
+        dock = self.display_docks.get(display)
+        if dock is not None:
+            dock.toggleView(visible)
+        action = self.display_dock_actions.get(display)
+        if action is not None and update_action:
+            if action.isChecked() != visible:
+                action.blockSignals(True)
+                action.setChecked(visible)
+                action.blockSignals(False)

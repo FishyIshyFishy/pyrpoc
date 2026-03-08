@@ -15,26 +15,6 @@ class ParameterValue:
     value: Any
 
 
-@dataclass(eq=False)
-class InstrumentState:
-    type_key: str
-    instance: BaseInstrument
-    connected: bool = False
-    config_values: list[ParameterValue] = field(default_factory=list)
-    last_error: str | None = None
-    user_label: str | None = None
-
-
-@dataclass(eq=False)
-class DisplayState:
-    type_key: str
-    instance: BaseDisplay
-    attached: bool = True
-    config_values: list[ParameterValue] = field(default_factory=list)
-    last_error: str | None = None
-    user_label: str | None = None
-
-
 @dataclass
 class ModalityState:
     selected_key: str | None = None
@@ -54,8 +34,11 @@ class GuiLayoutState:
 
 @dataclass
 class AppState:
-    instruments: list[InstrumentState] = field(default_factory=list)
+    # Instance-first inventory model:
+    # - each list entry is the concrete runtime object
+    # - service rows still expose this object via row["state"] for UI compatibility
+    instruments: list[BaseInstrument] = field(default_factory=list)
     optocontrols: list[BaseOptoControl] = field(default_factory=list)
-    displays: list[DisplayState] = field(default_factory=list)
+    displays: list[BaseDisplay] = field(default_factory=list)
     modality: ModalityState = field(default_factory=ModalityState)
     gui_layout: GuiLayoutState = field(default_factory=GuiLayoutState)

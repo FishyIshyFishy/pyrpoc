@@ -44,6 +44,39 @@ class SessionCodec:
         return out
 
     @classmethod
+    def _decode_config_values_with_legacy_fallback(cls, item: dict[str, Any]) -> list[ParameterValue]:
+        """
+        Accept modern and legacy config shapes.
+
+        Supported shapes:
+        - current: {"config_values": [{"label": "...", "value": ...}, ...]}
+        - legacy map: {"config": {"Label": value, ...}} or {"settings": {...}}
+        """
+        raw_values = item.get("config_values", [])
+        if isinstance(raw_values, list):
+            try:
+                return cls._decode_param_values(raw_values)
+            except Exception:
+                pass
+
+        for legacy_field in ("config", "settings"):
+            legacy = item.get(legacy_field)
+            if isinstance(legacy, dict):
+                return [
+                    ParameterValue(label=str(label), value=cls._decode_value(value))
+                    for label, value in legacy.items()
+                ]
+        return []
+
+    @classmethod
+    def _pick_type_key(cls, item: dict[str, Any], *fallback_keys: str) -> str:
+        for key in ("type_key", *fallback_keys):
+            value = item.get(key)
+            if isinstance(value, str) and value:
+                return value
+        return ""
+
+    @classmethod
     def to_json_dict(cls, state: SessionState) -> dict[str, Any]:
         raw = asdict(state)
         raw["instruments"] = [
@@ -69,6 +102,7 @@ class SessionCodec:
             {
                 "type_key": row.type_key,
                 "attached": row.attached,
+                "dock_visible": row.dock_visible,
                 "config_values": cls._encode_param_values(row.config_values),
                 "user_label": row.user_label,
             }
@@ -89,37 +123,59 @@ class SessionCodec:
             raise ValueError("session data must be an object")
 
         schema_version = int(raw.get("schema_version", -1))
-        if schema_version not in (1, SCHEMA_VERSION):
+        if schema_version not in (1, 2, 3, SCHEMA_VERSION):
             raise ValueError("unsupported session schema version")
 
-        instruments = [
-            InstrumentSessionState(
-                type_key=str(item["type_key"]),
-                connected=bool(item.get("connected", False)),
-                config_values=cls._decode_param_values(item.get("config_values", [])),
-                user_label=item.get("user_label"),
+        instruments: list[InstrumentSessionState] = []
+        for item in raw.get("instruments", []):
+            if not isinstance(item, dict):
+                continue
+            type_key = cls._pick_type_key(item, "instrument_key", "key")
+            if not type_key:
+                continue
+            instruments.append(
+                InstrumentSessionState(
+                    type_key=type_key,
+                    connected=bool(item.get("connected", False)),
+                    config_values=cls._decode_config_values_with_legacy_fallback(item),
+                    user_label=item.get("user_label"),
+                )
             )
-            for item in raw.get("instruments", [])
-        ]
-        optocontrols = [
-            OptoControlSessionState(
-                type_key=str(item["type_key"]),
-                connected=bool(item.get("connected", False)),
-                enabled=bool(item.get("enabled", False)),
-                config_values=cls._decode_param_values(item.get("config_values", [])),
-                user_label=item.get("user_label"),
+
+        optocontrols: list[OptoControlSessionState] = []
+        for item in raw.get("optocontrols", []):
+            if not isinstance(item, dict):
+                continue
+            type_key = cls._pick_type_key(item, "opto_control_key", "key")
+            if not type_key:
+                continue
+            optocontrols.append(
+                OptoControlSessionState(
+                    type_key=type_key,
+                    connected=bool(item.get("connected", False)),
+                    enabled=bool(item.get("enabled", False)),
+                    config_values=cls._decode_config_values_with_legacy_fallback(item),
+                    user_label=item.get("user_label"),
+                )
             )
-            for item in raw.get("optocontrols", [])
-        ]
-        displays = [
-            DisplaySessionState(
-                type_key=str(item["type_key"]),
-                attached=bool(item.get("attached", True)),
-                config_values=cls._decode_param_values(item.get("config_values", [])),
-                user_label=item.get("user_label"),
+
+        displays: list[DisplaySessionState] = []
+        for item in raw.get("displays", []):
+            if not isinstance(item, dict):
+                continue
+            type_key = cls._pick_type_key(item, "display_key", "key")
+            if not type_key:
+                continue
+            displays.append(
+                DisplaySessionState(
+                    type_key=type_key,
+                    attached=bool(item.get("attached", True)),
+                    dock_visible=bool(item.get("dock_visible", True)),
+                    config_values=cls._decode_config_values_with_legacy_fallback(item),
+                    user_label=item.get("user_label"),
+                )
             )
-            for item in raw.get("displays", [])
-        ]
+
         modality_raw = raw.get("modality")
         modality: ModalitySessionState | None = None
         if isinstance(modality_raw, dict):
