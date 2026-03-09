@@ -105,8 +105,7 @@ class MaskOptoControlWidget(BaseOptoControlWidget):
         self.path_edit.blockSignals(False)
 
     def _emit_change(self) -> None:
-        if self.on_change is not None:
-            self.on_change()
+        self.request_persist()
 
     def _on_port_changed(self, value: int) -> None:
         self.control.daq_port = int(value)
@@ -269,8 +268,17 @@ class MaskOptoControl(BaseOptoControl):
         alias: str | None = None,
         user_label: str | None = None,
         enabled: bool = False,
+        *,
+        instance_id: str | None = None,
+        connected: bool = False,
     ):
-        super().__init__(alias=alias or self.OPTOCONTROL_KEY, user_label=user_label, enabled=enabled)
+        super().__init__(
+            alias=alias or self.OPTOCONTROL_KEY,
+            user_label=user_label,
+            enabled=enabled,
+            instance_id=instance_id,
+            connected=connected,
+        )
         self.widget: QWidget | None = None
         self.daq_port: int = 0
         self.daq_line: int = 0
@@ -311,6 +319,23 @@ class MaskOptoControl(BaseOptoControl):
                 "has_mask_data": self.mask_data is not None,
             },
         )
+
+    def export_persistence_state(self) -> dict[str, object]:
+        return {
+            "daq_port": int(self.daq_port),
+            "daq_line": int(self.daq_line),
+            "mask_path": str(self.mask_path or "").strip(),
+        }
+
+    def import_persistence_state(self, state: dict[str, object]) -> None:
+        self.daq_port = int(state.get("daq_port", self.daq_port))
+        self.daq_line = int(state.get("daq_line", self.daq_line))
+        self.mask_path = str(state.get("mask_path", self.mask_path) or "").strip()
+        self.mask_data = None
+        if self.mask_path:
+            image = cv2.imread(str(Path(self.mask_path)), cv2.IMREAD_GRAYSCALE)
+            if image is not None and image.ndim == 2:
+                self.mask_data = image.astype(np.uint8, copy=True)
 
 
 Mask = MaskOptoControl

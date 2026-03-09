@@ -6,9 +6,11 @@ from PyQt6.QtWidgets import QWidget
 from pyrpoc.gui.main_widgets.acquisition_mgr.handlers import (
     acquire_single_frame,
     handle_modality_selected,
+    on_parameter_values_changed,
     handle_requirements_changed,
     on_continuous_clicked,
     on_modality_selected,
+    on_parameter_widgets_changed,
     on_service_error,
     on_start_clicked,
     on_stop_clicked,
@@ -53,6 +55,7 @@ class AcquisitionManagerWidget(QWidget):
         self.stop_btn.clicked.connect(self._on_stop_clicked)
 
         self.modality_service.modality_selected.connect(self._handle_modality_selected)
+        self.modality_service.modality_params_changed.connect(self._on_parameter_values_changed)
         self.modality_service.requirements_changed.connect(self._handle_requirements_changed)
         self.modality_service.acq_started.connect(lambda: self.status_label.setText("Status: acquiring"))
         self.modality_service.acq_stopped.connect(lambda: self.status_label.setText("Status: stopped"))
@@ -84,3 +87,9 @@ class AcquisitionManagerWidget(QWidget):
 
     def _on_service_error(self, message: str) -> None:
         on_service_error(self, message)
+
+    def _on_parameter_widgets_changed(self) -> None:
+        on_parameter_widgets_changed(self)
+
+    def _on_parameter_values_changed(self, values: object) -> None:
+        on_parameter_values_changed(self, values)

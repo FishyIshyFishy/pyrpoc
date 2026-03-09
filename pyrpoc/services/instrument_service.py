@@ -20,6 +20,7 @@ class InstrumentService(QObject):
     """
 
     inventory_changed = pyqtSignal()
+    instance_changed = pyqtSignal(object)
 
     def __init__(self, app_state: AppState, parent=None):
         super().__init__(parent)
@@ -36,7 +37,15 @@ class InstrumentService(QObject):
         """
         return instrument_registry.describe_all()
 
-    def create_instrument(self, key: str) -> BaseInstrument:
+    def create_instrument(
+        self,
+        key: str,
+        *,
+        instance_id: str | None = None,
+        persisted_state: dict[str, Any] | None = None,
+        user_label: str | None = None,
+        connected: bool = False,
+    ) -> BaseInstrument:
         """
         Instantiate one instrument and register it in runtime inventory.
 
@@ -48,6 +57,12 @@ class InstrumentService(QObject):
         """
         cls = instrument_registry.get_class(key)
         instance = cls(alias=key)
+        if instance_id:
+            instance.instance_id = str(instance_id)
+        instance.user_label = user_label
+        instance.connected = bool(connected)
+        if isinstance(persisted_state, dict):
+            instance.import_persistence_state(dict(persisted_state))
         self.app_state.instruments.append(instance)
         self.inventory_changed.emit()
         return instance
@@ -141,6 +156,10 @@ class InstrumentService(QObject):
         """
         for instrument in list(self.app_state.instruments):
             self.remove_instrument(instrument)
+
+    def mark_instance_changed(self, instrument: BaseInstrument) -> None:
+        self._require_instrument(instrument)
+        self.instance_changed.emit(instrument)
 
     def _require_instrument(self, instrument: BaseInstrument) -> None:
         if instrument not in self.app_state.instruments:

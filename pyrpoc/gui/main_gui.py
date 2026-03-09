@@ -3,14 +3,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 
-from PyQt6.QtGui import QAction
+from PyQt6.QtCore import pyqtSignal
+from PyQt6.QtGui import QAction, QCloseEvent
 from PyQt6.QtWidgets import QVBoxLayout, QWidget
 from PyQt6 import sip
 import PyQt6Ads as qtads
 
 from pyrpoc.displays.base_display import BaseDisplay
 from pyrpoc.displays.display_registry import display_registry
-from pyrpoc.domain.session_state import GuiLayoutSessionState
 from pyrpoc.gui.main_widgets.acquisition_mgr import AcquisitionManagerWidget
 from pyrpoc.gui.main_widgets.display_mgr import DisplayManagerWidget
 from pyrpoc.gui.main_widgets.instrument_mgr import InstrumentManagerWidget
@@ -42,6 +42,8 @@ class DockSpec:
 
 
 class MainGUI(QWidget):
+    closing = pyqtSignal()
+
     def __init__(
         self,
         instrument_service: InstrumentService,
@@ -94,6 +96,7 @@ class MainGUI(QWidget):
             AcquisitionManagerWidget(self.modality_service),
             dock_specs[0].area,
         )
+        dock_acq.setObjectName("dock.acquisition")
         self.dock_by_key[dock_specs[0].key] = dock_acq
 
         dock_instruments = self.add_dock(
@@ -102,6 +105,7 @@ class MainGUI(QWidget):
             dock_specs[1].area,
             tab_with=dock_acq,
         )
+        dock_instruments.setObjectName("dock.instruments")
         self.dock_by_key[dock_specs[1].key] = dock_instruments
 
         dock_displays = self.add_dock(
@@ -110,6 +114,7 @@ class MainGUI(QWidget):
             dock_specs[2].area,
             tab_with=dock_acq,
         )
+        dock_displays.setObjectName("dock.displays")
         self.dock_by_key[dock_specs[2].key] = dock_displays
 
         dock_opto = self.add_dock(
@@ -122,6 +127,7 @@ class MainGUI(QWidget):
             dock_specs[3].area,
             tab_with=dock_acq,
         )
+        dock_opto.setObjectName("dock.optocontrols")
         self.dock_by_key[dock_specs[3].key] = dock_opto
 
     def add_dock(
@@ -145,27 +151,6 @@ class MainGUI(QWidget):
     def set_style(self, theme_mode: str) -> None:
         applied = self.theme_controller.apply(theme_mode)
         self.menubar.set_active_style(applied)
-
-    def capture_layout_state(self) -> GuiLayoutSessionState:
-        dock_visibility = {
-            key.value: bool(dock.toggleViewAction().isChecked()) for key, dock in self.dock_by_key.items()
-        }
-        return GuiLayoutSessionState(ads_state_base64=None, dock_visibility=dock_visibility)
-
-    def restore_layout_state(self, state: GuiLayoutSessionState) -> None:
-        self.restore_default_layout()
-        for key, visible in state.dock_visibility.items():
-            for dock_key, dock in self.dock_by_key.items():
-                if dock_key.value == key:
-                    dock.toggleView(visible)
-                    break
-        self._refresh_view_menu()
-
-    def restore_default_layout(self) -> None:
-        for key in (DockKey.ACQUISITION, DockKey.INSTRUMENTS, DockKey.DISPLAYS, DockKey.OPTOCONTROLS):
-            dock = self.dock_by_key.get(key)
-            if dock is not None:
-                dock.toggleView(True)
 
     def _refresh_view_menu(self) -> None:
         for display in list(self.display_dock_actions):
@@ -196,6 +181,7 @@ class MainGUI(QWidget):
             return
 
         dock = qtads.CDockWidget(self._display_title(state))
+        dock.setObjectName(self._display_dock_object_name(state))
         dock.setWidget(state)
         self.display_docks[state] = dock
 
@@ -208,12 +194,6 @@ class MainGUI(QWidget):
                 dock.deleteLater()
                 self.display_docks.pop(state, None)
                 return
-
-        if hasattr(dock, "setFloating"):
-            try:
-                dock.setFloating(True)
-            except Exception:
-                pass
 
         action = QAction(self._display_title(state), self)
         action.setCheckable(True)
@@ -265,6 +245,13 @@ class MainGUI(QWidget):
 
         self._refresh_view_menu()
 
+    def _display_dock_object_name(self, display: BaseDisplay) -> str:
+        instance_id = str(getattr(display, "instance_id", "")).strip()
+        if not instance_id:
+            instance_id = str(id(display))
+        safe = "".join(ch if ch.isalnum() or ch in {"_", "-"} else "_" for ch in instance_id)
+        return f"dock.display.{safe}"
+
     def _on_display_changed(self, state: object) -> None:
         if not isinstance(state, BaseDisplay):
             return
@@ -291,7 +278,10 @@ class MainGUI(QWidget):
                 action.blockSignals(False)
 
         if dock is not None:
-            self._set_display_visibility(state, bool(getattr(state, "docked_visible", True)), update_action=False)
+            desired_visible = bool(getattr(state, "docked_visible", True))
+            current_visible = bool(dock.toggleViewAction().isChecked())
+            if current_visible != desired_visible:
+                self._set_display_visibility(state, desired_visible, update_action=False)
         self._refresh_view_menu()
 
     def _display_active(self, display: BaseDisplay) -> bool:
@@ -334,3 +324,7 @@ class MainGUI(QWidget):
                 action.blockSignals(True)
                 action.setChecked(visible)
                 action.blockSignals(False)
+
+    def closeEvent(self, event: QCloseEvent) -> None:
+        self.closing.emit()
+        super().closeEvent(event)

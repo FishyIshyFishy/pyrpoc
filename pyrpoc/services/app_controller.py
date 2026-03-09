@@ -59,7 +59,8 @@ class AppController(QObject):
         self.main_window.menubar.open_requested.connect(self.session_coordinator.restore_on_startup)
         self.main_window.menubar.save_requested.connect(self.session_coordinator.save_now)
         self.main_window.menubar.save_as_requested.connect(self.session_coordinator.save_now)
+        self.main_window.closing.connect(self.session_coordinator.save_now)
 
     def show(self) -> None:
-        self.session_coordinator.restore_on_startup()
         self.main_window.show()
+        self.session_coordinator.restore_on_startup()

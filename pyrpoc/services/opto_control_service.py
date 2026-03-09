@@ -13,6 +13,7 @@ from pyrpoc.optocontrols.opto_control_registry import opto_control_registry
 class OptoControlService(QObject):
     inventory_changed = pyqtSignal()
     control_state_changed = pyqtSignal(object, bool)
+    control_changed = pyqtSignal(object)
     opto_control_error = pyqtSignal(object, str)
 
     def __init__(self, app_state: AppState, parent=None):
@@ -22,7 +23,16 @@ class OptoControlService(QObject):
     def list_available(self) -> list[dict[str, Any]]:
         return opto_control_registry.describe_all()
 
-    def create_opto_control(self, key: str) -> BaseOptoControl:
+    def create_opto_control(
+        self,
+        key: str,
+        *,
+        instance_id: str | None = None,
+        persisted_state: dict[str, Any] | None = None,
+        user_label: str | None = None,
+        enabled: bool = False,
+        connected: bool = False,
+    ) -> BaseOptoControl:
         '''Create a control instance from dropdown selection and add it to app state.
 
         Called by `opto_control_mgr.handlers.on_add_clicked`, then rendered by
@@ -30,6 +40,13 @@ class OptoControlService(QObject):
         '''
         cls = opto_control_registry.get_class(key)
         instance = cls(alias=key)
+        if instance_id:
+            instance.instance_id = str(instance_id)
+        instance.user_label = user_label
+        instance.enabled = bool(enabled)
+        instance.connected = bool(connected)
+        if isinstance(persisted_state, dict):
+            instance.import_persistence_state(dict(persisted_state))
         self.app_state.optocontrols.append(instance)
         self.inventory_changed.emit()
         return instance
@@ -71,6 +88,7 @@ class OptoControlService(QObject):
         control: BaseOptoControl,
         parent: QWidget | None = None,
         display_service: Any | None = None,
+        on_change=None,
     ) -> QWidget:
         '''Return the concrete control widget for list rows and editors.
 
@@ -78,7 +96,7 @@ class OptoControlService(QObject):
         card bind user actions back into the service.
         '''
         self._require_control(control)
-        return control.get_widget(parent=parent, display_service=display_service)
+        return control.get_widget(parent=parent, display_service=display_service, on_change=on_change)
 
     def set_enabled(self, control: BaseOptoControl, enabled: bool) -> None:
         '''Track enabled state in the control instance and notify persistence/autosave path.
@@ -88,6 +106,7 @@ class OptoControlService(QObject):
         self._require_control(control)
         control.enabled = enabled
         self.control_state_changed.emit(control, enabled)
+        self.control_changed.emit(control)
 
     def collect_data_for_acquisition(self) -> list[tuple[Any, ...]]:
         '''Collect enabled control payloads in UI order.
@@ -109,3 +128,7 @@ class OptoControlService(QObject):
     def _require_control(self, control: BaseOptoControl) -> None:
         if control not in self.app_state.optocontrols:
             raise KeyError("opto-control is not registered")
+
+    def mark_control_changed(self, control: BaseOptoControl) -> None:
+        self._require_control(control)
+        self.control_changed.emit(control)

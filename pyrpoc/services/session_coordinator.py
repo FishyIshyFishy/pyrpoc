@@ -44,6 +44,7 @@ class SessionCoordinator(QObject):
         self.display_service = display_service
         self.opto_control_service = opto_control_service
         self.main_window = main_window
+        self._restore_in_progress = False
 
         self._save_timer = QTimer(self)
         self._save_timer.setSingleShot(True)
@@ -59,14 +60,19 @@ class SessionCoordinator(QObject):
         - to `save_now` snapshot persistence.
         """
         self.instrument_service.inventory_changed.connect(self.autosave_debounced)
+        self.instrument_service.instance_changed.connect(self.autosave_debounced)
         self.opto_control_service.inventory_changed.connect(self.autosave_debounced)
         self.opto_control_service.control_state_changed.connect(self.autosave_debounced)
+        self.opto_control_service.control_changed.connect(self.autosave_debounced)
         self.display_service.display_added.connect(lambda *_: self.autosave_debounced())
         self.display_service.display_removed.connect(lambda *_: self.autosave_debounced())
         self.display_service.display_changed.connect(lambda *_: self.autosave_debounced())
         self.modality_service.modality_selected.connect(lambda *_: self.autosave_debounced())
+        self.modality_service.modality_params_changed.connect(lambda *_: self.autosave_debounced())
 
     def autosave_debounced(self) -> None:
+        if self._restore_in_progress:
+            return
         self._save_timer.start()
 
     def _values_to_raw(self, values: list[ParameterValue]) -> dict[str, Any]:
@@ -90,12 +96,13 @@ class SessionCoordinator(QObject):
 
         return SessionState(
             theme_mode=self.theme_controller.get_saved_mode(),
-            # Instrument persistence remains minimal by design: type-key rows only.
             instruments=[
                 InstrumentSessionState(
                     type_key=instrument.type_key,
-                    connected=False,
-                    config_values=[],
+                    instance_id=str(getattr(instrument, "instance_id", "")),
+                    connected=bool(getattr(instrument, "connected", False)),
+                    persisted_state=instrument.export_persistence_state(),
+                    config_values=list(getattr(instrument, "config_values", [])),
                     user_label=getattr(instrument, "user_label", None),
                 )
                 for instrument in self.app_state.instruments
@@ -103,8 +110,10 @@ class SessionCoordinator(QObject):
             displays=[
                 DisplaySessionState(
                     type_key=display.type_key,
+                    instance_id=str(getattr(display, "instance_id", "")),
                     attached=bool(getattr(display, "attached", True)),
                     dock_visible=bool(getattr(display, "docked_visible", True)),
+                    persisted_state=display.export_persistence_state(),
                     config_values=list(getattr(display, "config_values", [])),
                     user_label=getattr(display, "user_label", None),
                 )
@@ -113,18 +122,21 @@ class SessionCoordinator(QObject):
             optocontrols=[
                 OptoControlSessionState(
                     type_key=row.type_key,
-                    connected=False,
-                    enabled=row.enabled,
-                    config_values=[],
-                    user_label=row.user_label,
+                    instance_id=str(getattr(row, "instance_id", "")),
+                    connected=bool(getattr(row, "connected", False)),
+                    enabled=bool(getattr(row, "enabled", False)),
+                    persisted_state=row.export_persistence_state(),
+                    config_values=list(getattr(row, "config_values", [])),
+                    user_label=getattr(row, "user_label", None),
                 )
                 for row in self.app_state.optocontrols
             ],
             modality=modality_state,
-            gui_layout=self.main_window.capture_layout_state(),
         )
 
     def save_now(self) -> None:
+        if self._restore_in_progress:
+            return
         self.repository.save(self.capture_snapshot())
 
     def reset_session(self) -> None:
@@ -136,7 +148,6 @@ class SessionCoordinator(QObject):
         self.app_state.modality.selected_class = None
         self.app_state.modality.instance = None
         self.app_state.modality.configured_params = []
-        self.main_window.restore_default_layout()
         self.save_now()
 
     def restore_on_startup(self) -> None:
@@ -150,55 +161,83 @@ class SessionCoordinator(QObject):
         - -> recreate instruments/optocontrols/displays
         - -> restore modality+layout.
         """
-        session = self.repository.load_or_default()
-        if self.repository.last_load_error:
-            self._show_restore_warning(self.repository.last_load_error)
-        self.theme_controller.apply(session.theme_mode)
+        self._restore_in_progress = True
+        try:
+            session = self.repository.load_or_default()
+            if self.repository.last_load_error:
+                self._show_restore_warning(self.repository.last_load_error)
+            self.theme_controller.apply(session.theme_mode)
 
-        self.display_service.clear_all()
-        self.opto_control_service.clear_all()
-        self.instrument_service.clear_all()
+            self.display_service.clear_all()
+            self.opto_control_service.clear_all()
+            self.instrument_service.clear_all()
+            self.modality_service.stop()
+            self.app_state.modality.selected_key = None
+            self.app_state.modality.selected_class = None
+            self.app_state.modality.instance = None
+            self.app_state.modality.configured_params = []
 
-        for row in session.instruments:
-            try:
-                self.instrument_service.create_instrument(row.type_key)
-            except Exception:
-                pass
-
-        for row in session.optocontrols:
-            state = self.opto_control_service.create_opto_control(row.type_key)
-            state.user_label = row.user_label
-            state.enabled = row.enabled
-
-        for row in session.displays:
-            try:
-                settings = self._values_to_raw(list(row.config_values))
-                display = self.display_service.create_display(
-                    row.type_key,
-                    settings,
-                    user_label=row.user_label,
-                )
-            except Exception:
-                continue
-            if not bool(row.attached):
+            for row in session.instruments:
                 try:
-                    self.display_service.detach(display)
+                    instrument = self.instrument_service.create_instrument(
+                        row.type_key,
+                        instance_id=row.instance_id,
+                        user_label=row.user_label,
+                        persisted_state=row.persisted_state,
+                        connected=False,
+                    )
+                    self._restore_instrument_connection(instrument)
                 except Exception:
                     pass
-            try:
-                self.display_service.set_dock_visibility(display, bool(row.dock_visible))
-            except Exception:
-                pass
 
-        if session.modality and session.modality.selected_key:
-            try:
-                self.modality_service.select_modality(session.modality.selected_key)
-                if session.modality.configured_params:
-                    self.modality_service.configure(self._values_to_raw(session.modality.configured_params))
-            except Exception:
-                pass
+            for row in session.optocontrols:
+                try:
+                    self.opto_control_service.create_opto_control(
+                        row.type_key,
+                        instance_id=row.instance_id,
+                        user_label=row.user_label,
+                        enabled=row.enabled,
+                        connected=row.connected,
+                        persisted_state=row.persisted_state,
+                    )
+                except Exception:
+                    continue
 
-        self.main_window.restore_layout_state(session.gui_layout)
+            for row in session.displays:
+                try:
+                    settings = self._values_to_raw(list(row.config_values))
+                    self.display_service.create_display(
+                        row.type_key,
+                        settings,
+                        user_label=row.user_label,
+                        instance_id=row.instance_id,
+                        persisted_state=row.persisted_state,
+                        attached=bool(row.attached),
+                        dock_visible=bool(row.dock_visible),
+                    )
+                except Exception:
+                    continue
+
+            restored_modality = False
+            if session.modality and session.modality.selected_key:
+                try:
+                    self.modality_service.select_modality(session.modality.selected_key)
+                    if session.modality.configured_params:
+                        self.modality_service.configure(self._values_to_raw(session.modality.configured_params))
+                    restored_modality = True
+                except Exception:
+                    restored_modality = False
+
+            if not restored_modality:
+                rows = self.modality_service.list_available()
+                if rows:
+                    try:
+                        self.modality_service.select_modality(str(rows[0]["key"]))
+                    except Exception:
+                        pass
+
+        finally:
+            self._restore_in_progress = False
 
     def _show_restore_warning(self, detail: str) -> None:
         QMessageBox.warning(
@@ -206,4 +245,21 @@ class SessionCoordinator(QObject):
             "Session Restore Warning",
             "Session restore failed and defaults were loaded.\n\n"
             f"{detail}",
+        )
+
+    def _restore_instrument_connection(self, instrument: object) -> None:
+        if not hasattr(instrument, "connect"):
+            return
+        name = str(getattr(instrument, "user_label", "") or getattr(instrument, "type_key", "instrument"))
+        try:
+            connected = bool(instrument.connect())
+        except Exception:
+            connected = False
+        instrument.connected = connected
+        if connected:
+            return
+        QMessageBox.warning(
+            self.main_window,
+            "Instrument Connection Warning",
+            f"Instrument '{name}' failed to connect and will remain disconnected.",
         )

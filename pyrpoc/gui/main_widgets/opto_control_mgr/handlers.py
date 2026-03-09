@@ -210,6 +210,7 @@ def _attach_widget_to_card(
             state_obj,
             parent=card.body_container,
             display_service=widget.display_service,
+            on_change=lambda c=state_obj, w=widget: _on_widget_changed(w, c),
         )
         card.set_body_widget(child_widget)
         return True
@@ -247,6 +248,10 @@ def _reset_control_widget_cache(state_obj: BaseOptoControl) -> None:
             setattr(state_obj, "widget", None)
         except Exception:
             pass
+
+
+def _on_widget_changed(widget: OptoControlManagerWidget, state_obj: BaseOptoControl) -> None:
+    widget.opto_control_service.mark_control_changed(state_obj)
 
 
 def _reorder_cards(

@@ -2,9 +2,10 @@ from __future__ import annotations
 
 from typing import Any
 
+import numpy as np
 from PyQt6.QtCore import QObject, pyqtSignal
 
-from pyrpoc.backend_utils.data import BaseData
+from pyrpoc.backend_utils.array_contracts import infer_array_contract
 from pyrpoc.backend_utils.parameter_utils import ParameterValidationError, coerce_parameter_values
 from pyrpoc.domain.app_state import AppState, ParameterValue
 from pyrpoc.displays.base_display import BaseDisplay
@@ -25,24 +26,32 @@ class DisplayService(QObject):
         super().__init__(parent)
         self.app_state = app_state
         self._reported_incompatibilities: set[tuple[int, str]] = set()
-        self._last_data: BaseData | None = None
+        self._last_data: np.ndarray | None = None
 
     def list_available(self) -> list[dict[str, Any]]:
         return display_registry.describe_all()
 
-    def list_compatible_with(self, data_type: type[BaseData]) -> list[str]:
+    def list_compatible_with(self, data_contract: str) -> list[str]:
         compatible: list[str] = []
+        if not isinstance(data_contract, str) or not data_contract.strip():
+            return compatible
         for key in display_registry.list_keys():
             display_cls = display_registry.get_class(key)
-            if any(issubclass(data_type, accepted) for accepted in display_cls.ACCEPTED_DATA_TYPES):
+            accepted_contracts = getattr(display_cls, "ACCEPTED_DATA_CONTRACTS", [])
+            if data_contract in accepted_contracts:
                 compatible.append(key)
         return compatible
 
     def create_display(
         self,
         key: str,
-        raw_settings: dict[str, Any],
+        raw_settings: dict[str, Any] | None = None,
         user_label: str | None = None,
+        *,
+        instance_id: str | None = None,
+        persisted_state: dict[str, Any] | None = None,
+        attached: bool = True,
+        dock_visible: bool = True,
     ) -> BaseDisplay:
         """
         Build one display instance, configure it, and register it in runtime inventory.
@@ -55,17 +64,20 @@ class DisplayService(QObject):
         """
         display_cls = display_registry.get_class(key)
         settings_parameters = display_cls.DISPLAY_PARAMETERS
+        settings_input = raw_settings or {}
 
         try:
-            settings = coerce_parameter_values(settings_parameters, raw_settings)
+            settings = coerce_parameter_values(settings_parameters, settings_input)
             widget = display_cls()
             widget.configure(settings)
         except (ParameterValidationError, Exception) as exc:
             self.display_error.emit(None, str(exc))
             raise
 
-        widget.attached = True
-        widget.docked_visible = True
+        widget.attached = bool(attached)
+        widget.docked_visible = bool(dock_visible)
+        if instance_id:
+            widget.instance_id = str(instance_id)
         widget.config_values = [ParameterValue(label=k, value=v) for k, v in settings.items()]
         widget.last_error = None
         widget.user_label = user_label if isinstance(user_label, str) and user_label.strip() else getattr(
@@ -73,8 +85,11 @@ class DisplayService(QObject):
             "user_label",
             None,
         )
+        if isinstance(persisted_state, dict):
+            widget.import_persistence_state(dict(persisted_state))
 
         self.app_state.displays.append(widget)
+        widget.set_persist_callback(lambda display=widget: self.mark_display_changed(display))
         self.display_added.emit(widget)
         return widget
 
@@ -82,6 +97,7 @@ class DisplayService(QObject):
         if display not in self.app_state.displays:
             return
         self.app_state.displays.remove(display)
+        display.set_persist_callback(None)
         try:
             display.setParent(None)
         except Exception:
@@ -108,7 +124,7 @@ class DisplayService(QObject):
         display.docked_visible = bool(visible)
         self.display_changed.emit(display)
 
-    def push_data(self, data: BaseData) -> None:
+    def push_data(self, data: np.ndarray) -> None:
         """
         Fan out one modality frame to all attached compatible displays.
 
@@ -117,21 +133,30 @@ class DisplayService(QObject):
         - -> this method
         - -> per-display render calls + error signals.
         """
+        if not isinstance(data, np.ndarray):
+            self.display_error.emit(None, f"display stream expects numpy.ndarray, got {type(data).__name__}")
+            return
+
         self._last_data = data
+        payload_contract = infer_array_contract(data)
         for display in self.app_state.displays:
             if not getattr(display, "attached", True):
                 continue
             if not bool(getattr(display, "docked_visible", True)):
                 continue
 
-            compatible = any(isinstance(data, accepted) for accepted in display.ACCEPTED_DATA_TYPES)
+            accepted_contracts = getattr(display, "ACCEPTED_DATA_CONTRACTS", [])
+            compatible = payload_contract is not None and payload_contract in accepted_contracts
             if not compatible:
-                key = (id(display), type(data).__name__)
+                key = (id(display), str(payload_contract))
                 if key not in self._reported_incompatibilities:
                     self._reported_incompatibilities.add(key)
                     self.display_error.emit(
                         display,
-                        f"display cannot render data type {type(data).__name__}",
+                        (
+                            f"display cannot render payload contract "
+                            f"{payload_contract!r}; accepted={accepted_contracts}"
+                        ),
                     )
                 continue
 
@@ -141,7 +166,7 @@ class DisplayService(QObject):
                 display.last_error = str(exc)
                 self.display_error.emit(display, str(exc))
 
-    def get_latest_data(self) -> BaseData | None:
+    def get_latest_data(self) -> np.ndarray | None:
         return self._last_data
 
     def list_instances(self) -> list[dict[str, Any]]:
@@ -172,6 +197,10 @@ class DisplayService(QObject):
         self._require_state(display)
         label = (user_label or "").strip()
         display.user_label = label or None
+        self.display_changed.emit(display)
+
+    def mark_display_changed(self, display: BaseDisplay) -> None:
+        self._require_state(display)
         self.display_changed.emit(display)
 
     def get_widget(self, display: BaseDisplay) -> BaseDisplay:

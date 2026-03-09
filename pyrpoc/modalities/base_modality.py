@@ -3,8 +3,10 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import Any
 
+import numpy as np
+
+from pyrpoc.backend_utils.array_contracts import CONTRACT_CHW_FLOAT32
 from pyrpoc.backend_utils.contracts import ParameterGroups
-from pyrpoc.backend_utils.data import BaseData
 from pyrpoc.backend_utils.parameter_utils import validate_parameter_groups
 from pyrpoc.instruments.base_instrument import BaseInstrument
 from pyrpoc.optocontrols.base_optocontrol import BaseOptoControl
@@ -17,7 +19,7 @@ class BaseModality(ABC):
     REQUIRED_INSTRUMENTS: list[type[BaseInstrument]] = []
     OPTIONAL_INSTRUMENTS: list[type[BaseInstrument]] = []
     ALLOWED_OPTOCONTROLS: list[type[BaseOptoControl]] = []
-    OUTPUT_DATA_TYPE: type[BaseData] = BaseData
+    OUTPUT_DATA_CONTRACT: str = CONTRACT_CHW_FLOAT32
     ALLOWED_DISPLAYS: list[str] = []
 
     def __init_subclass__(cls, **kwargs):
@@ -47,15 +49,16 @@ class BaseModality(ABC):
 
         validate_parameter_groups(getattr(cls, "PARAMETERS", {}))
 
-        output_type = getattr(cls, "OUTPUT_DATA_TYPE", BaseData)
-        if not isinstance(output_type, type) or not issubclass(output_type, BaseData):
-            raise TypeError("OUTPUT_DATA_TYPE must be a BaseData subclass")
+        output_contract = getattr(cls, "OUTPUT_DATA_CONTRACT", CONTRACT_CHW_FLOAT32)
+        if not isinstance(output_contract, str) or not output_contract.strip():
+            raise TypeError("OUTPUT_DATA_CONTRACT must be a non-empty string")
 
     def __init__(self):
         self._running = False
         self._configured = False
         self._params: dict[str, Any] = {}
         self._instruments: dict[type[BaseInstrument], BaseInstrument] = {}
+        self._opto_controls: list[tuple[BaseOptoControl, tuple[Any, ...]]] = []
 
     @classmethod
     def get_contract(cls) -> dict[str, Any]:
@@ -66,7 +69,7 @@ class BaseModality(ABC):
             "required_instruments": cls.REQUIRED_INSTRUMENTS,
             "optional_instruments": cls.OPTIONAL_INSTRUMENTS,
             "allowed_optocontrols": cls.ALLOWED_OPTOCONTROLS,
-            "output_data_type": cls.OUTPUT_DATA_TYPE,
+            "output_data_contract": cls.OUTPUT_DATA_CONTRACT,
             "allowed_displays": cls.ALLOWED_DISPLAYS,
         }
 
@@ -75,6 +78,7 @@ class BaseModality(ABC):
         self,
         params: dict[str, Any],
         instruments: dict[type[BaseInstrument], BaseInstrument],
+        opto_controls: list[tuple[BaseOptoControl, tuple[Any, ...]]],
     ) -> None:
         raise NotImplementedError
 
@@ -83,7 +87,7 @@ class BaseModality(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def acquire_once(self) -> BaseData:
+    def acquire_once(self) -> np.ndarray:
         raise NotImplementedError
 
     @abstractmethod

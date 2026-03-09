@@ -14,7 +14,6 @@ def main() -> int:
     theme_controller.apply_saved_or_default()
 
     controller = AppController(theme_controller=theme_controller)
-    app.aboutToQuit.connect(controller.session_coordinator.save_now)
     controller.main_window.resize(1400, 850)
     controller.show()
     return app.exec()

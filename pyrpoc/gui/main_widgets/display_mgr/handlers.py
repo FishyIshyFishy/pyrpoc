@@ -5,7 +5,6 @@ from typing import TYPE_CHECKING, Any
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QListWidgetItem, QMessageBox
 
-from pyrpoc.backend_utils.data import BaseData
 from pyrpoc.displays.display_registry import display_registry
 from pyrpoc.gui.main_widgets.display_mgr.forms import prompt_display_parameters
 
@@ -23,14 +22,14 @@ def refresh_available(widget: DisplayManagerWidget) -> None:
     - -> display list filtered by output type and allowed display keys.
     """
     contract = widget.modality_service.get_selected_contract()
-    output_type = contract.get("output_data_type")
+    output_contract = contract.get("output_data_contract")
     allowed_displays = set(contract.get("allowed_displays", []))
     current_key = widget._selected_display_key()
     available_rows = {row["key"]: row for row in widget.display_service.list_available()}
 
     widget.display_combo.clear()
-    if isinstance(output_type, type) and issubclass(output_type, BaseData):
-        keys = widget.display_service.list_compatible_with(output_type)
+    if isinstance(output_contract, str) and output_contract.strip():
+        keys = widget.display_service.list_compatible_with(output_contract.strip())
     else:
         keys = list(available_rows.keys())
 

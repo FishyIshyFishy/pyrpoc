@@ -228,6 +228,7 @@ def _refresh_card_text(card: InstanceCardWidget, state: BaseInstrument, name: st
 
 def _on_widget_changed(widget: InstrumentManagerWidget, state_obj: BaseInstrument, card: InstanceCardWidget) -> None:
     widget.status_label.setText("Status: widget changed")
+    widget.instrument_service.mark_instance_changed(state_obj)
     key = state_obj.type_key
     row_name = key
     for row in widget.instrument_service.list_available():

@@ -6,6 +6,8 @@ from typing import Any
 
 from PyQt6.QtWidgets import QWidget
 
+from pyrpoc.backend_utils.state_helpers import export_object_state, import_object_state, make_instance_id
+
 
 class BaseOptoControlWidget(QWidget):
     """Base class for all optocontrol UI widgets.
@@ -32,15 +34,39 @@ class BaseOptoControlWidget(QWidget):
         """
         return None
 
+    def request_persist(self) -> None:
+        if self.on_change is not None:
+            self.on_change()
+
 
 class BaseOptoControl(ABC):
     OPTOCONTROL_KEY: str = "base_optocontrol"
     DISPLAY_NAME: str = "Base Opto-Control"
+    PERSISTENCE_FIELDS: tuple[str, ...] | None = None
+    PERSISTENCE_EXCLUDE_FIELDS: tuple[str, ...] = (
+        "alias",
+        "connected",
+        "enabled",
+        "instance_id",
+        "last_error",
+        "user_label",
+        "widget",
+    )
 
-    def __init__(self, alias: str | None = None, user_label: str | None = None, enabled: bool = False):
+    def __init__(
+        self,
+        alias: str | None = None,
+        user_label: str | None = None,
+        enabled: bool = False,
+        *,
+        instance_id: str | None = None,
+        connected: bool = False,
+    ):
         self.alias = alias or self.OPTOCONTROL_KEY
+        self.instance_id = instance_id or make_instance_id(self.alias)
         self.user_label = user_label
         self.enabled = enabled
+        self.connected = bool(connected)
         self.last_error: str | None = None
 
     @property
@@ -89,3 +115,18 @@ class BaseOptoControl(ABC):
         Concrete controls override this when they hold threads, file handles, or external state.
         """
         self.last_error = None
+
+    def export_persistence_state(self) -> dict[str, Any]:
+        return export_object_state(
+            self,
+            include_fields=self.PERSISTENCE_FIELDS,
+            exclude_fields=self.PERSISTENCE_EXCLUDE_FIELDS,
+        )
+
+    def import_persistence_state(self, state: dict[str, Any]) -> None:
+        import_object_state(
+            self,
+            state,
+            include_fields=self.PERSISTENCE_FIELDS,
+            exclude_fields=self.PERSISTENCE_EXCLUDE_FIELDS,
+        )

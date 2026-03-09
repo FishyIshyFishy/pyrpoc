@@ -6,7 +6,6 @@ from .app_state import (
 )
 from .session_state import (
     DisplaySessionState,
-    GuiLayoutSessionState,
     InstrumentSessionState,
     ModalitySessionState,
     OptoControlSessionState,
@@ -17,7 +16,6 @@ from .stores import ObjectStore
 __all__ = [
     "AppState",
     "DisplaySessionState",
-    "GuiLayoutSessionState",
     "GuiLayoutState",
     "InstrumentSessionState",
     "ModalitySessionState",

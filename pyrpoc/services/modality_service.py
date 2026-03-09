@@ -2,19 +2,22 @@ from __future__ import annotations
 
 from typing import Any
 
+import numpy as np
 from PyQt6.QtCore import QObject, pyqtSignal
 
-from pyrpoc.backend_utils.data import BaseData
+from pyrpoc.backend_utils.array_contracts import matches_array_contract
 from pyrpoc.backend_utils.parameter_utils import ParameterValidationError, coerce_parameter_values
 from pyrpoc.domain.app_state import AppState, ParameterValue
 from pyrpoc.instruments.base_instrument import BaseInstrument
 from pyrpoc.modalities.base_modality import BaseModality
 from pyrpoc.modalities.mod_registry import modality_registry
+from pyrpoc.optocontrols.base_optocontrol import BaseOptoControl
 from .instrument_service import InstrumentService
 
 
 class ModalityService(QObject):
     modality_selected = pyqtSignal(str)
+    modality_params_changed = pyqtSignal(object)
     requirements_changed = pyqtSignal(bool, list)
     acq_started = pyqtSignal()
     data_ready = pyqtSignal(object)
@@ -113,10 +116,25 @@ class ModalityService(QObject):
             if optional_instances:
                 bound[optional_cls] = optional_instances[0]
 
-        self.app_state.modality.instance.configure(cleaned_params, bound)
-        self.app_state.modality.configured_params = [
-            ParameterValue(label=k, value=v) for k, v in cleaned_params.items()
-        ]
+        allowed_types = tuple(self.app_state.modality.selected_class.ALLOWED_OPTOCONTROLS)
+        bound_opto: list[tuple[BaseOptoControl, tuple[Any, ...]]] = []
+        for control in self.app_state.optocontrols:
+            if not control.enabled:
+                continue
+            if not allowed_types:
+                continue
+            if not isinstance(control, allowed_types):
+                continue
+            payload = control.prepare_for_acquisition()
+            if not isinstance(payload, tuple):
+                raise TypeError(
+                    f"{type(control).__name__}.prepare_for_acquisition must return a tuple, "
+                    f"got {type(payload).__name__}"
+                )
+            bound_opto.append((control, payload))
+
+        self.app_state.modality.instance.configure(cleaned_params, bound, bound_opto)
+        self.set_parameter_values(cleaned_params)
 
     def start(self) -> None:
         if self.app_state.modality.instance is None:
@@ -139,7 +157,7 @@ class ModalityService(QObject):
             self.acq_error.emit(str(exc))
             raise
 
-    def acquire_once(self) -> BaseData:
+    def acquire_once(self) -> np.ndarray:
         if self.app_state.modality.instance is None:
             raise RuntimeError("no modality selected")
         if not self.app_state.modality.running:
@@ -147,6 +165,20 @@ class ModalityService(QObject):
 
         try:
             data = self.app_state.modality.instance.acquire_once()
+            if not isinstance(data, np.ndarray):
+                raise TypeError(f"modality returned {type(data).__name__}, expected numpy.ndarray")
+            contract = str(
+                getattr(
+                    self.app_state.modality.selected_class,
+                    "OUTPUT_DATA_CONTRACT",
+                    "",
+                )
+            )
+            if contract and not matches_array_contract(data, contract):
+                raise ValueError(
+                    f"modality returned payload not matching contract '{contract}', "
+                    f"shape={data.shape}, dtype={data.dtype}"
+                )
             self.data_ready.emit(data)
             return data
         except Exception as exc:
@@ -164,3 +196,12 @@ class ModalityService(QObject):
         except Exception as exc:
             self.acq_error.emit(str(exc))
             raise
+
+    def set_parameter_values(self, raw_params: dict[str, Any]) -> None:
+        self.app_state.modality.configured_params = [
+            ParameterValue(label=k, value=v) for k, v in raw_params.items()
+        ]
+        self.modality_params_changed.emit(dict(raw_params))
+
+    def get_parameter_values(self) -> dict[str, Any]:
+        return {entry.label: entry.value for entry in self.app_state.modality.configured_params}

@@ -7,7 +7,6 @@ from typing import Any
 
 from pyrpoc.domain.app_state import ParameterValue
 from pyrpoc.domain.session_state import (
-    GuiLayoutSessionState,
     InstrumentSessionState,
     ModalitySessionState,
     OptoControlSessionState,
@@ -15,6 +14,7 @@ from pyrpoc.domain.session_state import (
     SessionState,
     SCHEMA_VERSION,
 )
+from pyrpoc.backend_utils.state_helpers import make_instance_id
 
 
 class SessionCodec:
@@ -87,6 +87,13 @@ class SessionCodec:
         return []
 
     @classmethod
+    def _legacy_config_to_state_dict(cls, item: dict[str, Any]) -> dict[str, Any]:
+        out: dict[str, Any] = {}
+        for entry in cls._decode_config_values_with_legacy_fallback(item):
+            out[entry.label] = entry.value
+        return out
+
+    @classmethod
     def _pick_type_key(cls, item: dict[str, Any], *fallback_keys: str) -> str:
         for key in ("type_key", *fallback_keys):
             value = item.get(key)
@@ -95,12 +102,21 @@ class SessionCodec:
         return ""
 
     @classmethod
+    def _pick_instance_id(cls, item: dict[str, Any], type_key: str) -> str:
+        value = item.get("instance_id", item.get("id", ""))
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+        return make_instance_id(type_key or "item")
+
+    @classmethod
     def to_json_dict(cls, state: SessionState) -> dict[str, Any]:
         raw = asdict(state)
         raw["instruments"] = [
             {
                 "type_key": row.type_key,
+                "instance_id": row.instance_id,
                 "connected": row.connected,
+                "persisted_state": cls._encode_value(row.persisted_state),
                 "config_values": cls._encode_param_values(row.config_values),
                 "user_label": row.user_label,
             }
@@ -109,8 +125,10 @@ class SessionCodec:
         raw["optocontrols"] = [
             {
                 "type_key": row.type_key,
+                "instance_id": row.instance_id,
                 "connected": row.connected,
                 "enabled": row.enabled,
+                "persisted_state": cls._encode_value(row.persisted_state),
                 "config_values": cls._encode_param_values(row.config_values),
                 "user_label": row.user_label,
             }
@@ -119,9 +137,11 @@ class SessionCodec:
         raw["displays"] = [
             {
                 "type_key": row.type_key,
+                "instance_id": row.instance_id,
                 "attached": row.attached,
                 "dock_visible": row.dock_visible,
                 "docked_visible": row.dock_visible,
+                "persisted_state": cls._encode_value(row.persisted_state),
                 "config_values": cls._encode_param_values(row.config_values),
                 "user_label": row.user_label,
             }
@@ -142,7 +162,7 @@ class SessionCodec:
             raise ValueError("session data must be an object")
 
         schema_version = int(raw.get("schema_version", -1))
-        if schema_version not in (1, 2, 3, SCHEMA_VERSION):
+        if schema_version not in (1, 2, 3, 4, SCHEMA_VERSION):
             raise ValueError("unsupported session schema version")
 
         instruments: list[InstrumentSessionState] = []
@@ -152,10 +172,17 @@ class SessionCodec:
             type_key = cls._pick_type_key(item, "instrument_key", "key")
             if not type_key:
                 continue
+            persisted_state_raw = item.get("persisted_state")
+            if isinstance(persisted_state_raw, dict):
+                persisted_state = cls._decode_value(persisted_state_raw)
+            else:
+                persisted_state = cls._legacy_config_to_state_dict(item)
             instruments.append(
                 InstrumentSessionState(
                     type_key=type_key,
+                    instance_id=cls._pick_instance_id(item, type_key),
                     connected=bool(item.get("connected", False)),
+                    persisted_state=persisted_state,
                     config_values=cls._decode_config_values_with_legacy_fallback(item),
                     user_label=item.get("user_label"),
                 )
@@ -168,11 +195,18 @@ class SessionCodec:
             type_key = cls._pick_type_key(item, "opto_control_key", "key")
             if not type_key:
                 continue
+            persisted_state_raw = item.get("persisted_state")
+            if isinstance(persisted_state_raw, dict):
+                persisted_state = cls._decode_value(persisted_state_raw)
+            else:
+                persisted_state = cls._legacy_config_to_state_dict(item)
             optocontrols.append(
                 OptoControlSessionState(
                     type_key=type_key,
+                    instance_id=cls._pick_instance_id(item, type_key),
                     connected=bool(item.get("connected", False)),
                     enabled=bool(item.get("enabled", False)),
+                    persisted_state=persisted_state,
                     config_values=cls._decode_config_values_with_legacy_fallback(item),
                     user_label=item.get("user_label"),
                 )
@@ -185,11 +219,18 @@ class SessionCodec:
             type_key = cls._pick_type_key(item, "display_key", "key")
             if not type_key:
                 continue
+            persisted_state_raw = item.get("persisted_state")
+            if isinstance(persisted_state_raw, dict):
+                persisted_state = cls._decode_value(persisted_state_raw)
+            else:
+                persisted_state = cls._legacy_config_to_state_dict(item)
             displays.append(
                 DisplaySessionState(
                     type_key=type_key,
+                    instance_id=cls._pick_instance_id(item, type_key),
                     attached=bool(item.get("attached", True)),
                     dock_visible=bool(item.get("dock_visible", item.get("docked_visible", True))),
+                    persisted_state=persisted_state,
                     config_values=cls._decode_config_values_with_legacy_fallback(item),
                     user_label=item.get("user_label"),
                 )
@@ -202,13 +243,6 @@ class SessionCodec:
                 selected_key=modality_raw.get("selected_key"),
                 configured_params=cls._decode_param_values(modality_raw.get("configured_params", [])),
             )
-
-        gui_raw = raw.get("gui_layout", {})
-        gui_layout = GuiLayoutSessionState(
-            ads_state_base64=gui_raw.get("ads_state_base64"),
-            dock_visibility=dict(gui_raw.get("dock_visibility", {})),
-            expanded_opto_index=gui_raw.get("expanded_opto_index"),
-        )
         return SessionState(
             schema_version=SCHEMA_VERSION,
             theme_mode=str(raw.get("theme_mode", "system")),
@@ -216,5 +250,4 @@ class SessionCodec:
             optocontrols=optocontrols,
             displays=displays,
             modality=modality,
-            gui_layout=gui_layout,
         )

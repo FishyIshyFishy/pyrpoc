@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from collections.abc import Callable
 from typing import Any
 
 from PyQt6.QtWidgets import (
@@ -35,6 +36,8 @@ def build_param_form(
     ui: AcquisitionManagerUI,
     state: AcquisitionManagerState,
     parameter_groups: dict[str, list[Parameter]],
+    initial_values: dict[str, Any] | None = None,
+    on_change: Callable[[], None] | None = None,
 ) -> None:
     clear_param_form(ui, state)
 
@@ -46,8 +49,12 @@ def build_param_form(
         form = QFormLayout(section_box)
         for param in parameters:
             widget = make_editor(param, ui.params_container)
+            if initial_values and param.label in initial_values:
+                _set_editor_value(widget, initial_values[param.label])
             state.param_widgets[param.label] = widget
             state.param_defs[param.label] = param
+            if on_change is not None:
+                _connect_editor_changed(widget, on_change)
             form.addRow(param.label, widget)
         ui.params_layout.addWidget(section_box)
 
@@ -102,3 +109,47 @@ def collect_values(widget_map: dict[str, QWidget]) -> dict[str, Any]:
         elif isinstance(widget, QLineEdit):
             values[label] = widget.text()
     return values
+
+
+def apply_values(widget_map: dict[str, QWidget], values: dict[str, Any]) -> None:
+    for label, value in values.items():
+        editor = widget_map.get(label)
+        if editor is None:
+            continue
+        _set_editor_value(editor, value)
+
+
+def _connect_editor_changed(widget: QWidget, callback: Callable[[], None]) -> None:
+    if isinstance(widget, QSpinBox):
+        widget.valueChanged.connect(lambda *_: callback())
+    elif isinstance(widget, QDoubleSpinBox):
+        widget.valueChanged.connect(lambda *_: callback())
+    elif isinstance(widget, QCheckBox):
+        widget.toggled.connect(lambda *_: callback())
+    elif isinstance(widget, QComboBox):
+        widget.currentTextChanged.connect(lambda *_: callback())
+    elif isinstance(widget, QLineEdit):
+        widget.textChanged.connect(lambda *_: callback())
+
+
+def _set_editor_value(widget: QWidget, value: Any) -> None:
+    if isinstance(widget, QSpinBox):
+        widget.blockSignals(True)
+        widget.setValue(int(value))
+        widget.blockSignals(False)
+    elif isinstance(widget, QDoubleSpinBox):
+        widget.blockSignals(True)
+        widget.setValue(float(value))
+        widget.blockSignals(False)
+    elif isinstance(widget, QCheckBox):
+        widget.blockSignals(True)
+        widget.setChecked(bool(value))
+        widget.blockSignals(False)
+    elif isinstance(widget, QComboBox):
+        widget.blockSignals(True)
+        widget.setCurrentText(str(value))
+        widget.blockSignals(False)
+    elif isinstance(widget, QLineEdit):
+        widget.blockSignals(True)
+        widget.setText("" if value is None else str(value))
+        widget.blockSignals(False)

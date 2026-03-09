@@ -14,8 +14,20 @@ class ConfocalDAQInstrument(BaseInstrument):
     INSTRUMENT_KEY = "confocal_daq"
     DISPLAY_NAME = "Confocal DAQ"
 
-    def __init__(self, alias: str | None = None):
-        super().__init__(alias=alias)
+    def __init__(
+        self,
+        alias: str | None = None,
+        *,
+        instance_id: str | None = None,
+        user_label: str | None = None,
+        connected: bool = False,
+    ):
+        super().__init__(
+            alias=alias,
+            instance_id=instance_id,
+            user_label=user_label,
+            connected=connected,
+        )
         self.device_name: str = "Dev1"
         self.sample_rate_hz: float = 100_000.0
         self.ai_channel_numbers: list[int] = list(range(9))

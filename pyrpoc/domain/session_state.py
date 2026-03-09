@@ -1,16 +1,19 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Any
 
 from .app_state import ParameterValue
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 
 @dataclass
 class InstrumentSessionState:
     type_key: str
+    instance_id: str = ""
     connected: bool = False
+    persisted_state: dict[str, Any] = field(default_factory=dict)
     config_values: list[ParameterValue] = field(default_factory=list)
     user_label: str | None = None
 
@@ -18,8 +21,10 @@ class InstrumentSessionState:
 @dataclass
 class OptoControlSessionState:
     type_key: str
+    instance_id: str = ""
     connected: bool = False
     enabled: bool = False
+    persisted_state: dict[str, Any] = field(default_factory=dict)
     config_values: list[ParameterValue] = field(default_factory=list)
     user_label: str | None = None
 
@@ -27,8 +32,10 @@ class OptoControlSessionState:
 @dataclass
 class DisplaySessionState:
     type_key: str
+    instance_id: str = ""
     attached: bool = True
     dock_visible: bool = True
+    persisted_state: dict[str, Any] = field(default_factory=dict)
     config_values: list[ParameterValue] = field(default_factory=list)
     user_label: str | None = None
 
@@ -40,13 +47,6 @@ class ModalitySessionState:
 
 
 @dataclass
-class GuiLayoutSessionState:
-    ads_state_base64: str | None = None
-    dock_visibility: dict[str, bool] = field(default_factory=dict)
-    expanded_opto_index: int | None = None
-
-
-@dataclass
 class SessionState:
     schema_version: int = SCHEMA_VERSION
     theme_mode: str = "system"
@@ -54,4 +54,3 @@ class SessionState:
     optocontrols: list[OptoControlSessionState] = field(default_factory=list)
     displays: list[DisplaySessionState] = field(default_factory=list)
     modality: ModalitySessionState | None = None
-    gui_layout: GuiLayoutSessionState = field(default_factory=GuiLayoutSessionState)
