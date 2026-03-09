@@ -145,44 +145,43 @@ class _MaskImageView(QGraphicsView):
 
 class MaskEditorWidget(QWidget):
     create_mask_requested = pyqtSignal(object)
+    mask_saved = pyqtSignal(object, object)
     cancel_requested = pyqtSignal()
     dirty_state_changed = pyqtSignal(bool)
 
     def __init__(self, image_data: np.ndarray | None = None, parent: QWidget | None = None):
         super().__init__(parent)
-        self._data = self._coerce_input_data(image_data)
-        self._h = int(self._data.shape[1])
-        self._w = int(self._data.shape[2])
-
-        self._channel_visibility = [True] * int(self._data.shape[0])
+        self.setObjectName("maskEditorRoot")
+        self.setStyleSheet(
+            "#maskEditorRoot, #maskEditorRoot QWidget { background: transparent; }"
+            "#maskEditorRoot QGraphicsView, #maskEditorRoot QTableWidget { background: transparent; }"
+        )
         self._rois: list[MaskRoi] = []
         self._next_roi_id = 1
         self._dirty = False
         self._display_qimage: QImage | None = None
 
-        self._data_min = float(np.min(self._data))
-        self._data_max = float(np.max(self._data))
-        if self._data_max <= self._data_min:
-            self._data_max = self._data_min + 1e-9
+        self._data = np.zeros((1, 1, 1), dtype=np.float32)
+        self._h = 1
+        self._w = 1
+        self._channel_visibility = [True]
+        self._data_min = 0.0
+        self._data_max = 1.0
+        self._apply_new_data(image_data)
 
         self._build_ui()
+        self._rebuild_channel_boxes()
+        self._reset_threshold_controls()
         self._update_view_image()
 
     def _build_ui(self) -> None:
         root = QHBoxLayout(self)
 
         left = QVBoxLayout()
-        channels_row = QHBoxLayout()
-        channels_row.addWidget(QLabel("Channels:", self))
+        self.channels_row = QHBoxLayout()
+        self.channels_row.addWidget(QLabel("Channels:", self))
         self.channel_boxes: list[QCheckBox] = []
-        for idx in range(self._data.shape[0]):
-            cb = QCheckBox(f"C{idx + 1}", self)
-            cb.setChecked(True)
-            cb.toggled.connect(lambda checked, i=idx: self._on_channel_toggled(i, checked))
-            self.channel_boxes.append(cb)
-            channels_row.addWidget(cb)
-        channels_row.addStretch(1)
-        left.addLayout(channels_row)
+        left.addLayout(self.channels_row)
 
         threshold_form = QFormLayout()
         self.low_spin = QSpinBox(self)
@@ -224,17 +223,17 @@ class MaskEditorWidget(QWidget):
 
         button_row = QHBoxLayout()
         preview_btn = QPushButton("Preview", self)
-        export_btn = QPushButton("Export", self)
+        save_btn = QPushButton("Save", self)
         create_btn = QPushButton("Create Mask", self)
         cancel_btn = QPushButton("Cancel", self)
         delete_btn = QPushButton("Delete Selected ROI", self)
         preview_btn.clicked.connect(self.preview_mask)
-        export_btn.clicked.connect(self.export_mask)
+        save_btn.clicked.connect(self.save_mask)
         create_btn.clicked.connect(self._emit_create)
         cancel_btn.clicked.connect(self.cancel_requested.emit)
         delete_btn.clicked.connect(self.delete_selected_roi)
         button_row.addWidget(preview_btn)
-        button_row.addWidget(export_btn)
+        button_row.addWidget(save_btn)
         button_row.addWidget(delete_btn)
         button_row.addStretch(1)
         button_row.addWidget(cancel_btn)
@@ -250,6 +249,66 @@ class MaskEditorWidget(QWidget):
         self.roi_table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
         right.addWidget(self.roi_table)
         root.addLayout(right, 2)
+
+    def _apply_new_data(self, image_data: np.ndarray | None) -> None:
+        self._data = self._coerce_input_data(image_data)
+        self._h = int(self._data.shape[1])
+        self._w = int(self._data.shape[2])
+        self._channel_visibility = [True] * int(self._data.shape[0])
+        self._data_min = float(np.min(self._data))
+        self._data_max = float(np.max(self._data))
+        if self._data_max <= self._data_min:
+            self._data_max = self._data_min + 1e-9
+
+    def _rebuild_channel_boxes(self) -> None:
+        while self.channels_row.count() > 1:
+            item = self.channels_row.takeAt(1)
+            child = item.widget()
+            if child is not None:
+                child.deleteLater()
+        self.channel_boxes = []
+        for idx in range(self._data.shape[0]):
+            cb = QCheckBox(f"C{idx + 1}", self)
+            cb.setChecked(True)
+            cb.toggled.connect(lambda checked, i=idx: self._on_channel_toggled(i, checked))
+            self.channel_boxes.append(cb)
+            self.channels_row.addWidget(cb)
+        self.channels_row.addStretch(1)
+
+    def _reset_threshold_controls(self) -> None:
+        int_min = int(np.floor(self._data_min))
+        int_max = int(np.ceil(self._data_max))
+        low_default = int(round(self._data_min + 0.2 * (self._data_max - self._data_min)))
+        high_default = int(round(self._data_min + 0.8 * (self._data_max - self._data_min)))
+        if high_default < low_default:
+            high_default = low_default
+        self.low_spin.blockSignals(True)
+        self.high_spin.blockSignals(True)
+        self.low_slider.blockSignals(True)
+        self.high_slider.blockSignals(True)
+        self.low_spin.setRange(int_min, int_max)
+        self.high_spin.setRange(int_min, int_max)
+        self.low_slider.setRange(int_min, int_max)
+        self.high_slider.setRange(int_min, int_max)
+        self.low_spin.setValue(low_default)
+        self.high_spin.setValue(high_default)
+        self.low_slider.setValue(low_default)
+        self.high_slider.setValue(high_default)
+        self.low_spin.blockSignals(False)
+        self.high_spin.blockSignals(False)
+        self.low_slider.blockSignals(False)
+        self.high_slider.blockSignals(False)
+
+    def set_image_data(self, image_data: np.ndarray | None) -> None:
+        self._apply_new_data(image_data)
+        self._rois.clear()
+        self._next_roi_id = 1
+        self.roi_table.setRowCount(0)
+        self.image_view.clear_rois()
+        self._rebuild_channel_boxes()
+        self._reset_threshold_controls()
+        self._set_dirty(False)
+        self._update_view_image()
 
     def _coerce_input_data(self, image_data: np.ndarray | None) -> np.ndarray:
         if image_data is None:
@@ -441,14 +500,14 @@ class MaskEditorWidget(QWidget):
         dlg.resize(max(320, self._w), max(240, self._h))
         dlg.exec()
 
-    def export_mask(self) -> None:
+    def save_mask(self) -> None:
         mask = self.generate_mask()
         if mask is None:
-            QMessageBox.warning(self, "No ROI", "Draw at least one ROI before exporting.")
+            QMessageBox.warning(self, "No ROI", "Draw at least one ROI before saving.")
             return
         path, _ = QFileDialog.getSaveFileName(
             self,
-            "Export Mask",
+            "Save Mask",
             "",
             "PNG (*.png);;TIFF (*.tif *.tiff);;All Files (*)",
         )
@@ -456,7 +515,9 @@ class MaskEditorWidget(QWidget):
             return
         ok = cv2.imwrite(str(Path(path)), mask)
         if not ok:
-            QMessageBox.critical(self, "Export Failed", f"Failed to save mask to '{path}'.")
+            QMessageBox.critical(self, "Save Failed", f"Failed to save mask to '{path}'.")
+            return
+        self.mask_saved.emit(str(path), mask.astype(np.uint8))
 
     def _emit_create(self) -> None:
         mask = self.generate_mask()

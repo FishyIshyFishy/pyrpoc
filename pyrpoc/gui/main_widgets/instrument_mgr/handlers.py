@@ -59,7 +59,7 @@ def refresh_instances(widget: InstrumentManagerWidget) -> None:
             card = _create_card(widget, state, name, row["key"])
             widget.state.card_widgets[state] = card
 
-        _refresh_card_text(card, name, row["key"])
+        _refresh_card_text(card, state, name, row["key"])
         desired_cards[state] = card
 
     _reorder_cards(widget, desired_cards, rows)
@@ -149,7 +149,7 @@ def _attach_widget_to_card(widget: InstrumentManagerWidget, state_obj: BaseInstr
         child = widget.instrument_service.get_widget(
             state_obj,
             parent=card.body_container,
-            on_change=lambda: widget.status_label.setText("Status: widget changed"),
+            on_change=lambda s=state_obj, c=card, w=widget: _on_widget_changed(w, s, c),
         )
         card.set_body_widget(child)
         card.set_local_status("Status: ready")
@@ -214,13 +214,27 @@ def _create_card(
     card.set_marker_text(f"[{key}]")
     card.remove_requested.connect(lambda state_obj, w=widget: on_remove_requested(w, state_obj))
     card.expand_requested.connect(lambda state_obj, w=widget: on_expand_requested(w, state_obj))
+    _refresh_card_text(card, state, name, key)
     return card
 
 
-def _refresh_card_text(card: InstanceCardWidget, name: str, key: str) -> None:
+def _refresh_card_text(card: InstanceCardWidget, state: BaseInstrument, name: str, key: str) -> None:
     """Keep visible card metadata aligned with registry metadata."""
-    card.title_label.setText(name)
+    summary = state.get_collapsed_summary().strip()
+    title = f"{name} ({summary})" if summary else name
+    card.title_label.setText(title)
     card.set_marker_text(f"[{key}]")
+
+
+def _on_widget_changed(widget: InstrumentManagerWidget, state_obj: BaseInstrument, card: InstanceCardWidget) -> None:
+    widget.status_label.setText("Status: widget changed")
+    key = state_obj.type_key
+    row_name = key
+    for row in widget.instrument_service.list_available():
+        if row["key"] == key:
+            row_name = row.get("display_name", key)
+            break
+    _refresh_card_text(card, state_obj, str(row_name), key)
 
 
 def _reorder_cards(
@@ -244,8 +258,3 @@ def _reorder_cards(
         if card is None:
             continue
         widget.instances_layout.insertWidget(widget.instances_layout.count(), card)
-
-    if widget.instances_layout.count() == 0:
-        widget.instances_layout.addStretch(1)
-    else:
-        widget.instances_layout.addStretch(1)

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+import numpy as np
 from PyQt6.QtWidgets import QWidget
 
 from pyrpoc.backend_utils.contracts import ParameterGroups
@@ -63,4 +64,8 @@ class BaseDisplay(QWidget):
         raise NotImplementedError
 
     def export_rpoc_input(self) -> RPOCImageInput | None:
+        return None
+
+    def get_normalized_data_3d(self) -> np.ndarray | None:
+        """Return current display data as float32 [C,H,W] in [0,1], or None if unavailable."""
         return None

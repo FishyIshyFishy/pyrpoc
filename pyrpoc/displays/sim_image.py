@@ -79,6 +79,18 @@ class SimImageDisplay(BaseDisplay):
             source_id=self.DISPLAY_KEY,
         )
 
+    def get_normalized_data_3d(self) -> np.ndarray | None:
+        if self._last_image is None:
+            return None
+        arr = np.asarray(self._last_image, dtype=np.float32)
+        min_val = float(np.min(arr))
+        max_val = float(np.max(arr))
+        if max_val - min_val < 1e-12:
+            norm = np.zeros_like(arr, dtype=np.float32)
+        else:
+            norm = (arr - min_val) / (max_val - min_val)
+        return np.clip(norm[None, ...], 0.0, 1.0).astype(np.float32, copy=False)
+
     def resizeEvent(self, event):
         super().resizeEvent(event)
         if self._last_pixmap is not None:

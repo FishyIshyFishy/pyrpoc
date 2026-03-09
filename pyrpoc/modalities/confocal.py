@@ -6,7 +6,7 @@ import numpy as np
 
 from pyrpoc.backend_utils.contracts import Parameter
 from pyrpoc.backend_utils.data import DataImage
-from pyrpoc.instruments.galvo import SimGalvoInstrument
+from pyrpoc.instruments.confocal_daq import ConfocalDAQInstrument
 from pyrpoc.optocontrols.mask import MaskOptoControl
 from .base_modality import BaseModality
 from .mod_registry import modality_registry
@@ -55,7 +55,7 @@ class SimConfocalModality(BaseModality):
             ),
         ]
     }
-    REQUIRED_INSTRUMENTS = [SimGalvoInstrument]
+    REQUIRED_INSTRUMENTS = [ConfocalDAQInstrument]
     OPTIONAL_INSTRUMENTS = []
     ALLOWED_OPTOCONTROLS = [MaskOptoControl]
     OUTPUT_DATA_TYPE = DataImage
@@ -68,7 +68,7 @@ class SimConfocalModality(BaseModality):
     def configure(
         self,
         params: dict[str, Any],
-        instruments: dict[type[SimGalvoInstrument], SimGalvoInstrument],
+        instruments: dict[type[ConfocalDAQInstrument], ConfocalDAQInstrument],
     ) -> None:
         self._params = dict(params)
         self._instruments = dict(instruments)

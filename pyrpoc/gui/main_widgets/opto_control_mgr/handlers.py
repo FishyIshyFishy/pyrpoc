@@ -92,7 +92,6 @@ def on_expand_requested(widget: OptoControlManagerWidget, state_obj: object) -> 
             card.set_body_widget(None)
             _reset_control_widget_cache(state_obj)
         else:
-            card.set_local_status("Status: ready")
             return
 
     if _attach_widget_to_card(widget, state_obj, card):
@@ -115,7 +114,6 @@ def on_add_clicked(widget: OptoControlManagerWidget) -> None:
         return
     try:
         widget.opto_control_service.create_opto_control(key)
-        widget.status_label.setText("Status: added opto-control")
     except Exception as exc:
         show_error(widget, str(exc))
 
@@ -128,9 +126,6 @@ def on_enable_toggled(widget: OptoControlManagerWidget, state_obj: object, check
     if not isinstance(state_obj, BaseOptoControl):
         return
     widget.opto_control_service.set_enabled(state_obj, checked)
-    card = widget.state.card_widgets.get(state_obj)
-    if card is not None:
-        card.set_local_status(f"Status: {'enabled' if checked else 'disabled'}")
 
 
 def on_remove_requested(widget: OptoControlManagerWidget, state_obj: object) -> None:
@@ -141,7 +136,6 @@ def on_remove_requested(widget: OptoControlManagerWidget, state_obj: object) -> 
     if not isinstance(state_obj, BaseOptoControl):
         return
     widget.opto_control_service.remove_opto_control(state_obj)
-    widget.status_label.setText("Status: removed opto-control")
 
 
 def on_modality_selected(widget: OptoControlManagerWidget, key: str) -> None:
@@ -150,7 +144,6 @@ def on_modality_selected(widget: OptoControlManagerWidget, key: str) -> None:
 
 
 def show_error(widget: OptoControlManagerWidget, message: str) -> None:
-    widget.status_label.setText(f"Status: error - {message}")
     QMessageBox.critical(widget, "Opto-Control Error", message)
 
 
@@ -190,7 +183,7 @@ def _create_card(
     card.enable_toggled.connect(
         lambda state_obj, checked, w=widget: on_enable_toggled(w, state_obj, checked)
     )
-    widget.instances_layout.insertWidget(widget.instances_layout.count() - 1, card)
+    widget.instances_layout.insertWidget(widget.instances_layout.count(), card)
     return card
 
 
@@ -216,12 +209,12 @@ def _attach_widget_to_card(
         child_widget = widget.opto_control_service.get_widget(
             state_obj,
             parent=card.body_container,
+            display_service=widget.display_service,
         )
         card.set_body_widget(child_widget)
-        card.set_local_status("Status: ready")
         return True
     except Exception as exc:
-        card.set_local_status(f"Status: error - {exc}")
+        card.setToolTip(f"Error: {exc}")
         return False
 
 
@@ -238,7 +231,7 @@ def _is_stale_widget(card: InstanceCardWidget) -> bool:
     try:
         body_widget.isVisible()
     except Exception as exc:
-        card.set_local_status(f"Status: warning - stale body widget detected ({exc})")
+        card.setToolTip(f"Warning: stale body widget detected ({exc})")
         return True
     return False
 
@@ -269,7 +262,7 @@ def _reorder_cards(
     '''
     desired_order = [row["state"] for row in rows]
 
-    while widget.instances_layout.count() > 1:
+    while widget.instances_layout.count() > 0:
         item = widget.instances_layout.takeAt(0)
         card = item.widget() #pyright: ignore
         if card is not None:
@@ -279,6 +272,3 @@ def _reorder_cards(
         card = desired_cards.get(state)
         if card is not None:
             widget.instances_layout.insertWidget(widget.instances_layout.count(), card)
-
-    # Keep the trailing stretch anchor after all cards.
-    widget.instances_layout.addStretch(1)

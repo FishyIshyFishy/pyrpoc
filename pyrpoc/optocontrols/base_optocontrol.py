@@ -56,7 +56,12 @@ class BaseOptoControl(ABC):
         }
 
     @abstractmethod
-    def get_widget(self, parent: QWidget | None = None, on_change: Callable[[], None] | None = None) -> BaseOptoControlWidget:
+    def get_widget(
+        self,
+        parent: QWidget | None = None,
+        on_change: Callable[[], None] | None = None,
+        display_service: Any | None = None,
+    ) -> BaseOptoControlWidget:
         """Create or reuse the editor widget for this specific control.
 
         Called by OptoControlManager UI handlers when it builds/refreshes the control list.

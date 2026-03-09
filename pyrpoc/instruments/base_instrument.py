@@ -61,6 +61,10 @@ class BaseInstrument(ABC):
         """
         return (self.alias,)
 
+    def get_collapsed_summary(self) -> str:
+        """Return short text shown next to instrument name in collapsed manager cards."""
+        return ""
+
 
 class BaseInstrumentWidget(QWidget):
     """Base Qt widget for a single instrument instance.

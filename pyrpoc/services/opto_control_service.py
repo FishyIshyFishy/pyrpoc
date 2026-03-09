@@ -66,14 +66,19 @@ class OptoControlService(QObject):
             )
         return rows
 
-    def get_widget(self, control: BaseOptoControl, parent: QWidget | None = None) -> QWidget:
+    def get_widget(
+        self,
+        control: BaseOptoControl,
+        parent: QWidget | None = None,
+        display_service: Any | None = None,
+    ) -> QWidget:
         '''Return the concrete control widget for list rows and editors.
 
         Called by `refresh_instances` during UI rebuild, after which signals from the
         card bind user actions back into the service.
         '''
         self._require_control(control)
-        return control.get_widget(parent=parent)
+        return control.get_widget(parent=parent, display_service=display_service)
 
     def set_enabled(self, control: BaseOptoControl, enabled: bool) -> None:
         '''Track enabled state in the control instance and notify persistence/autosave path.

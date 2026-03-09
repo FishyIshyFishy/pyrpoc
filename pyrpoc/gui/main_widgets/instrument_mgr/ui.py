@@ -2,7 +2,17 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from PyQt6.QtWidgets import QComboBox, QHBoxLayout, QLabel, QPushButton, QScrollArea, QVBoxLayout, QWidget
+from PyQt6.QtCore import Qt
+from PyQt6.QtWidgets import (
+    QComboBox,
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QScrollArea,
+    QVBoxLayout,
+    QWidget,
+)
 
 
 @dataclass
@@ -17,8 +27,11 @@ class InstrumentManagerUI:
 
 def build_instrument_manager_ui(owner: QWidget) -> InstrumentManagerUI:
     root = QVBoxLayout(owner)
+    root.setContentsMargins(0, 0, 0, 0)
+    root.setSpacing(8)
 
     add_row = QHBoxLayout()
+    add_row.setContentsMargins(0, 0, 0, 0)
     add_row.addWidget(QLabel("Instrument:", owner))
     type_combo = QComboBox(owner)
     add_row.addWidget(type_combo, 1)
@@ -31,11 +44,23 @@ def build_instrument_manager_ui(owner: QWidget) -> InstrumentManagerUI:
 
     instances_scroll = QScrollArea(owner)
     instances_scroll.setWidgetResizable(True)
+    instances_scroll.setFrameShape(QFrame.Shape.NoFrame)
+    instances_scroll.setObjectName("instrumentScroll")
+    instances_scroll.setStyleSheet(
+        "#instrumentScroll {"
+        "background: palette(alternate-base);"
+        "border: 1px solid palette(mid);"
+        "border-radius: 8px;"
+        "}"
+        "#instrumentScroll > QWidget > QWidget {"
+        "background: palette(alternate-base);"
+        "}"
+    )
     instances_content = QWidget(instances_scroll)
     instances_layout = QVBoxLayout(instances_content)
     instances_layout.setContentsMargins(8, 8, 8, 8)
-    instances_layout.setSpacing(8)
-    instances_layout.addStretch(1)
+    instances_layout.setSpacing(4)
+    instances_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
     instances_scroll.setWidget(instances_content)
     root.addWidget(instances_scroll, 1)
 
