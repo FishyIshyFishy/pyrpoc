@@ -219,28 +219,40 @@ class MainGUI(QWidget):
         action = self.display_dock_actions.pop(state, None)
 
         if action is not None:
-            try:
-                action.toggled.disconnect()
-            except Exception:
-                pass
-            try:
-                self.menubar.view_menu.removeAction(action)
-            except Exception:
-                pass
-            action.setParent(None)
-            action.deleteLater()
+            if sip.isdeleted(action):
+                action = None
+            else:
+                try:
+                    action.toggled.disconnect()
+                except Exception:
+                    pass
+                try:
+                    self.menubar.view_menu.removeAction(action)
+                except Exception:
+                    pass
+                action.setParent(None)
+                action.deleteLater()
 
         if dock is not None:
             if sip.isdeleted(dock):
                 dock = None
 
             if dock is not None:
+                detached_widget: QWidget | None = None
                 try:
                     if hasattr(self.dock_manager, "removeDockWidget"):
                         self.dock_manager.removeDockWidget(dock)
                 except Exception:
                     pass
-                dock.setWidget(None)
+                try:
+                    detached_widget = dock.takeWidget()
+                except Exception:
+                    detached_widget = None
+                if detached_widget is not None:
+                    try:
+                        detached_widget.setParent(None)
+                    except Exception:
+                        pass
                 dock.deleteLater()
 
         self._refresh_view_menu()

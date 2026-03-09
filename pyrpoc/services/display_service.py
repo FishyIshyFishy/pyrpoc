@@ -98,11 +98,9 @@ class DisplayService(QObject):
             return
         self.app_state.displays.remove(display)
         display.set_persist_callback(None)
-        try:
-            display.setParent(None)
-        except Exception:
-            pass
         self.display_removed.emit(display)
+        # `display_removed` listeners (MainGUI) own dock detachment.
+        # Defer widget deletion until after those slots finish.
         display.deleteLater()
 
     def attach(self, display: BaseDisplay) -> None:

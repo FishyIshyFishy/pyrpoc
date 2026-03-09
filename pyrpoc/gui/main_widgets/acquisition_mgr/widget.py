@@ -45,6 +45,7 @@ class AcquisitionManagerWidget(QWidget):
         self._continuous_timer = self.state.continuous_timer
 
         self._wire_signals()
+        self._set_acquiring_ui(False)
         self._populate_modalities()
 
     def _wire_signals(self) -> None:
@@ -57,8 +58,8 @@ class AcquisitionManagerWidget(QWidget):
         self.modality_service.modality_selected.connect(self._handle_modality_selected)
         self.modality_service.modality_params_changed.connect(self._on_parameter_values_changed)
         self.modality_service.requirements_changed.connect(self._handle_requirements_changed)
-        self.modality_service.acq_started.connect(lambda: self.status_label.setText("Status: acquiring"))
-        self.modality_service.acq_stopped.connect(lambda: self.status_label.setText("Status: stopped"))
+        self.modality_service.acq_started.connect(self._on_acq_started)
+        self.modality_service.acq_stopped.connect(self._on_acq_stopped)
         self.modality_service.acq_error.connect(self._on_service_error)
 
     def _populate_modalities(self) -> None:
@@ -87,9 +88,23 @@ class AcquisitionManagerWidget(QWidget):
 
     def _on_service_error(self, message: str) -> None:
         on_service_error(self, message)
+        self._set_acquiring_ui(False)
 
     def _on_parameter_widgets_changed(self) -> None:
         on_parameter_widgets_changed(self)
 
     def _on_parameter_values_changed(self, values: object) -> None:
         on_parameter_values_changed(self, values)
+
+    def _on_acq_started(self) -> None:
+        self.status_label.setText("Status: acquiring")
+        self._set_acquiring_ui(True)
+
+    def _on_acq_stopped(self) -> None:
+        self.status_label.setText("Status: stopped")
+        self._set_acquiring_ui(False)
+
+    def _set_acquiring_ui(self, acquiring: bool) -> None:
+        self.start_btn.setEnabled(not acquiring)
+        self.continuous_btn.setEnabled(not acquiring)
+        self.stop_btn.setEnabled(acquiring)

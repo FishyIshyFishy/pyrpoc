@@ -287,6 +287,9 @@ class Tiled2DDisplay(BaseDisplay):
             if max_val <= min_val:
                 max_val = min_val + 1e-12
             self._apply_levels(tile, min_val, max_val)
+        # Apply persisted state once; live user changes during acquisition
+        # should not be overwritten each frame.
+        self._pending_channel_state = []
 
     def _reflow_tiles(self) -> None:
         while self._grid.count():

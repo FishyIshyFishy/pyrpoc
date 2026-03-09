@@ -8,6 +8,7 @@ from PyQt6.QtWidgets import (
     QLabel,
     QPushButton,
     QScrollArea,
+    QStyle,
     QVBoxLayout,
     QWidget,
 )
@@ -39,9 +40,15 @@ def build_acquisition_manager_ui(owner: QWidget) -> AcquisitionManagerUI:
     root.addLayout(top)
 
     controls = QHBoxLayout()
-    start_btn = QPushButton("Start (One Frame)", owner)
-    continuous_btn = QPushButton("Continuous", owner)
-    stop_btn = QPushButton("Stop", owner)
+    start_btn = QPushButton(owner)
+    start_btn.setIcon(owner.style().standardIcon(QStyle.StandardPixmap.SP_MediaPlay))
+    start_btn.setToolTip("Start (one frame)")
+    continuous_btn = QPushButton(owner)
+    continuous_btn.setIcon(owner.style().standardIcon(QStyle.StandardPixmap.SP_MediaSkipForward))
+    continuous_btn.setToolTip("Continuous acquisition")
+    stop_btn = QPushButton(owner)
+    stop_btn.setIcon(owner.style().standardIcon(QStyle.StandardPixmap.SP_MediaStop))
+    stop_btn.setToolTip("Stop")
     controls.addWidget(start_btn)
     controls.addWidget(continuous_btn)
     controls.addWidget(stop_btn)

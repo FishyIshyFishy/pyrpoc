@@ -87,7 +87,7 @@ class ConfocalModality(BaseModality):
     OPTIONAL_INSTRUMENTS = []
     ALLOWED_OPTOCONTROLS = [MaskOptoControl]
     OUTPUT_DATA_CONTRACT = CONTRACT_CHW_FLOAT32
-    ALLOWED_DISPLAYS = ["tiled_2d"]
+    ALLOWED_DISPLAYS = ["tiled_2d", "multichan_overlay"]
 
     def __init__(self):
         super().__init__()
