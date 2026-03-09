@@ -231,6 +231,7 @@ def _acquire_with_nidaq(
     except DaqUnavailableError:
         raise
     except Exception as exc:
+        print(f"Error during NI-DAQ acquisition ({exc})")
         raise DaqUnavailableError(f"Error during NI-DAQ acquisition ({exc})") from exc
     finally:
         if do_task is not None:
@@ -303,4 +304,4 @@ def _build_raster_waveform(
     fast_raster = np.tile(fast_samples, y_pixels)
     slow_raster = np.tile(slow_samples, 1)
 
-    return np.column_stack((fast_raster, slow_raster)).astype(np.float64)
+    return np.vstack((fast_raster, slow_raster)).astype(np.float64)
