@@ -1,194 +1,285 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from tqdm import trange
-
-def iter_neighborhood_indices(y, x, ny, nx, half):
-    y0 = max(0, y - half)
-    y1 = min(ny, y + half + 1)
-    x0 = max(0, x - half)
-    x1 = min(nx, x + half + 1)
-    for yy in range(y0, y1):
-        for xx in range(x0, x1):
-            yield yy, xx
+from scipy.optimize import curve_fit
+from concurrent.futures import ProcessPoolExecutor
+from multiprocessing import shared_memory, cpu_count
 
 
-def aggregate_delays_in_window(frame, y, x, half):
+npz_path = r'C:\Users\ishaa\Documents\ZhangLab\python\new_pysrs\data\swabian_raw_flim\20260304_125152_flim_test_001_raw.npz'
+
+rep_period_ps = 12500
+bin_width_ps = 50
+window_n = 9
+
+fit_start_ns = 0.0
+fit_end_ns = 10.0
+min_total_photons = 500
+min_nonzero_bins = 8
+
+max_workers = max(1, cpu_count() - 1)
+
+
+def exp_decay(t, A, tau):
+    return A * np.exp(-t / tau)
+
+
+def build_per_pixel_histograms(frame, bins, rep_period_ps):
     ny, nx = frame.shape
-    out = []
-    for yy, xx in iter_neighborhood_indices(y, x, ny, nx, half):
-        d = frame[yy, xx]
-        if d is None:
-            continue
-        if len(d):
-            out.append(d)
-    if not out:
-        return np.empty((0,), dtype=np.int64)
-    return np.concatenate(out)
+    nbins = len(bins) - 1
+    hist_cube = np.zeros((ny, nx, nbins), dtype=np.uint32)
 
-
-def robust_lifetime_from_delays_ps(delays_ps, gate_min_ps=None, gate_max_ps=None):
-    if delays_ps.size == 0:
-        return np.nan
-
-    d = delays_ps.astype(np.float64, copy=False)
-
-    if gate_min_ps is not None:
-        d = d[d >= gate_min_ps]
-    if gate_max_ps is not None:
-        d = d[d <= gate_max_ps]
-
-    if d.size < 20:
-        return np.nan
-
-    # robust outlier handling: clip to central bulk
-    lo = np.percentile(d, 2.0)
-    hi = np.percentile(d, 98.0)
-    d = d[(d >= lo) & (d <= hi)]
-    if d.size < 20:
-        return np.nan
-
-    # very simple 1-exp model under ideal conditions: tau ~= mean(t - t0)
-    # estimate t0 as the onset (low percentile) after gating/clipping
-    t0 = np.percentile(d, 5.0)
-    dt = d - t0
-    dt = dt[dt >= 0]
-    if dt.size < 20:
-        return np.nan
-
-    # MLE for exponential with unknown amplitude and known t0 is mean(dt)
-    tau_ps = float(np.mean(dt))
-    return tau_ps
-
-
-def flim_lifetime_map_from_raw(
-    frames,
-    window_n=5,
-    gate_min_ps=0,
-    gate_max_ps=None,
-    min_photons=50,
-):
-    if frames.ndim != 3:
-        raise ValueError(f"expected frames to be (n_frames, ny, nx) object array, got {frames.shape}")
-
-    frame = frames[0]
-    ny, nx = frame.shape
-
-    half = window_n // 2
-    tau_ps_map = np.full((ny, nx), np.nan, dtype=np.float32)
-    photons_map = np.zeros((ny, nx), dtype=np.int32)
-
-    for y in trange(ny):
-        for x in range(nx):
-            delays = aggregate_delays_in_window(frame, y, x, half)
-            photons_map[y, x] = int(delays.size)
-            if delays.size < min_photons:
-                continue
-            tau_ps_map[y, x] = robust_lifetime_from_delays_ps(
-                delays,
-                gate_min_ps=gate_min_ps,
-                gate_max_ps=gate_max_ps,
-            )
-
-    return tau_ps_map, photons_map
-
-def collect_all_delays(frame):
-    ny, nx = frame.shape
-    all_delays = []
     for y in range(ny):
+        print(f'building per-pixel histograms: row {y+1}/{ny}')
         for x in range(nx):
             d = frame[y, x]
-            if d is not None and len(d):
-                all_delays.append(d)
-    if not all_delays:
-        return np.empty((0,), dtype=np.int64)
-    return np.concatenate(all_delays)
+            if d is None or len(d) == 0:
+                continue
+
+            wrapped = d % rep_period_ps
+            counts, _ = np.histogram(wrapped, bins=bins)
+            hist_cube[y, x, :] = counts.astype(np.uint32)
+
+    return hist_cube
 
 
-if __name__ == "__main__":
-    npz_path = r'C:\Users\ishaa\Documents\ZhangLab\python\new_pysrs\data\swabian_raw_flim\20260304_125152_flim_test_001_raw.npz'
+def window_sum_histograms(hist_cube, window_n):
+    half = window_n // 2
+    ny, nx, nbins = hist_cube.shape
 
-    data = np.load(npz_path, allow_pickle=True)
-    frames = data["frames"]  # (1, 512, 512) object array of int64 arrays (ps)
+    prefix = np.zeros((ny + 1, nx + 1, nbins), dtype=np.uint32)
+    prefix[1:, 1:, :] = hist_cube.cumsum(axis=0).cumsum(axis=1)
 
-    for i in range(512):
-        for j in range(512):
-            for k in range(len(frames[0,i,j])):
-                if frames[0,i,j][k] > 12500: print('aa')
+    y = np.arange(ny)
+    x = np.arange(nx)
 
-    # choose a median/spatial window size (odd), and some reasonable photon threshold
-    window_n = 11  # NxN aggregation for robustness
-    min_photons = 100
+    y0 = np.clip(y - half, 0, ny)
+    y1 = np.clip(y + half + 1, 0, ny)
+    x0 = np.clip(x - half, 0, nx)
+    x1 = np.clip(x + half + 1, 0, nx)
 
-    # optional gates (ps). if you know your rep period is 12.5 ns at 80 MHz, you can cap at 12500 ps.
-    gate_min_ps = 0
-    gate_max_ps = 12_500
+    summed = (
+        prefix[y1[:, None], x1[None, :], :]
+        - prefix[y0[:, None], x1[None, :], :]
+        - prefix[y1[:, None], x0[None, :], :]
+        + prefix[y0[:, None], x0[None, :], :]
+    )
+    print(np.max(summed))
 
-    tau_ps, nphot = flim_lifetime_map_from_raw(
-        frames,
-        window_n=window_n,
-        gate_min_ps=gate_min_ps,
-        gate_max_ps=gate_max_ps,
-        min_photons=min_photons,
+    return summed
+
+
+_worker_cfg = {}
+
+
+def init_worker(
+    shm_hist_name,
+    hist_shape,
+    hist_dtype_str,
+    shm_counts_name,
+    counts_shape,
+    counts_dtype_str,
+    shm_valid_name,
+    valid_shape,
+    valid_dtype_str,
+    fit_start_ns,
+    fit_end_ns,
+    bin_width_ps,
+    min_nonzero_bins
+):
+    global _worker_cfg
+
+    shm_hist = shared_memory.SharedMemory(name=shm_hist_name)
+    shm_counts = shared_memory.SharedMemory(name=shm_counts_name)
+    shm_valid = shared_memory.SharedMemory(name=shm_valid_name)
+
+    _worker_cfg['summed_hist'] = np.ndarray(
+        hist_shape,
+        dtype=np.dtype(hist_dtype_str),
+        buffer=shm_hist.buf
+    )
+    _worker_cfg['counts_map'] = np.ndarray(
+        counts_shape,
+        dtype=np.dtype(counts_dtype_str),
+        buffer=shm_counts.buf
+    )
+    _worker_cfg['valid_mask'] = np.ndarray(
+        valid_shape,
+        dtype=np.dtype(valid_dtype_str),
+        buffer=shm_valid.buf
     )
 
-    # display lifetime map in ns
-    tau_ns = tau_ps / 1000.0
+    _worker_cfg['shm_hist'] = shm_hist
+    _worker_cfg['shm_counts'] = shm_counts
+    _worker_cfg['shm_valid'] = shm_valid
 
-    plt.figure(figsize=(7, 6))
-    im = plt.imshow(tau_ns, origin="upper")
-    plt.title(f"lifetime map (ns), window {window_n}x{window_n}, min photons {min_photons}")
-    plt.xlabel("x")
-    plt.ylabel("y")
-    cb = plt.colorbar(im)
-    cb.set_label("tau (ns)")
-    plt.tight_layout()
-    plt.show()
+    _worker_cfg['fit_start_ns'] = float(fit_start_ns)
+    _worker_cfg['fit_end_ns'] = float(fit_end_ns)
+    _worker_cfg['bin_width_ps'] = float(bin_width_ps)
+    _worker_cfg['min_nonzero_bins'] = int(min_nonzero_bins)
 
-    # optional: show photon counts used per pixel (after window aggregation)
-    plt.figure(figsize=(7, 6))
-    im2 = plt.imshow(nphot, origin="upper")
-    plt.title(f"aggregated photon counts, window {window_n}x{window_n}")
-    plt.xlabel("x")
-    plt.ylabel("y")
-    cb2 = plt.colorbar(im2)
-    cb2.set_label("counts")
-    plt.tight_layout()
-    plt.show()
+
+def fit_rows(row_range):
+    y_start, y_end = row_range
+
+    summed_hist = _worker_cfg['summed_hist']
+    valid_mask = _worker_cfg['valid_mask']
+
+    fit_start_ns = _worker_cfg['fit_start_ns']
+    fit_end_ns = _worker_cfg['fit_end_ns']
+    bin_width_ps = _worker_cfg['bin_width_ps']
+    min_nonzero_bins = _worker_cfg['min_nonzero_bins']
+
+    nrows = y_end - y_start
+    nx = summed_hist.shape[1]
+    nbins = summed_hist.shape[2]
+
+    tau_chunk = np.full((nrows, nx), np.nan, dtype=np.float64)
+
+    shifted_centers_ps = np.arange(nbins, dtype=np.float64) * bin_width_ps + bin_width_ps / 2.0
+    shifted_centers_ns = shifted_centers_ps / 1000.0
+    fit_time_mask = (shifted_centers_ns >= fit_start_ns) & (shifted_centers_ns <= fit_end_ns)
+
+    for local_y, y in enumerate(range(y_start, y_end)):
+        valid_x = np.flatnonzero(valid_mask[y])
+
+        if valid_x.size == 0:
+            continue
+
+        print(f'worker fitting row {y+1}/{summed_hist.shape[0]} ({valid_x.size} valid pixels)')
+
+        for x in valid_x:
+            counts = summed_hist[y, x, :]
+
+            imax = np.argmax(counts)
+            counts_shifted = np.roll(counts, -imax).astype(np.float64)
+
+            fit_mask = fit_time_mask & (counts_shifted > 0)
+            x_fit = shifted_centers_ns[fit_mask].astype(np.float64)
+            y_fit = counts_shifted[fit_mask].astype(np.float64)
+
+            if x_fit.size < min_nonzero_bins:
+                continue
+
+            A0 = float(y_fit.max())
+            tau0 = 1.0
+
+            try:
+                popt, _ = curve_fit(
+                    exp_decay,
+                    x_fit,
+                    y_fit,
+                    p0=[A0, tau0],
+                    bounds=([0.0, 0.0], [np.inf, np.inf]),
+                    maxfev=10000
+                )
+                tau_chunk[local_y, x] = float(popt[1])
+            except Exception:
+                continue
+
+    return y_start, y_end, tau_chunk
+
+
+if __name__ == '__main__':
+    data = np.load(npz_path, allow_pickle=True)
+    frames = data['frames']
+
+    print('frames shape:', frames.shape)
 
     frame = frames[0]
+    ny, nx = frame.shape
 
-    all_delays_ps = collect_all_delays(frame)
+    bins = np.arange(0, rep_period_ps + bin_width_ps, bin_width_ps)
 
-    # optional gating
-    gate_min_ps = 0
-    gate_max_ps = 12_500  # one laser period for 80 MHz
+    hist_cube = build_per_pixel_histograms(frame, bins, rep_period_ps)
+    print('per-pixel histogram cube shape:', hist_cube.shape)
 
-    mask = all_delays_ps >= gate_min_ps
-    if gate_max_ps is not None:
-        mask &= all_delays_ps <= gate_max_ps
+    summed_hist = window_sum_histograms(hist_cube, window_n)
+    print('window-summed histogram cube shape:', summed_hist.shape)
 
-    all_delays_ps = all_delays_ps[mask]
+    counts_map = summed_hist.sum(axis=2).astype(np.uint32)
 
-    # histogram binning
-    bin_width_ps = 50
-    bins = np.arange(0, gate_max_ps + bin_width_ps, bin_width_ps)
+    # only pixels meeting the threshold will be fit at all
+    valid_mask = counts_map >= min_total_photons
+    print(f'valid pixels to fit: {valid_mask.sum()} / {valid_mask.size}')
 
-    counts, edges = np.histogram(all_delays_ps, bins=bins)
-    centers = 0.5 * (edges[:-1] + edges[1:])
+    shm_hist = shared_memory.SharedMemory(create=True, size=summed_hist.nbytes)
+    shm_counts = shared_memory.SharedMemory(create=True, size=counts_map.nbytes)
+    shm_valid = shared_memory.SharedMemory(create=True, size=valid_mask.nbytes)
 
-    plt.figure(figsize=(7,5))
-    plt.plot(centers/1000.0, counts)
-    plt.xlabel("delay (ns)")
-    plt.ylabel("counts")
-    plt.title("global FLIM decay (summed over image)")
-    plt.tight_layout()
-    plt.show()
+    try:
+        summed_hist_shared = np.ndarray(summed_hist.shape, dtype=summed_hist.dtype, buffer=shm_hist.buf)
+        counts_map_shared = np.ndarray(counts_map.shape, dtype=counts_map.dtype, buffer=shm_counts.buf)
+        valid_mask_shared = np.ndarray(valid_mask.shape, dtype=valid_mask.dtype, buffer=shm_valid.buf)
 
-    # optional semilog view (very common for FLIM)
-    plt.figure(figsize=(7,5))
-    plt.semilogy(centers/1000.0, counts)
-    plt.xlabel("delay (ns)")
-    plt.ylabel("counts (log)")
-    plt.title("global FLIM decay (semilog)")
+        summed_hist_shared[:] = summed_hist
+        counts_map_shared[:] = counts_map
+        valid_mask_shared[:] = valid_mask
+
+        del summed_hist
+        del hist_cube
+        del valid_mask
+
+        n_workers = min(max_workers, ny)
+        chunk_size = int(np.ceil(ny / n_workers))
+        row_ranges = []
+
+        for y0 in range(0, ny, chunk_size):
+            y1 = min(ny, y0 + chunk_size)
+            row_ranges.append((y0, y1))
+
+        tau_map = np.full((ny, nx), np.nan, dtype=np.float64)
+
+        with ProcessPoolExecutor(
+            max_workers=n_workers,
+            initializer=init_worker,
+            initargs=(
+                shm_hist.name,
+                summed_hist_shared.shape,
+                summed_hist_shared.dtype.str,
+                shm_counts.name,
+                counts_map_shared.shape,
+                counts_map_shared.dtype.str,
+                shm_valid.name,
+                valid_mask_shared.shape,
+                valid_mask_shared.dtype.str,
+                fit_start_ns,
+                fit_end_ns,
+                bin_width_ps,
+                min_nonzero_bins
+            )
+        ) as ex:
+            for y0, y1, tau_chunk in ex.map(fit_rows, row_ranges):
+                tau_map[y0:y1, :] = tau_chunk
+
+        counts_map_final = np.array(counts_map_shared, dtype=np.uint32)
+
+    finally:
+        shm_hist.close()
+        shm_hist.unlink()
+        shm_counts.close()
+        shm_counts.unlink()
+        shm_valid.close()
+        shm_valid.unlink()
+
+    fig, ax = plt.subplots(1, 2, figsize=(12, 5))
+
+    im0 = ax[0].imshow(counts_map_final, origin='upper', cmap='gray')
+    ax[0].set_title(f'photons in {window_n}x{window_n} window')
+    ax[0].set_xlabel('x')
+    ax[0].set_ylabel('y')
+    cb0 = plt.colorbar(im0, ax=ax[0])
+    cb0.set_label('photons')
+
+    tau_masked = np.ma.masked_invalid(tau_map)
+    cmap = plt.get_cmap('viridis').copy()
+    cmap.set_bad(color='black')
+
+    im1 = ax[1].imshow(tau_masked, origin='upper', cmap=cmap, vmin=2, vmax=6)
+    ax[1].set_title(f'extracted lifetime (ns), {window_n}x{window_n} window')
+    ax[1].set_xlabel('x')
+    ax[1].set_ylabel('y')
+    cb1 = plt.colorbar(im1, ax=ax[1])
+    cb1.set_label('tau (ns)')
+
     plt.tight_layout()
     plt.show()

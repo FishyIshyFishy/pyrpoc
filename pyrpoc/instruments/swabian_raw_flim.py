@@ -108,7 +108,7 @@ def acquire_raw_flim(
         stream = TimeTagger.TimeTagStream(
             tagger=tagger,
             n_max_events=stream_buffer_size,
-            channels=[laser_ch, detector_ch, pixel_ch],
+            channels=[laser_ch, detector_ch, pixel_ch],                    # pyright:ignore
         )
         stream.start()
 
@@ -174,9 +174,7 @@ def acquire_raw_flim(
                                     laser_reference[0] = last_laser_time_ps
                                     laser_reference[1:] = laser_ts
 
-                                laser_indices = np.searchsorted(
-                                    laser_reference, detector_ts, side="right"
-                                ) - 1
+                                laser_indices = np.searchsorted(laser_reference, detector_ts, side="right") - 1
                                 valid_detector_mask = laser_indices >= 0
                                 valid_detector_ts = detector_ts[valid_detector_mask]
                                 detector_delays_ps = (
