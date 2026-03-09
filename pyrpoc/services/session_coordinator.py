@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from PyQt6.QtCore import QObject, QTimer
+from PyQt6.QtWidgets import QMessageBox
 
 from pyrpoc.domain.app_state import AppState, ParameterValue
 from pyrpoc.domain.session_state import (
@@ -150,6 +151,8 @@ class SessionCoordinator(QObject):
         - -> restore modality+layout.
         """
         session = self.repository.load_or_default()
+        if self.repository.last_load_error:
+            self._show_restore_warning(self.repository.last_load_error)
         self.theme_controller.apply(session.theme_mode)
 
         self.display_service.clear_all()
@@ -196,3 +199,11 @@ class SessionCoordinator(QObject):
                 pass
 
         self.main_window.restore_layout_state(session.gui_layout)
+
+    def _show_restore_warning(self, detail: str) -> None:
+        QMessageBox.warning(
+            self.main_window,
+            "Session Restore Warning",
+            "Session restore failed and defaults were loaded.\n\n"
+            f"{detail}",
+        )

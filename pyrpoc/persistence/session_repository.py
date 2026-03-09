@@ -12,6 +12,7 @@ from .session_codec import SessionCodec
 class SessionRepository:
     def __init__(self):
         self.path = self._session_path()
+        self.last_load_error: str | None = None
 
     def _session_path(self) -> Path:
         base = QStandardPaths.writableLocation(QStandardPaths.StandardLocation.AppDataLocation)
@@ -22,10 +23,17 @@ class SessionRepository:
     def load_or_default(self) -> SessionState:
         try:
             if not self.path.exists():
+                self.last_load_error = None
                 return SessionState()
             raw = json.loads(self.path.read_text(encoding="utf-8"))
-            return SessionCodec.from_json_dict(raw)
-        except Exception:
+            state = SessionCodec.from_json_dict(raw)
+            self.last_load_error = None
+            return state
+        except Exception as exc:
+            self.last_load_error = (
+                f"Failed to load session from {self.path} "
+                f"({type(exc).__name__}: {exc})"
+            )
             return SessionState()
 
     def save(self, state: SessionState) -> None:

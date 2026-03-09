@@ -190,7 +190,7 @@ class SessionCodec:
                     type_key=type_key,
                     attached=bool(item.get("attached", True)),
                     dock_visible=bool(item.get("dock_visible", item.get("docked_visible", True))),
-                    config_values=cls._decode_param_values_with_legacy_fallback(item),
+                    config_values=cls._decode_config_values_with_legacy_fallback(item),
                     user_label=item.get("user_label"),
                 )
             )
