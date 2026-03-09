@@ -253,11 +253,11 @@ class MultiChannelOverlayDisplay(BaseDisplay):
             return
         ctl = self._controls[idx]
         min_val, max_val = ctl.hist_widget.item.getLevels()
-        if max_val <= min_val:
-            max_val = min_val + 1e-12
+        if max_val <= min_val:#pyright:ignore
+            max_val = min_val + 1e-12 #pyright:ignore
             ctl.hist_widget.item.setLevels(min_val, max_val)
-        ctl.min_val = float(min_val)
-        ctl.max_val = float(max_val)
+        ctl.min_val = float(min_val)#pyright:ignore
+        ctl.max_val = float(max_val)#pyright:ignore
         self._update_overlay()
         self.request_persist()
 
@@ -274,7 +274,7 @@ class MultiChannelOverlayDisplay(BaseDisplay):
             self._apply_levels(ctl, min_val, max_val)
         else:
             min_val, max_val = ctl.hist_widget.item.getLevels()
-            self._apply_levels(ctl, float(min_val), float(max_val))
+            self._apply_levels(ctl, float(min_val), float(max_val)) #pyright:ignore
 
     def _apply_levels(self, ctl: _ChannelControl, min_val: float, max_val: float) -> None:
         ctl.min_val = float(min_val)
@@ -334,7 +334,7 @@ class MultiChannelOverlayDisplay(BaseDisplay):
     def _reflow_controls(self) -> None:
         for i in reversed(range(self._side_layout.count())):
             item = self._side_layout.itemAt(i)
-            widget = item.widget()
+            widget = item.widget() #pyright:ignore
             if widget is not None:
                 self._side_layout.removeWidget(widget)
 

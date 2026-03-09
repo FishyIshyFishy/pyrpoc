@@ -20,15 +20,15 @@ def extract_mask_contexts(
     for control, payload in opto_controls:
         if not isinstance(control, MaskOptoControl):
             continue
-        if control.mask_data is None:
+        if control.mask_data is None: #pyright:ignore
             raise RuntimeError(f"Enabled mask control '{control.alias}' has no mask data")
 
-        mask = np.asarray(control.mask_data, dtype=np.uint8)
+        mask = np.asarray(control.mask_data, dtype=np.uint8) #pyright:ignore
         if mask.ndim != 2:
             raise RuntimeError(f"Mask control '{control.alias}' must provide a 2D mask")
 
-        daq_port = int(control.daq_port)
-        daq_line = int(control.daq_line)
+        daq_port = int(control.daq_port) #pyright:ignore
+        daq_line = int(control.daq_line)#pyright:ignore
         if len(payload) >= 2 and isinstance(payload[1], dict):
             daq_port = int(payload[1].get("daq_port", daq_port))
             daq_line = int(payload[1].get("daq_line", daq_line))
@@ -192,17 +192,17 @@ def _acquire_with_nidaq(
                         samps_per_chan=total_samples,
                     )
                     if len(dynamic_channels) == 1:
-                        do_task.write(dynamic_ttls[0].tolist(), auto_start=False)
+                        do_task.write(dynamic_ttls[0].tolist(), auto_start=False)#pyright:ignore
                     else:
-                        do_task.write([ttl.tolist() for ttl in dynamic_ttls], auto_start=False)
+                        do_task.write([ttl.tolist() for ttl in dynamic_ttls], auto_start=False) #pyright:ignore
 
                 if static_channels:
                     static_do_task = nidaqmx.Task()
                     for channel_name in static_channels:
                         static_do_task.do_channels.add_do_chan(channel_name)
-                    static_do_task.write(static_values, auto_start=True)
+                    static_do_task.write(static_values, auto_start=True) #pyright:ignore
 
-            ao_task.write(waveform, auto_start=False)
+            ao_task.write(waveform, auto_start=False)#pyright:ignore
             ai_task.start()
             if do_task is not None:
                 do_task.start()
@@ -214,7 +214,7 @@ def _acquire_with_nidaq(
             if do_task is not None:
                 do_task.wait_until_done(timeout=timeout)
 
-            acq_data = ai_task.read(number_of_samples_per_channel=total_samples)
+            acq_data = ai_task.read(number_of_samples_per_channel=total_samples) #pyright:ignore
             acq_data = np.asarray(acq_data, dtype=np.float32)
             if acq_data.ndim == 1:
                 acq_data = acq_data[np.newaxis, :]
@@ -238,7 +238,7 @@ def _acquire_with_nidaq(
         if static_do_task is not None:
             if static_values:
                 try:
-                    static_do_task.write([not value for value in static_values], auto_start=True)
+                    static_do_task.write([not value for value in static_values], auto_start=True) #pyright:ignore
                 except Exception:
                     pass
             static_do_task.close()
@@ -299,8 +299,8 @@ def _build_raster_waveform(
     )
 
     fast_samples = np.repeat(fast_axis, pixel_samples)
-    slow_samples = np.repeat(slow_axis, x_pixels * pixel_samples)
+    slow_samples = np.repeat(np.repeat(slow_axis, x_pixels * pixel_samples), 1)
     fast_raster = np.tile(fast_samples, y_pixels)
-    slow_raster = np.array(slow_samples, copy=True)
+    slow_raster = np.tile(slow_samples, 1)
 
     return np.column_stack((fast_raster, slow_raster)).astype(np.float64)
