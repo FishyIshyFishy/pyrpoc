@@ -31,5 +31,5 @@ class SessionRepository:
     def save(self, state: SessionState) -> None:
         payload = SessionCodec.to_json_dict(state)
         tmp_path = self.path.with_suffix(self.path.suffix + ".tmp")
-        tmp_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        tmp_path.write_text(json.dumps(payload, indent=2, default=str), encoding="utf-8")
         tmp_path.replace(self.path)

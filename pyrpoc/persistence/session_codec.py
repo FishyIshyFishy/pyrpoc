@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict
+import json
 from pathlib import Path
 from typing import Any
 
@@ -10,6 +11,7 @@ from pyrpoc.domain.session_state import (
     InstrumentSessionState,
     ModalitySessionState,
     OptoControlSessionState,
+    DisplaySessionState,
     SessionState,
     SCHEMA_VERSION,
 )
@@ -20,12 +22,29 @@ class SessionCodec:
     def _encode_value(value: Any) -> Any:
         if isinstance(value, Path):
             return {"__type__": "path", "value": str(value)}
-        return value
+        if isinstance(value, dict):
+            return {str(k): SessionCodec._encode_value(v) for k, v in value.items()}
+        if isinstance(value, tuple):
+            return [SessionCodec._encode_value(v) for v in value]
+        if isinstance(value, list):
+            return [SessionCodec._encode_value(v) for v in value]
+        if isinstance(value, (str, int, float, bool)) or value is None:
+            return value
+
+        try:
+            json.dumps(value)
+            return value
+        except TypeError:
+            return str(value)
 
     @staticmethod
     def _decode_value(value: Any) -> Any:
         if isinstance(value, dict) and value.get("__type__") == "path":
             return Path(str(value.get("value", "")))
+        if isinstance(value, dict):
+            return {SessionCodec._decode_value(k): SessionCodec._decode_value(v) for k, v in value.items()}
+        if isinstance(value, list):
+            return [SessionCodec._decode_value(item) for item in value]
         return value
 
     @classmethod
@@ -97,8 +116,17 @@ class SessionCodec:
             }
             for row in state.optocontrols
         ]
-        raw.pop("displays", None)
-        raw["displays"] = []
+        raw["displays"] = [
+            {
+                "type_key": row.type_key,
+                "attached": row.attached,
+                "dock_visible": row.dock_visible,
+                "docked_visible": row.dock_visible,
+                "config_values": cls._encode_param_values(row.config_values),
+                "user_label": row.user_label,
+            }
+            for row in state.displays
+        ]
         if state.modality is None:
             raw["modality"] = None
         else:
@@ -146,6 +174,23 @@ class SessionCodec:
                     connected=bool(item.get("connected", False)),
                     enabled=bool(item.get("enabled", False)),
                     config_values=cls._decode_config_values_with_legacy_fallback(item),
+                    user_label=item.get("user_label"),
+                )
+            )
+
+        displays: list[DisplaySessionState] = []
+        for item in raw.get("displays", []):
+            if not isinstance(item, dict):
+                continue
+            type_key = cls._pick_type_key(item, "display_key", "key")
+            if not type_key:
+                continue
+            displays.append(
+                DisplaySessionState(
+                    type_key=type_key,
+                    attached=bool(item.get("attached", True)),
+                    dock_visible=bool(item.get("dock_visible", item.get("docked_visible", True))),
+                    config_values=cls._decode_param_values_with_legacy_fallback(item),
                     user_label=item.get("user_label"),
                 )
             )

@@ -251,13 +251,17 @@ class MainGUI(QWidget):
             action.deleteLater()
 
         if dock is not None:
-            try:
-                if hasattr(self.dock_manager, "removeDockWidget"):
-                    self.dock_manager.removeDockWidget(dock)
-            except Exception:
-                pass
-            dock.setWidget(None)
-            dock.deleteLater()
+            if sip.isdeleted(dock):
+                dock = None
+
+            if dock is not None:
+                try:
+                    if hasattr(self.dock_manager, "removeDockWidget"):
+                        self.dock_manager.removeDockWidget(dock)
+                except Exception:
+                    pass
+                dock.setWidget(None)
+                dock.deleteLater()
 
         self._refresh_view_menu()
 
@@ -266,6 +270,9 @@ class MainGUI(QWidget):
             return
         dock = self.display_docks.get(state)
         action = self.display_dock_actions.get(state)
+        if dock is not None and sip.isdeleted(dock):
+            self.display_docks.pop(state, None)
+            dock = None
         if action is not None and sip.isdeleted(action):
             self.display_dock_actions.pop(state, None)
             action = None
@@ -287,20 +294,35 @@ class MainGUI(QWidget):
             self._set_display_visibility(state, bool(getattr(state, "docked_visible", True)), update_action=False)
         self._refresh_view_menu()
 
+    def _display_active(self, display: BaseDisplay) -> bool:
+        return display in self.display_service.app_state.displays
+
     def _on_display_dock_toggled(self, display: BaseDisplay, visible: bool) -> None:
+        if not self._display_active(display):
+            return
         if bool(getattr(display, "docked_visible", True)) == bool(visible):
             return
         self.display_service.set_dock_visibility(display, visible)
 
     def _on_display_dock_closed(self, display: BaseDisplay) -> None:
+        if not self._display_active(display):
+            return
         try:
             self.display_service.detach(display)
         except Exception:
             pass
-        self.display_service.set_dock_visibility(display, False)
+        try:
+            self.display_service.set_dock_visibility(display, False)
+        except Exception:
+            self._set_display_visibility(display, False)
 
     def _set_display_visibility(self, display: BaseDisplay, visible: bool, update_action: bool = True) -> None:
         dock = self.display_docks.get(display)
+        if dock is None or sip.isdeleted(dock):
+            if dock is not None:
+                self.display_docks.pop(display, None)
+            return
+
         if dock is not None:
             dock.toggleView(visible)
         action = self.display_dock_actions.get(display)

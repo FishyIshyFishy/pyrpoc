@@ -40,8 +40,9 @@ class DisplayManagerWidget(QWidget):
         self.add_btn = self.ui.add_btn
         self.instances_list = self.ui.instances_list
         self.instances_list.setEditTriggers(
-            QAbstractItemView.EditTrigger.DoubleClicked | QAbstractItemView.EditTrigger.EditKeyPressed
+            QAbstractItemView.EditTrigger.AllEditTriggers
         )
+        self.instances_list.itemDoubleClicked.connect(self._on_display_name_edit_request)
         self.attach_btn = self.ui.attach_btn
         self.detach_btn = self.ui.detach_btn
         self.remove_btn = self.ui.remove_btn
@@ -85,6 +86,11 @@ class DisplayManagerWidget(QWidget):
 
     def _on_display_error(self, state: object, message: str) -> None:
         on_display_error(self, state, message)
+
+    def _on_display_name_edit_request(self, item) -> None:
+        if item is None:
+            return
+        self.instances_list.editItem(item)
 
     def _on_modality_selected(self, key: str) -> None:
         on_modality_selected(self, key)

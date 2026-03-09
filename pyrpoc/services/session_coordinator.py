@@ -8,6 +8,7 @@ from pyrpoc.domain.app_state import AppState, ParameterValue
 from pyrpoc.domain.session_state import (
     InstrumentSessionState,
     ModalitySessionState,
+    DisplaySessionState,
     OptoControlSessionState,
     SessionState,
 )
@@ -98,6 +99,16 @@ class SessionCoordinator(QObject):
                 )
                 for instrument in self.app_state.instruments
             ],
+            displays=[
+                DisplaySessionState(
+                    type_key=display.type_key,
+                    attached=bool(getattr(display, "attached", True)),
+                    dock_visible=bool(getattr(display, "docked_visible", True)),
+                    config_values=list(getattr(display, "config_values", [])),
+                    user_label=getattr(display, "user_label", None),
+                )
+                for display in self.app_state.displays
+            ],
             optocontrols=[
                 OptoControlSessionState(
                     type_key=row.type_key,
@@ -106,9 +117,8 @@ class SessionCoordinator(QObject):
                     config_values=[],
                     user_label=row.user_label,
                 )
-            for row in self.app_state.optocontrols
-        ],
-            displays=[],
+                for row in self.app_state.optocontrols
+            ],
             modality=modality_state,
             gui_layout=self.main_window.capture_layout_state(),
         )
@@ -156,6 +166,26 @@ class SessionCoordinator(QObject):
             state = self.opto_control_service.create_opto_control(row.type_key)
             state.user_label = row.user_label
             state.enabled = row.enabled
+
+        for row in session.displays:
+            try:
+                settings = self._values_to_raw(list(row.config_values))
+                display = self.display_service.create_display(
+                    row.type_key,
+                    settings,
+                    user_label=row.user_label,
+                )
+            except Exception:
+                continue
+            if not bool(row.attached):
+                try:
+                    self.display_service.detach(display)
+                except Exception:
+                    pass
+            try:
+                self.display_service.set_dock_visibility(display, bool(row.dock_visible))
+            except Exception:
+                pass
 
         if session.modality and session.modality.selected_key:
             try:

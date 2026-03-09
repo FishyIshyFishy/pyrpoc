@@ -100,6 +100,8 @@ def on_display_name_edited(widget: DisplayManagerWidget, item: Any) -> None:
     if not isinstance(item, QListWidgetItem):
         return
     raw = item.text().strip()
+    if not raw:
+        return
     display_id = item.data(Qt.ItemDataRole.UserRole)
     if not isinstance(display_id, int):
         return
@@ -108,6 +110,8 @@ def on_display_name_edited(widget: DisplayManagerWidget, item: Any) -> None:
         return
 
     name = raw.split(" [", 1)[0].strip()
+    if not name:
+        return
     widget.display_service.set_display_name(display, name)
 
 

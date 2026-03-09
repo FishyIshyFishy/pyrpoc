@@ -82,6 +82,10 @@ class DisplayService(QObject):
         if display not in self.app_state.displays:
             return
         self.app_state.displays.remove(display)
+        try:
+            display.setParent(None)
+        except Exception:
+            pass
         self.display_removed.emit(display)
         display.deleteLater()
 
@@ -96,6 +100,8 @@ class DisplayService(QObject):
         self.display_changed.emit(display)
 
     def set_dock_visibility(self, display: BaseDisplay, visible: bool) -> None:
+        if display not in self.app_state.displays:
+            return
         self._require_state(display)
         if bool(getattr(display, "docked_visible", True)) == bool(visible):
             return
