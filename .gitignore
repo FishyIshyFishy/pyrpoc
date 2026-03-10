@@ -3,12 +3,14 @@ __pycache__/
 *.so
 
 venv/
+data/
 rpoc_env/
 pyrpoc_env/
 pyrpoc_venv/
 .env/
 .venv/
 .cursor/
+.data/
 
 
 
