@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections.abc import Callable
+import threading
 from typing import Any
 
 import numpy as np
@@ -93,3 +95,58 @@ class BaseModality(ABC):
     @abstractmethod
     def stop(self) -> None:
         raise NotImplementedError
+
+    def get_active_channel_labels(self) -> list[str]:
+        return []
+
+    def run_acquisition_threaded(
+        self,
+        on_frame: Callable[[np.ndarray], None],
+        *,
+        frame_limit: int | None = None,
+        should_stop: Callable[[], bool],
+        on_error: Callable[[Exception], None] | None = None,
+        on_finished: Callable[[int, Exception | None], None] | None = None,
+    ) -> threading.Thread:
+        if self._running:
+            raise RuntimeError("modality acquisition is already running")
+        if not callable(on_frame):
+            raise TypeError("on_frame must be callable")
+        if should_stop is not None and not callable(should_stop):
+            raise TypeError("should_stop must be callable")
+        if on_error is not None and not callable(on_error):
+            raise TypeError("on_error must be callable")
+        if on_finished is not None and not callable(on_finished):
+            raise TypeError("on_finished must be callable")
+        if frame_limit is not None and frame_limit < 1:
+            raise ValueError("frame_limit must be >= 1")
+
+        def _worker() -> None:
+            acquired = 0
+            error_seen = None
+            try:
+                self.start()
+                while not (should_stop() if should_stop else False):
+                    frame = self.acquire_once()
+                    acquired += 1
+                    on_frame(frame)
+                    if frame_limit is not None and acquired >= frame_limit:
+                        break
+            except Exception as exc:  # pragma: no cover - error path
+                error_seen = exc
+                if on_error is not None:
+                    on_error(exc)
+            finally:
+                try:
+                    self.stop()
+                except Exception as stop_exc:
+                    if error_seen is None:
+                        error_seen = stop_exc
+                        if on_error is not None:
+                            on_error(stop_exc)
+                if on_finished is not None:
+                    on_finished(acquired, error_seen)
+
+        thread = threading.Thread(target=_worker, daemon=True)
+        thread.start()
+        return thread

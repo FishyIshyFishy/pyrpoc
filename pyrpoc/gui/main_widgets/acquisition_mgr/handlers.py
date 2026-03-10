@@ -64,8 +64,6 @@ def on_start_clicked(widget: AcquisitionManagerWidget) -> None:
     try:
         configure_modality(widget)
         widget.modality_service.start()
-        acquire_single_frame(widget)
-        widget.modality_service.stop()
     except Exception as exc:
         handle_error(widget, str(exc))
 
@@ -73,33 +71,13 @@ def on_start_clicked(widget: AcquisitionManagerWidget) -> None:
 def on_continuous_clicked(widget: AcquisitionManagerWidget) -> None:
     try:
         configure_modality(widget)
-        widget.modality_service.start()
-        timer = widget.state.continuous_timer
-        if timer is not None:
-            timer.start()
+        widget.modality_service.start(continuous=True)
         widget.status_label.setText("Status: continuous acquisition")
     except Exception as exc:
         handle_error(widget, str(exc))
 
 
-def acquire_single_frame(widget: AcquisitionManagerWidget) -> None:
-    try:
-        widget.modality_service.acquire_once()
-    except Exception as exc:
-        timer = widget.state.continuous_timer
-        if timer is not None:
-            timer.stop()
-        try:
-            widget.modality_service.stop()
-        except Exception as stop_exc:
-            widget.status_label.setText(f"Status: stop error - {stop_exc}")
-        handle_error(widget, str(exc))
-
-
 def on_stop_clicked(widget: AcquisitionManagerWidget) -> None:
-    timer = widget.state.continuous_timer
-    if timer is not None:
-        timer.stop()
     try:
         widget.modality_service.stop()
     except Exception as exc:

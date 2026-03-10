@@ -42,7 +42,7 @@ def build_acquisition_manager_ui(owner: QWidget) -> AcquisitionManagerUI:
     controls = QHBoxLayout()
     start_btn = QPushButton(owner)
     start_btn.setIcon(owner.style().standardIcon(QStyle.StandardPixmap.SP_MediaPlay))
-    start_btn.setToolTip("Start (one frame)")
+    start_btn.setToolTip("Start")
     continuous_btn = QPushButton(owner)
     continuous_btn.setIcon(owner.style().standardIcon(QStyle.StandardPixmap.SP_MediaSkipForward))
     continuous_btn.setToolTip("Continuous acquisition")

@@ -1,10 +1,8 @@
 from __future__ import annotations
 
-from PyQt6.QtCore import QTimer
 from PyQt6.QtWidgets import QWidget
 
 from pyrpoc.gui.main_widgets.acquisition_mgr.handlers import (
-    acquire_single_frame,
     handle_modality_selected,
     on_parameter_values_changed,
     handle_requirements_changed,
@@ -27,10 +25,6 @@ class AcquisitionManagerWidget(QWidget):
         self.modality_service = modality_service
         self.state = AcquisitionManagerState()
         self.ui = build_acquisition_manager_ui(self)
-        self.state.continuous_timer = QTimer(self)
-        self.state.continuous_timer.setInterval(250)
-        self.state.continuous_timer.timeout.connect(self._acquire_single_frame)
-
         # Compatibility aliases for existing callers.
         self.modality_combo = self.ui.modality_combo
         self.refresh_btn = self.ui.refresh_btn
@@ -42,7 +36,6 @@ class AcquisitionManagerWidget(QWidget):
         self.params_layout = self.ui.params_layout
         self.param_widgets = self.state.param_widgets
         self.param_defs = self.state.param_defs
-        self._continuous_timer = self.state.continuous_timer
 
         self._wire_signals()
         self._set_acquiring_ui(False)
@@ -76,9 +69,6 @@ class AcquisitionManagerWidget(QWidget):
 
     def _on_continuous_clicked(self) -> None:
         on_continuous_clicked(self)
-
-    def _acquire_single_frame(self) -> None:
-        acquire_single_frame(self)
 
     def _on_stop_clicked(self) -> None:
         on_stop_clicked(self)

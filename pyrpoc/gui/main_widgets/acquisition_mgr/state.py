@@ -2,14 +2,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from PyQt6.QtCore import QTimer
 from PyQt6.QtWidgets import QWidget
 
-from pyrpoc.backend_utils.contracts import Parameter
+from pyrpoc.backend_utils.parameter_utils import BaseParameter
 
 
 @dataclass
 class AcquisitionManagerState:
-    param_widgets: dict[str, QWidget] = field(default_factory=dict)
-    param_defs: dict[str, Parameter] = field(default_factory=dict)
-    continuous_timer: QTimer | None = None
+    param_widgets: dict[str, tuple[BaseParameter, QWidget]] = field(default_factory=dict)
+    param_defs: dict[str, BaseParameter] = field(default_factory=dict)

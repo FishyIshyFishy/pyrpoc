@@ -5,10 +5,14 @@ from typing import Any
 import numpy as np
 
 from pyrpoc.backend_utils.array_contracts import CONTRACT_CHW_FLOAT32
-from pyrpoc.backend_utils.contracts import Parameter
 from pyrpoc.instruments.confocal_daq import ConfocalDAQInstrument
 from pyrpoc.optocontrols.base_optocontrol import BaseOptoControl
 from pyrpoc.optocontrols.mask import MaskOptoControl
+from pyrpoc.backend_utils.parameter_utils import (
+    CheckboxParameter,
+    NumberParameter,
+    PathParameter,
+)
 
 from .acquisition_functions.daq_helpers import (
     DaqUnavailableError,
@@ -26,66 +30,91 @@ class ConfocalModality(BaseModality):
     DISPLAY_NAME = "Confocal"
     PARAMETERS = {
         "scan": [
-            Parameter(
+            NumberParameter(
                 label="X Pixels",
-                param_type=int,
                 default=512,
                 minimum=8,
                 tooltip="Number of pixels in X",
+                number_type=int,
             ),
-            Parameter(
+            NumberParameter(
                 label="Y Pixels",
-                param_type=int,
                 default=512,
                 minimum=8,
                 tooltip="Number of pixels in Y",
+                number_type=int,
             ),
-            Parameter(
+            NumberParameter(
                 label="Extra Steps Left",
-                param_type=int,
                 default=300,
                 minimum=0,
                 tooltip="Extra scan steps at left edge (stored only for now)",
+                number_type=int,
             ),
-            Parameter(
+            NumberParameter(
                 label="Extra Steps Right",
-                param_type=int,
                 default=20,
                 minimum=0,
                 tooltip="Extra scan steps at right edge (stored only for now)",
+                number_type=int,
             ),
-            Parameter(
+            NumberParameter(
                 label="Fast Axis Offset",
-                param_type=float,
                 default=0.0,
                 tooltip="Fast-axis offset",
+                number_type=float,
             ),
-            Parameter(
+            NumberParameter(
                 label="Fast Axis Amplitude",
-                param_type=float,
                 default=1.0,
                 minimum=1e-6,
                 tooltip="Fast-axis amplitude",
+                number_type=float,
             ),
-            Parameter(
+            NumberParameter(
                 label="Slow Axis Offset",
-                param_type=float,
                 default=0.0,
                 tooltip="Slow-axis offset",
+                number_type=float,
             ),
-            Parameter(
+            NumberParameter(
                 label="Slow Axis Amplitude",
-                param_type=float,
                 default=1.0,
                 minimum=1e-6,
                 tooltip="Slow-axis amplitude",
+                number_type=float,
             ),
-            Parameter(
+            NumberParameter(
                 label="Dwell Time (us)",
-                param_type=float,
                 default=2.0,
                 minimum=0.1,
                 tooltip="Pixel dwell time",
+                number_type=float,
+            ),
+        ],
+        "acquisition": [
+            CheckboxParameter(
+                label="save_enabled",
+                display_label="save_enabled",
+                default=False,
+                required=False,
+                tooltip="Enable saving frames and acquisition metadata",
+            ),
+            PathParameter(
+                label="save_path",
+                display_label="save_path",
+                default="acquisition",
+                required=False,
+                tooltip="Base name/path for saved TIFF files (e.g. /dir/acquisition)",
+            ),
+            NumberParameter(
+                label="num_frames",
+                display_label="num_frames",
+                default=1,
+                required=False,
+                minimum=1,
+                tooltip="Number of frames to capture",
+                number_type=int,
             ),
         ],
     }
@@ -100,6 +129,7 @@ class ConfocalModality(BaseModality):
         self._frame_idx = 0
         self._mask_contexts: list[dict[str, Any]] = []
         self._daq_instrument: ConfocalDAQInstrument | None = None
+        self._active_ai_channels: list[int] = []
 
     def configure(
         self,
@@ -114,6 +144,7 @@ class ConfocalModality(BaseModality):
             raise RuntimeError("ConfocalDAQInstrument missing during configure")
         self._daq_instrument = instrument
         self._mask_contexts = extract_mask_contexts(opto_controls)
+        self._active_ai_channels = self._get_active_ai_channels()
         self._frame_idx = 0
         self._configured = True
 
@@ -158,6 +189,11 @@ class ConfocalModality(BaseModality):
 
     def stop(self) -> None:
         self._running = False
+
+    def get_active_channel_labels(self) -> list[str]:
+        if self._active_ai_channels:
+            return [f"ai{channel}" for channel in self._active_ai_channels]
+        return []
 
     def _get_active_ai_channels(self) -> list[int]:
         return [

@@ -1,22 +1,10 @@
 from __future__ import annotations
 
-from pathlib import Path
-from collections.abc import Callable
-from typing import Any
+from typing import Any, Callable
 
-from PyQt6.QtWidgets import (
-    QCheckBox,
-    QComboBox,
-    QDoubleSpinBox,
-    QFormLayout,
-    QGroupBox,
-    QLineEdit,
-    QSpinBox,
-    QVBoxLayout,
-    QWidget,
-)
+from PyQt6.QtWidgets import QFormLayout, QGroupBox, QVBoxLayout, QWidget
 
-from pyrpoc.backend_utils.contracts import Parameter
+from pyrpoc.backend_utils.parameter_utils import BaseParameter
 from pyrpoc.gui.main_widgets.acquisition_mgr.state import AcquisitionManagerState
 from pyrpoc.gui.main_widgets.acquisition_mgr.ui import AcquisitionManagerUI
 
@@ -35,7 +23,7 @@ def clear_param_form(ui: AcquisitionManagerUI, state: AcquisitionManagerState) -
 def build_param_form(
     ui: AcquisitionManagerUI,
     state: AcquisitionManagerState,
-    parameter_groups: dict[str, list[Parameter]],
+    parameter_groups: dict[str, list[BaseParameter]],
     initial_values: dict[str, Any] | None = None,
     on_change: Callable[[], None] | None = None,
 ) -> None:
@@ -48,108 +36,30 @@ def build_param_form(
         section_box = QGroupBox(section_name.capitalize(), ui.params_container)
         form = QFormLayout(section_box)
         for param in parameters:
-            widget = make_editor(param, ui.params_container)
+            widget = param.create_widget(ui.params_container)
             if initial_values and param.label in initial_values:
-                _set_editor_value(widget, initial_values[param.label])
-            state.param_widgets[param.label] = widget
+                param.set_value(widget, initial_values[param.label])
+            state.param_widgets[param.label] = (param, widget)
             state.param_defs[param.label] = param
             if on_change is not None:
-                _connect_editor_changed(widget, on_change)
-            form.addRow(param.label, widget)
+                param.connect_changed(widget, on_change)
+            form.addRow(param.display_label, widget)
         ui.params_layout.addWidget(section_box)
 
     ui.params_layout.addStretch(1)
 
 
-def make_editor(param: Parameter, parent: QWidget) -> QWidget:
-    default = param.default
-
-    if param.param_type is int:
-        editor = QSpinBox(parent)
-        editor.setMinimum(int(param.minimum if param.minimum is not None else -1_000_000))
-        editor.setMaximum(int(param.maximum if param.maximum is not None else 1_000_000))
-        editor.setValue(int(default if default is not None else 0))
-    elif param.param_type is float:
-        editor = QDoubleSpinBox(parent)
-        editor.setDecimals(6)
-        editor.setMinimum(float(param.minimum if param.minimum is not None else -1e12))
-        editor.setMaximum(float(param.maximum if param.maximum is not None else 1e12))
-        editor.setSingleStep(float(param.step if param.step is not None else 0.1))
-        editor.setValue(float(default if default is not None else 0.0))
-    elif param.param_type is bool:
-        editor = QCheckBox(parent)
-        editor.setChecked(bool(default))
-    elif param.param_type is str and param.choices:
-        editor = QComboBox(parent)
-        editor.addItems([str(choice) for choice in param.choices])
-        if default is not None:
-            editor.setCurrentText(str(default))
-    else:
-        editor = QLineEdit(parent)
-        editor.setText("" if default is None else str(default))
-        if param.param_type is Path:
-            editor.setPlaceholderText("Path")
-
-    if param.tooltip:
-        editor.setToolTip(param.tooltip)
-    return editor
-
-
-def collect_values(widget_map: dict[str, QWidget]) -> dict[str, Any]:
+def collect_values(widget_map: dict[str, tuple[BaseParameter, QWidget]]) -> dict[str, Any]:
     values: dict[str, Any] = {}
-    for label, widget in widget_map.items():
-        if isinstance(widget, QSpinBox):
-            values[label] = widget.value()
-        elif isinstance(widget, QDoubleSpinBox):
-            values[label] = widget.value()
-        elif isinstance(widget, QCheckBox):
-            values[label] = widget.isChecked()
-        elif isinstance(widget, QComboBox):
-            values[label] = widget.currentText()
-        elif isinstance(widget, QLineEdit):
-            values[label] = widget.text()
+    for label, (param, widget) in widget_map.items():
+        values[label] = param.get_value(widget)
     return values
 
 
-def apply_values(widget_map: dict[str, QWidget], values: dict[str, Any]) -> None:
+def apply_values(widget_map: dict[str, tuple[BaseParameter, QWidget]], values: dict[str, Any]) -> None:
     for label, value in values.items():
-        editor = widget_map.get(label)
-        if editor is None:
+        item = widget_map.get(label)
+        if item is None:
             continue
-        _set_editor_value(editor, value)
-
-
-def _connect_editor_changed(widget: QWidget, callback: Callable[[], None]) -> None:
-    if isinstance(widget, QSpinBox):
-        widget.valueChanged.connect(lambda *_: callback())
-    elif isinstance(widget, QDoubleSpinBox):
-        widget.valueChanged.connect(lambda *_: callback())
-    elif isinstance(widget, QCheckBox):
-        widget.toggled.connect(lambda *_: callback())
-    elif isinstance(widget, QComboBox):
-        widget.currentTextChanged.connect(lambda *_: callback())
-    elif isinstance(widget, QLineEdit):
-        widget.textChanged.connect(lambda *_: callback())
-
-
-def _set_editor_value(widget: QWidget, value: Any) -> None:
-    if isinstance(widget, QSpinBox):
-        widget.blockSignals(True)
-        widget.setValue(int(value))
-        widget.blockSignals(False)
-    elif isinstance(widget, QDoubleSpinBox):
-        widget.blockSignals(True)
-        widget.setValue(float(value))
-        widget.blockSignals(False)
-    elif isinstance(widget, QCheckBox):
-        widget.blockSignals(True)
-        widget.setChecked(bool(value))
-        widget.blockSignals(False)
-    elif isinstance(widget, QComboBox):
-        widget.blockSignals(True)
-        widget.setCurrentText(str(value))
-        widget.blockSignals(False)
-    elif isinstance(widget, QLineEdit):
-        widget.blockSignals(True)
-        widget.setText("" if value is None else str(value))
-        widget.blockSignals(False)
+        param, widget = item
+        param.set_value(widget, value)
