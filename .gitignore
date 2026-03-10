@@ -8,6 +8,8 @@ pyrpoc_env/
 pyrpoc_venv/
 .env/
 .venv/
+.cursor/
+
 
 
 *.egg-info/
