@@ -60,7 +60,7 @@ class BaseModality(ABC):
         self._configured = False
         self._params: dict[str, Any] = {}
         self._instruments: dict[type[BaseInstrument], BaseInstrument] = {}
-        self._opto_controls: list[tuple[BaseOptoControl, tuple[Any, ...]]] = []
+        self._opto_controls: list[tuple[BaseOptoControl, Any]] = []
 
     @classmethod
     def get_contract(cls) -> dict[str, Any]:
@@ -80,7 +80,7 @@ class BaseModality(ABC):
         self,
         params: dict[str, Any],
         instruments: dict[type[BaseInstrument], BaseInstrument],
-        opto_controls: list[tuple[BaseOptoControl, tuple[Any, ...]]],
+        opto_controls: list[tuple[BaseOptoControl, Any]],
     ) -> None:
         raise NotImplementedError
 

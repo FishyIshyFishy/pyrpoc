@@ -5,6 +5,8 @@ from typing import Any
 import cv2
 import numpy as np
 
+from pyrpoc.backend_utils.opto_control_contexts import MaskContext
+
 
 def generate_toy_confocal_frame(
     *,
@@ -12,7 +14,7 @@ def generate_toy_confocal_frame(
     y_pixels: int,
     active_channels: list[int],
     frame_index: int,
-    mask_contexts: list[dict[str, Any]],
+    mask_contexts: list[MaskContext],
     fast_axis_offset: float,
     fast_axis_amplitude: float,
     slow_axis_offset: float,
@@ -115,14 +117,14 @@ def _build_toy_channel(
 
 def _apply_masks(
     frame: np.ndarray,
-    mask_contexts: list[dict[str, Any]],
+    mask_contexts: list[MaskContext],
 ) -> None:
     if frame.ndim != 3:
         return
     _, h, w = frame.shape
 
     for context in mask_contexts:
-        mask = np.asarray(context["mask"], dtype=np.uint8)
+        mask = np.asarray(context.mask, dtype=np.uint8) #pyright:ignore
         if mask.ndim != 2:
             continue
 

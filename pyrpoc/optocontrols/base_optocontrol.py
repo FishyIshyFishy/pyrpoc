@@ -6,6 +6,7 @@ from typing import Any
 
 from PyQt6.QtWidgets import QWidget
 
+from pyrpoc.backend_utils.opto_control_contexts import BaseOptoControlContext
 from pyrpoc.backend_utils.state_helpers import export_object_state, import_object_state, make_instance_id
 
 
@@ -101,13 +102,12 @@ class BaseOptoControl(ABC):
         """
         return self.user_label or self.DISPLAY_NAME
 
-    @abstractmethod
-    def prepare_for_acquisition(self) -> tuple[Any, ...]:
-        """Build the control-specific acquisition payload for the current acquisition run.
+    def get_context(self) -> BaseOptoControlContext:
+        """Build the control-specific acquisition context for the current run.
 
-        Called from optocontrol service when building the modality-specific run inputs.
+        Subclasses override this to pass modality-facing, acquisition-only state.
         """
-        raise NotImplementedError
+        return BaseOptoControlContext(optocontrol_key=self.OPTOCONTROL_KEY, alias=self.alias)
 
     def cleanup(self) -> None:
         """Release widget/state resources before removal.
@@ -115,6 +115,14 @@ class BaseOptoControl(ABC):
         Concrete controls override this when they hold threads, file handles, or external state.
         """
         self.last_error = None
+
+    def prepare_for_acquisition(self) -> BaseOptoControlContext:
+        """Default acquisition handoff for modality execution.
+
+        This keeps `ModalityService` and existing callers simple by returning one
+        context object per control rather than arbitrary payload tuples.
+        """
+        return self.get_context()
 
     def export_persistence_state(self) -> dict[str, Any]:
         return export_object_state(

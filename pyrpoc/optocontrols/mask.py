@@ -24,6 +24,7 @@ from PyQt6.QtWidgets import (
 
 from .base_optocontrol import BaseOptoControl, BaseOptoControlWidget
 from .opto_control_registry import opto_control_registry
+from pyrpoc.backend_utils.opto_control_contexts import MaskContext
 
 if TYPE_CHECKING:
     from pyrpoc.gui.main_widgets.opto_control_mgr.mask_editor import MaskEditorWidget
@@ -308,16 +309,13 @@ class MaskOptoControl(BaseOptoControl):
             self.widget.refresh_from_model()
         return self.widget
 
-    def prepare_for_acquisition(self) -> tuple[str, dict[str, object]]:
-        return (
-            self.type_key,
-            {
-                "alias": self.alias,
-                "daq_port": int(self.daq_port),
-                "daq_line": int(self.daq_line),
-                "mask_path": self.mask_path,
-                "has_mask_data": self.mask_data is not None,
-            },
+    def get_context(self) -> MaskContext:
+        return MaskContext(
+            optocontrol_key=self.OPTOCONTROL_KEY,
+            alias=self.alias,
+            mask=self.mask_data,
+            daq_port=int(self.daq_port),
+            daq_line=int(self.daq_line),
         )
 
     def export_persistence_state(self) -> dict[str, object]:

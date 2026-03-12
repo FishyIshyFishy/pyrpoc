@@ -108,12 +108,12 @@ class OptoControlService(QObject):
         self.control_state_changed.emit(control, enabled)
         self.control_changed.emit(control)
 
-    def collect_data_for_acquisition(self) -> list[tuple[Any, ...]]:
+    def collect_data_for_acquisition(self) -> list[Any]:
         '''Collect enabled control payloads in UI order.
 
         This is the handoff point from GUI config to modality-specific execution.
         '''
-        rows: list[tuple[Any, ...]] = []
+        rows: list[Any] = []
         for control in self.app_state.optocontrols:
             if not control.enabled:
                 continue

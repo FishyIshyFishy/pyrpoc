@@ -4,6 +4,10 @@ from typing import Any
 
 import numpy as np
 
+import nidaqmx as nx
+from nidaqmx.constants import AcquisitionType
+
+from pyrpoc.backend_utils.opto_control_contexts import MaskContext
 from pyrpoc.instruments.confocal_daq import ConfocalDAQInstrument
 from pyrpoc.optocontrols.base_optocontrol import BaseOptoControl
 from pyrpoc.optocontrols.mask import MaskOptoControl
@@ -13,42 +17,44 @@ class DaqUnavailableError(RuntimeError):
     """Raised when a DAQ-backed acquisition cannot run on this machine."""
 
 
+# TODO: make the need for a context object uniform to all optocontrol types
+# so that it is easier to know in different modalities what the mask info is shipped as
+# this should be enforced by BaseOptoControl
+# and we can have a Context object
+# this might be a good way to ship DisplayContexts and InstrumentContexts as well
+
+
 def extract_mask_contexts(
-    opto_controls: list[tuple[BaseOptoControl, tuple[Any, ...]]],
-) -> list[dict[str, Any]]:
-    contexts: list[dict[str, Any]] = []
-    for control, payload in opto_controls:
+    opto_controls: list[tuple[BaseOptoControl, Any]],
+) -> list[MaskContext]:
+    contexts: list[MaskContext] = []
+    for control, context in opto_controls:
         if not isinstance(control, MaskOptoControl):
             continue
-        if control.mask_data is None: #pyright:ignore
+
+        if not isinstance(context, MaskContext):
+            raise TypeError(f"{type(control).__name__} must provide MaskContext during acquisition")
+
+        if context.mask is None: #pyright:ignore
             raise RuntimeError(f"Enabled mask control '{control.alias}' has no mask data")
 
-        mask = np.asarray(control.mask_data, dtype=np.uint8) #pyright:ignore
+        mask = np.asarray(context.mask, dtype=np.uint8) #pyright:ignore
         if mask.ndim != 2:
             raise RuntimeError(f"Mask control '{control.alias}' must provide a 2D mask")
 
-        daq_port = int(control.daq_port) #pyright:ignore
-        daq_line = int(control.daq_line)#pyright:ignore
-        if len(payload) >= 2 and isinstance(payload[1], dict):
-            daq_port = int(payload[1].get("daq_port", daq_port))
-            daq_line = int(payload[1].get("daq_line", daq_line))
-
-        if daq_port < 0 or daq_line < 0:
-            raise RuntimeError(f"Mask control '{control.alias}' has invalid DAQ port/line values")
-
         contexts.append(
-            {
-                "alias": control.alias,
-                "mask": mask,
-                "daq_port": daq_port,
-                "daq_line": daq_line,
-            }
+            MaskContext(
+                optocontrol_key=context.optocontrol_key,
+                alias=context.alias,
+                mask=mask,
+                daq_port=int(context.daq_port),
+                daq_line=int(context.daq_line),
+            )
         )
     return contexts
 
 
-def acquire_confocal_frame_with_daq(
-    *,
+def acquire_daq_confocal(
     daq_instrument: ConfocalDAQInstrument,
     x_pixels: int,
     y_pixels: int,
@@ -60,65 +66,21 @@ def acquire_confocal_frame_with_daq(
     slow_axis_offset: float,
     slow_axis_amplitude: float,
     active_ai_channels: list[int],
-    mask_contexts: list[dict[str, Any]] | None = None,
+    mask_contexts: list[MaskContext] = [],
 ) -> np.ndarray:
-    return _acquire_with_nidaq(
-        device_name=daq_instrument.device_name,
-        sample_rate_hz=float(daq_instrument.sample_rate_hz),
-        fast_axis_channel=int(daq_instrument.fast_axis_ao),
-        slow_axis_channel=int(daq_instrument.slow_axis_ao),
-        active_ai_channels=active_ai_channels,
-        x_pixels=x_pixels,
-        y_pixels=y_pixels,
-        extra_left=extra_left,
-        extra_right=extra_right,
-        dwell_time_us=dwell_time_us,
-        fast_axis_offset=fast_axis_offset,
-        fast_axis_amplitude=fast_axis_amplitude,
-        slow_axis_offset=slow_axis_offset,
-        slow_axis_amplitude=slow_axis_amplitude,
-        mask_contexts=mask_contexts,
-    )
-
-
-def _acquire_with_nidaq(
-    *,
-    device_name: str,
-    sample_rate_hz: float,
-    fast_axis_channel: int,
-    slow_axis_channel: int,
-    active_ai_channels: list[int],
-    x_pixels: int,
-    y_pixels: int,
-    extra_left: int,
-    extra_right: int,
-    dwell_time_us: float,
-    fast_axis_offset: float,
-    fast_axis_amplitude: float,
-    slow_axis_offset: float,
-    slow_axis_amplitude: float,
-    mask_contexts: list[dict[str, Any]] | None = None,
-) -> np.ndarray:
-    x_pixels = int(x_pixels)
-    y_pixels = int(y_pixels)
-    extra_left = max(0, int(extra_left))
-    extra_right = max(0, int(extra_right))
-    if x_pixels <= 0 or y_pixels <= 0:
-        raise ValueError("Scan dimensions must be positive")
-    if sample_rate_hz <= 0:
-        raise ValueError("Confocal DAQ sample rate must be positive")
-
-    if not active_ai_channels:
-        raise ValueError("No active AI channels configured")
+    # TODO: make sure validation hapens prior to this function
+    # TODO: make sure instrument we only read instrument parameters in one place, AI channels are an instrument parameter too
+    device_name: str = daq_instrument.device_name
+    sample_rate_hz: float = float(daq_instrument.sample_rate_hz)
+    fast_axis_channel: int = int(daq_instrument.fast_axis_ao)
+    slow_axis_channel: int = int(daq_instrument.slow_axis_ao)
 
     pixel_samples = max(1, int(dwell_time_us * 1e-6 * sample_rate_hz))
     total_x = x_pixels + extra_left + extra_right
     total_y = y_pixels
     total_samples = total_x * total_y * pixel_samples
-    if total_samples <= 0:
-        raise ValueError("Invalid DAQ acquisition sample count")
 
-    waveform = _build_raster_waveform(
+    waveform = get_raster_waveform(
         x_pixels=total_x,
         y_pixels=total_y,
         pixel_samples=pixel_samples,
@@ -127,29 +89,24 @@ def _acquire_with_nidaq(
         slow_axis_offset=slow_axis_offset,
         slow_axis_amplitude=slow_axis_amplitude,
     )
-    ttl_signals = _build_mask_ttl_signals(
-        mask_contexts=mask_contexts or [],
+    ttl_signals = get_mask_waveform(
         total_x=total_x,
         total_y=total_y,
         pixel_samples=pixel_samples,
         extra_left=extra_left,
+        extra_right=extra_right,
         device_name=device_name,
+        mask_contexts=mask_contexts,
     )
-
-    try:
-        import nidaqmx
-        from nidaqmx.constants import AcquisitionType
-    except Exception as exc:
-        raise DaqUnavailableError(f"nidaqmx is unavailable ({exc})") from exc
 
     ai_channels = [f"{device_name}/ai{idx}" for idx in active_ai_channels]
 
-    do_task: nidaqmx.Task | None = None
-    static_do_task: nidaqmx.Task | None = None
+    do_task: nx.Task | None = None
+    static_do_task: nx.Task | None = None
     static_values: list[bool] = []
 
     try:
-        with nidaqmx.Task() as ao_task, nidaqmx.Task() as ai_task:
+        with nx.Task() as ao_task, nx.Task() as ai_task:
             ao_task.ao_channels.add_ao_voltage_chan(f"{device_name}/ao{fast_axis_channel}")
             ao_task.ao_channels.add_ao_voltage_chan(f"{device_name}/ao{slow_axis_channel}")
             for ch in ai_channels:
@@ -182,7 +139,7 @@ def _acquire_with_nidaq(
                         static_values.append(bool(ttl.flat[0]))
 
                 if dynamic_channels:
-                    do_task = nidaqmx.Task()
+                    do_task = nx.Task()
                     for channel_name in dynamic_channels:
                         do_task.do_channels.add_do_chan(channel_name)
                     do_task.timing.cfg_samp_clk_timing(
@@ -197,7 +154,7 @@ def _acquire_with_nidaq(
                         do_task.write([ttl.tolist() for ttl in dynamic_ttls], auto_start=False) #pyright:ignore
 
                 if static_channels:
-                    static_do_task = nidaqmx.Task()
+                    static_do_task = nx.Task()
                     for channel_name in static_channels:
                         static_do_task.do_channels.add_do_chan(channel_name)
                     static_do_task.write(static_values, auto_start=True) #pyright:ignore
@@ -245,27 +202,30 @@ def _acquire_with_nidaq(
             static_do_task.close()
 
 
-def _build_mask_ttl_signals(
-    mask_contexts: list[dict[str, Any]],
-    *,
+def get_mask_waveform(
     total_x: int,
     total_y: int,
     pixel_samples: int,
     extra_left: int,
+    extra_right: int,
     device_name: str,
+    mask_contexts: list[MaskContext],
 ) -> dict[str, np.ndarray]:
+    """
+    create the RPOC TTL waveforms by thresholding each mask
+
+    mask_contents is a list of dicts
+    each dict specifies:
+    {
+        'mask': 2d array,
+        '
+    }
+    """
     ttl_signals: dict[str, np.ndarray] = {}
-    for index, context in enumerate(mask_contexts):
-        alias = str(context.get("alias", f"Mask {index}"))
-        mask = np.asarray(context.get("mask"), dtype=np.uint8)
-        if mask.ndim != 2:
-            raise RuntimeError(f"Mask context '{alias}' must be a 2D array")
 
-        daq_port = int(context.get("daq_port", 0))
-        daq_line = int(context.get("daq_line", 0))
-        if daq_port < 0 or daq_line < 0:
-            raise RuntimeError(f"Mask context '{alias}' has invalid DAQ port/line values")
-
+    for context in mask_contexts:
+        mask = np.asarray(context.mask, dtype=np.uint8) #pyright:ignore
+        
         padded_mask = np.zeros((total_y, total_x), dtype=bool)
         if mask.size:
             source_h = min(mask.shape[0], total_y)
@@ -275,12 +235,13 @@ def _build_mask_ttl_signals(
 
         ttl = np.zeros((total_y, total_x, pixel_samples), dtype=bool)
         ttl[padded_mask] = True
-        ttl_signals[f"{device_name}/port{daq_port}/line{daq_line}"] = ttl.reshape(-1)
+        ttl_signals[
+            f"{device_name}/port{int(context.daq_port)}/line{int(context.daq_line)}"
+        ] = ttl.reshape(-1)
     return ttl_signals
 
 
-def _build_raster_waveform(
-    *,
+def get_raster_waveform(
     x_pixels: int,
     y_pixels: int,
     pixel_samples: int,

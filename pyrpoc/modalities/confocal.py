@@ -6,6 +6,7 @@ import numpy as np
 
 from pyrpoc.backend_utils.array_contracts import CONTRACT_CHW_FLOAT32
 from pyrpoc.instruments.confocal_daq import ConfocalDAQInstrument
+from pyrpoc.backend_utils.opto_control_contexts import MaskContext
 from pyrpoc.optocontrols.base_optocontrol import BaseOptoControl
 from pyrpoc.optocontrols.mask import MaskOptoControl
 from pyrpoc.backend_utils.parameter_utils import (
@@ -16,7 +17,7 @@ from pyrpoc.backend_utils.parameter_utils import (
 
 from .acquisition_functions.daq_helpers import (
     DaqUnavailableError,
-    acquire_confocal_frame_with_daq,
+    acquire_daq_confocal,
     extract_mask_contexts,
 )
 from .acquisition_functions.toy_data import generate_toy_confocal_frame
@@ -127,15 +128,15 @@ class ConfocalModality(BaseModality):
     def __init__(self):
         super().__init__()
         self._frame_idx = 0
-        self._mask_contexts: list[dict[str, Any]] = []
-        self._daq_instrument: ConfocalDAQInstrument | None = None
+        self._mask_contexts: list[MaskContext] = []
+        self._daq_instrument: ConfocalDAQInstrument = None
         self._active_ai_channels: list[int] = []
 
     def configure(
         self,
         params: dict[str, Any],
         instruments: dict[type[ConfocalDAQInstrument], ConfocalDAQInstrument],
-        opto_controls: list[tuple[BaseOptoControl, tuple[Any, ...]]],
+        opto_controls: list[tuple[BaseOptoControl, Any]],
     ) -> None:
         self._params = dict(params)
         self._instruments = dict(instruments)
@@ -165,7 +166,7 @@ class ConfocalModality(BaseModality):
         active_ai_channels = self._get_active_ai_channels()
 
         try:
-            frame = acquire_confocal_frame_with_daq(
+            frame = acquire_daq_confocal(
                 daq_instrument=self._daq_instrument,
                 active_ai_channels=active_ai_channels,
                 mask_contexts=self._mask_contexts,
