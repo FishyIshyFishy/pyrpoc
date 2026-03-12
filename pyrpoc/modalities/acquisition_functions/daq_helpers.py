@@ -75,8 +75,10 @@ def acquire_daq_confocal(
     expected_kept = x_pixels * pixel_samples
 
     waveform = get_raster_waveform(
-        total_x=total_x,
+        x_pixels=x_pixels,
         y_pixels=y_pixels,
+        extra_left=extra_left,
+        extra_right=extra_right,
         pixel_samples=pixel_samples,
         fast_axis_offset=fast_axis_offset,
         fast_axis_amplitude=fast_axis_amplitude,
@@ -84,8 +86,7 @@ def acquire_daq_confocal(
         slow_axis_amplitude=slow_axis_amplitude,
     )
     ttl_signals = get_mask_waveform(total_x=total_x, total_y=total_y, pixel_samples=pixel_samples,
-        extra_left=extra_left, extra_right=extra_right, device_name=device_name, mask_contexts=mask_contexts, scan_x_pixels=x_pixels,
-    )
+        extra_left=extra_left, extra_right=extra_right, device_name=device_name, mask_contexts=mask_contexts, scan_x_pixels=x_pixels)
 
     ai_channels = [f"{device_name}/ai{idx}" for idx in active_ai_channels]
 
@@ -237,29 +238,40 @@ def get_mask_waveform(total_x: int, total_y: int, pixel_samples: int, extra_left
 
 
 def get_raster_waveform(
-    total_x: int,
-    y_pixels: int,
-    pixel_samples: int,
-    fast_axis_offset: float,
-    fast_axis_amplitude: float,
-    slow_axis_offset: float,
-    slow_axis_amplitude: float,
-) -> np.ndarray:
-
+    x_pixels,
+    y_pixels,
+    extra_left,
+    extra_right,
+    pixel_samples,
+    fast_axis_offset,
+    fast_axis_amplitude,
+    slow_axis_offset,
+    slow_axis_amplitude,
+):
     fast_amp = max(float(fast_axis_amplitude), 1e-6)
     slow_amp = max(float(slow_axis_amplitude), 1e-6)
 
-    if total_x <= 0 or y_pixels <= 0:
-        raise ValueError("scan dimensions must be positive")
+    if x_pixels <= 0 or y_pixels <= 0:
+        raise ValueError('scan dimensions must be positive')
 
-    fast_axis = (np.linspace(-1.0, 1.0, total_x, endpoint=False, dtype=np.float32) * fast_amp) + float(
-        fast_axis_offset
+    total_x = x_pixels + extra_left + extra_right
+
+    # active image region spans the intended FOV
+    x_active = np.linspace(-1.0, 1.0, x_pixels, endpoint=False, dtype=np.float32)
+
+    # extend by the same pixel pitch on each side
+    dx = 2.0 / x_pixels
+    x_full = (np.arange(-extra_left, x_pixels + extra_right, dtype=np.float32) * dx) - 1.0
+
+    fast_axis = x_full * fast_amp + float(fast_axis_offset)
+    slow_axis = (
+        np.linspace(-1.0, 1.0, y_pixels, endpoint=False, dtype=np.float32) * slow_amp
+        + float(slow_axis_offset)
     )
-    slow_axis = (np.linspace(-1.0, 1.0, y_pixels, endpoint=False, dtype=np.float32) * slow_amp) + float(slow_axis_offset)
 
     fast_samples = np.repeat(fast_axis, pixel_samples)
     slow_samples = np.repeat(slow_axis, total_x * pixel_samples)
     fast_raster = np.tile(fast_samples, y_pixels)
-    slow_raster = np.tile(slow_samples, 1)
+    slow_raster = slow_samples
 
     return np.vstack((fast_raster, slow_raster)).astype(np.float64)
