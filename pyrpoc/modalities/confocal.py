@@ -136,7 +136,7 @@ class ConfocalModality(BaseModality):
         self,
         params: dict[str, Any],
         instruments: dict[type[ConfocalDAQInstrument], ConfocalDAQInstrument],
-        opto_controls: list[tuple[BaseOptoControl, Any]],
+        opto_controls: list[BaseOptoControl],
     ) -> None:
         self._params = dict(params)
         self._instruments = dict(instruments)

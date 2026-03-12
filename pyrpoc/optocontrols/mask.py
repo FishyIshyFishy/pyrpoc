@@ -310,13 +310,14 @@ class MaskOptoControl(BaseOptoControl):
         return self.widget
 
     def get_context(self) -> MaskContext:
-        return MaskContext(
+        self.context = MaskContext(
             optocontrol_key=self.OPTOCONTROL_KEY,
             alias=self.alias,
             mask=self.mask_data,
             daq_port=int(self.daq_port),
             daq_line=int(self.daq_line),
         )
+        return self.context
 
     def export_persistence_state(self) -> dict[str, object]:
         return {

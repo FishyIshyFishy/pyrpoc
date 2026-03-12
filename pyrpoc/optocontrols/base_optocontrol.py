@@ -69,6 +69,7 @@ class BaseOptoControl(ABC):
         self.enabled = enabled
         self.connected = bool(connected)
         self.last_error: str | None = None
+        self.context: BaseOptoControlContext | None = None
 
     @property
     def type_key(self) -> str:
@@ -122,7 +123,8 @@ class BaseOptoControl(ABC):
         This keeps `ModalityService` and existing callers simple by returning one
         context object per control rather than arbitrary payload tuples.
         """
-        return self.get_context()
+        self.context = self.get_context()
+        return self.context
 
     def export_persistence_state(self) -> dict[str, Any]:
         return export_object_state(

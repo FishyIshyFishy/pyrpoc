@@ -137,7 +137,7 @@ class ModalityService(QObject):
                 bound[optional_cls] = optional_instances[0]
 
         allowed_types = tuple(self.app_state.modality.selected_class.ALLOWED_OPTOCONTROLS)
-        bound_opto: list[tuple[BaseOptoControl, Any]] = []
+        bound_opto: list[BaseOptoControl] = []
         for control in self.app_state.optocontrols:
             if not control.enabled:
                 continue
@@ -145,8 +145,8 @@ class ModalityService(QObject):
                 continue
             if not isinstance(control, allowed_types):
                 continue
-            context = control.prepare_for_acquisition()
-            bound_opto.append((control, context))
+            control.prepare_for_acquisition()
+            bound_opto.append(control)
 
         self.app_state.modality.instance.configure(cleaned_params, bound, bound_opto)
         self._active_channel_labels = list(self.app_state.modality.instance.get_active_channel_labels())

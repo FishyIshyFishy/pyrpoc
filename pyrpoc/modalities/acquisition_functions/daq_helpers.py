@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import Any
-
 import numpy as np
 
 import nidaqmx as nx
@@ -24,33 +22,17 @@ class DaqUnavailableError(RuntimeError):
 # this might be a good way to ship DisplayContexts and InstrumentContexts as well
 
 
-def extract_mask_contexts(
-    opto_controls: list[tuple[BaseOptoControl, Any]],
-) -> list[MaskContext]:
+def extract_mask_contexts(opto_controls: list[BaseOptoControl]) -> list[MaskContext]:
     contexts: list[MaskContext] = []
-    for control, context in opto_controls:
+    for control in opto_controls:
         if not isinstance(control, MaskOptoControl):
             continue
 
+        context = control.context
         if not isinstance(context, MaskContext):
-            raise TypeError(f"{type(control).__name__} must provide MaskContext during acquisition")
+            raise TypeError(f"{type(control).__name__} must prepare a MaskContext before acquisition")
 
-        if context.mask is None: #pyright:ignore
-            raise RuntimeError(f"Enabled mask control '{control.alias}' has no mask data")
-
-        mask = np.asarray(context.mask, dtype=np.uint8) #pyright:ignore
-        if mask.ndim != 2:
-            raise RuntimeError(f"Mask control '{control.alias}' must provide a 2D mask")
-
-        contexts.append(
-            MaskContext(
-                optocontrol_key=context.optocontrol_key,
-                alias=context.alias,
-                mask=mask,
-                daq_port=int(context.daq_port),
-                daq_line=int(context.daq_line),
-            )
-        )
+        contexts.append(context)
     return contexts
 
 
@@ -70,6 +52,14 @@ def acquire_daq_confocal(
 ) -> np.ndarray:
     # TODO: make sure validation hapens prior to this function
     # TODO: make sure instrument we only read instrument parameters in one place, AI channels are an instrument parameter too
+    if x_pixels <= 0 or y_pixels <= 0:
+        raise ValueError("X pixels, Y pixels, and scan samples must be positive")
+
+    if extra_left < 0:
+        raise ValueError("extra_left must be >= 0")
+    if extra_right < 0:
+        raise ValueError("extra_right must be >= 0")
+
     device_name: str = daq_instrument.device_name
     sample_rate_hz: float = float(daq_instrument.sample_rate_hz)
     fast_axis_channel: int = int(daq_instrument.fast_axis_ao)
@@ -79,24 +69,22 @@ def acquire_daq_confocal(
     total_x = x_pixels + extra_left + extra_right
     total_y = y_pixels
     total_samples = total_x * total_y * pixel_samples
+    row_samples = total_x * pixel_samples
+    keep_start = extra_left * pixel_samples
+    keep_end = row_samples - (extra_right * pixel_samples)
+    expected_kept = x_pixels * pixel_samples
 
     waveform = get_raster_waveform(
-        x_pixels=total_x,
-        y_pixels=total_y,
+        total_x=total_x,
+        y_pixels=y_pixels,
         pixel_samples=pixel_samples,
         fast_axis_offset=fast_axis_offset,
         fast_axis_amplitude=fast_axis_amplitude,
         slow_axis_offset=slow_axis_offset,
         slow_axis_amplitude=slow_axis_amplitude,
     )
-    ttl_signals = get_mask_waveform(
-        total_x=total_x,
-        total_y=total_y,
-        pixel_samples=pixel_samples,
-        extra_left=extra_left,
-        extra_right=extra_right,
-        device_name=device_name,
-        mask_contexts=mask_contexts,
+    ttl_signals = get_mask_waveform(total_x=total_x, total_y=total_y, pixel_samples=pixel_samples,
+        extra_left=extra_left, extra_right=extra_right, device_name=device_name, mask_contexts=mask_contexts, scan_x_pixels=x_pixels,
     )
 
     ai_channels = [f"{device_name}/ai{idx}" for idx in active_ai_channels]
@@ -180,9 +168,15 @@ def acquire_daq_confocal(
 
             frame_channels: list[np.ndarray] = []
             for channel_data in acq_data:
-                reshaped = np.asarray(channel_data, dtype=np.float32).reshape(total_y, total_x, pixel_samples)
-                pixel_values = np.mean(reshaped, axis=2)
-                frame_channels.append(pixel_values[:, extra_left:extra_left + x_pixels].astype(np.float32))
+                # Crop out flyback pixels first, then bin pixel samples.
+                scan_line_samples = np.asarray(channel_data, dtype=np.float32).reshape(total_y, row_samples)
+                if scan_line_samples.shape[1] < keep_end:
+                    raise RuntimeError("Acquired sample width is smaller than expected")
+                kept_samples = scan_line_samples[:, keep_start:keep_end]
+                if kept_samples.shape[1] != expected_kept:
+                    raise RuntimeError("Acquired scan payload does not match requested scan dimensions")
+                pixel_values = kept_samples.reshape(total_y, x_pixels, pixel_samples).mean(axis=2)
+                frame_channels.append(pixel_values.astype(np.float32))
 
             return np.stack(frame_channels, axis=0).astype(np.float32, copy=False)
     except DaqUnavailableError:
@@ -202,15 +196,9 @@ def acquire_daq_confocal(
             static_do_task.close()
 
 
-def get_mask_waveform(
-    total_x: int,
-    total_y: int,
-    pixel_samples: int,
-    extra_left: int,
-    extra_right: int,
-    device_name: str,
-    mask_contexts: list[MaskContext],
-) -> dict[str, np.ndarray]:
+def get_mask_waveform(total_x: int, total_y: int, pixel_samples: int, extra_left: int, extra_right: int, 
+                      device_name: str, mask_contexts: list[MaskContext], scan_x_pixels: int
+                      ) -> dict[str, np.ndarray]:
     """
     create the RPOC TTL waveforms by thresholding each mask
 
@@ -222,16 +210,23 @@ def get_mask_waveform(
     }
     """
     ttl_signals: dict[str, np.ndarray] = {}
+    keep_w = max(0, min(scan_x_pixels, max(0, total_x - extra_left - extra_right)))
 
     for context in mask_contexts:
+        if context.mask is None:
+            continue
+
         mask = np.asarray(context.mask, dtype=np.uint8) #pyright:ignore
-        
+        mask_bool = mask > 0
+        if mask_bool.size == 0:
+            continue
+
         padded_mask = np.zeros((total_y, total_x), dtype=bool)
-        if mask.size:
-            source_h = min(mask.shape[0], total_y)
-            source_w = min(mask.shape[1], max(0, total_x - extra_left))
+        if mask_bool.size:
+            source_h = min(mask_bool.shape[0], total_y)
+            source_w = min(mask_bool.shape[1], keep_w)
             if source_h > 0 and source_w > 0:
-                padded_mask[:source_h, extra_left : extra_left + source_w] = mask[:source_h, :source_w] > 0
+                padded_mask[:source_h, extra_left : extra_left + source_w] = mask_bool[:source_h, :source_w]
 
         ttl = np.zeros((total_y, total_x, pixel_samples), dtype=bool)
         ttl[padded_mask] = True
@@ -242,7 +237,7 @@ def get_mask_waveform(
 
 
 def get_raster_waveform(
-    x_pixels: int,
+    total_x: int,
     y_pixels: int,
     pixel_samples: int,
     fast_axis_offset: float,
@@ -250,18 +245,20 @@ def get_raster_waveform(
     slow_axis_offset: float,
     slow_axis_amplitude: float,
 ) -> np.ndarray:
+
     fast_amp = max(float(fast_axis_amplitude), 1e-6)
     slow_amp = max(float(slow_axis_amplitude), 1e-6)
 
-    fast_axis = (np.linspace(-1.0, 1.0, x_pixels, endpoint=False, dtype=np.float32) * fast_amp) + float(
+    if total_x <= 0 or y_pixels <= 0:
+        raise ValueError("scan dimensions must be positive")
+
+    fast_axis = (np.linspace(-1.0, 1.0, total_x, endpoint=False, dtype=np.float32) * fast_amp) + float(
         fast_axis_offset
     )
-    slow_axis = (np.linspace(-1.0, 1.0, y_pixels, endpoint=False, dtype=np.float32) * slow_amp) + float(
-        slow_axis_offset
-    )
+    slow_axis = (np.linspace(-1.0, 1.0, y_pixels, endpoint=False, dtype=np.float32) * slow_amp) + float(slow_axis_offset)
 
     fast_samples = np.repeat(fast_axis, pixel_samples)
-    slow_samples = np.repeat(np.repeat(slow_axis, x_pixels * pixel_samples), 1)
+    slow_samples = np.repeat(slow_axis, total_x * pixel_samples)
     fast_raster = np.tile(fast_samples, y_pixels)
     slow_raster = np.tile(slow_samples, 1)
 
