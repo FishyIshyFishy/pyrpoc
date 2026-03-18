@@ -21,6 +21,12 @@ class DaqUnavailableError(RuntimeError):
 # and we can have a Context object
 # this might be a good way to ship DisplayContexts and InstrumentContexts as well
 
+# TODO: make sure that everything needed for acquisition parameter is read into the acquisition object
+# and verified at a specific layer enforced by base
+# so that we dont need a bunch of validation logic in acquisition code
+
+# TODO: make sure that saving of things is done in acquisition layer
+# so that modality service stays agnostic
 
 def extract_mask_contexts(opto_controls: list[BaseOptoControl]) -> list[MaskContext]:
     contexts: list[MaskContext] = []
