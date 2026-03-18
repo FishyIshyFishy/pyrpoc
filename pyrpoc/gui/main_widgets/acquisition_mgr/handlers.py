@@ -36,7 +36,13 @@ def on_modality_selected(widget: AcquisitionManagerWidget, key: str) -> None:
 
 
 def handle_modality_selected(widget: AcquisitionManagerWidget, key: str) -> None:
-    del key
+    if key:
+        index = widget.modality_combo.findText(key)
+        if index >= 0 and widget.modality_combo.currentIndex() != index:
+            widget.modality_combo.blockSignals(True)
+            widget.modality_combo.setCurrentIndex(index)
+            widget.modality_combo.blockSignals(False)
+
     parameter_groups = widget.modality_service.get_selected_parameters()
     existing_values = widget.modality_service.get_parameter_values()
     build_param_form(

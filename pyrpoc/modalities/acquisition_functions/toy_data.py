@@ -48,6 +48,64 @@ def generate_toy_confocal_frame(
     return frame
 
 
+def generate_toy_split_confocal_frame(
+    *,
+    x_pixels: int,
+    y_pixels: int,
+    active_channels: list[int],
+    frame_index: int,
+    mask_contexts: list[MaskContext],
+    fast_axis_offset: float,
+    fast_axis_amplitude: float,
+    slow_axis_offset: float,
+    slow_axis_amplitude: float,
+    t0_samples: int,
+    t1_samples: int,
+    pixel_samples: int,
+) -> tuple[np.ndarray, np.ndarray]:
+    if pixel_samples <= 0:
+        raise ValueError("pixel_samples must be positive")
+    if t0_samples < 1:
+        raise ValueError("t0 samples must be >= 1")
+    if t1_samples < 0:
+        raise ValueError("t1 samples must be >= 0")
+    if t0_samples + t1_samples >= pixel_samples:
+        raise ValueError(
+            f"split timing uses all samples: t0={t0_samples}, t1={t1_samples}, pixel_samples={pixel_samples}"
+        )
+
+    frame = generate_toy_confocal_frame(
+        x_pixels=x_pixels,
+        y_pixels=y_pixels,
+        active_channels=active_channels,
+        frame_index=frame_index,
+        mask_contexts=mask_contexts,
+        fast_axis_offset=fast_axis_offset,
+        fast_axis_amplitude=fast_axis_amplitude,
+        slow_axis_offset=slow_axis_offset,
+        slow_axis_amplitude=slow_axis_amplitude,
+    )
+
+    rng = np.random.default_rng(seed=(frame_index + 1) * 17)
+    raw = np.repeat(frame[:, :, :, None], pixel_samples, axis=3)
+    raw = raw + rng.normal(0.0, 0.02, size=raw.shape).astype(np.float32)
+
+    first_start = int(t0_samples)
+    second_start = first_start + int(t1_samples)
+
+    first_portion = raw[:, :, :, :first_start].mean(axis=3)
+    if second_start < pixel_samples:
+        second_portion = raw[:, :, :, second_start:].mean(axis=3)
+    else:
+        second_portion = np.zeros_like(first_portion)
+
+    first_portion = _overlay_split_label(first_portion, "1")
+    second_portion = _overlay_split_label(second_portion, "2")
+
+    split_frame = np.stack((first_portion, second_portion), axis=1).reshape(frame.shape[0] * 2, y_pixels, x_pixels)
+    return split_frame.astype(np.float32, copy=False), raw.astype(np.float32, copy=False)
+
+
 def _build_toy_channel(
     *,
     x_pixels: int,
@@ -138,3 +196,32 @@ def _apply_masks(
         for idx in range(frame.shape[0]):
             boost = float(np.max(frame[idx]))
             frame[idx, active] += boost
+
+
+def _overlay_split_label(image: np.ndarray, label: str) -> np.ndarray:
+    if image.ndim != 2:
+        return image
+
+    if image.shape[0] < 16 or image.shape[1] < 24:
+        return image
+
+    marker = np.zeros(image.shape[:2], dtype=np.uint8)
+    baseline = 0.8 * image.shape[0] if image.shape[0] > 0 else 0
+    x = max(2, int(image.shape[1] * 0.05))
+    y = int(max(14, baseline))
+    cv2.putText(
+        marker,
+        label,
+        (x, y),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.6,
+        255,
+        2,
+        cv2.LINE_AA,
+    )
+
+    if not np.any(marker):
+        return image
+
+    weight = 0.2
+    return image + weight * (marker.astype(np.float32) / 255.0) * (float(np.max(np.abs(image))) + 1.0)

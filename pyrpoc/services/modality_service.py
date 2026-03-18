@@ -36,6 +36,8 @@ class ModalityService(QObject):
         self._save_json_path: Path | None = None
         self._save_channel_paths: dict[str, Path] = {}
         self._save_channel_labels: list[str] = []
+        self._auxiliary_payload_buffers: dict[str, list[np.ndarray]] = {}
+        self._auxiliary_paths: dict[str, Path] = {}
         self._frame_limit: int | None = 1
         self._saved_frame_count = 0
         self._acquisition_id = 0
@@ -165,6 +167,8 @@ class ModalityService(QObject):
         self._save_json_path = None
         self._save_channel_paths = {}
         self._save_channel_labels = []
+        self._auxiliary_payload_buffers = {}
+        self._auxiliary_paths = {}
 
         raw_num_frames = cleaned_params.get("num_frames")
         if raw_num_frames is not None:
@@ -222,6 +226,78 @@ class ModalityService(QObject):
             if path.exists():
                 path.unlink()
 
+    def _prepare_auxiliary_paths(self, labels: list[str]) -> None:
+        if self._save_root_path is None:
+            return
+        if self._auxiliary_paths:
+            return
+        self._auxiliary_paths = {
+            label: self._save_root_path.with_name(f"{self._save_root_path.name}_{label}.npz")
+            for label in labels
+        }
+        self._save_root_path.parent.mkdir(parents=True, exist_ok=True)
+        for path in self._auxiliary_paths.values():
+            if path.exists():
+                path.unlink()
+
+    def _consume_auxiliary_payload(self) -> dict[str, np.ndarray] | None:
+        instance = self.app_state.modality.instance
+        if instance is None:
+            return None
+        getter = getattr(instance, "consume_auxiliary_payload", None)
+        if getter is None or not callable(getter):
+            return None
+        payload = getter()
+        if payload is None:
+            return None
+        if not isinstance(payload, dict):
+            raise TypeError(
+                f"modality {type(instance).__name__} auxiliary payload must be a dict, got {type(payload).__name__}"
+            )
+        if not payload:
+            return None
+        normalized: dict[str, np.ndarray] = {}
+        for key, value in payload.items():
+            if not isinstance(value, np.ndarray):
+                raise TypeError(f"auxiliary payload '{key}' must be a numpy array")
+            normalized[str(key)] = np.asarray(value, dtype=np.float32, copy=False)
+        return normalized
+
+    def _append_auxiliary(self) -> None:
+        if self._save_root_path is None:
+            return
+
+        payload = self._consume_auxiliary_payload()
+        if not payload:
+            return
+
+        labels = list(payload.keys())
+        self._prepare_auxiliary_paths(labels)
+
+        for label, data in payload.items():
+            frames = self._auxiliary_payload_buffers.setdefault(label, [])
+            frames.append(data)
+
+    def _flush_auxiliary_payloads(self) -> None:
+        if self._save_root_path is None:
+            return
+        if not self._auxiliary_paths:
+            return
+
+        self._save_root_path.parent.mkdir(parents=True, exist_ok=True)
+        configured = {entry.label: entry.value for entry in self.app_state.modality.configured_params}
+        for label, path in self._auxiliary_paths.items():
+            frames = self._auxiliary_payload_buffers.get(label, [])
+            if not frames:
+                continue
+            payload = np.stack(frames, axis=0)
+            np.savez_compressed(
+                str(path),
+                frames=payload,
+                acquisition_parameters=np.asarray(configured, dtype=object),
+                frame_indices=np.arange(payload.shape[0], dtype=np.int32),
+            )
+
     def _start_acquisition(self) -> None:
         self._saved_frame_count = 0
         self._run_in_progress = True
@@ -229,6 +305,8 @@ class ModalityService(QObject):
         self._acquisition_start_time = datetime.now(timezone.utc).isoformat()
         self._save_channel_paths = {}
         self._save_channel_labels = []
+        self._auxiliary_payload_buffers = {}
+        self._auxiliary_paths = {}
         if self._save_root_path is None:
             return
 
@@ -250,6 +328,7 @@ class ModalityService(QObject):
         for (label, path), frame in zip(self._save_channel_paths.items(), channel_data):
             with tifffile.TiffWriter(str(path), append=True) as writer:
                 writer.write(frame.astype(np.float32))
+        self._append_auxiliary()
 
     def _split_channels(self, data: np.ndarray) -> list[np.ndarray]:
         if data.ndim == 2:
@@ -270,6 +349,7 @@ class ModalityService(QObject):
             "save_root_path": str(self._save_root_path),
             "save_json_path": str(self._save_json_path),
             "tiff_paths": {label: str(path) for label, path in self._save_channel_paths.items()},
+            "auxiliary_paths": {label: str(path) for label, path in self._auxiliary_paths.items()},
             "frames_saved": self._saved_frame_count,
             "frame_limit": self._active_frame_limit,
             "parameters": configured,
@@ -343,6 +423,7 @@ class ModalityService(QObject):
             self.app_state.modality.running = False
         finally:
             self._run_in_progress = False
+            self._flush_auxiliary_payloads()
             if self._save_root_path is not None:
                 if _error is None:
                     self._write_metadata(None)

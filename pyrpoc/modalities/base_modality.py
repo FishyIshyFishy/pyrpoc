@@ -99,6 +99,9 @@ class BaseModality(ABC):
     def get_active_channel_labels(self) -> list[str]:
         return []
 
+    def consume_auxiliary_payload(self) -> dict[str, np.ndarray] | None:
+        return None
+
     def run_acquisition_threaded(
         self,
         on_frame: Callable[[np.ndarray], None],
