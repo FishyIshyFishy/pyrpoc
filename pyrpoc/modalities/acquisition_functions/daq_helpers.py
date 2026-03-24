@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+
 import numpy as np
 
 import nidaqmx as nx
@@ -9,6 +11,8 @@ from pyrpoc.backend_utils.opto_control_contexts import MaskContext
 from pyrpoc.instruments.confocal_daq import ConfocalDAQInstrument
 from pyrpoc.optocontrols.base_optocontrol import BaseOptoControl
 from pyrpoc.optocontrols.mask import MaskOptoControl
+
+_DAQ_MASK_DEBUG = os.getenv("PYRPOC_DAQ_MASK_DEBUG", "").strip().lower() in {"1", "true", "yes", "on"}
 
 
 class DaqUnavailableError(RuntimeError):
@@ -77,6 +81,92 @@ def generate_raster_waveform(
     return np.vstack((fast_raster, slow_raster)).astype(np.float64)
 
 
+def _resize_mask_nearest(mask_bool: np.ndarray, target_h: int, target_w: int) -> np.ndarray:
+    if target_h <= 0 or target_w <= 0:
+        raise ValueError("Target mask size must be positive")
+    source_h, source_w = mask_bool.shape
+    if source_h <= 0 or source_w <= 0:
+        return np.zeros((target_h, target_w), dtype=bool)
+
+    y_idx = np.minimum((np.arange(target_h, dtype=np.int64) * source_h) // target_h, source_h - 1)
+    x_idx = np.minimum((np.arange(target_w, dtype=np.int64) * source_w) // target_w, source_w - 1)
+    return mask_bool[np.ix_(y_idx, x_idx)]
+
+
+def _preprocess_mask_to_scan_grid(
+    raw_mask: object,
+    *,
+    total_x: int,
+    total_y: int,
+    scan_x_pixels: int,
+    extra_left: int,
+    extra_right: int,
+) -> np.ndarray:
+    if total_x <= 0 or total_y <= 0:
+        raise ValueError("total_x and total_y must be positive")
+    if scan_x_pixels < 0 or extra_left < 0 or extra_right < 0:
+        raise ValueError("scan_x_pixels and extra pixels must be non-negative")
+    if (extra_left + scan_x_pixels + extra_right) != total_x:
+        raise ValueError(
+            "Final mask payload width mismatch: expected total_x == extra_left + scan_x_pixels + extra_right"
+        )
+
+    mask = np.asarray(raw_mask, dtype=np.uint8)
+    if mask.ndim != 2:
+        raise ValueError(f"Mask must be 2D, got shape={mask.shape}")
+
+    if scan_x_pixels == 0:
+        return np.zeros((total_y, total_x), dtype=bool)
+
+    mask_bool = mask > 0
+    if mask_bool.shape != (total_y, scan_x_pixels):
+        mask_bool = _resize_mask_nearest(mask_bool, target_h=total_y, target_w=scan_x_pixels)
+
+    if mask_bool.shape[1] != scan_x_pixels:
+        raise RuntimeError(f"Processed mask width {mask_bool.shape[1]} does not match scan_x_pixels={scan_x_pixels}")
+
+    padded_mask = np.zeros((total_y, total_x), dtype=bool)
+    padded_mask[:, extra_left : extra_left + scan_x_pixels] = mask_bool
+    return padded_mask
+
+
+def _format_mask_bbox(mask_2d: np.ndarray) -> str:
+    if not np.any(mask_2d):
+        return "none"
+    ys, xs = np.nonzero(mask_2d)
+    return f"x=[{int(xs.min())},{int(xs.max())}], y=[{int(ys.min())},{int(ys.max())}]"
+
+
+def _emit_mask_debug(prefix: str, channel_name: str, mask_2d: np.ndarray, ttl_3d: np.ndarray) -> None:
+    active_pixels = int(np.count_nonzero(mask_2d))
+    total_pixels = int(mask_2d.size)
+    pct = (100.0 * active_pixels / total_pixels) if total_pixels else 0.0
+    active_ttl_samples = int(np.count_nonzero(ttl_3d))
+    bbox = _format_mask_bbox(mask_2d)
+    print(
+        f"[DAQ mask debug] {prefix} {channel_name}: "
+        f"active={active_pixels}/{total_pixels} ({pct:.2f}%), bbox={bbox}, active_ttl_samples={active_ttl_samples}"
+    )
+
+
+def _extract_kept_samples(
+    channel_data: np.ndarray,
+    *,
+    total_y: int,
+    total_x: int,
+    pixel_samples: int,
+    extra_left: int,
+    x_pixels: int,
+) -> np.ndarray:
+    row_samples = total_x * pixel_samples
+    scan_line_samples = np.asarray(channel_data, dtype=np.float32).reshape(total_y, row_samples)
+    pixel_grid = scan_line_samples.reshape(total_y, total_x, pixel_samples)
+    kept_pixels = pixel_grid[:, extra_left : extra_left + x_pixels, :]
+    if kept_pixels.shape[1] != x_pixels:
+        raise RuntimeError("Acquired scan payload does not match requested scan dimensions")
+    return kept_pixels.reshape(total_y, x_pixels * pixel_samples).astype(np.float32, copy=False)
+
+
 def generate_mask_ttl_signals(
     *,
     total_x: int,
@@ -87,31 +177,35 @@ def generate_mask_ttl_signals(
     device_name: str,
     mask_contexts: list[MaskContext],
     scan_x_pixels: int,
+    debug: bool = False,
 ) -> dict[str, np.ndarray]:
     ttl_signals: dict[str, np.ndarray] = {}
-    keep_w = max(0, min(scan_x_pixels, max(0, total_x - extra_left - extra_right)))
 
     for context in mask_contexts:
         if context.mask is None:
             continue
 
-        mask = np.asarray(context.mask, dtype=np.uint8)  # pyright:ignore
-        mask_bool = mask > 0
-        if mask_bool.size == 0:
-            continue
+        channel_name = f"{device_name}/port{int(context.daq_port)}/line{int(context.daq_line)}"
+        try:
+            padded_mask = _preprocess_mask_to_scan_grid(
+                context.mask,
+                total_x=total_x,
+                total_y=total_y,
+                scan_x_pixels=scan_x_pixels,
+                extra_left=extra_left,
+                extra_right=extra_right,
+            )
+        except Exception as exc:
+            raise RuntimeError(f"Failed to preprocess mask for {channel_name}: {exc}") from exc
 
-        padded_mask = np.zeros((total_y, total_x), dtype=bool)
-        if mask_bool.size:
-            source_h = min(mask_bool.shape[0], total_y)
-            source_w = min(mask_bool.shape[1], keep_w)
-            if source_h > 0 and source_w > 0:
-                padded_mask[:source_h, extra_left : extra_left + source_w] = mask_bool[:source_h, :source_w]
+        if not np.any(padded_mask):
+            continue
 
         ttl = np.zeros((total_y, total_x, pixel_samples), dtype=bool)
         ttl[padded_mask] = True
-        ttl_signals[
-            f"{device_name}/port{int(context.daq_port)}/line{int(context.daq_line)}"
-        ] = ttl.reshape(-1)
+        ttl_signals[channel_name] = ttl.reshape(-1)
+        if debug:
+            _emit_mask_debug("full", channel_name, padded_mask, ttl)
     return ttl_signals
 
 
@@ -126,6 +220,7 @@ def generate_mask_ttl_signals_split(
     mask_contexts: list[MaskContext],
     scan_x_pixels: int,
     t0_samples: int,
+    debug: bool = False,
 ) -> dict[str, np.ndarray]:
     ttl_signals = generate_mask_ttl_signals(
         total_x=total_x,
@@ -136,6 +231,7 @@ def generate_mask_ttl_signals_split(
         device_name=device_name,
         mask_contexts=mask_contexts,
         scan_x_pixels=scan_x_pixels,
+        debug=debug,
     )
 
     if t0_samples >= pixel_samples:
@@ -145,6 +241,8 @@ def generate_mask_ttl_signals_split(
         ttl = ttl.reshape(total_y, total_x, pixel_samples)
         ttl[:, :, t0_samples:] = False
         ttl_signals[channel_name] = ttl.reshape(-1)
+        if debug:
+            _emit_mask_debug("split", channel_name, ttl.any(axis=2), ttl)
     return ttl_signals
 
 
@@ -168,7 +266,6 @@ def acquire_daq(
     total_x = x_pixels + extra_left + extra_right
     total_y = y_pixels
     total_samples = total_x * total_y * pixel_samples
-    row_samples = total_x * pixel_samples
 
     waveform_array = np.asarray(waveform, dtype=np.float64)
     ai_channels = [f"{device_name}/ai{idx}" for idx in active_ai_channels]
@@ -252,13 +349,14 @@ def acquire_daq(
 
             frame_channels: list[np.ndarray] = []
             for channel_data in acq_data:
-                scan_line_samples = np.asarray(channel_data, dtype=np.float32).reshape(total_y, row_samples)
-                pixel_grid = scan_line_samples.reshape(total_y, total_x, pixel_samples)
-                kept_pixels = pixel_grid[:, extra_left : extra_left + x_pixels, :]
-                if kept_pixels.shape[1] != x_pixels:
-                    raise RuntimeError("Acquired scan payload does not match requested scan dimensions")
-
-                kept_samples = kept_pixels.reshape(total_y, x_pixels * pixel_samples)
+                kept_samples = _extract_kept_samples(
+                    channel_data,
+                    total_y=total_y,
+                    total_x=total_x,
+                    pixel_samples=pixel_samples,
+                    extra_left=extra_left,
+                    x_pixels=x_pixels,
+                )
                 frame_channels.append(kept_samples.astype(np.float32, copy=False))
 
             return np.stack(frame_channels, axis=0).astype(np.float32, copy=False), total_y, x_pixels, pixel_samples
@@ -362,6 +460,7 @@ def acquire_daq_confocal(
         device_name=daq_instrument.device_name,
         mask_contexts=mask_contexts,
         scan_x_pixels=x_pixels,
+        debug=_DAQ_MASK_DEBUG,
     )
     scan_data, total_y, x_pixels_scanned, scan_pixel_samples = acquire_daq(
         daq_instrument=daq_instrument,
@@ -419,6 +518,7 @@ def acquire_daq_split_confocal(
         mask_contexts=mask_contexts,
         scan_x_pixels=x_pixels,
         t0_samples=t0_samples,
+        debug=_DAQ_MASK_DEBUG,
     )
     scan_data, total_y, x_pixels_scanned, scan_pixel_samples = acquire_daq(
         daq_instrument=daq_instrument,
