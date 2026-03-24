@@ -44,6 +44,9 @@ def extract_mask_contexts(opto_controls: list[BaseOptoControl]) -> list[MaskCont
 
 def generate_raster_waveform(
     total_x: int,
+    x_pixels: int,
+    extra_left: int,
+    extra_right: int,
     y_pixels: int,
     pixel_samples: int,
     fast_axis_offset: float,
@@ -54,7 +57,16 @@ def generate_raster_waveform(
     fast_amp = max(float(fast_axis_amplitude), 1e-6)
     slow_amp = max(float(slow_axis_amplitude), 1e-6)
 
-    fast_axis = (np.linspace(-1.0, 1.0, total_x, endpoint=False, dtype=np.float32) * fast_amp) + float(fast_axis_offset)
+    if x_pixels <= 0:
+        raise ValueError("x_pixels must be positive to generate raster waveform")
+    if total_x != (x_pixels + extra_left + extra_right):
+        raise ValueError("total_x must equal x_pixels + extra_left + extra_right")
+
+    # Compute fast-axis step from the in-FOV pixel count, then extrapolate for extras.
+    fast_step = (2.0 * fast_amp) / float(x_pixels)
+    fast_start = -fast_amp - (float(extra_left) * fast_step)
+    fast_axis = fast_start + (np.arange(total_x, dtype=np.float32) * fast_step)
+    fast_axis = fast_axis + float(fast_axis_offset)
     slow_axis = (np.linspace(-1.0, 1.0, y_pixels, endpoint=False, dtype=np.float32) * slow_amp) + float(slow_axis_offset)
 
     fast_samples = np.repeat(fast_axis, pixel_samples)
@@ -157,9 +169,6 @@ def acquire_daq(
     total_y = y_pixels
     total_samples = total_x * total_y * pixel_samples
     row_samples = total_x * pixel_samples
-    keep_start = extra_left * pixel_samples
-    keep_end = row_samples - (extra_right * pixel_samples)
-    expected_kept = x_pixels * pixel_samples
 
     waveform_array = np.asarray(waveform, dtype=np.float64)
     ai_channels = [f"{device_name}/ai{idx}" for idx in active_ai_channels]
@@ -244,12 +253,12 @@ def acquire_daq(
             frame_channels: list[np.ndarray] = []
             for channel_data in acq_data:
                 scan_line_samples = np.asarray(channel_data, dtype=np.float32).reshape(total_y, row_samples)
-                if scan_line_samples.shape[1] < keep_end:
-                    raise RuntimeError("Acquired sample width is smaller than expected")
-                kept_samples = scan_line_samples[:, keep_start:keep_end]
-                if kept_samples.shape[1] != expected_kept:
+                pixel_grid = scan_line_samples.reshape(total_y, total_x, pixel_samples)
+                kept_pixels = pixel_grid[:, extra_left : extra_left + x_pixels, :]
+                if kept_pixels.shape[1] != x_pixels:
                     raise RuntimeError("Acquired scan payload does not match requested scan dimensions")
 
+                kept_samples = kept_pixels.reshape(total_y, x_pixels * pixel_samples)
                 frame_channels.append(kept_samples.astype(np.float32, copy=False))
 
             return np.stack(frame_channels, axis=0).astype(np.float32, copy=False), total_y, x_pixels, pixel_samples
@@ -334,6 +343,9 @@ def acquire_daq_confocal(
 
     waveform = generate_raster_waveform(
         total_x=total_x,
+        x_pixels=x_pixels,
+        extra_left=extra_left,
+        extra_right=extra_right,
         y_pixels=y_pixels,
         pixel_samples=pixel_samples,
         fast_axis_offset=fast_axis_offset,
@@ -387,6 +399,9 @@ def acquire_daq_split_confocal(
 
     waveform = generate_raster_waveform(
         total_x=total_x,
+        x_pixels=x_pixels,
+        extra_left=extra_left,
+        extra_right=extra_right,
         y_pixels=y_pixels,
         pixel_samples=pixel_samples,
         fast_axis_offset=fast_axis_offset,
