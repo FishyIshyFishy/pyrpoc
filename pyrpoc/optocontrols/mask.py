@@ -64,7 +64,7 @@ class MaskOptoControlWidget(BaseOptoControlWidget):
 
         button_row = QHBoxLayout()
         self.load_mask_btn = QPushButton("Load Mask", self)
-        self.create_mask_btn = QPushButton("Create Mask", self)
+        self.create_mask_btn = QPushButton("Open mask Editor", self)
         button_row.addWidget(self.load_mask_btn)
         button_row.addWidget(self.create_mask_btn)
         button_row.addStretch(1)
@@ -139,7 +139,7 @@ class MaskOptoControlWidget(BaseOptoControlWidget):
 
     def _on_create_mask_clicked(self) -> None:
         self._ensure_editor()
-        self.editor_container.setVisible(True)
+        self._set_editor_visible(True)
         self._refresh_display_sources()
         self._load_selected_display_data(warn=False)
 
@@ -155,7 +155,7 @@ class MaskOptoControlWidget(BaseOptoControlWidget):
         self.editor_body_layout.addWidget(self._editor)
 
     def _on_editor_cancel(self) -> None:
-        self.editor_container.setVisible(False)
+        self._set_editor_visible(False)
 
     def _on_editor_create_mask(self, mask: object) -> None:
         arr = np.asarray(mask, dtype=np.uint8)
@@ -170,7 +170,7 @@ class MaskOptoControlWidget(BaseOptoControlWidget):
             return
         self.path_edit.setText(temp_path)
         self.control.mask_data = arr.copy()
-        self.editor_container.setVisible(False)
+        self._set_editor_visible(False)
         self._emit_change()
 
     def _on_editor_mask_saved(self, path: object, mask: object) -> None:
@@ -182,8 +182,12 @@ class MaskOptoControlWidget(BaseOptoControlWidget):
             return
         self.path_edit.setText(path_str)
         self.control.mask_data = arr.copy()
-        self.editor_container.setVisible(False)
+        self._set_editor_visible(False)
         self._emit_change()
+
+    def _set_editor_visible(self, visible: bool) -> None:
+        self.editor_container.setVisible(visible)
+        self.create_mask_btn.setEnabled(not visible)
 
     def _on_display_inventory_changed(self, _state: object) -> None:
         if not self.editor_container.isVisible():

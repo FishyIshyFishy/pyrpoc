@@ -21,6 +21,7 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QMessageBox,
+    QMenu,
     QPushButton,
     QSlider,
     QSpinBox,
@@ -382,27 +383,28 @@ class MaskEditorWidget(QWidget):
         display = np.zeros((self._h, self._w, 3), dtype=np.float32)
         low, high = self._coerced_thresholds()
         active = np.zeros((self._h, self._w), dtype=bool)
+        channel_colors = (
+            np.array([255.0, 64.0, 64.0], dtype=np.float32),
+            np.array([64.0, 180.0, 255.0], dtype=np.float32),
+            np.array([255.0, 180.0, 64.0], dtype=np.float32),
+            np.array([180.0, 64.0, 255.0], dtype=np.float32),
+            np.array([64.0, 255.0, 160.0], dtype=np.float32),
+            np.array([255.0, 64.0, 160.0], dtype=np.float32),
+            np.array([200.0, 255.0, 64.0], dtype=np.float32),
+            np.array([64.0, 160.0, 255.0], dtype=np.float32),
+        )
 
         for idx, channel in enumerate(self._data):
             if idx >= len(self._channel_visibility) or not self._channel_visibility[idx]:
                 continue
             span = max(float(np.max(channel) - np.min(channel)), 1e-9)
             norm = (channel - float(np.min(channel))) / span
-            color = np.array(
-                [
-                    1.0 if idx % 3 == 0 else 0.35,
-                    1.0 if idx % 3 == 1 else 0.35,
-                    1.0 if idx % 3 == 2 else 0.35,
-                ],
-                dtype=np.float32,
-            )
-            display += norm[..., None] * color * 160.0
+            color = channel_colors[idx % len(channel_colors)]
+            display += norm[..., None] * color * 0.65
             active |= (channel >= low) & (channel <= high)
 
         display = np.clip(display, 0, 255)
-        display[active, 1] = 255
-        display[active, 0] *= 0.5
-        display[active, 2] *= 0.5
+        display[active] = 255
 
         rgb = display.astype(np.uint8)
         qimg = QImage(rgb.data, self._w, self._h, 3 * self._w, QImage.Format.Format_RGB888)
