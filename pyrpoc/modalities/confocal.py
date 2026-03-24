@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
+import json
+from pathlib import Path
 from typing import Any
 
 import numpy as np
+import tifffile
 
 from pyrpoc.backend_utils.array_contracts import CONTRACT_CHW_FLOAT32
 from pyrpoc.instruments.confocal_daq import ConfocalDAQInstrument
@@ -131,6 +135,15 @@ class ConfocalModality(BaseModality):
         self._mask_contexts: list[MaskContext] = []
         self._daq_instrument: ConfocalDAQInstrument = None
         self._active_ai_channels: list[int] = []
+        self._save_enabled = False
+        self._save_root_path: Path | None = None
+        self._save_json_path: Path | None = None
+        self._save_channel_paths: dict[str, Path] = {}
+        self._save_channel_labels: list[str] = []
+        self._saved_frame_count = 0
+        self._run_id = 0
+        self._run_started_at = ""
+        self._run_frame_limit: int | None = 1
 
     def configure(
         self,
@@ -147,6 +160,13 @@ class ConfocalModality(BaseModality):
         self._mask_contexts = extract_mask_contexts(opto_controls)
         self._active_ai_channels = self._get_active_ai_channels()
         self._frame_idx = 0
+        self._save_enabled = bool(self._params.get("save_enabled", False))
+        self._save_root_path = self._coerce_save_root(self._params.get("save_path"))
+        self._save_json_path = None
+        self._save_channel_paths = {}
+        self._save_channel_labels = []
+        self._saved_frame_count = 0
+        self._run_frame_limit = 1
         self._configured = True
 
     def start(self) -> None:
@@ -191,10 +211,110 @@ class ConfocalModality(BaseModality):
     def stop(self) -> None:
         self._running = False
 
+    def prepare_acquisition_storage(self, *, frame_limit: int | None) -> None:
+        self._saved_frame_count = 0
+        self._run_frame_limit = frame_limit
+        self._run_id += 1
+        self._run_started_at = datetime.now(timezone.utc).isoformat()
+        self._save_channel_paths = {}
+        self._save_channel_labels = []
+        if not self._save_enabled:
+            return
+        if self._save_root_path is None:
+            raise RuntimeError("save_path is required when save_enabled is true")
+        self._save_root_path.parent.mkdir(parents=True, exist_ok=True)
+        self._save_json_path = self._save_root_path.with_name(f"{self._save_root_path.name}_meta.json")
+        self._write_metadata(None)
+
+    def save_acquired_frame(self, frame: np.ndarray, *, frame_index: int) -> None:
+        if not self._save_enabled:
+            return
+        if self._save_root_path is None:
+            raise RuntimeError("save_path is required when save_enabled is true")
+
+        channel_data = self._split_channels(frame)
+        if not self._save_channel_paths:
+            labels = self._resolve_channel_labels(len(channel_data))
+            self._save_channel_labels = labels
+            self._save_channel_paths = {
+                label: self._save_root_path.with_name(f"{self._save_root_path.name}_{label}.tiff")
+                for label in labels
+            }
+            for path in self._save_channel_paths.values():
+                if path.exists():
+                    path.unlink()
+        if len(channel_data) != len(self._save_channel_paths):
+            raise ValueError("frame channel count does not match configured save layout")
+
+        for (label, path), channel_frame in zip(self._save_channel_paths.items(), channel_data):
+            del label
+            with tifffile.TiffWriter(str(path), append=True) as writer:
+                writer.write(channel_frame.astype(np.float32))
+        self._saved_frame_count = frame_index + 1
+        self._write_metadata(None)
+
+    def finalize_acquisition_storage(
+        self,
+        *,
+        frame_count: int,
+        frame_limit: int | None,
+        error: Exception | None,
+    ) -> None:
+        self._saved_frame_count = frame_count
+        self._run_frame_limit = frame_limit
+        self._write_metadata(str(error) if error is not None else None)
+
+    def get_frame_limit(self) -> int:
+        raw = self._params.get("num_frames", 1)
+        limit = int(raw)
+        if limit < 1:
+            raise ValueError("num_frames must be >= 1")
+        return limit
+
     def get_active_channel_labels(self) -> list[str]:
         if self._active_ai_channels:
             return [f"ai{channel}" for channel in self._active_ai_channels]
         return []
+
+    def _coerce_save_root(self, raw_save_path: Any) -> Path | None:
+        if not self._save_enabled:
+            return None
+        if raw_save_path is None:
+            raise ValueError("save_path is required when save_enabled is true")
+        path = raw_save_path if isinstance(raw_save_path, Path) else Path(raw_save_path).expanduser()
+        if path.suffix.lower() in {".tif", ".tiff"}:
+            path = path.with_suffix("")
+        return path
+
+    def _resolve_channel_labels(self, channel_count: int) -> list[str]:
+        active_labels = self.get_active_channel_labels()
+        if active_labels and len(active_labels) == channel_count:
+            return list(active_labels)
+        return [f"channel_{index}" for index in range(channel_count)]
+
+    def _split_channels(self, data: np.ndarray) -> list[np.ndarray]:
+        if data.ndim == 2:
+            return [data]
+        if data.ndim == 3:
+            return [data[index] for index in range(data.shape[0])]
+        raise ValueError(f"unsupported frame dimensions {data.ndim}")
+
+    def _write_metadata(self, last_error: str | None) -> None:
+        if not self._save_enabled or self._save_json_path is None:
+            return
+        payload = {
+            "run_id": self._run_id,
+            "started": self._run_started_at,
+            "modality_key": self.MODALITY_KEY,
+            "save_root_path": str(self._save_root_path),
+            "save_json_path": str(self._save_json_path),
+            "tiff_paths": {label: str(path) for label, path in self._save_channel_paths.items()},
+            "frames_saved": self._saved_frame_count,
+            "frame_limit": self._run_frame_limit,
+            "parameters": dict(self._params),
+            "last_error": last_error,
+        }
+        self._save_json_path.write_text(json.dumps(payload, indent=2, default=str), encoding="utf-8")
 
     def _get_active_ai_channels(self) -> list[int]:
         return [
