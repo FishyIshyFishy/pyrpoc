@@ -71,6 +71,13 @@ class BaseParameter:
         if not callable(callback):
             raise TypeError("callback must be callable")
 
+    def format_summary(self, widget: QWidget) -> str:
+        """Return a short human-readable summary of the current widget value."""
+        try:
+            return str(self.get_value(widget))
+        except Exception:
+            return "—"
+
     def validate_default(self, value: Any) -> None:
         if value is None:
             return

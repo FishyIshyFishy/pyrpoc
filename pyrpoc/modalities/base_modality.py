@@ -61,6 +61,12 @@ class BaseModality(ABC):
         self._params: dict[str, Any] = {}
         self._instruments: dict[type[BaseInstrument], BaseInstrument] = {}
         self._opto_controls: list[BaseOptoControl] = []
+        self._warn_callback: Callable[[str], None] | None = None
+
+    def _emit_warning(self, message: str) -> None:
+        """Emit a non-fatal warning to the user via the service layer."""
+        if self._warn_callback is not None:
+            self._warn_callback(message)
 
     @classmethod
     def get_contract(cls) -> dict[str, Any]:

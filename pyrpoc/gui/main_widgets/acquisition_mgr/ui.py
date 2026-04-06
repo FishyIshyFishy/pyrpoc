@@ -6,6 +6,7 @@ from PyQt6.QtWidgets import (
     QComboBox,
     QHBoxLayout,
     QLabel,
+    QLayout,
     QPushButton,
     QScrollArea,
     QStyle,
@@ -62,6 +63,7 @@ def build_acquisition_manager_ui(owner: QWidget) -> AcquisitionManagerUI:
     params_layout = QVBoxLayout(params_container)
     params_layout.setContentsMargins(0, 0, 0, 0)
     params_layout.setSpacing(8)
+    params_layout.setSizeConstraint(QLayout.SizeConstraint.SetMinimumSize)
     params_layout.addStretch(1)
 
     scroll = QScrollArea(owner)

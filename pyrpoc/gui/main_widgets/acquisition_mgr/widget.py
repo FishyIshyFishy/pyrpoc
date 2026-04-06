@@ -10,6 +10,7 @@ from pyrpoc.gui.main_widgets.acquisition_mgr.handlers import (
     on_modality_selected,
     on_parameter_widgets_changed,
     on_service_error,
+    on_service_warning,
     on_start_clicked,
     on_stop_clicked,
     populate_modalities,
@@ -54,6 +55,7 @@ class AcquisitionManagerWidget(QWidget):
         self.modality_service.acq_started.connect(self._on_acq_started)
         self.modality_service.acq_stopped.connect(self._on_acq_stopped)
         self.modality_service.acq_error.connect(self._on_service_error)
+        self.modality_service.acq_warning.connect(self._on_service_warning)
 
     def _populate_modalities(self) -> None:
         populate_modalities(self)
@@ -79,6 +81,9 @@ class AcquisitionManagerWidget(QWidget):
     def _on_service_error(self, message: str) -> None:
         on_service_error(self, message)
         self._set_acquiring_ui(False)
+
+    def _on_service_warning(self, message: str) -> None:
+        on_service_warning(self, message)
 
     def _on_parameter_widgets_changed(self) -> None:
         on_parameter_widgets_changed(self)

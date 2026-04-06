@@ -476,6 +476,73 @@ def acquire_daq_confocal(
     return reshape_data(scan_data, total_y, x_pixels_scanned, scan_pixel_samples)
 
 
+def acquire_daq_flim(
+    daq_instrument: ConfocalDAQInstrument,
+    x_pixels: int,
+    y_pixels: int,
+    extra_left: int,
+    extra_right: int,
+    dwell_time_us: float,
+    fast_axis_offset: float,
+    fast_axis_amplitude: float,
+    slow_axis_offset: float,
+    slow_axis_amplitude: float,
+    active_ai_channels: list[int],
+    mask_contexts: list[MaskContext],
+    pixel_clock_do_line: int,
+) -> np.ndarray:
+    """Like acquire_daq_confocal but also outputs a pixel clock on port0.
+
+    A single TTL pulse (one sample wide) is emitted at the start of each pixel
+    on the specified port0 line so that the TimeTagger can synchronise photon
+    arrivals to scan pixels.
+    """
+    from .flim_helpers import generate_pixel_clock_signal
+
+    sample_rate_hz: float = float(daq_instrument.sample_rate_hz)
+    pixel_samples = max(1, int(dwell_time_us * 1e-6 * sample_rate_hz))
+    total_x = x_pixels + extra_left + extra_right
+
+    waveform = generate_raster_waveform(
+        total_x=total_x,
+        x_pixels=x_pixels,
+        extra_left=extra_left,
+        extra_right=extra_right,
+        y_pixels=y_pixels,
+        pixel_samples=pixel_samples,
+        fast_axis_offset=fast_axis_offset,
+        fast_axis_amplitude=fast_axis_amplitude,
+        slow_axis_offset=slow_axis_offset,
+        slow_axis_amplitude=slow_axis_amplitude,
+    )
+    ttl_signals = generate_mask_ttl_signals(
+        total_x=total_x,
+        total_y=y_pixels,
+        pixel_samples=pixel_samples,
+        extra_left=extra_left,
+        extra_right=extra_right,
+        device_name=daq_instrument.device_name,
+        mask_contexts=mask_contexts,
+        scan_x_pixels=x_pixels,
+        debug=_DAQ_MASK_DEBUG,
+    )
+    pixel_clock_chan = f"{daq_instrument.device_name}/port0/line{int(pixel_clock_do_line)}"
+    ttl_signals[pixel_clock_chan] = generate_pixel_clock_signal(total_x, y_pixels, pixel_samples)
+
+    scan_data, total_y, x_pixels_scanned, scan_pixel_samples = acquire_daq(
+        daq_instrument=daq_instrument,
+        waveform=waveform,
+        ttl_signals=ttl_signals,
+        x_pixels=x_pixels,
+        y_pixels=y_pixels,
+        extra_left=extra_left,
+        extra_right=extra_right,
+        dwell_time_us=dwell_time_us,
+        active_ai_channels=active_ai_channels,
+    )
+    return reshape_data(scan_data, total_y, x_pixels_scanned, scan_pixel_samples)
+
+
 def acquire_daq_split_confocal(
     daq_instrument: ConfocalDAQInstrument,
     x_pixels: int,

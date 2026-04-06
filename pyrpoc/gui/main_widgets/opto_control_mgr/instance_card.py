@@ -62,6 +62,14 @@ class InstanceCardWidget(QFrame):
 
         root.addLayout(header_row)
 
+        self._description_label = QLabel("", self)
+        self._description_label.setStyleSheet(
+            "color: palette(mid); font-size: 9pt; padding-left: 22px;"
+        )
+        self._description_label.setWordWrap(True)
+        self._description_label.setVisible(False)
+        root.addWidget(self._description_label)
+
         self.body_container = QWidget(self)
         self.body_layout = QVBoxLayout(self.body_container)
         self.body_layout.setContentsMargins(0, 2, 0, 0)
@@ -83,10 +91,19 @@ class InstanceCardWidget(QFrame):
         self.body_container.setVisible(expanded)
         self.expand_btn.setArrowType(Qt.ArrowType.DownArrow if expanded else Qt.ArrowType.RightArrow)
         self.expand_btn.setToolTip("Collapse" if expanded else "Expand")
+        if self._description_label.text():
+            self._description_label.setVisible(not expanded)
 
     def is_expanded(self) -> bool:
         '''Report current expanded state for expand toggle handlers in manager logic.'''
         return self._expanded
+
+    def set_description(self, text: str) -> None:
+        self._description_label.setText(text)
+        self._description_label.setStyleSheet(
+        "color: white;"
+        )
+        self._description_label.setVisible(bool(text) and not self._expanded)
 
     def set_marker_text(self, text: str) -> None:
         del text

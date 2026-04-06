@@ -108,6 +108,11 @@ def handle_error(widget: AcquisitionManagerWidget, message: str) -> None:
 
 def on_service_error(widget: AcquisitionManagerWidget, message: str) -> None:
     widget.status_label.setText(f"Status: error - {message}")
+    QMessageBox.critical(widget, "Acquisition Error", message)
+
+
+def on_service_warning(widget: AcquisitionManagerWidget, message: str) -> None:
+    QMessageBox.warning(widget, "Acquisition Warning", message)
 
 
 def on_parameter_widgets_changed(widget: AcquisitionManagerWidget) -> None:

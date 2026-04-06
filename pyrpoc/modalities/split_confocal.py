@@ -214,9 +214,9 @@ class SplitConfocalModality(BaseModality):
                 **split,
             )
         except Exception as exc:
-            print(f"acquisition unavailable ({exc}), falling back to toy data")
             if not isinstance(exc, DaqUnavailableError) and not isinstance(exc, RuntimeError):
                 raise
+            self._emit_warning(f"DAQ unavailable — displaying simulated data ({exc})")
             pixel_samples = max(1, int(settings["dwell_time_us"] * 1e-6 * float(self._daq_instrument.sample_rate_hz)))
             frame, raw = generate_toy_split_confocal_frame(
                 x_pixels= settings["x_pixels"],
