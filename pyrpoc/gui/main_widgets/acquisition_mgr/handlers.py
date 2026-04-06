@@ -62,7 +62,6 @@ def configure_modality(widget: AcquisitionManagerWidget) -> None:
         if key:
             widget.modality_service.select_modality(key)
     params = collect_values(widget.state.param_widgets)
-    widget.modality_service.set_parameter_values(params)
     widget.modality_service.configure(params)
 
 
@@ -77,7 +76,7 @@ def on_start_clicked(widget: AcquisitionManagerWidget) -> None:
 def on_continuous_clicked(widget: AcquisitionManagerWidget) -> None:
     try:
         configure_modality(widget)
-        widget.modality_service.start(continuous=True)
+        widget.modality_service.start(force_continuous=True)
         widget.status_label.setText("Status: continuous acquisition")
     except Exception as exc:
         handle_error(widget, str(exc))

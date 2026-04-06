@@ -299,7 +299,7 @@ class SplitConfocalModality(BaseModality):
         self._flush_auxiliary_payloads()
         self._write_metadata(str(error) if error is not None else None)
 
-    def get_frame_limit(self) -> int:
+    def get_frame_limit(self) -> int | None:
         raw = self._params.get("num_frames", 1)
         limit = int(raw)
         if limit < 1:

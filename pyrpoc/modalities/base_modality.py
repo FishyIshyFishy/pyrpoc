@@ -96,15 +96,12 @@ class BaseModality(ABC):
     def stop(self) -> None:
         raise NotImplementedError
 
-    @abstractmethod
     def prepare_acquisition_storage(self, *, frame_limit: int | None) -> None:
-        raise NotImplementedError
+        pass
 
-    @abstractmethod
     def save_acquired_frame(self, frame: np.ndarray, *, frame_index: int) -> None:
-        raise NotImplementedError
+        pass
 
-    @abstractmethod
     def finalize_acquisition_storage(
         self,
         *,
@@ -112,10 +109,10 @@ class BaseModality(ABC):
         frame_limit: int | None,
         error: Exception | None,
     ) -> None:
-        raise NotImplementedError
+        pass
 
     @abstractmethod
-    def get_frame_limit(self) -> int:
+    def get_frame_limit(self) -> int | None:
         raise NotImplementedError
 
     def get_active_channel_labels(self) -> list[str]:
@@ -130,19 +127,38 @@ class BaseModality(ABC):
         on_error: Callable[[Exception], None],
         on_finished: Callable[[int, Exception | None], None],
     ) -> threading.Thread:
+        thread = threading.Thread(
+            target=self._build_worker(on_frame, frame_limit, should_stop, on_error, on_finished),
+            daemon=True,
+        )
+        thread.start()
+        return thread
 
+    def _build_worker(
+        self,
+        on_frame: Callable[[np.ndarray], None],
+        frame_limit: int | None,
+        should_stop: Callable[[], bool],
+        on_error: Callable[[Exception], None],
+        on_finished: Callable[[int, Exception | None], None],
+    ) -> Callable[[], None]:
+        """Returns the worker callable for the acquisition thread.
+        Override in a subclass to change how acquisition is driven
+        (e.g. event-driven, streaming, callback-based SDK).
+        The returned callable must eventually call on_finished(count, error_or_none).
+        """
         def worker() -> None:
             acquired = 0
             error_seen = None
             try:
                 self.start()
-                while not (should_stop() if should_stop else False):
+                while not should_stop():
                     frame = self.acquire_once()
                     acquired += 1
                     on_frame(frame)
                     if frame_limit is not None and acquired >= frame_limit:
                         break
-            except Exception as exc: 
+            except Exception as exc:
                 error_seen = exc
                 on_error(exc)
             finally:
@@ -154,7 +170,4 @@ class BaseModality(ABC):
                         on_error(stop_exc)
                 if on_finished is not None:
                     on_finished(acquired, error_seen)
-
-        thread = threading.Thread(target=worker, daemon=True)
-        thread.start()
-        return thread
+        return worker
