@@ -1,0 +1,218 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+from pyrpoc.backend_utils.parameter_utils import (
+    CheckboxParameter,
+    NumberParameter,
+    PathParameter,
+)
+
+from ..base_modality import AcquisitionParameters
+
+PARAMETERS = {
+    "scan": [
+        NumberParameter(
+            label="X Pixels",
+            default=512,
+            minimum=8,
+            tooltip="Number of pixels in X",
+            number_type=int,
+        ),
+        NumberParameter(
+            label="Y Pixels",
+            default=512,
+            minimum=8,
+            tooltip="Number of pixels in Y",
+            number_type=int,
+        ),
+        NumberParameter(
+            label="Extra Steps Left",
+            default=300,
+            minimum=0,
+            tooltip="Extra scan steps at left edge",
+            number_type=int,
+        ),
+        NumberParameter(
+            label="Extra Steps Right",
+            default=20,
+            minimum=0,
+            tooltip="Extra scan steps at right edge",
+            number_type=int,
+        ),
+        NumberParameter(
+            label="Fast Axis Offset",
+            default=0.0,
+            tooltip="Fast-axis offset",
+            number_type=float,
+        ),
+        NumberParameter(
+            label="Fast Axis Amplitude",
+            default=1.0,
+            minimum=1e-6,
+            tooltip="Fast-axis amplitude",
+            number_type=float,
+        ),
+        NumberParameter(
+            label="Slow Axis Offset",
+            default=0.0,
+            tooltip="Slow-axis offset",
+            number_type=float,
+        ),
+        NumberParameter(
+            label="Slow Axis Amplitude",
+            default=1.0,
+            minimum=1e-6,
+            tooltip="Slow-axis amplitude",
+            number_type=float,
+        ),
+        NumberParameter(
+            label="Dwell Time (us)",
+            default=2.0,
+            minimum=0.1,
+            tooltip="Pixel dwell time",
+            number_type=float,
+        ),
+    ],
+    "timetagger": [
+        NumberParameter(
+            label="Laser Channel",
+            default=1,
+            minimum=1,
+            tooltip="TimeTagger input channel for laser sync",
+            number_type=int,
+        ),
+        NumberParameter(
+            label="Detector Channel",
+            default=2,
+            minimum=1,
+            tooltip="TimeTagger input channel for SPAD detector",
+            number_type=int,
+        ),
+        NumberParameter(
+            label="Pixel Clock Channel",
+            default=3,
+            minimum=1,
+            tooltip="TimeTagger input channel for pixel clock",
+            number_type=int,
+        ),
+        NumberParameter(
+            label="Pixel Clock DO Line",
+            default=0,
+            minimum=0,
+            tooltip="DAQ port0 line number to output the pixel clock TTL",
+            number_type=int,
+        ),
+        NumberParameter(
+            label="Laser Frequency MHz",
+            default=80.0,
+            minimum=0.001,
+            tooltip="Laser repetition rate in MHz (used to fold delays)",
+            number_type=float,
+        ),
+        NumberParameter(
+            label="Laser Trigger V",
+            default=0.05,
+            tooltip="Trigger threshold for laser sync channel (V)",
+            number_type=float,
+        ),
+        NumberParameter(
+            label="Detector Trigger V",
+            default=0.2,
+            tooltip="Trigger threshold for SPAD detector channel (V)",
+            number_type=float,
+        ),
+        NumberParameter(
+            label="Pixel Trigger V",
+            default=0.2,
+            tooltip="Trigger threshold for pixel clock channel (V)",
+            number_type=float,
+        ),
+        NumberParameter(
+            label="Laser Event Divider",
+            default=1,
+            minimum=1,
+            tooltip="Only keep 1 in N laser sync events (reduces data rate)",
+            number_type=int,
+        ),
+    ],
+    "acquisition": [
+        CheckboxParameter(
+            label="save_enabled",
+            display_label="save_enabled",
+            default=False,
+            required=False,
+            tooltip="Enable saving frames and acquisition metadata",
+        ),
+        PathParameter(
+            label="save_path",
+            display_label="save_path",
+            default="acquisition",
+            required=False,
+            tooltip="Base name/path for saved files",
+        ),
+        NumberParameter(
+            label="num_frames",
+            display_label="num_frames",
+            default=1,
+            required=False,
+            minimum=1,
+            tooltip="Number of frames to capture",
+            number_type=int,
+        ),
+    ],
+}
+
+
+@dataclass(frozen=True)
+class FlimParameters(AcquisitionParameters):
+    # scan
+    x_pixels: int
+    y_pixels: int
+    extra_left: int
+    extra_right: int
+    fast_axis_offset: float
+    fast_axis_amplitude: float
+    slow_axis_offset: float
+    slow_axis_amplitude: float
+    dwell_time_us: float
+    # timetagger
+    laser_channel: int
+    detector_channel: int
+    pixel_clock_channel: int
+    pixel_clock_do_line: int
+    laser_frequency_mhz: float
+    laser_trigger_v: float
+    detector_trigger_v: float
+    pixel_trigger_v: float
+    laser_event_divider: int
+    # acquisition
+    save_enabled: bool
+    save_path: str
+    num_frames: int
+
+    @classmethod
+    def from_dict(cls, p: dict) -> FlimParameters:
+        return cls(
+            x_pixels=int(p["X Pixels"]),
+            y_pixels=int(p["Y Pixels"]),
+            extra_left=int(p["Extra Steps Left"]),
+            extra_right=int(p["Extra Steps Right"]),
+            fast_axis_offset=float(p["Fast Axis Offset"]),
+            fast_axis_amplitude=max(float(p["Fast Axis Amplitude"]), 1e-6),
+            slow_axis_offset=float(p["Slow Axis Offset"]),
+            slow_axis_amplitude=max(float(p["Slow Axis Amplitude"]), 1e-6),
+            dwell_time_us=float(p["Dwell Time (us)"]),
+            laser_channel=int(p["Laser Channel"]),
+            detector_channel=int(p["Detector Channel"]),
+            pixel_clock_channel=int(p["Pixel Clock Channel"]),
+            pixel_clock_do_line=int(p["Pixel Clock DO Line"]),
+            laser_frequency_mhz=float(p["Laser Frequency MHz"]),
+            laser_trigger_v=float(p["Laser Trigger V"]),
+            detector_trigger_v=float(p["Detector Trigger V"]),
+            pixel_trigger_v=float(p["Pixel Trigger V"]),
+            laser_event_divider=int(p["Laser Event Divider"]),
+            save_enabled=bool(p.get("save_enabled", False)),
+            save_path=str(p.get("save_path", "acquisition")),
+            num_frames=int(p.get("num_frames", 1)),
+        )

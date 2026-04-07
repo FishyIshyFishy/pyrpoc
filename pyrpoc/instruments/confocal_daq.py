@@ -74,6 +74,10 @@ class ConfocalDAQInstrument(BaseInstrument):
         ]
         ai_text = ", ".join(str(ai) for ai in active_ai) if active_ai else "none"
         return f"AIs: {ai_text}; Galvos: {int(self.fast_axis_ao)},{int(self.slow_axis_ao)}"
+    
+    def report_active_ai_channels(self) -> list[int]:
+        labels = [ch for ch, enabled in zip(self.ai_channel_numbers, self.active_ai_channels, strict=False) if enabled]
+        return labels
 
 
 ConfocalDAQ = ConfocalDAQInstrument

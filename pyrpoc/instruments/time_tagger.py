@@ -28,7 +28,7 @@ class TimeTaggerInstrument(BaseInstrument):
             user_label=user_label,
             connected=connected,
         )
-        self.serial: str = ""
+        self.last_test_ok: bool | None = None
         self.widget: BaseInstrumentWidget | None = None
 
     def get_widget(
@@ -45,14 +45,27 @@ class TimeTaggerInstrument(BaseInstrument):
         return self.widget
 
     def get_collapsed_summary(self) -> str:
-        serial_text = self.serial if self.serial else "auto"
-        status = "connected" if self.connected else "disconnected"
-        return f"Serial: {serial_text} | {status}"
+        if self.last_test_ok is None:
+            status = "not tested"
+        elif self.last_test_ok:
+            status = "OK"
+        else:
+            status = "FAILED"
+        return f"Connection: {status}"
+
+    def test_connection(self) -> bool:
+        try:
+            self.create_tagger()
+            self.free_tagger()
+            self.last_test_ok = True
+        except Exception:
+            self.last_test_ok = False
+        return self.last_test_ok
 
     def create_tagger(self) -> None:
         """Create a TimeTagger from self.serial and store it as self.tagger."""
         from Swabian import TimeTagger
-        self.tagger = TimeTagger.createTimeTagger(serial=self.serial)
+        self.tagger = TimeTagger.createTimeTagger()
 
     def free_tagger(self) -> None:
         """Free self.tagger and clear the reference."""

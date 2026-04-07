@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections.abc import Callable
+from dataclasses import asdict
+from pathlib import Path
 import threading
 from typing import Any
 
@@ -12,6 +14,20 @@ from pyrpoc.backend_utils.contracts import ParameterGroups
 from pyrpoc.backend_utils.parameter_utils import validate_parameter_groups
 from pyrpoc.instruments.base_instrument import BaseInstrument
 from pyrpoc.optocontrols.base_optocontrol import BaseOptoControl
+
+
+class AcquisitionParameters:
+    """Base class for all modality parameter dataclasses.
+
+    Subclasses should be frozen dataclasses so that parameter state is
+    immutable after configure() assigns them.
+
+    Example:
+        @dataclass(frozen=True)
+        class ConfocalParameters(AcquisitionParameters):
+            x_pixels: int
+            ...
+    """
 
 
 class BaseModality(ABC):
@@ -58,10 +74,18 @@ class BaseModality(ABC):
     def __init__(self):
         self._running = False
         self._configured = False
-        self._params: dict[str, Any] = {}
-        self._instruments: dict[type[BaseInstrument], BaseInstrument] = {}
-        self._opto_controls: list[BaseOptoControl] = []
         self._warn_callback: Callable[[str], None] | None = None
+        self.parameters: AcquisitionParameters | None = None
+        # Storage state — shared across all DAQ modalities
+        self._save_enabled = False
+        self._save_root_path: Path | None = None
+        self._save_json_path: Path | None = None
+        self._save_channel_paths: dict[str, Path] = {}
+        self._save_channel_labels: list[str] = []
+        self._saved_frame_count = 0
+        self._run_id = 0
+        self._run_started_at = ""
+        self._run_frame_limit: int | None = 1
 
     def _emit_warning(self, message: str) -> None:
         """Emit a non-fatal warning to the user via the service layer."""
@@ -81,14 +105,59 @@ class BaseModality(ABC):
             "allowed_displays": cls.ALLOWED_DISPLAYS,
         }
 
-    @abstractmethod
+    # ------------------------------------------------------------------ #
+    # Configure — template method; subclasses implement the 3 sub-steps  #
+    # ------------------------------------------------------------------ #
+
     def configure(
         self,
         params: dict[str, Any],
         instruments: dict[type[BaseInstrument], BaseInstrument],
         opto_controls: list[BaseOptoControl],
     ) -> None:
+        self.load_params(params)
+        self.load_instruments(instruments)
+        self.load_optocontrols(opto_controls)
+        self.load_savepath()
+    
+        self._save_json_path = None
+        self._save_channel_paths = {}
+        self._save_channel_labels = []
+        self._saved_frame_count = 0
+        self._run_frame_limit = 1
+        self._configured = True
+    
+    @abstractmethod
+    def load_params(self, params: dict[str, Any]) -> None:
+        """Build and assign self.parameters from the raw params dict."""
         raise NotImplementedError
+
+    @abstractmethod
+    def load_instruments(self, instruments: dict[type[BaseInstrument], BaseInstrument]) -> None:
+        """Retrieve and validate required instruments from the instruments dict."""
+        raise NotImplementedError
+
+    def load_optocontrols(self, opto_controls: list[BaseOptoControl]) -> None:
+        """Process optocontrols. Default is a no-op; override as needed."""
+
+    def load_savepath(self):
+        save_enabled = bool(getattr(self.parameters, "save_enabled", False))
+        self._save_enabled = save_enabled
+        if save_enabled:
+            raw_path = getattr(self.parameters, "save_path", None)
+            if raw_path is None:
+                raise ValueError("save_path is required when save_enabled is true")
+            path = Path(raw_path).expanduser() if not isinstance(raw_path, Path) else raw_path
+            if path.suffix.lower() in {".tif", ".tiff"}:
+                path = path.with_suffix("")
+            self._save_root_path = path
+        else:
+            self._save_root_path = None
+
+
+    # ------------------------------------------------------------------ #
+    # Acquisition lifecycle                                               #
+    # ------------------------------------------------------------------ #
 
     @abstractmethod
     def start(self) -> None:
@@ -117,12 +186,39 @@ class BaseModality(ABC):
     ) -> None:
         pass
 
-    @abstractmethod
     def get_frame_limit(self) -> int | None:
-        raise NotImplementedError
+        limit = int(self.parameters.num_frames)
+        if limit < 1:
+            raise ValueError("num_frames must be >= 1")
+        return limit
 
     def get_active_channel_labels(self) -> list[str]:
         return []
+
+    # ------------------------------------------------------------------ #
+    # Shared frame utilities                                              #
+    # ------------------------------------------------------------------ #
+
+    def _split_channels(self, data: np.ndarray) -> list[np.ndarray]:
+        if data.ndim == 2:
+            return [data]
+        if data.ndim == 3:
+            return [data[index] for index in range(data.shape[0])]
+        raise ValueError(f"unsupported frame dimensions {data.ndim}")
+
+    def _resolve_channel_labels(self, channel_count: int) -> list[str]:
+        active_labels = self.get_active_channel_labels()
+        if active_labels and len(active_labels) == channel_count:
+            return list(active_labels)
+        return [f"channel_{index}" for index in range(channel_count)]
+
+    def _parameters_as_dict(self) -> dict[str, Any]:
+        """Serialize self.parameters to a plain dict for metadata/storage."""
+        return asdict(self.parameters) if self.parameters is not None else {}
+
+    # ------------------------------------------------------------------ #
+    # Acquisition thread machinery                                        #
+    # ------------------------------------------------------------------ #
 
     def run_acquisition_threaded(
         self,
@@ -149,8 +245,7 @@ class BaseModality(ABC):
         on_finished: Callable[[int, Exception | None], None],
     ) -> Callable[[], None]:
         """Returns the worker callable for the acquisition thread.
-        Override in a subclass to change how acquisition is driven
-        (e.g. event-driven, streaming, callback-based SDK).
+        Override in a subclass to change how acquisition is driven.
         The returned callable must eventually call on_finished(count, error_or_none).
         """
         def worker() -> None:
