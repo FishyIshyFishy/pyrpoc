@@ -151,7 +151,7 @@ class ModalityService(QObject):
                 instance.prepare_acquisition_storage(frame_limit=frame_limit)
                 self.app_state.modality.running = True
                 self.acq_started.emit()
-                self.acquisition_thread = instance.run_acquisition_threaded(
+                self.acquisition_thread = instance.acquire_continuous(
                     on_frame=self.handle_frame,
                     frame_limit=frame_limit,
                     should_stop=self.acquisition_stop_requested.is_set,

@@ -74,11 +74,9 @@ class FlimModality(BaseModality):
     # Acquisition lifecycle                                               #
     # ------------------------------------------------------------------ #
 
-    def start(self) -> None:
-        if not self._configured:
-            raise RuntimeError("modality must be configured before start")
+    def _setup_tagger(self) -> None:
+        """Create and configure the TimeTagger and FLIM stream for one acquisition."""
         p = self.parameters
-        self._stream = None
         self._tagger_instrument.create_tagger()
         self._tagger_instrument.configure_for_flim(
             laser_ch=p.laser_channel,
@@ -95,89 +93,9 @@ class FlimModality(BaseModality):
             pixel_ch=p.pixel_clock_channel,
         )
         self._stream.start()
-        self._running = True
 
-    def acquire_once(self) -> np.ndarray:
-        if not self._running:
-            raise RuntimeError("modality is not running")
-
-        p = self.parameters
-        pixel_dwell_ps = int(round(p.dwell_time_us * 1e6))
-        scan_duration_s = (
-            (p.x_pixels + p.extra_left + p.extra_right)
-            * p.y_pixels
-            * p.dwell_time_us
-            * 1e-6
-        )
-        self._pending_flim_frame = None
-
-        poll_result: dict[str, Any] = {}
-
-        def _poll() -> None:
-            try:
-                poll_result["frame"] = poll_one_flim_frame(
-                    stream=self._stream,
-                    x_pixels=p.x_pixels,
-                    y_pixels=p.y_pixels,
-                    extra_left=p.extra_left,
-                    extra_right=p.extra_right,
-                    pixel_dwell_ps=pixel_dwell_ps,
-                    laser_ch=p.laser_channel,
-                    detector_ch=p.detector_channel,
-                    pixel_ch=p.pixel_clock_channel,
-                )
-            except Exception as exc:
-                poll_result["error"] = exc
-
-        poll_thread = threading.Thread(target=_poll, daemon=True)
-        poll_thread.start()
-
-        try:
-            acquire_daq_flim(
-                daq_instrument=self._daq_instrument,
-                x_pixels=p.x_pixels,
-                y_pixels=p.y_pixels,
-                extra_left=p.extra_left,
-                extra_right=p.extra_right,
-                dwell_time_us=p.dwell_time_us,
-                fast_axis_offset=p.fast_axis_offset,
-                fast_axis_amplitude=p.fast_axis_amplitude,
-                slow_axis_offset=p.slow_axis_offset,
-                slow_axis_amplitude=p.slow_axis_amplitude,
-                active_ai_channels=self._active_ai_channels,
-                mask_contexts=self._mask_contexts,
-                pixel_clock_do_line=p.pixel_clock_do_line,
-            )
-        except DaqUnavailableError:
-            self._emit_warning("DAQ unavailable — displaying simulated data")
-            generate_toy_confocal_frame(
-                x_pixels=p.x_pixels,
-                y_pixels=p.y_pixels,
-                active_channels=self._active_ai_channels if self._active_ai_channels else [0],
-                frame_index=self._frame_idx,
-                mask_contexts=self._mask_contexts,
-                fast_axis_offset=p.fast_axis_offset,
-                fast_axis_amplitude=p.fast_axis_amplitude,
-                slow_axis_offset=p.slow_axis_offset,
-                slow_axis_amplitude=p.slow_axis_amplitude,
-            )
-
-        self._frame_idx += 1
-
-        poll_thread.join(timeout=scan_duration_s * 2 + 5)
-        if "error" in poll_result:
-            raise RuntimeError(f"TimeTagger poll failed: {poll_result['error']}") from poll_result["error"]
-
-        flim_frame = poll_result.get("frame")
-        self._pending_flim_frame = flim_frame
-        if flim_frame is not None:
-            intensity = np.vectorize(len)(flim_frame).astype(np.float32)
-            return intensity[np.newaxis].astype(np.float32)
-
-        raise RuntimeError("TimeTagger poll did not return a frame within the expected window")
-
-    def stop(self) -> None:
-        self._running = False
+    def _teardown_tagger(self) -> None:
+        """Stop the FLIM stream and free the TimeTagger."""
         if self._stream is not None:
             try:
                 self._stream.stop()
@@ -186,6 +104,90 @@ class FlimModality(BaseModality):
             self._stream = None
         if self._tagger_instrument is not None:
             self._tagger_instrument.free_tagger()
+
+    def acquire_once(self) -> np.ndarray:
+        p = self.parameters
+        pixel_dwell_ps = int(round(p.dwell_time_us * 1e6))
+        scan_duration_s = (
+            (p.x_pixels + p.extra_left + p.extra_right)
+            * p.y_pixels
+            * p.dwell_time_us
+            * 1e-6
+        )
+
+        self._setup_tagger()
+        try:
+            poll_result: dict[str, Any] = {}
+
+            def _poll() -> None:
+                try:
+                    poll_result["frame"] = poll_one_flim_frame(
+                        stream=self._stream,
+                        x_pixels=p.x_pixels,
+                        y_pixels=p.y_pixels,
+                        extra_left=p.extra_left,
+                        extra_right=p.extra_right,
+                        pixel_dwell_ps=pixel_dwell_ps,
+                        laser_ch=p.laser_channel,
+                        detector_ch=p.detector_channel,
+                        pixel_ch=p.pixel_clock_channel,
+                    )
+                except Exception as exc:
+                    poll_result["error"] = exc
+
+            poll_thread = threading.Thread(target=_poll, daemon=True)
+            poll_thread.start()
+
+            try:
+                acquire_daq_flim(
+                    daq_instrument=self._daq_instrument,
+                    x_pixels=p.x_pixels,
+                    y_pixels=p.y_pixels,
+                    extra_left=p.extra_left,
+                    extra_right=p.extra_right,
+                    dwell_time_us=p.dwell_time_us,
+                    fast_axis_offset=p.fast_axis_offset,
+                    fast_axis_amplitude=p.fast_axis_amplitude,
+                    slow_axis_offset=p.slow_axis_offset,
+                    slow_axis_amplitude=p.slow_axis_amplitude,
+                    active_ai_channels=self._active_ai_channels,
+                    mask_contexts=self._mask_contexts,
+                    pixel_clock_do_line=p.pixel_clock_do_line,
+                )
+            except DaqUnavailableError:
+                self._emit_warning("DAQ unavailable — displaying simulated data")
+                generate_toy_confocal_frame(
+                    x_pixels=p.x_pixels,
+                    y_pixels=p.y_pixels,
+                    active_channels=self._active_ai_channels if self._active_ai_channels else [0],
+                    frame_index=self._frame_idx,
+                    mask_contexts=self._mask_contexts,
+                    fast_axis_offset=p.fast_axis_offset,
+                    fast_axis_amplitude=p.fast_axis_amplitude,
+                    slow_axis_offset=p.slow_axis_offset,
+                    slow_axis_amplitude=p.slow_axis_amplitude,
+                )
+
+            self._frame_idx += 1
+
+            poll_thread.join(timeout=scan_duration_s * 2 + 5)
+            if "error" in poll_result:
+                raise RuntimeError(f"TimeTagger poll failed: {poll_result['error']}") from poll_result["error"]
+
+            flim_frame = poll_result.get("frame")
+            self._pending_flim_frame = flim_frame
+            if flim_frame is None:
+                raise RuntimeError("TimeTagger poll did not return a frame within the expected window")
+            intensity = np.vectorize(len)(flim_frame).astype(np.float32)
+            return intensity[np.newaxis].astype(np.float32)
+        finally:
+            self._teardown_tagger()
+
+    def stop(self) -> None:
+        """Signal continuous acquisition to stop and clean up any hardware
+        that may have been left mid-frame (e.g. stream interrupted by error)."""
+        self._running = False
+        self._teardown_tagger()
 
     # ------------------------------------------------------------------ #
     # Storage delegation                                                  #

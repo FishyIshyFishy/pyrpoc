@@ -20,6 +20,34 @@ def generate_pixel_clock_signal(
     signal[::pixel_samples] = True
     return signal
 
+# create tagger
+# creat
+def collect_timetagger_data(
+        stream: object,
+):
+    try:
+        polling = True
+        while polling:
+            data = stream.getData() #pyright:ignore
+
+            event_types = data.getEventTypes()
+            valid_mask = event_types == 0
+
+            if np.any(valid_mask):
+                ts = data.getTimestamps()[valid_mask].astype(np.int64)
+                ch = data.getChannels()[valid_mask].astype(np.int64)
+                
+                # In a real production scenario, you'd handle the 'arming' logic 
+                # here to split continuous stream data into discrete frame chunks.
+                # For this version, we pass the raw chunk to the processor.
+                all_frames_data.append((ts, ch))
+                
+                # Logic to increment frames_captured based on pixel_ch tags
+                frames_captured += np.count_nonzero(ch == config.pixel_ch)
+
+def reshape_timetagger_data():
+    ...
+
 
 def poll_one_flim_frame(
     stream: object,
@@ -47,9 +75,6 @@ def poll_one_flim_frame(
     total_x_pixels = int(x_pixels) + int(extra_left) + int(extra_right)
     total_pixels = total_x_pixels * int(y_pixels)
     frame_duration_ps = total_pixels * int(pixel_dwell_ps)
-
-    def new_pixel_lists():
-        return [[] for _ in range(total_pixels)]
 
     def finalize_frame(pixel_lists):
         frame = np.empty((y_pixels, total_x_pixels), dtype=object)
@@ -87,7 +112,7 @@ def poll_one_flim_frame(
                         timestamps = timestamps[arm_pos:]
                         channels = channels[arm_pos:]
                         armed = True
-                        pixel_lists = new_pixel_lists()
+                        pixel_lists = [[] for _ in range(total_pixels)]
                         frame_start_ps = int(timestamps[0])
                         frame_stop_ps = frame_start_ps + frame_duration_ps
                         finalize_deadline = time.monotonic() + (

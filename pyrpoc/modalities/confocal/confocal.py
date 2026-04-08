@@ -61,17 +61,7 @@ class ConfocalModality(BaseModality):
     # Acquisition lifecycle                                               #
     # ------------------------------------------------------------------ #
 
-    def start(self) -> None:
-        if not self._configured:
-            raise RuntimeError("modality must be configured before start")
-        if self._daq_instrument is None:
-            raise RuntimeError("ConfocalDAQInstrument not configured")
-        self._running = True
-
     def acquire_once(self) -> np.ndarray:
-        if not self._running:
-            raise RuntimeError("modality is not running")
-
         p = self.parameters
         try:
             frame = acquire_daq_confocal(

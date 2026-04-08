@@ -160,15 +160,15 @@ class BaseModality(ABC):
     # ------------------------------------------------------------------ #
 
     @abstractmethod
-    def start(self) -> None:
-        raise NotImplementedError
-
-    @abstractmethod
     def acquire_once(self) -> np.ndarray:
+        """Acquire a single frame. Must be fully self-contained: set up
+        hardware, acquire, and tear down before returning."""
         raise NotImplementedError
 
     @abstractmethod
     def stop(self) -> None:
+        """Signal continuous acquisition to stop and perform any cleanup
+        needed for hardware that may have been interrupted mid-frame."""
         raise NotImplementedError
 
     def prepare_acquisition_storage(self, *, frame_limit: int | None) -> None:
@@ -220,7 +220,7 @@ class BaseModality(ABC):
     # Acquisition thread machinery                                        #
     # ------------------------------------------------------------------ #
 
-    def run_acquisition_threaded(
+    def acquire_continuous(
         self,
         on_frame: Callable[[np.ndarray], None],
         *,
@@ -229,14 +229,21 @@ class BaseModality(ABC):
         on_error: Callable[[Exception], None],
         on_finished: Callable[[int, Exception | None], None],
     ) -> threading.Thread:
+        """Start continuous acquisition in a background thread.
+
+        Loops acquire_once() until should_stop() returns True, frame_limit
+        is reached, or an exception occurs. Subclasses may override to
+        optimise setup/teardown across frames, but the default implementation
+        works for any modality that implements acquire_once().
+        """
         thread = threading.Thread(
-            target=self._build_worker(on_frame, frame_limit, should_stop, on_error, on_finished),
+            target=self._build_continuous_worker(on_frame, frame_limit, should_stop, on_error, on_finished),
             daemon=True,
         )
         thread.start()
         return thread
 
-    def _build_worker(
+    def _build_continuous_worker(
         self,
         on_frame: Callable[[np.ndarray], None],
         frame_limit: int | None,
@@ -244,15 +251,15 @@ class BaseModality(ABC):
         on_error: Callable[[Exception], None],
         on_finished: Callable[[int, Exception | None], None],
     ) -> Callable[[], None]:
-        """Returns the worker callable for the acquisition thread.
+        """Returns the worker callable for the continuous acquisition thread.
         Override in a subclass to change how acquisition is driven.
         The returned callable must eventually call on_finished(count, error_or_none).
         """
         def worker() -> None:
             acquired = 0
             error_seen = None
+            self._running = True
             try:
-                self.start()
                 while not should_stop():
                     frame = self.acquire_once()
                     acquired += 1
@@ -263,6 +270,7 @@ class BaseModality(ABC):
                 error_seen = exc
                 on_error(exc)
             finally:
+                self._running = False
                 try:
                     self.stop()
                 except Exception as stop_exc:
