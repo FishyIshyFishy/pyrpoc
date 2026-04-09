@@ -25,28 +25,29 @@ def generate_pixel_clock_signal(
 def collect_timetagger_data(
         stream: object,
 ):
-    try:
-        polling = True
-        while polling:
-            data = stream.getData() #pyright:ignore
+    pass
+    # try:
+    #     polling = True
+    #     while polling:
+    #         data = stream.getData() #pyright:ignore
 
-            event_types = data.getEventTypes()
-            valid_mask = event_types == 0
+    #         event_types = data.getEventTypes()
+    #         valid_mask = event_types == 0
 
-            if np.any(valid_mask):
-                ts = data.getTimestamps()[valid_mask].astype(np.int64)
-                ch = data.getChannels()[valid_mask].astype(np.int64)
+    #         if np.any(valid_mask):
+    #             ts = data.getTimestamps()[valid_mask].astype(np.int64)
+    #             ch = data.getChannels()[valid_mask].astype(np.int64)
                 
-                # In a real production scenario, you'd handle the 'arming' logic 
-                # here to split continuous stream data into discrete frame chunks.
-                # For this version, we pass the raw chunk to the processor.
-                all_frames_data.append((ts, ch))
+    #             # In a real production scenario, you'd handle the 'arming' logic 
+    #             # here to split continuous stream data into discrete frame chunks.
+    #             # For this version, we pass the raw chunk to the processor.
+    #             all_frames_data.append((ts, ch))
                 
-                # Logic to increment frames_captured based on pixel_ch tags
-                frames_captured += np.count_nonzero(ch == config.pixel_ch)
+    #             # Logic to increment frames_captured based on pixel_ch tags
+    #             frames_captured += np.count_nonzero(ch == config.pixel_ch)
 
 def reshape_timetagger_data():
-    ...
+    pass
 
 
 def poll_one_flim_frame(
