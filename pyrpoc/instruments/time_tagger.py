@@ -81,16 +81,16 @@ class TimeTaggerInstrument(BaseInstrument):
         self,
         laser_ch: int,
         detector_ch: int,
-        pixel_ch: int,
+        trigger_ch: int,
         laser_trigger_v: float,
         detector_trigger_v: float,
-        pixel_trigger_v: float,
+        trigger_v: float,
         laser_event_divider: int = 1,
     ) -> None:
         """Set trigger levels and optional event divider on self.tagger."""
         self.tagger.setTriggerLevel(laser_ch, laser_trigger_v)
         self.tagger.setTriggerLevel(detector_ch, detector_trigger_v)
-        self.tagger.setTriggerLevel(pixel_ch, pixel_trigger_v)
+        self.tagger.setTriggerLevel(trigger_ch, trigger_v)
         if int(laser_event_divider) > 1:
             self.tagger.setEventDivider(laser_ch, int(laser_event_divider))
 
@@ -98,7 +98,7 @@ class TimeTaggerInstrument(BaseInstrument):
         self,
         laser_ch: int,
         detector_ch: int,
-        pixel_ch: int,
+        trigger_ch: int,
         buffer_size: int = 4_000_000,
     ) -> object:
         """Create and return a TimeTagStream on self.tagger for FLIM acquisition."""
@@ -106,5 +106,5 @@ class TimeTaggerInstrument(BaseInstrument):
         return TimeTagger.TimeTagStream(
             tagger=self.tagger,
             n_max_events=buffer_size,
-            channels=[laser_ch, detector_ch, pixel_ch],  # pyright:ignore
+            channels=[laser_ch, detector_ch, trigger_ch],  # pyright:ignore
         )

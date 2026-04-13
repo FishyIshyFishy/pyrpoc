@@ -10,15 +10,14 @@ from pyrpoc.instruments.confocal_daq import ConfocalDAQInstrument
 from pyrpoc.instruments.time_tagger import TimeTaggerInstrument
 from pyrpoc.backend_utils.opto_control_contexts import MaskContext
 from pyrpoc.optocontrols.base_optocontrol import BaseOptoControl
-from pyrpoc.optocontrols.mask import MaskOptoControl
+from pyrpoc.optocontrols.mask import MaskOptoControl  # used by load_optocontrols type signature
 
-from ..acquisition_functions.daq_helpers import (
+from .acquisition_core import (
     DaqUnavailableError,
-    acquire_daq_flim,
-    extract_mask_contexts,
+    acquire_daq_frame,
+    poll_one_flim_frame,
 )
-from ..acquisition_functions.flim_helpers import poll_one_flim_frame
-from ..acquisition_functions.toy_data import generate_toy_confocal_frame
+from ..helpers.toy_data import generate_toy_confocal_frame
 from ..base_modality import BaseModality
 from ..mod_registry import modality_registry
 from . import storage
@@ -81,16 +80,16 @@ class FlimModality(BaseModality):
         self._tagger_instrument.configure_for_flim(
             laser_ch=p.laser_channel,
             detector_ch=p.detector_channel,
-            pixel_ch=p.pixel_clock_channel,
+            trigger_ch=p.daq_trigger_channel,
             laser_trigger_v=p.laser_trigger_v,
             detector_trigger_v=p.detector_trigger_v,
-            pixel_trigger_v=p.pixel_trigger_v,
+            trigger_v=p.trigger_v,
             laser_event_divider=p.laser_event_divider,
         )
         self._stream = self._tagger_instrument.create_flim_stream(
             laser_ch=p.laser_channel,
             detector_ch=p.detector_channel,
-            pixel_ch=p.pixel_clock_channel,
+            trigger_ch=p.daq_trigger_channel,
         )
         self._stream.start()
 
@@ -108,12 +107,7 @@ class FlimModality(BaseModality):
     def acquire_once(self) -> np.ndarray:
         p = self.parameters
         pixel_dwell_ps = int(round(p.dwell_time_us * 1e6))
-        scan_duration_s = (
-            (p.x_pixels + p.extra_left + p.extra_right)
-            * p.y_pixels
-            * p.dwell_time_us
-            * 1e-6
-        )
+        scan_duration_s = ((p.x_pixels+p.extra_left+p.extra_right) * p.y_pixels * p.dwell_time_us * 1e-6)
 
         self._setup_tagger()
         try:
@@ -130,7 +124,7 @@ class FlimModality(BaseModality):
                         pixel_dwell_ps=pixel_dwell_ps,
                         laser_ch=p.laser_channel,
                         detector_ch=p.detector_channel,
-                        pixel_ch=p.pixel_clock_channel,
+                        trigger_ch=p.daq_trigger_channel,
                     )
                 except Exception as exc:
                     poll_result["error"] = exc
@@ -139,7 +133,7 @@ class FlimModality(BaseModality):
             poll_thread.start()
 
             try:
-                acquire_daq_flim(
+                acquire_daq_frame(
                     daq_instrument=self._daq_instrument,
                     x_pixels=p.x_pixels,
                     y_pixels=p.y_pixels,
@@ -151,8 +145,7 @@ class FlimModality(BaseModality):
                     slow_axis_offset=p.slow_axis_offset,
                     slow_axis_amplitude=p.slow_axis_amplitude,
                     active_ai_channels=self._active_ai_channels,
-                    mask_contexts=self._mask_contexts,
-                    pixel_clock_do_line=p.pixel_clock_do_line,
+                    daq_trigger_pfi_line=p.daq_trigger_pfi_line,
                 )
             except DaqUnavailableError:
                 self._emit_warning("DAQ unavailable — displaying simulated data")

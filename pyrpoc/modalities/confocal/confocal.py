@@ -8,12 +8,12 @@ from pyrpoc.backend_utils.opto_control_contexts import MaskContext
 from pyrpoc.optocontrols.base_optocontrol import BaseOptoControl
 from pyrpoc.optocontrols.mask import MaskOptoControl
 
-from ..acquisition_functions.daq_helpers import (
+from .acquisition_core import (
     DaqUnavailableError,
-    acquire_daq_confocal,
+    acquire_frame as acquire_daq_confocal,
     extract_mask_contexts,
 )
-from ..acquisition_functions.toy_data import generate_toy_confocal_frame
+from ..helpers.toy_data import generate_toy_confocal_frame
 from ..base_modality import BaseModality
 from ..mod_registry import modality_registry
 from . import storage

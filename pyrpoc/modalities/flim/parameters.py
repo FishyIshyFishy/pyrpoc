@@ -90,17 +90,17 @@ PARAMETERS = {
             number_type=int,
         ),
         NumberParameter(
-            label="Pixel Clock Channel",
+            label="DAQ Trigger Channel",
             default=3,
             minimum=1,
-            tooltip="TimeTagger input channel for pixel clock",
+            tooltip="TimeTagger input channel for the DAQ frame-start trigger",
             number_type=int,
         ),
         NumberParameter(
-            label="Pixel Clock DO Line",
+            label="DAQ Trigger PFI Line",
             default=0,
             minimum=0,
-            tooltip="DAQ port0 line number to output the pixel clock TTL",
+            tooltip="NI-DAQ PFI line number exported as the frame-start trigger",
             number_type=int,
         ),
         NumberParameter(
@@ -123,9 +123,9 @@ PARAMETERS = {
             number_type=float,
         ),
         NumberParameter(
-            label="Pixel Trigger V",
+            label="Trigger V",
             default=0.2,
-            tooltip="Trigger threshold for pixel clock channel (V)",
+            tooltip="Trigger threshold for DAQ trigger channel (V)",
             number_type=float,
         ),
         NumberParameter(
@@ -179,12 +179,12 @@ class FlimParameters(AcquisitionParameters):
     # timetagger
     laser_channel: int
     detector_channel: int
-    pixel_clock_channel: int
-    pixel_clock_do_line: int
+    daq_trigger_channel: int
+    daq_trigger_pfi_line: int
     laser_frequency_mhz: float
     laser_trigger_v: float
     detector_trigger_v: float
-    pixel_trigger_v: float
+    trigger_v: float
     laser_event_divider: int
     # acquisition
     save_enabled: bool
@@ -205,12 +205,12 @@ class FlimParameters(AcquisitionParameters):
             dwell_time_us=float(p["Dwell Time (us)"]),
             laser_channel=int(p["Laser Channel"]),
             detector_channel=int(p["Detector Channel"]),
-            pixel_clock_channel=int(p["Pixel Clock Channel"]),
-            pixel_clock_do_line=int(p["Pixel Clock DO Line"]),
+            daq_trigger_channel=int(p["DAQ Trigger Channel"]),
+            daq_trigger_pfi_line=int(p["DAQ Trigger PFI Line"]),
             laser_frequency_mhz=float(p["Laser Frequency MHz"]),
             laser_trigger_v=float(p["Laser Trigger V"]),
             detector_trigger_v=float(p["Detector Trigger V"]),
-            pixel_trigger_v=float(p["Pixel Trigger V"]),
+            trigger_v=float(p["Trigger V"]),
             laser_event_divider=int(p["Laser Event Divider"]),
             save_enabled=bool(p.get("save_enabled", False)),
             save_path=str(p.get("save_path", "acquisition")),
