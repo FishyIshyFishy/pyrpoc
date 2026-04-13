@@ -18,7 +18,7 @@ def generate_raster_waveform(
         of the offset-amp and offset+amp points
     3. create waveforms
     '''
-    total_x = extra_left + extra_right
+    total_x = extra_left + x_pixels + extra_right
     fast_amp = max(float(fast_axis_amplitude), 1e-6)
     slow_amp = max(float(slow_axis_amplitude), 1e-6)
     fast_step = (2.0 * fast_amp) / float(x_pixels)

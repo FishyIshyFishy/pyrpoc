@@ -1,0 +1,35 @@
+{
+  "run_id": 5,
+  "started": "2026-04-13T12:35:04.395899+00:00",
+  "modality_key": "flim",
+  "save_root_path": "C:\\Users\\Zhanglab\\Documents\\pyrpoc\\test_data\\acquisition",
+  "tiff_paths": {
+    "intensity": "C:\\Users\\Zhanglab\\Documents\\pyrpoc\\test_data\\acquisition_intensity.tiff"
+  },
+  "frames_saved": 1,
+  "frame_limit": 1,
+  "parameters": {
+    "x_pixels": 512,
+    "y_pixels": 512,
+    "extra_left": 300,
+    "extra_right": 20,
+    "fast_axis_offset": 0.0,
+    "fast_axis_amplitude": 1.0,
+    "slow_axis_offset": 0.0,
+    "slow_axis_amplitude": 1.0,
+    "dwell_time_us": 2.0,
+    "laser_channel": 1,
+    "detector_channel": 2,
+    "daq_trigger_channel": 3,
+    "daq_trigger_pfi_line": 0,
+    "laser_frequency_mhz": 80.0,
+    "laser_trigger_v": 0.05,
+    "detector_trigger_v": 0.2,
+    "trigger_v": 0.2,
+    "laser_event_divider": 1,
+    "save_enabled": true,
+    "save_path": "C:\\Users\\Zhanglab\\Documents\\pyrpoc\\test_data\\acquisition",
+    "num_frames": 1
+  },
+  "last_error": null
+}
