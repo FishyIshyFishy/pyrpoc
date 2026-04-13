@@ -2,24 +2,24 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QListWidgetItem, QMessageBox
+from PyQt6.QtWidgets import QLabel, QMessageBox
 
 from pyrpoc.displays.display_registry import display_registry
+from pyrpoc.displays.base_display import BaseDisplay
+from pyrpoc.gui.main_widgets.instance_card import RemovableCardWidget as DisplayCardWidget
 from pyrpoc.gui.main_widgets.display_mgr.forms import prompt_display_parameters
 
 if TYPE_CHECKING:
     from pyrpoc.gui.main_widgets.display_mgr.widget import DisplayManagerWidget
 
 
+# ---------------------------------------------------------------------------
+# Refresh helpers
+# ---------------------------------------------------------------------------
+
 def refresh_available(widget: DisplayManagerWidget) -> None:
     """
     Build display dropdown constrained by selected modality contract.
-
-    Route:
-    - modality selected signal
-    - -> this handler
-    - -> display list filtered by output type and allowed display keys.
     """
     contract = widget.modality_service.get_selected_contract()
     emitted_kinds = contract.get("emitted_kinds", [])
@@ -48,82 +48,45 @@ def refresh_available(widget: DisplayManagerWidget) -> None:
 
 def refresh_instances(widget: DisplayManagerWidget) -> None:
     """
-    Rebuild visible instance list from service inventory rows.
-
-    Route:
-    - display add/remove/attach/detach signal
-    - -> this handler
-    - -> list widget rows with stable object identity in UserRole.
+    Diff-update card list from service inventory.  Existing cards are reused
+    so expanded bodies survive add/remove cycles.
     """
-    current = widget._selected_display()
-    current_id = id(current) if current is not None else None
-    widget.instances_list.blockSignals(True)
-    try:
-        widget.instances_list.clear()
-        for idx, row in enumerate(widget.display_service.list_instances(), start=1):
-            raw_display_id = row.get("display_id")
-            display_id: int | None = None
-            if isinstance(raw_display_id, int):
-                display_id = raw_display_id
-            elif isinstance(raw_display_id, bool):
-                display_id = int(raw_display_id)
-            else:
-                state_value = row.get("state")
-                if isinstance(state_value, int):
-                    display_id = state_value
-                elif state_value is not None:
-                    try:
-                        display_id = id(state_value)
-                    except Exception:
-                        display_id = None
+    rows = widget.display_service.list_instances()
+    wanted_displays: set[object] = set()
 
-            if display_id is None:
-                continue
-            marker = "attached" if row["attached"] else "detached"
-            item = QListWidgetItem(f"{row['name']} [{idx}] ({marker})")
-            item.setFlags(item.flags() | Qt.ItemFlag.ItemIsEditable)
-            item.setData(Qt.ItemDataRole.UserRole, display_id)
-            widget.instances_list.addItem(item)
+    for row in rows:
+        state = _row_state(row)
+        if state is not None:
+            wanted_displays.add(state)
 
-        if current_id is not None:
-            for idx in range(widget.instances_list.count()):
-                item = widget.instances_list.item(idx)
-                if item.data(Qt.ItemDataRole.UserRole) == current_id:
-                    widget.instances_list.setCurrentRow(idx)
-                    break
-    finally:
-        widget.instances_list.blockSignals(False)
+    _remove_missing_cards(widget, wanted_displays)
+
+    desired_cards: dict[object, DisplayCardWidget] = {}
+    for row in rows:
+        state = _row_state(row)
+        if state is None:
+            continue
+
+        title = row.get("name", "Display")
+        attached = bool(row.get("attached", False))
+
+        card = widget.state.card_widgets.get(state)
+        if card is None:
+            card = _create_card(widget, state, str(title))
+            widget.state.card_widgets[state] = card
+
+        card.title_label.setText(str(title))
+        card.set_toggle_checked(attached)
+        desired_cards[state] = card
+
+    _reorder_cards(widget, desired_cards, rows)
 
 
-def on_display_name_edited(widget: DisplayManagerWidget, item: Any) -> None:
-    if not isinstance(item, QListWidgetItem):
-        return
-    raw = item.text().strip()
-    if not raw:
-        return
-    display_id = item.data(Qt.ItemDataRole.UserRole)
-    if not isinstance(display_id, int):
-        return
-    display = widget.display_service.get_display_by_id(display_id)
-    if display is None:
-        return
-
-    name = raw.split(" [", 1)[0].strip()
-    if not name:
-        return
-    widget.display_service.set_display_name(display, name)
-
+# ---------------------------------------------------------------------------
+# Button/action handlers
+# ---------------------------------------------------------------------------
 
 def on_add_clicked(widget: DisplayManagerWidget) -> None:
-    """
-    Add one display using the selected registry key and optional parameter dialog.
-
-    Route:
-    - Add button click
-    - -> this handler
-    - -> `DisplayService.create_display`
-    - -> `display_added` tab/list refresh.
-    """
     key = widget._selected_display_key()
     if not key:
         show_error(widget, "No compatible display available for selected modality")
@@ -131,11 +94,9 @@ def on_add_clicked(widget: DisplayManagerWidget) -> None:
 
     raw_settings: dict[str, Any] = {}
     display_cls = display_registry.get_class(key)
-    display_name = widget.name_input.text().strip()
-    if not display_name:
-        row = widget.display_service.list_available()
-        fallback = next((row_entry for row_entry in row if row_entry["key"] == key), None)
-        display_name = str(fallback.get("display_name", key)) if isinstance(fallback, dict) else key
+    row = widget.display_service.list_available()
+    fallback = next((r for r in row if r["key"] == key), None)
+    display_name = str(fallback.get("display_name", key)) if isinstance(fallback, dict) else key
 
     if any(display_cls.DISPLAY_PARAMETERS.values()):
         settings = prompt_display_parameters(widget, display_cls.DISPLAY_PARAMETERS)
@@ -145,51 +106,38 @@ def on_add_clicked(widget: DisplayManagerWidget) -> None:
 
     try:
         widget.display_service.create_display(key, raw_settings, user_label=display_name)
-        widget.status_label.setText("Status: added display")
-        widget.name_input.clear()
     except Exception as exc:
         show_error(widget, str(exc))
 
 
-def on_attach_clicked(widget: DisplayManagerWidget) -> None:
-    state = widget._selected_display()
-    if state is None:
+def on_attach_toggled(widget: DisplayManagerWidget, state_obj: object, checked: bool) -> None:
+    if not isinstance(state_obj, BaseDisplay):
         return
-    widget.display_service.attach(state)
-    widget.status_label.setText("Status: attached display")
-    refresh_instances(widget)
+    if checked:
+        widget.display_service.attach(state_obj)
+    else:
+        widget.display_service.detach(state_obj)
 
 
-def on_detach_clicked(widget: DisplayManagerWidget) -> None:
-    state = widget._selected_display()
-    if state is None:
+def on_remove_requested(widget: DisplayManagerWidget, state_obj: object) -> None:
+    if not isinstance(state_obj, BaseDisplay):
         return
-    widget.display_service.detach(state)
-    widget.status_label.setText("Status: detached display")
-    refresh_instances(widget)
+    widget.display_service.remove_display(state_obj)
 
 
-def on_remove_clicked(widget: DisplayManagerWidget) -> None:
-    state = widget._selected_display()
-    if state is None:
+def on_expand_requested(widget: DisplayManagerWidget, state_obj: object) -> None:
+    card = widget.state.card_widgets.get(state_obj)
+    if card is None:
         return
-    widget.display_service.remove_display(state)
-    widget.status_label.setText("Status: removed display")
-
-
-def on_display_changed(widget: DisplayManagerWidget, state: object) -> None:
-    del state
-    widget.status_label.setText("Status: display updated")
-    refresh_instances(widget)
-
-
-def on_display_removed(widget: DisplayManagerWidget, state: object) -> None:
-    del state
-    refresh_instances(widget)
+    card.set_expanded(not card.is_expanded())
+    if not card.is_expanded():
+        return
+    if card.body_layout.count() == 0:
+        _build_placeholder_body(card)
 
 
 def on_display_error(widget: DisplayManagerWidget, _state: object, message: str) -> None:
-    widget.status_label.setText(f"Status: display error - {message}")
+    show_error(widget, message)
 
 
 def on_modality_selected(widget: DisplayManagerWidget, key: str) -> None:
@@ -198,5 +146,70 @@ def on_modality_selected(widget: DisplayManagerWidget, key: str) -> None:
 
 
 def show_error(widget: DisplayManagerWidget, message: str) -> None:
-    widget.status_label.setText(f"Status: error - {message}")
     QMessageBox.critical(widget, "Display Error", message)
+
+
+# ---------------------------------------------------------------------------
+# Private helpers
+# ---------------------------------------------------------------------------
+
+def _row_state(row: dict[str, Any]) -> object | None:
+    """Extract a stable identity object from a service row."""
+    state = row.get("state")
+    if state is not None:
+        return state
+    display_id = row.get("display_id")
+    return display_id if display_id is not None else None
+
+
+def _remove_missing_cards(widget: DisplayManagerWidget, wanted: set[object]) -> None:
+    for state, card in list(widget.state.card_widgets.items()):
+        if state not in wanted:
+            widget.state.card_widgets.pop(state)
+            card.setParent(None)  # type: ignore[arg-type]
+            card.deleteLater()
+
+
+def _create_card(
+    widget: DisplayManagerWidget,
+    state_obj: object,
+    title: str,
+) -> DisplayCardWidget:
+    card = DisplayCardWidget(state_obj, title, widget)
+    card.toggle_changed.connect(
+        lambda obj, checked, w=widget: on_attach_toggled(w, obj, checked)
+    )
+    card.remove_requested.connect(
+        lambda obj, w=widget: on_remove_requested(w, obj)
+    )
+    card.expand_requested.connect(
+        lambda obj, w=widget: on_expand_requested(w, obj)
+    )
+    widget.instances_layout.insertWidget(widget.instances_layout.count(), card)
+    return card
+
+
+def _build_placeholder_body(card: DisplayCardWidget) -> None:
+    """Insert a placeholder settings panel into an expanded card body."""
+    placeholder = QLabel("Display settings — coming soon", card.body_container)
+    placeholder.setStyleSheet("color: palette(mid); font-style: italic; padding: 4px 0;")
+    card.set_body_widget(placeholder)
+
+
+def _reorder_cards(
+    widget: DisplayManagerWidget,
+    desired_cards: dict[object, DisplayCardWidget],
+    rows: list[dict[str, Any]],
+) -> None:
+    desired_order = [_row_state(row) for row in rows]
+
+    while widget.instances_layout.count() > 0:
+        item = widget.instances_layout.takeAt(0)
+        card = item.widget()  # type: ignore[assignment]
+        if card is not None:
+            card.setParent(None)  # type: ignore[arg-type]
+
+    for state in desired_order:
+        card = desired_cards.get(state)  # type: ignore[arg-type]
+        if card is not None:
+            widget.instances_layout.insertWidget(widget.instances_layout.count(), card)

@@ -7,7 +7,7 @@ from PyQt6.QtWidgets import QFormLayout, QWidget
 from pyrpoc.backend_utils.parameter_utils import BaseParameter
 from pyrpoc.gui.main_widgets.acquisition_mgr.state import AcquisitionManagerState
 from pyrpoc.gui.main_widgets.acquisition_mgr.ui import AcquisitionManagerUI
-from pyrpoc.gui.main_widgets.opto_control_mgr.instance_card import InstanceCardWidget
+from pyrpoc.gui.main_widgets.instance_card import BaseCardWidget
 
 
 def _build_section_summary(
@@ -48,9 +48,8 @@ def build_param_form(
         ui.params_layout.takeAt(ui.params_layout.count() - 1)
 
     for section_name, parameters in parameter_groups.items():
-        card = InstanceCardWidget(None, section_name.capitalize(), ui.params_container)
-        card.set_enable_visible(False)
-        card.remove_btn.setVisible(False)
+        card = BaseCardWidget(None, section_name.capitalize(), ui.params_container)
+        card.set_toggle_visible(False)
 
         # Self-contained expand/collapse — no external manager involved
         card.expand_requested.connect(

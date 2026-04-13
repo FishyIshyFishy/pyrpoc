@@ -3,9 +3,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from pyrpoc.backend_utils.parameter_utils import (
+    ChannelSelectionParameter,
     CheckboxParameter,
     NumberParameter,
     PathParameter,
+    TextParameter,
 )
 
 from ..base_modality import AcquisitionParameters
@@ -74,6 +76,43 @@ PARAMETERS = {
             number_type=float,
         ),
     ],
+    "daq": [
+        TextParameter(
+            label="DAQ Device",
+            default="Dev1",
+            tooltip="NI-DAQ device name (e.g. Dev1)",
+        ),
+        NumberParameter(
+            label="Sample Rate (Hz)",
+            default=100_000.0,
+            minimum=1.0,
+            maximum=5_000_000.0,
+            step=1_000.0,
+            tooltip="DAQ sample rate in Hz",
+            number_type=float,
+        ),
+        NumberParameter(
+            label="Fast Axis AO",
+            default=0,
+            minimum=0,
+            maximum=31,
+            tooltip="Analog output channel for the fast (X) galvo",
+            number_type=int,
+        ),
+        NumberParameter(
+            label="Slow Axis AO",
+            default=1,
+            minimum=0,
+            maximum=31,
+            tooltip="Analog output channel for the slow (Y) galvo",
+            number_type=int,
+        ),
+        ChannelSelectionParameter(
+            label="Active AI Channels",
+            num_channels=9,
+            tooltip="Toggle which analog input channels are active",
+        ),
+    ],
     "acquisition": [
         NumberParameter(
             label="t0 Samples",
@@ -128,6 +167,12 @@ class SplitConfocalParameters(AcquisitionParameters):
     slow_axis_offset: float
     slow_axis_amplitude: float
     dwell_time_us: float
+    # daq
+    device_name: str
+    sample_rate_hz: float
+    fast_axis_ao: int
+    slow_axis_ao: int
+    active_ai_channels: tuple[int, ...]
     # split timing
     t0_samples: int
     t1_samples: int
@@ -154,6 +199,11 @@ class SplitConfocalParameters(AcquisitionParameters):
             slow_axis_offset=float(p["Slow Axis Offset"]),
             slow_axis_amplitude=max(float(p["Slow Axis Amplitude"]), 1e-6),
             dwell_time_us=float(p["Dwell Time (us)"]),
+            device_name=str(p.get("DAQ Device", "Dev1")) or "Dev1",
+            sample_rate_hz=float(p.get("Sample Rate (Hz)", 100_000.0)),
+            fast_axis_ao=int(p.get("Fast Axis AO", 0)),
+            slow_axis_ao=int(p.get("Slow Axis AO", 1)),
+            active_ai_channels=tuple(int(c) for c in p.get("Active AI Channels", list(range(9)))),
             t0_samples=t0,
             t1_samples=t1,
             save_enabled=bool(p.get("save_enabled", False)),

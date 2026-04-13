@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QFileDialog,
     QCheckBox,
@@ -13,6 +14,7 @@ from PyQt6.QtWidgets import (
     QLineEdit,
     QPushButton,
     QSpinBox,
+    QToolButton,
     QWidget,
 )
 
@@ -382,6 +384,99 @@ class ChoiceParameter(BaseParameter):
         super().connect_changed(widget, callback)
         if isinstance(widget, QComboBox):
             widget.currentTextChanged.connect(lambda *_: callback())
+
+
+class ChannelSelectionParameter(BaseParameter):
+    """A parameter that renders a row of toggleable AI channel buttons.
+
+    The stored value is a sorted ``list[int]`` of *active* channel indices.
+    """
+
+    def __init__(
+        self,
+        label: str,
+        num_channels: int = 9,
+        default: list[int] | None = None,
+        required: bool = False,
+        tooltip: str = "",
+        display_label: str = "",
+    ) -> None:
+        if default is None:
+            default = list(range(num_channels))
+        super().__init__(
+            label=label,
+            default=default,
+            required=required,
+            tooltip=tooltip,
+            display_label=display_label,
+        )
+        self.num_channels = num_channels
+
+    def create_widget(self, parent: QWidget | None = None) -> QWidget:
+        container = QWidget(parent)
+        layout = QHBoxLayout(container)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(4)
+        layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
+        active_set = set(self.default) if self.default else set()
+        buttons: list[QToolButton] = []
+        for i in range(self.num_channels):
+            btn = QToolButton(container)
+            btn.setCheckable(True)
+            btn.setChecked(i in active_set)
+            btn.setText(f"AI{i}")
+            btn.setToolTip(f"Toggle AI{i}")
+            btn.setStyleSheet(
+                "QToolButton {"
+                "padding: 4px 8px;"
+                "border: 1px solid palette(mid);"
+                "border-radius: 10px;"
+                "background: palette(base);"
+                "}"
+                "QToolButton:checked {"
+                "background: palette(highlight);"
+                "color: palette(highlighted-text);"
+                "border: 1px solid palette(highlight);"
+                "font-weight: 700;"
+                "}"
+            )
+            layout.addWidget(btn)
+            buttons.append(btn)
+        container._channel_buttons = buttons  # type: ignore[attr-defined]
+        if self.tooltip:
+            container.setToolTip(self.tooltip)
+        return container
+
+    def _get_buttons(self, widget: QWidget) -> list[QToolButton]:
+        return getattr(widget, "_channel_buttons", [])
+
+    def get_value(self, widget: QWidget) -> list[int]:
+        return [i for i, btn in enumerate(self._get_buttons(widget)) if btn.isChecked()]
+
+    def set_value(self, widget: QWidget, value: Any) -> None:
+        active = set(value) if value is not None else set()
+        for i, btn in enumerate(self._get_buttons(widget)):
+            btn.blockSignals(True)
+            btn.setChecked(i in active)
+            btn.blockSignals(False)
+
+    def coerce(self, value: Any) -> list[int]:
+        if isinstance(value, list):
+            return sorted(set(int(v) for v in value))
+        raise TypeError("channel selection must be a list of integer channel indices")
+
+    def connect_changed(self, widget: QWidget, callback) -> None:
+        super().connect_changed(widget, callback)
+        if callback is None:
+            return
+        for btn in self._get_buttons(widget):
+            btn.toggled.connect(lambda *_: callback())
+
+    def format_summary(self, widget: QWidget) -> str:
+        active = self.get_value(widget)
+        if not active:
+            return "none"
+        return ", ".join(f"AI{i}" for i in active)
 
 
 def _validate_single_parameter(param: BaseParameter) -> None:

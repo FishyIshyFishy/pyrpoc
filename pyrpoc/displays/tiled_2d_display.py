@@ -35,7 +35,7 @@ class _ChannelTile:
 @display_registry.register("tiled_2d")
 class Tiled2DDisplay(BaseDisplay):
     DISPLAY_KEY = "tiled_2d"
-    DISPLAY_NAME = "2D Tiled Display"
+    DISPLAY_NAME = "2D Tiled"
     ACCEPTED_KINDS = [DataKind.INTENSITY_FRAME, DataKind.PARTIAL_FRAME]
     DISPLAY_PARAMETERS = {}
 

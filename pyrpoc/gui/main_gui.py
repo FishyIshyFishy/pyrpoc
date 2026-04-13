@@ -85,10 +85,10 @@ class MainGUI(QWidget):
 
     def _build_default_docks(self) -> None:
         dock_specs = [
-            DockSpec(DockKey.ACQUISITION, "Acquisition Manager", qtads.DockWidgetArea.LeftDockWidgetArea),
-            DockSpec(DockKey.INSTRUMENTS, "Instrument Manager", qtads.DockWidgetArea.LeftDockWidgetArea),
-            DockSpec(DockKey.DISPLAYS, "Display Manager", qtads.DockWidgetArea.LeftDockWidgetArea),
-            DockSpec(DockKey.OPTOCONTROLS, "Opto-Control Manager", qtads.DockWidgetArea.LeftDockWidgetArea),
+            DockSpec(DockKey.ACQUISITION, "Acquisition", qtads.DockWidgetArea.LeftDockWidgetArea),
+            DockSpec(DockKey.INSTRUMENTS, "Instruments", qtads.DockWidgetArea.LeftDockWidgetArea),
+            DockSpec(DockKey.DISPLAYS, "Displays", qtads.DockWidgetArea.LeftDockWidgetArea),
+            DockSpec(DockKey.OPTOCONTROLS, "OptoControls", qtads.DockWidgetArea.LeftDockWidgetArea),
         ]
 
         dock_acq = self.add_dock(

@@ -7,7 +7,6 @@ import nidaqmx as nx
 from nidaqmx.constants import AcquisitionType
 
 from pyrpoc.backend_utils.opto_control_contexts import MaskContext
-from pyrpoc.instruments.confocal_daq import ConfocalDAQInstrument
 from pyrpoc.optocontrols.base_optocontrol import BaseOptoControl
 from pyrpoc.optocontrols.mask import MaskOptoControl
 
@@ -133,7 +132,10 @@ def _extract_kept_samples(
 
 
 def _run_daq(
-    daq_instrument: ConfocalDAQInstrument,
+    device_name: str,
+    sample_rate_hz: float,
+    fast_axis_ao: int,
+    slow_axis_ao: int,
     waveform: np.ndarray,
     ttl_signals: dict[str, np.ndarray],
     x_pixels: int,
@@ -143,10 +145,8 @@ def _run_daq(
     dwell_time_us: float,
     active_ai_channels: list[int],
 ) -> tuple[np.ndarray, int, int, int]:
-    device_name = daq_instrument.device_name
-    sample_rate_hz = float(daq_instrument.sample_rate_hz)
-    fast_axis_channel = int(daq_instrument.fast_axis_ao)
-    slow_axis_channel = int(daq_instrument.slow_axis_ao)
+    fast_axis_channel = int(fast_axis_ao)
+    slow_axis_channel = int(slow_axis_ao)
 
     pixel_samples = max(1, int(dwell_time_us * 1e-6 * sample_rate_hz))
     total_x = x_pixels + extra_left + extra_right
@@ -284,7 +284,10 @@ def _reshape_to_split_frame(
 # ---------------------------------------------------------------------------
 
 def acquire_frame(
-    daq_instrument: ConfocalDAQInstrument,
+    device_name: str,
+    sample_rate_hz: float,
+    fast_axis_ao: int,
+    slow_axis_ao: int,
     x_pixels: int,
     y_pixels: int,
     extra_left: int,
@@ -305,7 +308,6 @@ def acquire_frame(
     with alternating t0/t2 channels, and ``raw_frame`` is (C, H, W) raw pixel
     samples.
     """
-    sample_rate_hz = float(daq_instrument.sample_rate_hz)
     pixel_samples = max(1, int(dwell_time_us * 1e-6 * sample_rate_hz))
     total_x = x_pixels + extra_left + extra_right
 
@@ -326,13 +328,16 @@ def acquire_frame(
         pixel_samples=pixel_samples,
         extra_left=extra_left,
         extra_right=extra_right,
-        device_name=daq_instrument.device_name,
+        device_name=device_name,
         mask_contexts=mask_contexts,
         scan_x_pixels=x_pixels,
         t0_samples=t0_samples,
     )
     scan_data, total_y_out, x_out, px_out = _run_daq(
-        daq_instrument=daq_instrument,
+        device_name=device_name,
+        sample_rate_hz=sample_rate_hz,
+        fast_axis_ao=fast_axis_ao,
+        slow_axis_ao=slow_axis_ao,
         waveform=waveform,
         ttl_signals=ttl_signals,
         x_pixels=x_pixels,

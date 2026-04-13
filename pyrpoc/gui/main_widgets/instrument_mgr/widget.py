@@ -22,7 +22,6 @@ class InstrumentManagerWidget(QWidget):
         # Stable handles used by legacy-style handlers.
         self.type_combo = self.ui.type_combo
         self.add_btn = self.ui.add_btn
-        self.status_label = self.ui.status_label
         self.instances_layout = self.ui.instances_layout
 
         self._wire_signals()

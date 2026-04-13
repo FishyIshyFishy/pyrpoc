@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 from PyQt6.QtWidgets import QMessageBox
 
 from pyrpoc.optocontrols.base_optocontrol import BaseOptoControl
-from pyrpoc.gui.main_widgets.opto_control_mgr.instance_card import InstanceCardWidget
+from pyrpoc.gui.main_widgets.instance_card import RemovableCardWidget as InstanceCardWidget
 
 if TYPE_CHECKING:
     from pyrpoc.gui.main_widgets.opto_control_mgr.widget import OptoControlManagerWidget
@@ -60,12 +60,12 @@ def refresh_instances(widget: OptoControlManagerWidget) -> None:
         card = widget.state.card_widgets.get(control)
         if card is None:
             card = _create_card(widget, control, title, row["key"])
-            card.set_enable_checked(row.get("enabled", False))
-            card.set_enable_visible(True)
+            card.set_toggle_checked(row.get("enabled", False))
+            card.set_toggle_visible(True)
             card.set_marker_text(f"[{row['key']}]")
             widget.state.card_widgets[control] = card
 
-        card.set_enable_checked(row.get("enabled", False))
+        card.set_toggle_checked(row.get("enabled", False))
         _refresh_card_text(card, title, row["key"])
         desired_cards[control] = card
 
@@ -176,11 +176,11 @@ def _create_card(
     - card instance owned by this manager so existing references map state->widget.
     '''
     card = InstanceCardWidget(control, title, widget)
-    card.set_enable_visible(True)
+    card.set_toggle_visible(True)
     card.set_marker_text(f"[{key}]")
     card.remove_requested.connect(lambda state_obj, w=widget: on_remove_requested(w, state_obj))
     card.expand_requested.connect(lambda state_obj, w=widget: on_expand_requested(w, state_obj))
-    card.enable_toggled.connect(
+    card.toggle_changed.connect(
         lambda state_obj, checked, w=widget: on_enable_toggled(w, state_obj, checked)
     )
     widget.instances_layout.insertWidget(widget.instances_layout.count(), card)

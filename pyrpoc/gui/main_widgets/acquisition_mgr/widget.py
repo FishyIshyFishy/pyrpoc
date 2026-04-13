@@ -28,7 +28,6 @@ class AcquisitionManagerWidget(QWidget):
         self.ui = build_acquisition_manager_ui(self)
         # Compatibility aliases for existing callers.
         self.modality_combo = self.ui.modality_combo
-        self.refresh_btn = self.ui.refresh_btn
         self.start_btn = self.ui.start_btn
         self.continuous_btn = self.ui.continuous_btn
         self.stop_btn = self.ui.stop_btn
@@ -43,7 +42,6 @@ class AcquisitionManagerWidget(QWidget):
         self._populate_modalities()
 
     def _wire_signals(self) -> None:
-        self.refresh_btn.clicked.connect(self._populate_modalities)
         self.modality_combo.currentTextChanged.connect(self._on_modality_selected)
         self.start_btn.clicked.connect(self._on_start_clicked)
         self.continuous_btn.clicked.connect(self._on_continuous_clicked)

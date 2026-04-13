@@ -7,8 +7,6 @@ import numpy as np
 import nidaqmx as nx
 from nidaqmx.constants import AcquisitionType, Signal
 
-from pyrpoc.instruments.confocal_daq import ConfocalDAQInstrument
-
 from ..helpers.daq import generate_raster_waveform
 
 # ---------------------------------------------------------------------------
@@ -37,7 +35,10 @@ def reshape_channel(
 
 
 def run_daq(
-    daq_instrument: ConfocalDAQInstrument,
+    device_name: str,
+    sample_rate_hz: float,
+    fast_axis_ao: int,
+    slow_axis_ao: int,
     raster_waveform: np.ndarray,
     x_pixels: int,
     y_pixels: int,
@@ -47,10 +48,8 @@ def run_daq(
     active_ai_channels: list[int],
     daq_trigger_pfi_line: int,
 ) -> np.ndarray:
-    device_name = daq_instrument.device_name
-    sample_rate_hz = float(daq_instrument.sample_rate_hz)
-    fast_axis_channel = int(daq_instrument.fast_axis_ao)
-    slow_axis_channel = int(daq_instrument.slow_axis_ao)
+    fast_axis_channel = int(fast_axis_ao)
+    slow_axis_channel = int(slow_axis_ao)
 
     pixel_samples = max(1, int(dwell_time_us * 1e-6 * sample_rate_hz))
     total_x = x_pixels + extra_left + extra_right
@@ -88,7 +87,10 @@ def run_daq(
 
 
 def acquire_daq_frame(
-    daq_instrument: ConfocalDAQInstrument,
+    device_name: str,
+    sample_rate_hz: float,
+    fast_axis_ao: int,
+    slow_axis_ao: int,
     x_pixels: int,
     y_pixels: int,
     extra_left: int,
@@ -106,7 +108,6 @@ def acquire_daq_frame(
     Returns a (C, H, W) float32 intensity frame (DAQ analog channels only).
     Raises DaqUnavailableError if the hardware is not reachable.
     """
-    sample_rate_hz = float(daq_instrument.sample_rate_hz)
     pixel_samples = max(1, int(dwell_time_us * 1e-6 * sample_rate_hz))
 
     raster_waveform = generate_raster_waveform(
@@ -123,7 +124,10 @@ def acquire_daq_frame(
     # TODO: add mask functionality back in later
 
     scan_data = run_daq(
-        daq_instrument=daq_instrument,
+        device_name=device_name,
+        sample_rate_hz=sample_rate_hz,
+        fast_axis_ao=fast_axis_ao,
+        slow_axis_ao=slow_axis_ao,
         raster_waveform=raster_waveform,
         x_pixels=x_pixels,
         y_pixels=y_pixels,

@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 from PyQt6.QtWidgets import QMessageBox
 
 from pyrpoc.instruments.base_instrument import BaseInstrument
-from pyrpoc.gui.main_widgets.opto_control_mgr.instance_card import InstanceCardWidget
+from pyrpoc.gui.main_widgets.instance_card import RemovableCardWidget as InstanceCardWidget
 
 if TYPE_CHECKING:
     from pyrpoc.gui.main_widgets.instrument_mgr.widget import InstrumentManagerWidget
@@ -116,7 +116,6 @@ def on_add_clicked(widget: InstrumentManagerWidget) -> None:
         return
     try:
         widget.instrument_service.create_instrument(key)
-        widget.status_label.setText("Status: added instrument")
     except Exception as exc:
         show_error(widget, str(exc))
 
@@ -131,12 +130,10 @@ def on_remove_requested(widget: InstrumentManagerWidget, state_obj: object) -> N
     """
     if isinstance(state_obj, BaseInstrument):
         widget.instrument_service.remove_instrument(state_obj)
-        widget.status_label.setText("Status: removed instrument")
 
 
 def show_error(widget: InstrumentManagerWidget, message: str) -> None:
-    """Render a modal error and reflect it in the manager status label."""
-    widget.status_label.setText(f"Status: error - {message}")
+    """Render a modal error dialog."""
     QMessageBox.critical(widget, "Instrument Error", message)
 
 
@@ -210,7 +207,7 @@ def _create_card(
 ) -> InstanceCardWidget:
     """Create a new card for a new instrument state."""
     card = InstanceCardWidget(state, name, widget)
-    card.set_enable_visible(False)
+    card.set_toggle_visible(False)
     card.set_marker_text(f"[{key}]")
     card.remove_requested.connect(lambda state_obj, w=widget: on_remove_requested(w, state_obj))
     card.expand_requested.connect(lambda state_obj, w=widget: on_expand_requested(w, state_obj))
@@ -227,7 +224,6 @@ def _refresh_card_text(card: InstanceCardWidget, state: BaseInstrument, name: st
 
 
 def _on_widget_changed(widget: InstrumentManagerWidget, state_obj: BaseInstrument, card: InstanceCardWidget) -> None:
-    widget.status_label.setText("Status: widget changed")
     widget.instrument_service.mark_instance_changed(state_obj)
     key = state_obj.type_key
     row_name = key

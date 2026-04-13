@@ -7,11 +7,11 @@ from PyQt6.QtWidgets import (
     QComboBox,
     QFrame,
     QHBoxLayout,
-    QLabel,
     QPushButton,
     QScrollArea,
     QVBoxLayout,
     QWidget,
+    QLabel
 )
 
 
@@ -19,7 +19,6 @@ from PyQt6.QtWidgets import (
 class InstrumentManagerUI:
     type_combo: QComboBox
     add_btn: QPushButton
-    status_label: QLabel
     instances_scroll: QScrollArea
     instances_content: QWidget
     instances_layout: QVBoxLayout
@@ -38,9 +37,6 @@ def build_instrument_manager_ui(owner: QWidget) -> InstrumentManagerUI:
     add_btn = QPushButton("Add", owner)
     add_row.addWidget(add_btn)
     root.addLayout(add_row)
-
-    status_label = QLabel("Status: ready", owner)
-    root.addWidget(status_label)
 
     instances_scroll = QScrollArea(owner)
     instances_scroll.setWidgetResizable(True)
@@ -67,7 +63,6 @@ def build_instrument_manager_ui(owner: QWidget) -> InstrumentManagerUI:
     return InstrumentManagerUI(
         type_combo=type_combo,
         add_btn=add_btn,
-        status_label=status_label,
         instances_scroll=instances_scroll,
         instances_content=instances_content,
         instances_layout=instances_layout,

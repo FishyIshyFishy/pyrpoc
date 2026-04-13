@@ -18,7 +18,6 @@ from PyQt6.QtWidgets import (
 @dataclass
 class AcquisitionManagerUI:
     modality_combo: QComboBox
-    refresh_btn: QPushButton
     start_btn: QPushButton
     continuous_btn: QPushButton
     stop_btn: QPushButton
@@ -36,8 +35,6 @@ def build_acquisition_manager_ui(owner: QWidget) -> AcquisitionManagerUI:
     top.addWidget(QLabel("Modality:", owner))
     modality_combo = QComboBox(owner)
     top.addWidget(modality_combo, 1)
-    refresh_btn = QPushButton("Refresh", owner)
-    top.addWidget(refresh_btn)
     root.addLayout(top)
 
     controls = QHBoxLayout()
@@ -73,7 +70,6 @@ def build_acquisition_manager_ui(owner: QWidget) -> AcquisitionManagerUI:
 
     return AcquisitionManagerUI(
         modality_combo=modality_combo,
-        refresh_btn=refresh_btn,
         start_btn=start_btn,
         continuous_btn=continuous_btn,
         stop_btn=stop_btn,

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from pyrpoc.gui.main_widgets.opto_control_mgr.instance_card import InstanceCardWidget
+from pyrpoc.gui.main_widgets.instance_card import RemovableCardWidget as InstanceCardWidget
 
 
 @dataclass

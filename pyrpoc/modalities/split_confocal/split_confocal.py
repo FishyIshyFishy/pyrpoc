@@ -5,7 +5,6 @@ from typing import Any
 import numpy as np
 
 from pyrpoc.backend_utils.acquired_data import AcquiredData, DataKind
-from pyrpoc.instruments.confocal_daq import ConfocalDAQInstrument
 from pyrpoc.backend_utils.opto_control_contexts import MaskContext
 from pyrpoc.optocontrols.base_optocontrol import BaseOptoControl
 from pyrpoc.optocontrols.mask import MaskOptoControl
@@ -27,7 +26,7 @@ class SplitConfocalModality(BaseModality):
     MODALITY_KEY = "split_confocal"
     DISPLAY_NAME = "Split Confocal"
     PARAMETERS = PARAMETERS
-    REQUIRED_INSTRUMENTS = [ConfocalDAQInstrument]
+    REQUIRED_INSTRUMENTS = []
     OPTIONAL_INSTRUMENTS = []
     ALLOWED_OPTOCONTROLS = [MaskOptoControl]
     EMITTED_KINDS = [DataKind.INTENSITY_FRAME]
@@ -38,8 +37,6 @@ class SplitConfocalModality(BaseModality):
         self.parameters: SplitConfocalParameters  # narrows base type for type checker
         self._frame_idx = 0
         self._mask_contexts: list[MaskContext] = []
-        self._daq_instrument: ConfocalDAQInstrument = None
-        self._active_ai_channels: list[int] = []
         self._pending_auxiliary: dict[str, np.ndarray] = {}
         self._auxiliary_payload_buffers: dict[str, list[np.ndarray]] = {}
         self._auxiliary_paths: dict[str, Any] = {}
@@ -54,11 +51,7 @@ class SplitConfocalModality(BaseModality):
         self._pending_auxiliary = {}
 
     def load_instruments(self, instruments: dict) -> None:
-        instrument = instruments.get(ConfocalDAQInstrument)
-        if instrument is None:
-            raise RuntimeError("ConfocalDAQInstrument missing during configure")
-        self._daq_instrument = instrument
-        self._active_ai_channels = self._daq_instrument.report_active_ai_channels()
+        pass
 
     def load_optocontrols(self, opto_controls: list[BaseOptoControl]) -> None:
         self._mask_contexts = extract_mask_contexts(opto_controls)
@@ -69,10 +62,14 @@ class SplitConfocalModality(BaseModality):
 
     def acquire_once(self, on_data) -> None:
         p = self.parameters
+        active_ai_channels = list(p.active_ai_channels)
         try:
             frame, raw = acquire_daq_split_confocal(
-                daq_instrument=self._daq_instrument,
-                active_ai_channels=self._active_ai_channels,
+                device_name=p.device_name,
+                sample_rate_hz=p.sample_rate_hz,
+                fast_axis_ao=p.fast_axis_ao,
+                slow_axis_ao=p.slow_axis_ao,
+                active_ai_channels=active_ai_channels,
                 mask_contexts=self._mask_contexts,
                 x_pixels=p.x_pixels,
                 y_pixels=p.y_pixels,
@@ -90,11 +87,11 @@ class SplitConfocalModality(BaseModality):
             if not isinstance(exc, (DaqUnavailableError, RuntimeError)):
                 raise
             self._emit_warning(f"DAQ unavailable — displaying simulated data ({exc})")
-            pixel_samples = max(1, int(p.dwell_time_us * 1e-6 * float(self._daq_instrument.sample_rate_hz)))
+            pixel_samples = max(1, int(p.dwell_time_us * 1e-6 * p.sample_rate_hz))
             frame, raw = generate_toy_split_confocal_frame(
                 x_pixels=p.x_pixels,
                 y_pixels=p.y_pixels,
-                active_channels=self._active_ai_channels,
+                active_channels=active_ai_channels,
                 frame_index=self._frame_idx,
                 mask_contexts=self._mask_contexts,
                 fast_axis_offset=p.fast_axis_offset,
@@ -135,8 +132,9 @@ class SplitConfocalModality(BaseModality):
     # ------------------------------------------------------------------ #
 
     def get_active_channel_labels(self) -> list[str]:
+        channels = list(self.parameters.active_ai_channels) if hasattr(self, "parameters") else []
         labels: list[str] = []
-        for ch in self._active_ai_channels:
+        for ch in channels:
             labels.append(f"ai{ch}_t0")
             labels.append(f"ai{ch}_t2")
         return labels

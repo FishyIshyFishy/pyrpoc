@@ -6,9 +6,7 @@ from typing import Any
 import numpy as np
 
 from pyrpoc.backend_utils.acquired_data import AcquiredData, DataKind
-from pyrpoc.instruments.confocal_daq import ConfocalDAQInstrument
 from pyrpoc.instruments.time_tagger import TimeTaggerInstrument
-from pyrpoc.backend_utils.opto_control_contexts import MaskContext
 from pyrpoc.optocontrols.base_optocontrol import BaseOptoControl
 from pyrpoc.optocontrols.mask import MaskOptoControl  # used by load_optocontrols type signature
 
@@ -29,7 +27,7 @@ class FlimModality(BaseModality):
     MODALITY_KEY = "flim"
     DISPLAY_NAME = "FLIM"
     PARAMETERS = PARAMETERS
-    REQUIRED_INSTRUMENTS = [ConfocalDAQInstrument, TimeTaggerInstrument]
+    REQUIRED_INSTRUMENTS = [TimeTaggerInstrument]
     OPTIONAL_INSTRUMENTS = []
     ALLOWED_OPTOCONTROLS = [MaskOptoControl]
     EMITTED_KINDS = [DataKind.INTENSITY_FRAME, DataKind.PARTIAL_FRAME]
@@ -39,11 +37,8 @@ class FlimModality(BaseModality):
         super().__init__()
         self.parameters: FlimParameters  # narrows base type for type checker
         self._frame_idx = 0
-        self._mask_contexts: list[MaskContext] = []
-        self._daq_instrument: ConfocalDAQInstrument = None
         self._tagger_instrument: TimeTaggerInstrument = None
         self._stream = None
-        self._active_ai_channels: list[int] = []
         self._pending_flim_frame: np.ndarray | None = None
         self._raw_frames: list[np.ndarray] = []
 
@@ -56,15 +51,10 @@ class FlimModality(BaseModality):
         self._frame_idx = 0
 
     def load_instruments(self, instruments: dict) -> None:
-        daq = instruments.get(ConfocalDAQInstrument)
         tagger = instruments.get(TimeTaggerInstrument)
-        if daq is None:
-            raise RuntimeError("ConfocalDAQInstrument missing during configure")
         if tagger is None:
             raise RuntimeError("TimeTaggerInstrument missing during configure")
-        self._daq_instrument = daq
         self._tagger_instrument = tagger
-        self._active_ai_channels = self._daq_instrument.report_active_ai_channels()
 
     # ------------------------------------------------------------------ #
     # Acquisition lifecycle                                               #
@@ -137,9 +127,13 @@ class FlimModality(BaseModality):
             poll_thread = threading.Thread(target=_poll, daemon=True)
             poll_thread.start()
 
+            active_ai_channels = list(p.active_ai_channels)
             try:
                 acquire_daq_frame(
-                    daq_instrument=self._daq_instrument,
+                    device_name=p.device_name,
+                    sample_rate_hz=p.sample_rate_hz,
+                    fast_axis_ao=p.fast_axis_ao,
+                    slow_axis_ao=p.slow_axis_ao,
                     x_pixels=p.x_pixels,
                     y_pixels=p.y_pixels,
                     extra_left=p.extra_left,
@@ -149,7 +143,7 @@ class FlimModality(BaseModality):
                     fast_axis_amplitude=p.fast_axis_amplitude,
                     slow_axis_offset=p.slow_axis_offset,
                     slow_axis_amplitude=p.slow_axis_amplitude,
-                    active_ai_channels=self._active_ai_channels,
+                    active_ai_channels=active_ai_channels,
                     daq_trigger_pfi_line=p.daq_trigger_pfi_line,
                 )
             except DaqUnavailableError:
@@ -157,9 +151,9 @@ class FlimModality(BaseModality):
                 generate_toy_confocal_frame(
                     x_pixels=p.x_pixels,
                     y_pixels=p.y_pixels,
-                    active_channels=self._active_ai_channels if self._active_ai_channels else [0],
+                    active_channels=active_ai_channels if active_ai_channels else [0],
                     frame_index=self._frame_idx,
-                    mask_contexts=self._mask_contexts,
+                    mask_contexts=[],
                     fast_axis_offset=p.fast_axis_offset,
                     fast_axis_amplitude=p.fast_axis_amplitude,
                     slow_axis_offset=p.slow_axis_offset,

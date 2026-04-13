@@ -58,7 +58,7 @@ class _ChannelControl:
 @display_registry.register("multichan_overlay")
 class MultiChannelOverlayDisplay(BaseDisplay):
     DISPLAY_KEY = "multichan_overlay"
-    DISPLAY_NAME = "Multichannel Overlay Display"
+    DISPLAY_NAME = "2D Overlaid"
     ACCEPTED_KINDS = [DataKind.INTENSITY_FRAME, DataKind.PARTIAL_FRAME]
     DISPLAY_PARAMETERS = {}
 
