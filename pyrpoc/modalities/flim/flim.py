@@ -33,7 +33,7 @@ class FlimModality(BaseModality):
     OPTIONAL_INSTRUMENTS = []
     ALLOWED_OPTOCONTROLS = [MaskOptoControl]
     EMITTED_KINDS = [DataKind.INTENSITY_FRAME, DataKind.PARTIAL_FRAME]
-    ALLOWED_DISPLAYS = ["tiled_2d", "multichan_overlay"]
+    ALLOWED_DISPLAYS = ["flim_2d", "tiled_2d", "multichan_overlay"]
 
     def __init__(self):
         super().__init__()
