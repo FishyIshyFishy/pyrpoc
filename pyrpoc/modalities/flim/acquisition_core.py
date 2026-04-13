@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import time
+from collections.abc import Callable
 
 import numpy as np
 import nidaqmx as nx
@@ -216,6 +217,19 @@ def _finalize_frame(
 # TimeTagger: public poll_one_flim_frame
 # ---------------------------------------------------------------------------
 
+def _partial_intensity(
+    pixel_lists: list[list[int]],
+    y_pixels: int,
+    total_x: int,
+    extra_left: int,
+    x_pixels: int,
+) -> np.ndarray:
+    """Build a (1, H, W) float32 intensity image from the current pixel_lists state."""
+    counts = np.array([len(lst) for lst in pixel_lists], dtype=np.float32)
+    counts = counts.reshape(y_pixels, total_x)[:, extra_left : extra_left + x_pixels]
+    return counts[np.newaxis]
+
+
 def poll_one_flim_frame(
     stream: object,
     x_pixels: int,
@@ -228,6 +242,7 @@ def poll_one_flim_frame(
     trigger_ch: int,
     final_pixel_margin_s: float = 1e-3,
     poll_sleep_s: float = 1e-4,
+    progress_callback: Callable[[np.ndarray], None] | None = None,
 ) -> np.ndarray:
     """Poll a running TimeTagStream until one complete FLIM frame is collected.
 
@@ -277,6 +292,22 @@ def poll_one_flim_frame(
         in_frame = ts <= frame_end_ps
         all_laser_ts.append(ts[(ch == laser_ch) & in_frame])
         all_det_ts.append(ts[(ch == detector_ch) & in_frame])
+
+        if progress_callback is not None:
+            laser_so_far = np.concatenate(all_laser_ts) if all_laser_ts else np.empty(0, dtype=np.int64)
+            det_so_far = np.concatenate(all_det_ts) if all_det_ts else np.empty(0, dtype=np.int64)
+            partial_lists: list[list[int]] = [[] for _ in range(total_pixels)]
+            result = _compute_delays(det_so_far, laser_so_far)
+            if result is not None:
+                _bin_delays_into_pixels(
+                    valid_det_ts=result[0],
+                    delays_ps=result[1],
+                    frame_start_ps=frame_start_ps,
+                    pixel_dwell_ps=pixel_dwell_ps,
+                    total_pixels=total_pixels,
+                    pixel_lists=partial_lists,
+                )
+            progress_callback(_partial_intensity(partial_lists, y_pixels, total_x, extra_left, x_pixels))
 
         if np.any(ts > frame_end_ps) or time.monotonic() >= deadline:
             break

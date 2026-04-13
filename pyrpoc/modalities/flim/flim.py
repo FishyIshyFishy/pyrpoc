@@ -5,7 +5,7 @@ from typing import Any
 
 import numpy as np
 
-from pyrpoc.backend_utils.array_contracts import CONTRACT_CHW_FLOAT32
+from pyrpoc.backend_utils.acquired_data import AcquiredData, DataKind
 from pyrpoc.instruments.confocal_daq import ConfocalDAQInstrument
 from pyrpoc.instruments.time_tagger import TimeTaggerInstrument
 from pyrpoc.backend_utils.opto_control_contexts import MaskContext
@@ -32,7 +32,7 @@ class FlimModality(BaseModality):
     REQUIRED_INSTRUMENTS = [ConfocalDAQInstrument, TimeTaggerInstrument]
     OPTIONAL_INSTRUMENTS = []
     ALLOWED_OPTOCONTROLS = [MaskOptoControl]
-    OUTPUT_DATA_CONTRACT = CONTRACT_CHW_FLOAT32
+    EMITTED_KINDS = [DataKind.INTENSITY_FRAME, DataKind.PARTIAL_FRAME]
     ALLOWED_DISPLAYS = ["tiled_2d", "multichan_overlay"]
 
     def __init__(self):
@@ -65,9 +65,6 @@ class FlimModality(BaseModality):
         self._daq_instrument = daq
         self._tagger_instrument = tagger
         self._active_ai_channels = self._daq_instrument.report_active_ai_channels()
-
-    def load_optocontrols(self, opto_controls: list[BaseOptoControl]) -> None:
-        self._mask_contexts = extract_mask_contexts(opto_controls)
 
     # ------------------------------------------------------------------ #
     # Acquisition lifecycle                                               #
@@ -104,10 +101,17 @@ class FlimModality(BaseModality):
         if self._tagger_instrument is not None:
             self._tagger_instrument.free_tagger()
 
-    def acquire_once(self) -> np.ndarray:
+    def acquire_once(self, on_data) -> None:
         p = self.parameters
         pixel_dwell_ps = int(round(p.dwell_time_us * 1e6))
         scan_duration_s = ((p.x_pixels+p.extra_left+p.extra_right) * p.y_pixels * p.dwell_time_us * 1e-6)
+
+        def _partial_callback(partial_array: np.ndarray) -> None:
+            on_data(AcquiredData(
+                data=partial_array,
+                kind=DataKind.PARTIAL_FRAME,
+                channel_labels=["intensity"],
+            ))
 
         self._setup_tagger()
         try:
@@ -125,6 +129,7 @@ class FlimModality(BaseModality):
                         laser_ch=p.laser_channel,
                         detector_ch=p.detector_channel,
                         trigger_ch=p.daq_trigger_channel,
+                        progress_callback=_partial_callback,
                     )
                 except Exception as exc:
                     poll_result["error"] = exc
@@ -172,7 +177,11 @@ class FlimModality(BaseModality):
             if flim_frame is None:
                 raise RuntimeError("TimeTagger poll did not return a frame within the expected window")
             intensity = np.vectorize(len)(flim_frame).astype(np.float32)
-            return intensity[np.newaxis].astype(np.float32)
+            on_data(AcquiredData(
+                data=intensity[np.newaxis].astype(np.float32),
+                kind=DataKind.INTENSITY_FRAME,
+                channel_labels=["intensity"],
+            ))
         finally:
             self._teardown_tagger()
 
@@ -189,8 +198,8 @@ class FlimModality(BaseModality):
     def prepare_acquisition_storage(self, *, frame_limit: int | None) -> None:
         storage.prepare_acquisition_storage(self, frame_limit=frame_limit)
 
-    def save_acquired_frame(self, frame: np.ndarray, *, frame_index: int) -> None:
-        storage.save_acquired_frame(self, frame, frame_index=frame_index)
+    def save_acquired_frame(self, acquired: AcquiredData, *, frame_index: int) -> None:
+        storage.save_acquired_frame(self, acquired.data, frame_index=frame_index)
 
     def finalize_acquisition_storage(self, *, frame_count: int, frame_limit: int | None, error: Exception | None) -> None:
         storage.finalize_acquisition_storage(self, frame_count=frame_count, frame_limit=frame_limit, error=error)

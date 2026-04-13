@@ -9,8 +9,8 @@ from typing import Any
 
 import numpy as np
 
-from pyrpoc.backend_utils.array_contracts import CONTRACT_CHW_FLOAT32
 from pyrpoc.backend_utils.contracts import ParameterGroups
+from pyrpoc.backend_utils.acquired_data import AcquiredData, DataKind
 from pyrpoc.backend_utils.parameter_utils import validate_parameter_groups
 from pyrpoc.instruments.base_instrument import BaseInstrument
 from pyrpoc.optocontrols.base_optocontrol import BaseOptoControl
@@ -37,7 +37,7 @@ class BaseModality(ABC):
     REQUIRED_INSTRUMENTS: list[type[BaseInstrument]] = []
     OPTIONAL_INSTRUMENTS: list[type[BaseInstrument]] = []
     ALLOWED_OPTOCONTROLS: list[type[BaseOptoControl]] = []
-    OUTPUT_DATA_CONTRACT: str = CONTRACT_CHW_FLOAT32
+    EMITTED_KINDS: list[DataKind] = []
     ALLOWED_DISPLAYS: list[str] = []
 
     def __init_subclass__(cls, **kwargs):
@@ -67,9 +67,9 @@ class BaseModality(ABC):
 
         validate_parameter_groups(getattr(cls, "PARAMETERS", {}))
 
-        output_contract = getattr(cls, "OUTPUT_DATA_CONTRACT", CONTRACT_CHW_FLOAT32)
-        if not isinstance(output_contract, str) or not output_contract.strip():
-            raise TypeError("OUTPUT_DATA_CONTRACT must be a non-empty string")
+        emitted_kinds = getattr(cls, "EMITTED_KINDS", [])
+        if not isinstance(emitted_kinds, list):
+            raise TypeError("EMITTED_KINDS must be a list")
 
     def __init__(self):
         self._running = False
@@ -101,7 +101,7 @@ class BaseModality(ABC):
             "required_instruments": cls.REQUIRED_INSTRUMENTS,
             "optional_instruments": cls.OPTIONAL_INSTRUMENTS,
             "allowed_optocontrols": cls.ALLOWED_OPTOCONTROLS,
-            "output_data_contract": cls.OUTPUT_DATA_CONTRACT,
+            "emitted_kinds": cls.EMITTED_KINDS,
             "allowed_displays": cls.ALLOWED_DISPLAYS,
         }
 
@@ -160,9 +160,13 @@ class BaseModality(ABC):
     # ------------------------------------------------------------------ #
 
     @abstractmethod
-    def acquire_once(self) -> np.ndarray:
-        """Acquire a single frame. Must be fully self-contained: set up
-        hardware, acquire, and tear down before returning."""
+    def acquire_once(self, on_data: Callable[[AcquiredData], None]) -> None:
+        """Acquire data for one scan.
+
+        Call on_data() for each AcquiredData produced. May be called zero,
+        one, or many times with different DataKind values. Must be fully
+        self-contained: set up hardware, acquire, tear down, then return.
+        """
         raise NotImplementedError
 
     @abstractmethod
@@ -174,7 +178,7 @@ class BaseModality(ABC):
     def prepare_acquisition_storage(self, *, frame_limit: int | None) -> None:
         pass
 
-    def save_acquired_frame(self, frame: np.ndarray, *, frame_index: int) -> None:
+    def save_acquired_frame(self, acquired: AcquiredData, *, frame_index: int) -> None:
         pass
 
     def finalize_acquisition_storage(
@@ -256,15 +260,14 @@ class BaseModality(ABC):
         The returned callable must eventually call on_finished(count, error_or_none).
         """
         def worker() -> None:
-            acquired = 0
+            scans_completed = 0
             error_seen = None
             self._running = True
             try:
                 while not should_stop():
-                    frame = self.acquire_once()
-                    acquired += 1
-                    on_frame(frame)
-                    if frame_limit is not None and acquired >= frame_limit:
+                    self.acquire_once(on_data=on_frame)
+                    scans_completed += 1
+                    if frame_limit is not None and scans_completed >= frame_limit:
                         break
             except Exception as exc:
                 error_seen = exc
@@ -278,5 +281,5 @@ class BaseModality(ABC):
                         error_seen = stop_exc
                         on_error(stop_exc)
                 if on_finished is not None:
-                    on_finished(acquired, error_seen)
+                    on_finished(scans_completed, error_seen)
         return worker

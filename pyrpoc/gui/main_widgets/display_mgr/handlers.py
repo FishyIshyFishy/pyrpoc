@@ -22,14 +22,14 @@ def refresh_available(widget: DisplayManagerWidget) -> None:
     - -> display list filtered by output type and allowed display keys.
     """
     contract = widget.modality_service.get_selected_contract()
-    output_contract = contract.get("output_data_contract")
+    emitted_kinds = contract.get("emitted_kinds", [])
     allowed_displays = set(contract.get("allowed_displays", []))
     current_key = widget._selected_display_key()
     available_rows = {row["key"]: row for row in widget.display_service.list_available()}
 
     widget.display_combo.clear()
-    if isinstance(output_contract, str) and output_contract.strip():
-        keys = widget.display_service.list_compatible_with(output_contract.strip())
+    if emitted_kinds:
+        keys = widget.display_service.list_compatible_with(emitted_kinds)
     else:
         keys = list(available_rows.keys())
 

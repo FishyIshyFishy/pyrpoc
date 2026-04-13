@@ -6,8 +6,8 @@ from typing import Any
 import numpy as np
 from PyQt6.QtCore import QObject, pyqtSignal
 
-from pyrpoc.backend_utils.array_contracts import matches_array_contract
 from pyrpoc.backend_utils.parameter_utils import coerce_parameter_values
+from pyrpoc.backend_utils.acquired_data import AcquiredData
 from pyrpoc.domain.app_state import AppState, ParameterValue
 from pyrpoc.instruments.base_instrument import BaseInstrument
 from pyrpoc.modalities.base_modality import BaseModality
@@ -21,7 +21,7 @@ class ModalityService(QObject):
     modality_params_changed = pyqtSignal(object)
     requirements_changed = pyqtSignal(bool, list)
     acq_started = pyqtSignal()
-    data_ready = pyqtSignal(object)
+    data_emitted = pyqtSignal(object)   # carries AcquiredData
     acq_stopped = pyqtSignal()
     acq_error = pyqtSignal(str)
     acq_warning = pyqtSignal(str)
@@ -31,7 +31,6 @@ class ModalityService(QObject):
         self.instrument_service = instrument_service
         self.app_state = app_state
         self._active_frame_limit: int | None = None
-        self._active_output_contract: str = ""
         self._active_modality_instance: BaseModality | None = None
         self._frames_emitted: int = 0
         self._acq_warned_messages: set[str] = set()
@@ -139,11 +138,10 @@ class ModalityService(QObject):
 
     def start(self, *, force_continuous: bool = False) -> None:
         with self.acquisition_lock:
-            instance, contract, frame_limit = self._prepare_acquisition_start(force_continuous=force_continuous)
+            instance, frame_limit = self._prepare_acquisition_start(force_continuous=force_continuous)
             self.acquisition_stop_requested = threading.Event()
             self._frames_emitted = 0
             self._active_frame_limit = frame_limit
-            self._active_output_contract = contract
             self._active_modality_instance = instance
             try:
                 self._acq_warned_messages = set()
@@ -152,7 +150,7 @@ class ModalityService(QObject):
                 self.app_state.modality.running = True
                 self.acq_started.emit()
                 self.acquisition_thread = instance.acquire_continuous(
-                    on_frame=self.handle_frame,
+                    on_frame=self.handle_acquired,
                     frame_limit=frame_limit,
                     should_stop=self.acquisition_stop_requested.is_set,
                     on_error=self.handle_acquisition_error,
@@ -161,24 +159,18 @@ class ModalityService(QObject):
             except Exception:
                 self.app_state.modality.running = False
                 self._active_modality_instance = None
-                self._active_output_contract = ""
                 raise
 
-    def handle_frame(self, data: np.ndarray) -> None:
-        if not isinstance(data, np.ndarray):
-            raise TypeError(f"modality returned {type(data).__name__}, expected numpy.ndarray")
+    def handle_acquired(self, acquired: AcquiredData) -> None:
+        if not isinstance(acquired, AcquiredData):
+            raise TypeError(f"modality emitted {type(acquired).__name__}, expected AcquiredData")
 
-        contract = self._active_output_contract
-        if contract and not matches_array_contract(data, contract):
-            raise ValueError(
-                f"modality returned payload not matching contract '{contract}', "
-                f"shape={data.shape}, dtype={data.dtype}"
-            )
+        if acquired.kind.is_persistent:
+            instance = self._require_active_instance()
+            instance.save_acquired_frame(acquired, frame_index=self._frames_emitted)
+            self._frames_emitted += 1
 
-        instance = self._require_active_instance()
-        instance.save_acquired_frame(data, frame_index=self._frames_emitted)
-        self._frames_emitted += 1
-        self.data_ready.emit(data)
+        self.data_emitted.emit(acquired)
 
     def _emit_acq_warning(self, message: str) -> None:
         if message not in self._acq_warned_messages:
@@ -205,7 +197,6 @@ class ModalityService(QObject):
             self.acq_stopped.emit()
             self.acquisition_thread = None
             self._active_modality_instance = None
-            self._active_output_contract = ""
 
     def stop(self) -> None:
         self.acquisition_stop_requested.set()
@@ -226,7 +217,7 @@ class ModalityService(QObject):
     def get_parameter_values(self) -> dict[str, Any]:
         return {entry.label: entry.value for entry in self.app_state.modality.configured_params}
 
-    def _prepare_acquisition_start(self, *, force_continuous: bool) -> tuple[BaseModality, str, int | None]:
+    def _prepare_acquisition_start(self, *, force_continuous: bool) -> tuple[BaseModality, int | None]:
         selected_class = self.app_state.modality.selected_class
         instance = self.app_state.modality.instance
         if selected_class is None or instance is None:
@@ -244,8 +235,7 @@ class ModalityService(QObject):
             raise RuntimeError(msg)
 
         frame_limit = None if force_continuous else instance.get_frame_limit()
-        contract = str(getattr(selected_class, "OUTPUT_DATA_CONTRACT", ""))
-        return instance, contract, frame_limit
+        return instance, frame_limit
 
     def _require_active_instance(self) -> BaseModality:
         instance = self._active_modality_instance

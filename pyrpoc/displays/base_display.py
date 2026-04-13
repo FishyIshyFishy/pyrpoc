@@ -5,8 +5,8 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 from PyQt6.QtWidgets import QWidget
 
-from pyrpoc.backend_utils.array_contracts import CONTRACT_CHW_FLOAT32
 from pyrpoc.backend_utils.contracts import ParameterGroups
+from pyrpoc.backend_utils.acquired_data import AcquiredData, DataKind
 from pyrpoc.backend_utils.parameter_utils import validate_parameter_groups
 from pyrpoc.backend_utils.state_helpers import export_object_state, import_object_state, make_instance_id
 from pyrpoc.rpoc.types import RPOCImageInput
@@ -19,7 +19,7 @@ if TYPE_CHECKING:
 class BaseDisplay(QWidget):
     DISPLAY_KEY: str = "base_display"
     DISPLAY_NAME: str = "Base Display"
-    ACCEPTED_DATA_CONTRACTS: list[str] = [CONTRACT_CHW_FLOAT32]
+    ACCEPTED_KINDS: list[DataKind] = []
     DISPLAY_PARAMETERS: ParameterGroups = {}
     PERSISTENCE_FIELDS: tuple[str, ...] | None = None
     PERSISTENCE_EXCLUDE_FIELDS: tuple[str, ...] = (
@@ -33,12 +33,9 @@ class BaseDisplay(QWidget):
 
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
-        accepted = getattr(cls, "ACCEPTED_DATA_CONTRACTS", [])
+        accepted = getattr(cls, "ACCEPTED_KINDS", [])
         if not isinstance(accepted, list):
-            raise TypeError("ACCEPTED_DATA_CONTRACTS must be a list")
-        for contract in accepted:
-            if not isinstance(contract, str) or not contract.strip():
-                raise TypeError("ACCEPTED_DATA_CONTRACTS must contain non-empty strings")
+            raise TypeError("ACCEPTED_KINDS must be a list")
 
         validate_parameter_groups(getattr(cls, "DISPLAY_PARAMETERS", {}))
 
@@ -63,14 +60,14 @@ class BaseDisplay(QWidget):
         return {
             "display_key": cls.DISPLAY_KEY,
             "display_name": cls.DISPLAY_NAME,
-            "accepted_data_contracts": cls.ACCEPTED_DATA_CONTRACTS,
+            "accepted_kinds": cls.ACCEPTED_KINDS,
             "display_parameters": cls.DISPLAY_PARAMETERS,
         }
 
     def configure(self, params: dict[str, Any]) -> None:
         raise NotImplementedError
 
-    def render(self, data: np.ndarray) -> None:
+    def render(self, acquired: AcquiredData) -> None:
         raise NotImplementedError
 
     def clear(self) -> None:

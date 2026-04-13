@@ -16,7 +16,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from pyrpoc.backend_utils.array_contracts import CONTRACT_CHW_FLOAT32
+from pyrpoc.backend_utils.acquired_data import AcquiredData, DataKind
 from pyrpoc.rpoc.types import RPOCImageInput
 from .base_display import BaseDisplay
 from .display_registry import display_registry
@@ -59,7 +59,7 @@ class _ChannelControl:
 class MultiChannelOverlayDisplay(BaseDisplay):
     DISPLAY_KEY = "multichan_overlay"
     DISPLAY_NAME = "Multichannel Overlay Display"
-    ACCEPTED_DATA_CONTRACTS = [CONTRACT_CHW_FLOAT32]
+    ACCEPTED_KINDS = [DataKind.INTENSITY_FRAME, DataKind.PARTIAL_FRAME]
     DISPLAY_PARAMETERS = {}
 
     def __init__(self, parent: QWidget | None = None):
@@ -105,8 +105,8 @@ class MultiChannelOverlayDisplay(BaseDisplay):
     def configure(self, params: dict[str, Any]) -> None:
         del params
 
-    def render(self, data: np.ndarray) -> None:
-        self.set_data(data)
+    def render(self, acquired: AcquiredData) -> None:
+        self.set_data(acquired.data)
 
     def clear(self) -> None:
         self._data_chw = None

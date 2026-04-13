@@ -12,6 +12,7 @@ from pyrpoc.domain.app_state import AppState
 from pyrpoc.gui.main_gui import MainGUI
 from pyrpoc.gui.styles.theme_manager import ThemeController
 from pyrpoc.persistence.session_repository import SessionRepository
+from .acquisition_interpreter import AcquisitionInterpreter
 from .display_service import DisplayService
 from .instrument_service import InstrumentService
 from .modality_service import ModalityService
@@ -29,10 +30,11 @@ class AppController(QObject):
         self.display_service = DisplayService(self.app_state, self)
         self.opto_control_service = OptoControlService(self.app_state, self)
 
-        # Acquisition-to-display flow:
-        # - modality acquires one frame and emits `data_ready`
-        # - this connection routes that payload into display fanout rendering.
-        self.modality_service.data_ready.connect(self.display_service.push_data)
+        # AcquisitionInterpreter owns display routing for each acquisition session.
+        # It self-wires to modality_service.acq_started/acq_stopped — no explicit
+        # signal connections needed here.
+        self.interpreter = AcquisitionInterpreter(self.modality_service, self.app_state, self)
+
         self.instrument_service.inventory_changed.connect(
             lambda *_: self.modality_service.validate_required_instruments()
         )

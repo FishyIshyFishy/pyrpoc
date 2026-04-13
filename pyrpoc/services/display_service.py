@@ -2,11 +2,10 @@ from __future__ import annotations
 
 from typing import Any
 
-import numpy as np
 from PyQt6.QtCore import QObject, pyqtSignal
 
-from pyrpoc.backend_utils.array_contracts import infer_array_contract
 from pyrpoc.backend_utils.parameter_utils import ParameterValidationError, coerce_parameter_values
+from pyrpoc.backend_utils.acquired_data import DataKind
 from pyrpoc.domain.app_state import AppState, ParameterValue
 from pyrpoc.displays.base_display import BaseDisplay
 from pyrpoc.displays.display_registry import display_registry
@@ -14,8 +13,8 @@ from pyrpoc.rpoc.types import RPOCImageInput
 
 
 class DisplayService(QObject):
-    # from display manager actions / modality data stream
-    # through service inventory + push_data routing
+    # from display manager actions
+    # through service inventory
     # to live display widgets and UI refresh/autosave signals.
     display_added = pyqtSignal(object)
     display_removed = pyqtSignal(object)
@@ -25,20 +24,21 @@ class DisplayService(QObject):
     def __init__(self, app_state: AppState, parent=None):
         super().__init__(parent)
         self.app_state = app_state
-        self._reported_incompatibilities: set[tuple[int, str]] = set()
-        self._last_data: np.ndarray | None = None
+        pass
 
     def list_available(self) -> list[dict[str, Any]]:
         return display_registry.describe_all()
 
-    def list_compatible_with(self, data_contract: str) -> list[str]:
+    def list_compatible_with(self, kinds: list[DataKind]) -> list[str]:
+        """Return display keys whose ACCEPTED_KINDS overlap with the given kinds."""
         compatible: list[str] = []
-        if not isinstance(data_contract, str) or not data_contract.strip():
+        if not kinds:
             return compatible
+        kind_set = set(kinds)
         for key in display_registry.list_keys():
             display_cls = display_registry.get_class(key)
-            accepted_contracts = getattr(display_cls, "ACCEPTED_DATA_CONTRACTS", [])
-            if data_contract in accepted_contracts:
+            accepted = getattr(display_cls, "ACCEPTED_KINDS", [])
+            if kind_set & set(accepted):
                 compatible.append(key)
         return compatible
 
@@ -121,51 +121,6 @@ class DisplayService(QObject):
             return
         display.docked_visible = bool(visible)
         self.display_changed.emit(display)
-
-    def push_data(self, data: np.ndarray) -> None:
-        """
-        Fan out one modality frame to all attached compatible displays.
-
-        Route:
-        - `AppController` wires `ModalityService.data_ready`
-        - -> this method
-        - -> per-display render calls + error signals.
-        """
-        if not isinstance(data, np.ndarray):
-            self.display_error.emit(None, f"display stream expects numpy.ndarray, got {type(data).__name__}")
-            return
-
-        self._last_data = data
-        payload_contract = infer_array_contract(data)
-        for display in self.app_state.displays:
-            if not getattr(display, "attached", True):
-                continue
-            if not bool(getattr(display, "docked_visible", True)):
-                continue
-
-            accepted_contracts = getattr(display, "ACCEPTED_DATA_CONTRACTS", [])
-            compatible = payload_contract is not None and payload_contract in accepted_contracts
-            if not compatible:
-                key = (id(display), str(payload_contract))
-                if key not in self._reported_incompatibilities:
-                    self._reported_incompatibilities.add(key)
-                    self.display_error.emit(
-                        display,
-                        (
-                            f"display cannot render payload contract "
-                            f"{payload_contract!r}; accepted={accepted_contracts}"
-                        ),
-                    )
-                continue
-
-            try:
-                display.render(data)
-            except Exception as exc:
-                display.last_error = str(exc)
-                self.display_error.emit(display, str(exc))
-
-    def get_latest_data(self) -> np.ndarray | None:
-        return self._last_data
 
     def list_instances(self) -> list[dict[str, Any]]:
         rows: list[dict[str, Any]] = []

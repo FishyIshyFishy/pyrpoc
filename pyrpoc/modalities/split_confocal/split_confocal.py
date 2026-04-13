@@ -4,7 +4,7 @@ from typing import Any
 
 import numpy as np
 
-from pyrpoc.backend_utils.array_contracts import CONTRACT_CHW_FLOAT32
+from pyrpoc.backend_utils.acquired_data import AcquiredData, DataKind
 from pyrpoc.instruments.confocal_daq import ConfocalDAQInstrument
 from pyrpoc.backend_utils.opto_control_contexts import MaskContext
 from pyrpoc.optocontrols.base_optocontrol import BaseOptoControl
@@ -30,7 +30,7 @@ class SplitConfocalModality(BaseModality):
     REQUIRED_INSTRUMENTS = [ConfocalDAQInstrument]
     OPTIONAL_INSTRUMENTS = []
     ALLOWED_OPTOCONTROLS = [MaskOptoControl]
-    OUTPUT_DATA_CONTRACT = CONTRACT_CHW_FLOAT32
+    EMITTED_KINDS = [DataKind.INTENSITY_FRAME]
     ALLOWED_DISPLAYS = ["tiled_2d", "multichan_overlay"]
 
     def __init__(self):
@@ -67,7 +67,7 @@ class SplitConfocalModality(BaseModality):
     # Acquisition lifecycle                                               #
     # ------------------------------------------------------------------ #
 
-    def acquire_once(self) -> np.ndarray:
+    def acquire_once(self, on_data) -> None:
         p = self.parameters
         try:
             frame, raw = acquire_daq_split_confocal(
@@ -108,7 +108,11 @@ class SplitConfocalModality(BaseModality):
 
         self._pending_auxiliary = {"raw_pixel_stream": raw}
         self._frame_idx += 1
-        return frame.astype(np.float32, copy=False)
+        on_data(AcquiredData(
+            data=frame.astype(np.float32, copy=False),
+            kind=DataKind.INTENSITY_FRAME,
+            channel_labels=self.get_active_channel_labels(),
+        ))
 
     def stop(self) -> None:
         self._running = False
@@ -120,8 +124,8 @@ class SplitConfocalModality(BaseModality):
     def prepare_acquisition_storage(self, *, frame_limit: int | None) -> None:
         storage.prepare_acquisition_storage(self, frame_limit=frame_limit)
 
-    def save_acquired_frame(self, frame: np.ndarray, *, frame_index: int) -> None:
-        storage.save_acquired_frame(self, frame, frame_index=frame_index)
+    def save_acquired_frame(self, acquired: AcquiredData, *, frame_index: int) -> None:
+        storage.save_acquired_frame(self, acquired.data, frame_index=frame_index)
 
     def finalize_acquisition_storage(self, *, frame_count: int, frame_limit: int | None, error: Exception | None) -> None:
         storage.finalize_acquisition_storage(self, frame_count=frame_count, frame_limit=frame_limit, error=error)
