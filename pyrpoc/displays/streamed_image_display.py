@@ -311,11 +311,3 @@ class StreamedImageDisplay(BaseDisplay):
             hi = lo + 1e-12
         self._apply_levels(tile, lo, hi)
         self._pending_channel_state = []
-
-
-@display_registry.register("flim_2d")
-class Flim2DDisplay(StreamedImageDisplay):
-    """Backward-compatibility alias for sessions saved with the 'flim_2d' key."""
-
-    DISPLAY_KEY = "flim_2d"
-    DISPLAY_NAME = "FLIM 2D Display"
