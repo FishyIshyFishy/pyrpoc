@@ -30,8 +30,8 @@ class FlimModality(BaseModality):
     REQUIRED_INSTRUMENTS = [TimeTaggerInstrument]
     OPTIONAL_INSTRUMENTS = []
     ALLOWED_OPTOCONTROLS = [MaskOptoControl]
-    EMITTED_KINDS = [DataKind.INTENSITY_FRAME, DataKind.PARTIAL_FRAME]
-    ALLOWED_DISPLAYS = ["flim_2d", "tiled_2d", "multichan_overlay"]
+    EMITTED_KINDS = [DataKind.INTENSITY_FRAME, DataKind.PARTIAL_FRAME, DataKind.FLIM_RAW_FRAME, DataKind.FLIM_PARTIAL_HISTOGRAM]
+    ALLOWED_DISPLAYS = ["streamed_image", "flim_display", "tiled_2d", "multichan_overlay"]
 
     def __init__(self):
         super().__init__()
@@ -103,6 +103,13 @@ class FlimModality(BaseModality):
                 channel_labels=["intensity"],
             ))
 
+        def _histogram_callback(hist: np.ndarray) -> None:
+            on_data(AcquiredData(
+                data=hist,
+                kind=DataKind.FLIM_PARTIAL_HISTOGRAM,
+                channel_labels=["delays"],
+            ))
+
         self._setup_tagger()
         try:
             poll_result: dict[str, Any] = {}
@@ -120,6 +127,8 @@ class FlimModality(BaseModality):
                         detector_ch=p.detector_channel,
                         trigger_ch=p.daq_trigger_channel,
                         progress_callback=_partial_callback,
+                        histogram_callback=_histogram_callback,
+                        partial_throttle_s=0.1,
                     )
                 except Exception as exc:
                     poll_result["error"] = exc
@@ -175,6 +184,11 @@ class FlimModality(BaseModality):
                 data=intensity[np.newaxis].astype(np.float32),
                 kind=DataKind.INTENSITY_FRAME,
                 channel_labels=["intensity"],
+            ))
+            on_data(AcquiredData(
+                data=flim_frame,
+                kind=DataKind.FLIM_RAW_FRAME,
+                channel_labels=["delays"],
             ))
         finally:
             self._teardown_tagger()

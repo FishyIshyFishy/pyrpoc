@@ -247,6 +247,8 @@ def poll_one_flim_frame(
     final_pixel_margin_s: float = 1e-3,
     poll_sleep_s: float = 1e-4,
     progress_callback: Callable[[np.ndarray], None] | None = None,
+    histogram_callback: Callable[[np.ndarray], None] | None = None,
+    partial_throttle_s: float = 0.1,
 ) -> np.ndarray:
     """Poll a running TimeTagStream until one complete FLIM frame is collected.
 
@@ -265,6 +267,7 @@ def poll_one_flim_frame(
     deadline: float = 0.0
     all_laser_ts: list[np.ndarray] = []
     all_det_ts: list[np.ndarray] = []
+    _last_progress_t: float = 0.0
 
     while True:
         data = stream.getData()  # type: ignore[attr-defined]
@@ -297,21 +300,33 @@ def poll_one_flim_frame(
         all_laser_ts.append(ts[(ch == laser_ch) & in_frame])
         all_det_ts.append(ts[(ch == detector_ch) & in_frame])
 
-        if progress_callback is not None:
+        now = time.monotonic()
+        if (progress_callback is not None or histogram_callback is not None) and (now - _last_progress_t) >= partial_throttle_s:
+            _last_progress_t = now
             laser_so_far = np.concatenate(all_laser_ts) if all_laser_ts else np.empty(0, dtype=np.int64)
             det_so_far = np.concatenate(all_det_ts) if all_det_ts else np.empty(0, dtype=np.int64)
-            partial_lists: list[list[int]] = [[] for _ in range(total_pixels)]
             result = _compute_delays(det_so_far, laser_so_far)
-            if result is not None:
-                _bin_delays_into_pixels(
-                    valid_det_ts=result[0],
-                    delays_ps=result[1],
-                    frame_start_ps=frame_start_ps,
-                    pixel_dwell_ps=pixel_dwell_ps,
-                    total_pixels=total_pixels,
-                    pixel_lists=partial_lists,
-                )
-            progress_callback(_partial_intensity(partial_lists, y_pixels, total_x, extra_left, x_pixels))
+
+            if progress_callback is not None:
+                partial_lists: list[list[int]] = [[] for _ in range(total_pixels)]
+                if result is not None:
+                    _bin_delays_into_pixels(
+                        valid_det_ts=result[0],
+                        delays_ps=result[1],
+                        frame_start_ps=frame_start_ps,
+                        pixel_dwell_ps=pixel_dwell_ps,
+                        total_pixels=total_pixels,
+                        pixel_lists=partial_lists,
+                    )
+                progress_callback(_partial_intensity(partial_lists, y_pixels, total_x, extra_left, x_pixels))
+
+            if histogram_callback is not None and result is not None:
+                delays_ps = result[1]
+                if delays_ps.size > 0:
+                    bin_max = int(delays_ps.max()) + 100
+                    bins = np.arange(0, bin_max, 100, dtype=np.int64)
+                    counts, _ = np.histogram(delays_ps, bins=bins)
+                    histogram_callback(counts.astype(np.int64))
 
         if np.any(ts > frame_end_ps) or time.monotonic() >= deadline:
             break

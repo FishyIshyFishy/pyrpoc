@@ -28,7 +28,7 @@ class ConfocalModality(BaseModality):
     OPTIONAL_INSTRUMENTS = []
     ALLOWED_OPTOCONTROLS = [MaskOptoControl]
     EMITTED_KINDS = [DataKind.INTENSITY_FRAME]
-    ALLOWED_DISPLAYS = ["tiled_2d", "multichan_overlay"]
+    ALLOWED_DISPLAYS = ["streamed_image", "tiled_2d", "multichan_overlay"]
 
     def __init__(self):
         super().__init__()

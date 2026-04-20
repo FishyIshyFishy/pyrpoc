@@ -20,7 +20,7 @@ from .display_registry import display_registry
 
 
 @dataclass
-class _FlimTile:
+class _ImageTile:
     root: QWidget
     name_edit: QLineEdit
     autoscale_box: QCheckBox
@@ -30,18 +30,22 @@ class _FlimTile:
     max_val: float = 1.0
 
 
-@display_registry.register("flim_2d")
-class Flim2DDisplay(BaseDisplay):
-    """Live-updating FLIM intensity display.
+@display_registry.register("streamed_image")
+class StreamedImageDisplay(BaseDisplay):
+    """Live-updating progressive image display.
 
-    Accepts both PARTIAL_FRAME (progressive pixel updates during scan) and
-    INTENSITY_FRAME (final complete frame). Both carry ``(1, H, W)`` float32
-    data — photon-count intensity maps.  Partial frames update the display
-    in-place so the image builds up row-by-row as the scanner progresses.
+    Accepts PARTIAL_FRAME (progressive pixel updates during a scan) and
+    INTENSITY_FRAME (final complete frame) from any modality. Both carry
+    ``(C, H, W)`` or ``(1, H, W)`` float32 data; only the first channel is
+    displayed.
+
+    Blank-region mitigation: rows that have zero photon counts in a partial
+    frame are filled from the previous complete INTENSITY_FRAME so the
+    unscanned portion shows historical data rather than black.
     """
 
-    DISPLAY_KEY = "flim_2d"
-    DISPLAY_NAME = "FLIM 2D Display"
+    DISPLAY_KEY = "streamed_image"
+    DISPLAY_NAME = "Single Channel Streamed"
     ACCEPTED_KINDS = [DataKind.INTENSITY_FRAME, DataKind.PARTIAL_FRAME]
     DISPLAY_PARAMETERS = {}
 
@@ -49,8 +53,9 @@ class Flim2DDisplay(BaseDisplay):
         super().__init__(parent=parent)
         pg.setConfigOptions(imageAxisOrder="row-major")
 
-        self._data_hw: np.ndarray | None = None   # current (H, W) float32
-        self._tile: _FlimTile | None = None
+        self._data_hw: np.ndarray | None = None
+        self._last_complete_hw: np.ndarray | None = None
+        self._tile: _ImageTile | None = None
         self._suspend_lut_signal = False
         self._pending_channel_state: list[dict[str, Any]] = []
 
@@ -79,7 +84,6 @@ class Flim2DDisplay(BaseDisplay):
         del params
 
     def render(self, acquired: AcquiredData) -> None:
-        """Handle both partial (in-progress) and final frames."""
         data = acquired.data
         if data.ndim == 3 and data.shape[0] >= 1:
             frame = data[0]
@@ -97,6 +101,7 @@ class Flim2DDisplay(BaseDisplay):
 
     def clear(self) -> None:
         self._data_hw = None
+        self._last_complete_hw = None
         if self._tile is not None:
             blank = np.zeros((1, 1), dtype=np.float32)
             self._tile.image_item.setImage(blank, autoLevels=False)
@@ -161,20 +166,30 @@ class Flim2DDisplay(BaseDisplay):
     # ------------------------------------------------------------------
 
     def _update_partial(self, frame: np.ndarray) -> None:
-        """Paint an in-progress frame; freeze autoscale to avoid flicker."""
-        self._data_hw = frame
+        """Paint an in-progress frame; fill unscanned (zero) rows from the
+        previous complete frame to avoid a black lower half during scanning."""
+        if self._last_complete_hw is not None and self._last_complete_hw.shape == frame.shape:
+            blended = frame.copy()
+            empty_rows = frame.sum(axis=1) == 0
+            blended[empty_rows] = self._last_complete_hw[empty_rows]
+        else:
+            blended = frame
+
+        self._data_hw = blended
         tile = self._tile
         if tile is None:
             return
-        tile.image_item.setImage(frame, autoLevels=False)
+        tile.image_item.setImage(blended, autoLevels=False)
         if tile.autoscale_box.isChecked():
-            hi = float(np.max(frame))
+            hi = float(np.max(blended))
             if hi > tile.max_val:
                 self._apply_levels(tile, 0.0, hi)
 
     def _update_final(self, frame: np.ndarray) -> None:
-        """Paint the finished frame and (if autoscale) fit levels to the full range."""
+        """Paint the finished frame, update the reference for blank-region fill,
+        and (if autoscale) fit levels to the full range."""
         self._data_hw = frame
+        self._last_complete_hw = frame
         tile = self._tile
         if tile is None:
             return
@@ -193,7 +208,7 @@ class Flim2DDisplay(BaseDisplay):
     # Internal — widget helpers
     # ------------------------------------------------------------------
 
-    def _build_tile(self) -> _FlimTile:
+    def _build_tile(self) -> _ImageTile:
         root = QWidget(self)
         root_layout = QVBoxLayout(root)
         root_layout.setContentsMargins(6, 6, 6, 6)
@@ -230,7 +245,7 @@ class Flim2DDisplay(BaseDisplay):
         right_col.addWidget(autoscale_box)
         body.addLayout(right_col)
 
-        tile = _FlimTile(
+        tile = _ImageTile(
             root=root,
             name_edit=name_edit,
             autoscale_box=autoscale_box,
@@ -267,7 +282,7 @@ class Flim2DDisplay(BaseDisplay):
         tile.max_val = float(hi)
         self.request_persist()
 
-    def _apply_levels(self, tile: _FlimTile, lo: float, hi: float) -> None:
+    def _apply_levels(self, tile: _ImageTile, lo: float, hi: float) -> None:
         tile.min_val = lo
         tile.max_val = hi
         tile.image_item.setLevels((lo, hi))
@@ -296,3 +311,11 @@ class Flim2DDisplay(BaseDisplay):
             hi = lo + 1e-12
         self._apply_levels(tile, lo, hi)
         self._pending_channel_state = []
+
+
+@display_registry.register("flim_2d")
+class Flim2DDisplay(StreamedImageDisplay):
+    """Backward-compatibility alias for sessions saved with the 'flim_2d' key."""
+
+    DISPLAY_KEY = "flim_2d"
+    DISPLAY_NAME = "FLIM 2D Display"
