@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import queue
+import threading
 import time
 from collections.abc import Callable
 
@@ -262,80 +264,106 @@ def poll_one_flim_frame(
     total_pixels = total_x * int(y_pixels)
     frame_duration_ps = total_pixels * int(pixel_dwell_ps)
 
+    # ------------------------------------------------------------------
+    # Drain thread: empties the hardware FIFO as fast as possible and
+    # puts raw (ts, ch) batches into a queue.  All processing happens
+    # in the calling thread so the hardware buffer is never starved.
+    # ------------------------------------------------------------------
+    raw_q: queue.Queue[tuple[np.ndarray, np.ndarray] | None] = queue.Queue()
+    _stop_drain = threading.Event()
+
+    def _drain_worker() -> None:
+        while not _stop_drain.is_set():
+            data = stream.getData()  # type: ignore[attr-defined]
+            if data.size == 0:
+                time.sleep(poll_sleep_s)
+                continue
+            valid_mask = data.getEventTypes() == 0
+            if not np.any(valid_mask):
+                continue
+            ts = data.getTimestamps()[valid_mask].astype(np.int64, copy=False)
+            ch = data.getChannels()[valid_mask].astype(np.int64, copy=False)
+            raw_q.put((ts, ch))
+        raw_q.put(None)  # sentinel: drain is done
+
+    drain_thread = threading.Thread(target=_drain_worker, daemon=True)
+    drain_thread.start()
+
+    # ------------------------------------------------------------------
+    # Processing loop: reads from the queue and does all the work.
+    # The callbacks fire here on a throttled schedule; the display
+    # layer is untouched — it still receives AcquiredData via the
+    # existing signal chain in flim.py.
+    # ------------------------------------------------------------------
     frame_start_ps: int | None = None
     frame_end_ps: int = 0
     deadline: float = 0.0
     _last_progress_t: float = 0.0
 
-    # Incremental state — built up batch-by-batch so partial callbacks are O(pixels) not O(photons)
     pixel_lists: list[list[int]] = [[] for _ in range(total_pixels)]
-    # last laser timestamp from the previous batch, carried forward for cross-batch delay matching
     laser_carry: np.ndarray = np.empty(0, dtype=np.int64)
-    # fixed 100 ps bins covering 0–20 ns (sufficient for all common fluorophore lifetimes)
     running_hist: np.ndarray = np.zeros(200, dtype=np.int64)
 
-    while True:
-        data = stream.getData()  # type: ignore[attr-defined]
-
-        if data.size == 0:
-            if frame_start_ps is not None and time.monotonic() >= deadline:
+    try:
+        while True:
+            try:
+                item = raw_q.get(timeout=final_pixel_margin_s + 2.0)
+            except queue.Empty:
                 break
-            time.sleep(poll_sleep_s)
-            continue
 
-        valid_mask = data.getEventTypes() == 0
-        if not np.any(valid_mask):
-            continue
+            if item is None:
+                break
 
-        ts = data.getTimestamps()[valid_mask].astype(np.int64, copy=False)
-        ch = data.getChannels()[valid_mask].astype(np.int64, copy=False)
+            ts, ch = item
 
-        if frame_start_ps is None:
-            trig_positions = np.flatnonzero(ch == trigger_ch)
-            if not trig_positions.size:
-                continue
-            idx = int(trig_positions[0])
-            frame_start_ps = int(ts[idx])
-            frame_end_ps = frame_start_ps + frame_duration_ps
-            deadline = time.monotonic() + frame_duration_ps / 1e12 + final_pixel_margin_s
-            ts = ts[idx:]
-            ch = ch[idx:]
+            if frame_start_ps is None:
+                trig_positions = np.flatnonzero(ch == trigger_ch)
+                if not trig_positions.size:
+                    continue
+                idx = int(trig_positions[0])
+                frame_start_ps = int(ts[idx])
+                frame_end_ps = frame_start_ps + frame_duration_ps
+                deadline = time.monotonic() + frame_duration_ps / 1e12 + final_pixel_margin_s
+                ts = ts[idx:]
+                ch = ch[idx:]
 
-        in_frame = ts <= frame_end_ps
-        laser_batch = ts[(ch == laser_ch) & in_frame]
-        det_batch = ts[(ch == detector_ch) & in_frame]
+            in_frame = ts <= frame_end_ps
+            laser_batch = ts[(ch == laser_ch) & in_frame]
+            det_batch = ts[(ch == detector_ch) & in_frame]
 
-        # Prepend the carried laser timestamp so photons at the batch boundary find their
-        # preceding laser pulse even when it arrived in the previous getData() chunk.
-        laser_aug = np.concatenate([laser_carry, laser_batch]) if laser_carry.size else laser_batch
-        batch_result = _compute_delays(det_batch, laser_aug)
-        if batch_result is not None:
-            _bin_delays_into_pixels(
-                valid_det_ts=batch_result[0],
-                delays_ps=batch_result[1],
-                frame_start_ps=frame_start_ps,
-                pixel_dwell_ps=pixel_dwell_ps,
-                total_pixels=total_pixels,
-                pixel_lists=pixel_lists,
-            )
-            new_delays = batch_result[1]
-            if new_delays.size > 0:
-                bin_indices = np.clip(new_delays // 100, 0, running_hist.size - 1).astype(np.int64)
-                np.add.at(running_hist, bin_indices, 1)
+            laser_aug = np.concatenate([laser_carry, laser_batch]) if laser_carry.size else laser_batch
+            batch_result = _compute_delays(det_batch, laser_aug)
+            if batch_result is not None:
+                _bin_delays_into_pixels(
+                    valid_det_ts=batch_result[0],
+                    delays_ps=batch_result[1],
+                    frame_start_ps=frame_start_ps,
+                    pixel_dwell_ps=pixel_dwell_ps,
+                    total_pixels=total_pixels,
+                    pixel_lists=pixel_lists,
+                )
+                new_delays = batch_result[1]
+                if new_delays.size > 0:
+                    bin_indices = np.clip(new_delays // 100, 0, running_hist.size - 1).astype(np.int64)
+                    np.add.at(running_hist, bin_indices, 1)
 
-        laser_carry = laser_batch[-1:] if laser_batch.size else laser_carry[-1:]
+            laser_carry = laser_batch[-1:] if laser_batch.size else laser_carry[-1:]
 
-        now = time.monotonic()
-        if (progress_callback is not None or histogram_callback is not None) and (now - _last_progress_t) >= partial_throttle_s:
-            _last_progress_t = now
-            if progress_callback is not None:
-                progress_callback(_partial_intensity(pixel_lists, y_pixels, total_x, extra_left, x_pixels))
-            if histogram_callback is not None:
-                last_nonzero = np.flatnonzero(running_hist)
-                histogram_callback(running_hist[:last_nonzero[-1] + 1].copy() if last_nonzero.size else running_hist[:1].copy())
+            now = time.monotonic()
+            if (progress_callback is not None or histogram_callback is not None) and (now - _last_progress_t) >= partial_throttle_s:
+                _last_progress_t = now
+                if progress_callback is not None:
+                    progress_callback(_partial_intensity(pixel_lists, y_pixels, total_x, extra_left, x_pixels))
+                if histogram_callback is not None:
+                    last_nonzero = np.flatnonzero(running_hist)
+                    histogram_callback(running_hist[:last_nonzero[-1] + 1].copy() if last_nonzero.size else running_hist[:1].copy())
 
-        if np.any(ts > frame_end_ps) or time.monotonic() >= deadline:
-            break
+            if np.any(ts > frame_end_ps) or time.monotonic() >= deadline:
+                break
+
+    finally:
+        _stop_drain.set()
+        drain_thread.join(timeout=2.0)
 
     if frame_start_ps is None:
         raise RuntimeError("Stream ended before the frame-start trigger was detected.")

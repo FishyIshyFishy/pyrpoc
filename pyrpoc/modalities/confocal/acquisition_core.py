@@ -74,7 +74,6 @@ def _preprocess_mask_to_scan_grid(
     padded[:, extra_left : extra_left + scan_x_pixels] = mask_bool
     return padded
 
-
 def generate_mask_ttl_signals(
     total_x: int,
     total_y: int,
