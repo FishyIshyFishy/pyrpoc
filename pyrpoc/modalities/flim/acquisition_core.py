@@ -265,9 +265,14 @@ def poll_one_flim_frame(
     frame_start_ps: int | None = None
     frame_end_ps: int = 0
     deadline: float = 0.0
-    all_laser_ts: list[np.ndarray] = []
-    all_det_ts: list[np.ndarray] = []
     _last_progress_t: float = 0.0
+
+    # Incremental state — built up batch-by-batch so partial callbacks are O(pixels) not O(photons)
+    pixel_lists: list[list[int]] = [[] for _ in range(total_pixels)]
+    # last laser timestamp from the previous batch, carried forward for cross-batch delay matching
+    laser_carry: np.ndarray = np.empty(0, dtype=np.int64)
+    # fixed 100 ps bins covering 0–20 ns (sufficient for all common fluorophore lifetimes)
+    running_hist: np.ndarray = np.zeros(200, dtype=np.int64)
 
     while True:
         data = stream.getData()  # type: ignore[attr-defined]
@@ -297,57 +302,42 @@ def poll_one_flim_frame(
             ch = ch[idx:]
 
         in_frame = ts <= frame_end_ps
-        all_laser_ts.append(ts[(ch == laser_ch) & in_frame])
-        all_det_ts.append(ts[(ch == detector_ch) & in_frame])
+        laser_batch = ts[(ch == laser_ch) & in_frame]
+        det_batch = ts[(ch == detector_ch) & in_frame]
+
+        # Prepend the carried laser timestamp so photons at the batch boundary find their
+        # preceding laser pulse even when it arrived in the previous getData() chunk.
+        laser_aug = np.concatenate([laser_carry, laser_batch]) if laser_carry.size else laser_batch
+        batch_result = _compute_delays(det_batch, laser_aug)
+        if batch_result is not None:
+            _bin_delays_into_pixels(
+                valid_det_ts=batch_result[0],
+                delays_ps=batch_result[1],
+                frame_start_ps=frame_start_ps,
+                pixel_dwell_ps=pixel_dwell_ps,
+                total_pixels=total_pixels,
+                pixel_lists=pixel_lists,
+            )
+            new_delays = batch_result[1]
+            if new_delays.size > 0:
+                bin_indices = np.clip(new_delays // 100, 0, running_hist.size - 1).astype(np.int64)
+                np.add.at(running_hist, bin_indices, 1)
+
+        laser_carry = laser_batch[-1:] if laser_batch.size else laser_carry[-1:]
 
         now = time.monotonic()
         if (progress_callback is not None or histogram_callback is not None) and (now - _last_progress_t) >= partial_throttle_s:
             _last_progress_t = now
-            laser_so_far = np.concatenate(all_laser_ts) if all_laser_ts else np.empty(0, dtype=np.int64)
-            det_so_far = np.concatenate(all_det_ts) if all_det_ts else np.empty(0, dtype=np.int64)
-            result = _compute_delays(det_so_far, laser_so_far)
-
             if progress_callback is not None:
-                partial_lists: list[list[int]] = [[] for _ in range(total_pixels)]
-                if result is not None:
-                    _bin_delays_into_pixels(
-                        valid_det_ts=result[0],
-                        delays_ps=result[1],
-                        frame_start_ps=frame_start_ps,
-                        pixel_dwell_ps=pixel_dwell_ps,
-                        total_pixels=total_pixels,
-                        pixel_lists=partial_lists,
-                    )
-                progress_callback(_partial_intensity(partial_lists, y_pixels, total_x, extra_left, x_pixels))
-
-            if histogram_callback is not None and result is not None:
-                delays_ps = result[1]
-                if delays_ps.size > 0:
-                    bin_max = int(delays_ps.max()) + 100
-                    bins = np.arange(0, bin_max, 100, dtype=np.int64)
-                    counts, _ = np.histogram(delays_ps, bins=bins)
-                    histogram_callback(counts.astype(np.int64))
+                progress_callback(_partial_intensity(pixel_lists, y_pixels, total_x, extra_left, x_pixels))
+            if histogram_callback is not None:
+                last_nonzero = np.flatnonzero(running_hist)
+                histogram_callback(running_hist[:last_nonzero[-1] + 1].copy() if last_nonzero.size else running_hist[:1].copy())
 
         if np.any(ts > frame_end_ps) or time.monotonic() >= deadline:
             break
 
     if frame_start_ps is None:
         raise RuntimeError("Stream ended before the frame-start trigger was detected.")
-
-    laser_ts = np.concatenate(all_laser_ts) if all_laser_ts else np.empty(0, dtype=np.int64)
-    det_ts = np.concatenate(all_det_ts) if all_det_ts else np.empty(0, dtype=np.int64)
-
-    pixel_lists: list[list[int]] = [[] for _ in range(total_pixels)]
-    result = _compute_delays(det_ts, laser_ts)
-    if result is not None:
-        valid_det_ts, delays_ps = result
-        _bin_delays_into_pixels(
-            valid_det_ts=valid_det_ts,
-            delays_ps=delays_ps,
-            frame_start_ps=frame_start_ps,
-            pixel_dwell_ps=pixel_dwell_ps,
-            total_pixels=total_pixels,
-            pixel_lists=pixel_lists,
-        )
 
     return _finalize_frame(pixel_lists, y_pixels, total_x, extra_left, x_pixels)
