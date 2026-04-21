@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
+from typing import Any
 
 import numpy as np
 
@@ -39,3 +40,4 @@ class AcquiredData:
     data: np.ndarray
     kind: DataKind
     channel_labels: list[str] = field(default_factory=list)
+    metadata: dict[str, Any] = field(default_factory=dict)

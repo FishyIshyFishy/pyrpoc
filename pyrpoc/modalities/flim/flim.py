@@ -30,7 +30,7 @@ class FlimModality(BaseModality):
     REQUIRED_INSTRUMENTS = [TimeTaggerInstrument]
     OPTIONAL_INSTRUMENTS = []
     ALLOWED_OPTOCONTROLS = [MaskOptoControl]
-    EMITTED_KINDS = [DataKind.INTENSITY_FRAME, DataKind.PARTIAL_FRAME, DataKind.FLIM_RAW_FRAME, DataKind.FLIM_PARTIAL_HISTOGRAM]
+    EMITTED_KINDS = [DataKind.INTENSITY_FRAME, DataKind.FLIM_RAW_FRAME]
     ALLOWED_DISPLAYS = ["streamed_image", "flim_display", "tiled_2d", "multichan_overlay"]
 
     def __init__(self):
@@ -95,20 +95,8 @@ class FlimModality(BaseModality):
         p = self.parameters
         pixel_dwell_ps = int(round(p.dwell_time_us * 1e6))
         scan_duration_s = ((p.x_pixels+p.extra_left+p.extra_right) * p.y_pixels * p.dwell_time_us * 1e-6)
-
-        def _partial_callback(partial_array: np.ndarray) -> None:
-            on_data(AcquiredData(
-                data=partial_array,
-                kind=DataKind.PARTIAL_FRAME,
-                channel_labels=["intensity"],
-            ))
-
-        def _histogram_callback(hist: np.ndarray) -> None:
-            on_data(AcquiredData(
-                data=hist,
-                kind=DataKind.FLIM_PARTIAL_HISTOGRAM,
-                channel_labels=["delays"],
-            ))
+        # True laser period in ps — used to fold divided-pulse delays back into [0, period)
+        laser_period_ps = int(round(1e6 / p.laser_frequency_mhz))
 
         self._setup_tagger()
         try:
@@ -126,9 +114,7 @@ class FlimModality(BaseModality):
                         laser_ch=p.laser_channel,
                         detector_ch=p.detector_channel,
                         trigger_ch=p.daq_trigger_channel,
-                        progress_callback=_partial_callback,
-                        histogram_callback=_histogram_callback,
-                        partial_throttle_s=0.1,
+                        laser_period_ps=laser_period_ps,
                     )
                 except Exception as exc:
                     poll_result["error"] = exc
@@ -189,6 +175,7 @@ class FlimModality(BaseModality):
                 data=flim_frame,
                 kind=DataKind.FLIM_RAW_FRAME,
                 channel_labels=["delays"],
+                metadata={"laser_period_ps": laser_period_ps},
             ))
         finally:
             self._teardown_tagger()
