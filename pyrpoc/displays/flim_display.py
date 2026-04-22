@@ -5,6 +5,7 @@ from typing import Any
 import numpy as np
 import pyqtgraph as pg
 from scipy.optimize import curve_fit
+from PyQt6.QtCore import QObject, QThread, pyqtSignal
 from PyQt6.QtWidgets import (
     QCheckBox,
     QHBoxLayout,
@@ -42,9 +43,7 @@ def _collect_box_delays(raw: np.ndarray, iy: int, ix: int, half: int) -> np.ndar
 
 def _roll_and_fit(counts: np.ndarray, bin_width_ps: float = 100.0) -> float:
     """Roll a folded decay histogram so the peak is at t=0, then fit a
-    single exponential.  Returns the fitted lifetime tau in ps, or 0.0
-    if the fit fails or there are too few photons.
-    """
+    single exponential.  Returns tau in ps, or 0.0 on failure."""
     if counts.sum() < 5:
         return 0.0
 
@@ -55,8 +54,6 @@ def _roll_and_fit(counts: np.ndarray, bin_width_ps: float = 100.0) -> float:
     A0 = float(rolled[0])
     B0 = float(np.percentile(rolled, 10))
     tau0 = (t[-1] - t[0]) / 3.0
-
-    # Poisson weights — at least 1 to avoid zero sigma
     sigma = np.maximum(np.sqrt(rolled), 1.0)
 
     try:
@@ -75,6 +72,62 @@ def _roll_and_fit(counts: np.ndarray, bin_width_ps: float = 100.0) -> float:
         return 0.0
 
 
+# ---------------------------------------------------------------------------
+# Background worker
+# ---------------------------------------------------------------------------
+
+class _FitWorker(QObject):
+    """Runs the per-pixel fitting on a QThread.
+
+    Emits ``row_done`` with a copy of the partial lifetime map after every
+    row so the display can update progressively.  Emits ``finished`` when
+    all rows are complete or the worker is aborted.
+    """
+
+    row_done = pyqtSignal(object)   # np.ndarray — partial lifetime map
+    finished = pyqtSignal()
+
+    def __init__(
+        self,
+        raw: np.ndarray,
+        half: int,
+        bins: np.ndarray,
+    ) -> None:
+        super().__init__()
+        self._raw = raw
+        self._half = half
+        self._bins = bins
+        self._abort = False
+
+    def abort(self) -> None:
+        self._abort = True
+
+    def run(self) -> None:
+        raw = self._raw
+        H, W = raw.shape
+        half = self._half
+        bins = self._bins
+        lifetime_map = np.zeros((H, W), dtype=np.float32)
+
+        for iy in range(H):
+            if self._abort:
+                break
+            for ix in range(W):
+                delays = _collect_box_delays(raw, iy, ix, half)
+                if delays.size == 0:
+                    continue
+                counts, _ = np.histogram(delays, bins=bins)
+                lifetime_map[iy, ix] = _roll_and_fit(counts)
+
+            self.row_done.emit(lifetime_map.copy())
+
+        self.finished.emit()
+
+
+# ---------------------------------------------------------------------------
+# Display widget
+# ---------------------------------------------------------------------------
+
 @display_registry.register("flim_display")
 class FlimDisplay(BaseDisplay):
     """FLIM display.
@@ -82,7 +135,8 @@ class FlimDisplay(BaseDisplay):
     When a FLIM_RAW_FRAME arrives the global decay histogram is shown
     immediately, rolled so the peak lands at t=0.  Click
     "Render FLIM Image" to run a per-pixel single-exponential fit using
-    the box-summing parameter below.
+    the box-summing parameter.  The lifetime image fills in row by row
+    while fitting runs in a background thread.
     """
 
     DISPLAY_KEY = "flim_display"
@@ -103,6 +157,9 @@ class FlimDisplay(BaseDisplay):
         self._autoscale: bool = True
         self._pending_state: dict[str, Any] = {}
 
+        self._fit_thread: QThread | None = None
+        self._fit_worker: _FitWorker | None = None
+
         self._lut = pg.ColorMap(
             pos=np.array([0.0, 0.5, 1.0], dtype=float),
             color=np.array(
@@ -115,7 +172,7 @@ class FlimDisplay(BaseDisplay):
         outer.setContentsMargins(8, 8, 8, 8)
         outer.setSpacing(6)
 
-        # --- Global decay histogram (rolled so peak = t=0) ---
+        # --- Global decay histogram ---
         self._trace_plot = pg.PlotWidget()
         self._trace_plot.setMenuEnabled(False)
         self._trace_plot.hideButtons()
@@ -196,12 +253,14 @@ class FlimDisplay(BaseDisplay):
             self._handle_raw_frame(acquired.data, int(lp))
 
     def clear(self) -> None:
+        self._cancel_fit()
         self._raw_frame_hw = None
         self._lifetime_hw = None
         self._time_trace_curve.setData(x=[], y=[])
         blank = np.zeros((1, 1), dtype=np.float32)
         self._image_item.setImage(blank, autoLevels=False)
         self._render_button.setEnabled(False)
+        self._render_button.setText("Render FLIM Image")
 
     # ------------------------------------------------------------------
     # RPOC / normalized export
@@ -251,12 +310,10 @@ class FlimDisplay(BaseDisplay):
     # ------------------------------------------------------------------
 
     def _handle_raw_frame(self, raw: np.ndarray, laser_period_ps: int) -> None:
+        self._cancel_fit()
         self._raw_frame_hw = raw
         self._laser_period_ps = laser_period_ps
 
-        # Build global histogram with fixed bins covering one full laser period,
-        # then roll it so the peak lands at t=0 — this is what a correct decay
-        # looks like despite the hardware timing offset.
         n_bins = laser_period_ps // 100
         bins = np.arange(0, n_bins * 100 + 100, 100, dtype=np.int64)
 
@@ -270,46 +327,76 @@ class FlimDisplay(BaseDisplay):
             self._time_trace_curve.setData(x=x, y=rolled.astype(float))
 
         self._render_button.setEnabled(True)
+        self._render_button.setText("Render FLIM Image")
 
     # ------------------------------------------------------------------
-    # Internal — render
+    # Internal — threaded render
     # ------------------------------------------------------------------
 
     def _on_render_clicked(self) -> None:
         if self._raw_frame_hw is None:
             return
 
-        raw = self._raw_frame_hw
-        H, W = raw.shape
-        half = self._box_spin.value() // 2
-        laser_period_ps = self._laser_period_ps
-        n_bins = laser_period_ps // 100
+        # If already rendering, treat the button as a cancel
+        if self._fit_thread is not None and self._fit_thread.isRunning():
+            self._cancel_fit()
+            return
+
+        n_bins = self._laser_period_ps // 100
         bins = np.arange(0, n_bins * 100 + 100, 100, dtype=np.int64)
 
-        lifetime_map = np.zeros((H, W), dtype=np.float32)
+        worker = _FitWorker(
+            raw=self._raw_frame_hw,
+            half=self._box_spin.value() // 2,
+            bins=bins,
+        )
+        thread = QThread(self)
+        worker.moveToThread(thread)
 
-        for iy in range(H):
-            for ix in range(W):
-                delays = _collect_box_delays(raw, iy, ix, half)
-                if delays.size == 0:
-                    continue
-                counts, _ = np.histogram(delays, bins=bins)
-                tau = _roll_and_fit(counts)
-                lifetime_map[iy, ix] = tau
+        thread.started.connect(worker.run)
+        worker.row_done.connect(self._on_row_done)
+        worker.finished.connect(self._on_fit_finished)
+        worker.finished.connect(thread.quit)
+        thread.finished.connect(thread.deleteLater)
 
-        self._lifetime_hw = lifetime_map
-        self._image_item.setImage(lifetime_map, autoLevels=False)
+        self._fit_worker = worker
+        self._fit_thread = thread
 
+        # Clear the image so progress is visible from the start
+        H, W = self._raw_frame_hw.shape
+        blank = np.zeros((H, W), dtype=np.float32)
+        self._image_item.setImage(blank, autoLevels=False)
+
+        self._render_button.setText("Cancel")
+        thread.start()
+
+    def _cancel_fit(self) -> None:
+        if self._fit_worker is not None:
+            self._fit_worker.abort()
+        if self._fit_thread is not None and self._fit_thread.isRunning():
+            self._fit_thread.quit()
+            self._fit_thread.wait()
+        self._fit_worker = None
+        self._fit_thread = None
+
+    def _on_row_done(self, partial_map: np.ndarray) -> None:
+        self._image_item.setImage(partial_map, autoLevels=False)
         if self._autoscale_box.isChecked():
-            valid = lifetime_map[lifetime_map > 0]
+            valid = partial_map[partial_map > 0]
             if valid.size > 0:
                 lo, hi = float(valid.min()), float(valid.max())
                 if hi <= lo:
                     hi = lo + 1e-12
                 self._apply_levels(lo, hi)
-        else:
-            lo, hi = self._hist_widget.item.getLevels()
-            self._apply_levels(float(lo), float(hi))
+
+    def _on_fit_finished(self) -> None:
+        final = self._image_item.image
+        if final is not None:
+            self._lifetime_hw = final.copy()
+        self._render_button.setText("Render FLIM Image")
+        self._render_button.setEnabled(True)
+        self._fit_worker = None
+        self._fit_thread = None
 
     # ------------------------------------------------------------------
     # Internal — LUT helpers
@@ -330,11 +417,11 @@ class FlimDisplay(BaseDisplay):
         if self._suspend_lut_signal:
             return
         lo, hi = self._hist_widget.item.getLevels()
-        if hi <= lo:
-            hi = lo + 1e-12
+        if hi <= lo: #pyright:ignore
+            hi = lo + 1e-12 #pyright:ignore
             self._hist_widget.item.setLevels(lo, hi)
-        self._min_val = float(lo)
-        self._max_val = float(hi)
+        self._min_val = float(lo) #pyright:ignore
+        self._max_val = float(hi) #pyright:ignore
         self.request_persist()
 
     def _apply_levels(self, lo: float, hi: float) -> None:
