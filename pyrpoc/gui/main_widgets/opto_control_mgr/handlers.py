@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from PyQt6.QtWidgets import QMessageBox
 
@@ -19,12 +19,12 @@ def refresh_available(widget: OptoControlManagerWidget) -> None:
     contract = widget.modality_service.get_selected_contract()
     allowed = contract.get("allowed_optocontrols", [])
     allowed_keys = {
-        getattr(opto_cls, "OPTOCONTROL_KEY", "")
+        getattr(opto_cls, "optocontrol_key", "")
         for opto_cls in allowed
-        if hasattr(opto_cls, "OPTOCONTROL_KEY")
+        if hasattr(opto_cls, "optocontrol_key")
     }
 
-    current_key = widget._selected_type_key()
+    current_key = widget.selected_type_key()
     widget.type_combo.clear()
     for row in widget.opto_control_service.list_available():
         key = row["key"]
@@ -52,24 +52,24 @@ def refresh_instances(widget: OptoControlManagerWidget) -> None:
     rows = widget.opto_control_service.list_instances()
     wanted_controls = [row["state"] for row in rows]
 
-    _remove_missing_cards(widget, set(wanted_controls))
+    remove_missing_cards(widget, set(wanted_controls))
 
     for row in rows:
         control: BaseOptoControl = row["state"]
         title = row["name"]
         card = widget.state.card_widgets.get(control)
         if card is None:
-            card = _create_card(widget, control, title, row["key"])
+            card = create_card(widget, control, title, row["key"])
             card.set_toggle_checked(row.get("enabled", False))
             card.set_toggle_visible(True)
             card.set_marker_text(f"[{row['key']}]")
             widget.state.card_widgets[control] = card
 
         card.set_toggle_checked(row.get("enabled", False))
-        _refresh_card_text(card, title, row["key"])
+        refresh_card_text(card, title, row["key"])
         desired_cards[control] = card
 
-    _reorder_cards(widget, desired_cards, rows)
+    reorder_cards(widget, desired_cards, rows)
 
 
 def on_expand_requested(widget: OptoControlManagerWidget, state_obj: object) -> None:
@@ -88,19 +88,19 @@ def on_expand_requested(widget: OptoControlManagerWidget, state_obj: object) -> 
         return
 
     if card.body_layout.count() != 0:
-        if _is_stale_widget(card):
+        if is_stale_widget(card):
             card.set_body_widget(None)
-            _reset_control_widget_cache(state_obj)
+            reset_control_widget_cache(state_obj)
         else:
             return
 
-    if _attach_widget_to_card(widget, state_obj, card):
+    if attach_widget_to_card(widget, state_obj, card):
         return
 
     # Retry path for stale-object style failures in case the cached control widget
     # wrapper was deleted after a prior layout cleanup.
-    _reset_control_widget_cache(state_obj)
-    _attach_widget_to_card(widget, state_obj, card)
+    reset_control_widget_cache(state_obj)
+    attach_widget_to_card(widget, state_obj, card)
 
 
 def on_add_clicked(widget: OptoControlManagerWidget) -> None:
@@ -108,7 +108,7 @@ def on_add_clicked(widget: OptoControlManagerWidget) -> None:
 
     Route: Add button -> this handler -> service.create_opto_control -> inventory_changed signal.
     '''
-    key = widget._selected_type_key()
+    key = widget.selected_type_key()
     if not key:
         show_error(widget, "No opto-control available for current modality")
         return
@@ -147,7 +147,7 @@ def show_error(widget: OptoControlManagerWidget, message: str) -> None:
     QMessageBox.critical(widget, "Opto-Control Error", message)
 
 
-def _remove_missing_cards(widget: OptoControlManagerWidget, wanted_controls: set[BaseOptoControl]) -> None:
+def remove_missing_cards(widget: OptoControlManagerWidget, wanted_controls: set[BaseOptoControl]) -> None:
     '''
     Remove only cards whose control state is no longer present.
 
@@ -161,7 +161,7 @@ def _remove_missing_cards(widget: OptoControlManagerWidget, wanted_controls: set
             card.deleteLater()
 
 
-def _create_card(
+def create_card(
     widget: OptoControlManagerWidget,
     control: BaseOptoControl,
     title: str,
@@ -187,13 +187,13 @@ def _create_card(
     return card
 
 
-def _refresh_card_text(card: InstanceCardWidget, title: str, key: str) -> None:
+def refresh_card_text(card: InstanceCardWidget, title: str, key: str) -> None:
     '''Keep card title/marker in sync with row metadata from service rows.'''
     card.title_label.setText(title)
     card.set_marker_text(f"[{key}]")
 
 
-def _attach_widget_to_card(
+def attach_widget_to_card(
     widget: OptoControlManagerWidget,
     state_obj: BaseOptoControl,
     card: InstanceCardWidget,
@@ -210,7 +210,7 @@ def _attach_widget_to_card(
             state_obj,
             parent=card.body_container,
             display_service=widget.display_service,
-            on_change=lambda c=state_obj, w=widget: _on_widget_changed(w, c),
+            on_change=lambda c=state_obj, w=widget: on_widget_changed(w, c),
         )
         card.set_body_widget(child_widget)
         return True
@@ -219,7 +219,7 @@ def _attach_widget_to_card(
         return False
 
 
-def _is_stale_widget(card: InstanceCardWidget) -> bool:
+def is_stale_widget(card: InstanceCardWidget) -> bool:
     '''Probe cached QWidget before trusting it after incremental updates.'''
     if card.body_layout.count() == 0:
         return False
@@ -237,7 +237,7 @@ def _is_stale_widget(card: InstanceCardWidget) -> bool:
     return False
 
 
-def _reset_control_widget_cache(state_obj: BaseOptoControl) -> None:
+def reset_control_widget_cache(state_obj: BaseOptoControl) -> None:
     '''
     Clear any cached widget reference on a control instance.
 
@@ -250,11 +250,11 @@ def _reset_control_widget_cache(state_obj: BaseOptoControl) -> None:
             pass
 
 
-def _on_widget_changed(widget: OptoControlManagerWidget, state_obj: BaseOptoControl) -> None:
+def on_widget_changed(widget: OptoControlManagerWidget, state_obj: BaseOptoControl) -> None:
     widget.opto_control_service.mark_control_changed(state_obj)
 
 
-def _reorder_cards(
+def reorder_cards(
     widget: OptoControlManagerWidget,
     desired_cards: dict[BaseOptoControl, InstanceCardWidget],
     rows: list[dict[str, object]],
@@ -265,7 +265,7 @@ def _reorder_cards(
     We intentionally detach cards from layout and insert again to change order
     without destroying card instances that may hold expanded child widgets.
     '''
-    desired_order = [row["state"] for row in rows]
+    desired_order = [cast(BaseOptoControl, row["state"]) for row in rows]
 
     while widget.instances_layout.count() > 0:
         item = widget.instances_layout.takeAt(0)

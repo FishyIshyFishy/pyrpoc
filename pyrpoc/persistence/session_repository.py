@@ -11,10 +11,10 @@ from .session_codec import SessionCodec
 
 class SessionRepository:
     def __init__(self):
-        self.path = self._session_path()
+        self.path = self.session_path()
         self.last_load_error: str | None = None
 
-    def _session_path(self) -> Path:
+    def session_path(self) -> Path:
         base = QStandardPaths.writableLocation(QStandardPaths.StandardLocation.AppDataLocation)
         root = Path(base) if base else Path(".")
         root.mkdir(parents=True, exist_ok=True)

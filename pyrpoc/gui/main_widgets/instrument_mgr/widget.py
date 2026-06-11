@@ -24,39 +24,39 @@ class InstrumentManagerWidget(QWidget):
         self.add_btn = self.ui.add_btn
         self.instances_layout = self.ui.instances_layout
 
-        self._wire_signals()
-        self._refresh_available()
-        self._refresh_instances()
+        self.wire_signals()
+        self.refresh_available()
+        self.refresh_instances()
 
-    def _wire_signals(self) -> None:
+    def wire_signals(self) -> None:
         '''
         Widget signals are intentionally small:
         - Add button is the only direct user action here.
         - Service emits `inventory_changed` for any list refresh after add/remove.
         '''
-        self.add_btn.clicked.connect(self._on_add_clicked)
-        self.instrument_service.inventory_changed.connect(self._refresh_instances)
+        self.add_btn.clicked.connect(self.on_add_clicked)
+        self.instrument_service.inventory_changed.connect(self.refresh_instances)
 
-    def _refresh_available(self) -> None:
+    def refresh_available(self) -> None:
         """
         Dropdown content should always come from service registry descriptors.
         """
         refresh_available(self)
 
-    def _refresh_instances(self) -> None:
+    def refresh_instances(self) -> None:
         """
         Keep existing cards when state objects are unchanged and only add/remove
         diffs, so expanded card widgets keep their QWidget owners.
         """
         refresh_instances(self)
 
-    def _on_add_clicked(self) -> None:
+    def on_add_clicked(self) -> None:
         """
         Add button handler -> `InstrumentService.create_instrument`.
         """
         on_add_clicked(self)
 
-    def _selected_type_key(self) -> str:
+    def selected_type_key(self) -> str:
         data = self.type_combo.currentData()
         if isinstance(data, str):
             return data

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import random
+from typing import cast
 
 import cv2
 import numpy as np
@@ -12,6 +13,7 @@ from PyQt6.QtWidgets import (
     QFileDialog,
     QGraphicsEllipseItem,
     QGraphicsPathItem,
+    QGraphicsPixmapItem,
     QGraphicsScene,
     QGraphicsTextItem,
     QGraphicsView,
@@ -34,6 +36,7 @@ from pyrpoc.rpoc.types import RPOCEditorState, RPOCImageInput, RPOCRoi
 class _ImageViewer(QGraphicsView):
     def __init__(self, scene: QGraphicsScene, editor: "RPOCMaskEditor"):
         super().__init__(scene)
+        self.gscene: QGraphicsScene = scene
         self.editor = editor
         self.setRenderHints(self.renderHints() | QPainter.RenderHint.Antialiasing)
         self.setMouseTracking(True)
@@ -55,14 +58,18 @@ class _ImageViewer(QGraphicsView):
         self.cursor_brush.setPen(QPen(Qt.PenStyle.NoPen))
         self.cursor_brush.setZValue(1000)
         self.cursor_brush.setVisible(False)
-        self.scene().addItem(self.cursor_brush)
+        self.gscene.addItem(self.cursor_brush)
 
     def wheelEvent(self, event):
+        if event is None:
+            return
         zoom_factor = 1.25 if event.angleDelta().y() > 0 else 0.8
         self._zoom += 1 if zoom_factor > 1 else -1
         self.scale(zoom_factor, zoom_factor)
 
     def mousePressEvent(self, event):
+        if event is None:
+            return
         if event.button() == Qt.MouseButton.RightButton:
             pos = self.mapToScene(event.pos())
             if not self.drawing:
@@ -71,18 +78,22 @@ class _ImageViewer(QGraphicsView):
                 self.current_path = QPainterPath()
                 self.current_path.moveTo(pos)
                 if self.live_path_item:
-                    self.scene().removeItem(self.live_path_item)
-                self.live_path_item = self.scene().addPath(self.current_path, self.path_pen)
+                    self.gscene.removeItem(self.live_path_item)
+                self.live_path_item = self.gscene.addPath(self.current_path, self.path_pen)
             else:
-                self._finish_path(pos)
+                self.finish_path(pos)
             return
 
         if event.button() == Qt.MouseButton.LeftButton and not self.drawing:
             self.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)
-            self.viewport().setCursor(Qt.CursorShape.ClosedHandCursor)
+            viewport = self.viewport()
+            if viewport is not None:
+                viewport.setCursor(Qt.CursorShape.ClosedHandCursor)
         super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event):
+        if event is None:
+            return
         if self.drawing and self.current_path is not None:
             pos = self.mapToScene(event.pos())
             self.current_points.append(pos)
@@ -92,12 +103,16 @@ class _ImageViewer(QGraphicsView):
         super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event):
+        if event is None:
+            return
         if event.button() == Qt.MouseButton.LeftButton and not self.drawing:
             self.setDragMode(QGraphicsView.DragMode.NoDrag)
-            self.viewport().setCursor(Qt.CursorShape.ArrowCursor)
+            viewport = self.viewport()
+            if viewport is not None:
+                viewport.setCursor(Qt.CursorShape.ArrowCursor)
         super().mouseReleaseEvent(event)
 
-    def _finish_path(self, end_pos: QPointF) -> None:
+    def finish_path(self, end_pos: QPointF) -> None:
         if self.current_path is None:
             return
         self.drawing = False
@@ -105,7 +120,7 @@ class _ImageViewer(QGraphicsView):
         self.current_path.lineTo(end_pos)
         self.current_path.closeSubpath()
         if self.live_path_item:
-            self.scene().removeItem(self.live_path_item)
+            self.gscene.removeItem(self.live_path_item)
             self.live_path_item = None
 
         points = [(float(p.x()), float(p.y())) for p in self.current_points]
@@ -125,28 +140,28 @@ class _ImageViewer(QGraphicsView):
             path.lineTo(QPointF(x, y))
         path.closeSubpath()
 
-        color = self._random_color()
-        roi_item = self.scene().addPath(path, QPen(color, 2))
+        color = self.random_color()
+        roi_item = cast(QGraphicsPathItem, self.gscene.addPath(path, QPen(color, 2)))
         roi_item.setBrush(color)
         roi_item.setOpacity(self.roi_opacity if self.editor.state.show_rois else 0.0)
         self.roi_items[roi_id] = roi_item
 
-        lbl = self._create_roi_label(roi_id, points)
+        lbl = self.create_roi_label(roi_id, points)
         self.roi_label_items[roi_id] = lbl
 
     def remove_roi_graphics(self, roi_id: int) -> None:
         roi_item = self.roi_items.pop(roi_id, None)
         if roi_item is not None:
-            self.scene().removeItem(roi_item)
+            self.gscene.removeItem(roi_item)
         lbl = self.roi_label_items.pop(roi_id, None)
         if lbl is not None:
-            self.scene().removeItem(lbl)
+            self.gscene.removeItem(lbl)
 
     def clear_roi_graphics(self) -> None:
         for roi_id in list(self.roi_items.keys()):
             self.remove_roi_graphics(roi_id)
 
-    def _create_roi_label(self, roi_id: int, points: list[tuple[float, float]]) -> QGraphicsTextItem:
+    def create_roi_label(self, roi_id: int, points: list[tuple[float, float]]) -> QGraphicsTextItem:
         xs = [p[0] for p in points]
         ys = [p[1] for p in points]
         cx, cy = sum(xs) / len(xs), sum(ys) / len(ys)
@@ -157,10 +172,10 @@ class _ImageViewer(QGraphicsView):
         label_item.setPos(cx - bounds.width() / 2, cy - bounds.height() / 2)
         label_item.setZValue(999)
         label_item.setVisible(self.editor.state.show_rois and self.editor.state.show_labels)
-        self.scene().addItem(label_item)
+        self.gscene.addItem(label_item)
         return label_item
 
-    def _random_color(self) -> QColor:
+    def random_color(self) -> QColor:
         return QColor(random.randint(50, 255), random.randint(50, 255), random.randint(50, 255))
 
     def update_roi_visibility(self) -> None:
@@ -197,31 +212,31 @@ class RPOCMaskEditor(QMainWindow):
             ["ROI Name", "Coordinates", "Lower Threshold", "Upper Threshold", "Modulation Level"]
         )
         self.roi_table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
-        self.roi_table.customContextMenuRequested.connect(self._show_table_context_menu)
+        self.roi_table.customContextMenuRequested.connect(self.show_table_context_menu)
 
         load_button = QPushButton("Load Image")
-        load_button.clicked.connect(self._load_image)
+        load_button.clicked.connect(self.load_image)
         segment_button = QPushButton("Segment")
-        segment_button.clicked.connect(self._segment)
+        segment_button.clicked.connect(self.segment)
         preview_button = QPushButton("Preview")
-        preview_button.clicked.connect(self._preview_mask)
+        preview_button.clicked.connect(self.preview_mask)
         save_button = QPushButton("Save Mask")
-        save_button.clicked.connect(self._save_mask)
+        save_button.clicked.connect(self.save_mask)
         create_button = QPushButton("Create Mask")
         create_button.clicked.connect(self.create_and_close)
 
         self.mask_checkbox = QCheckBox("Mask [M]")
         self.mask_checkbox.setChecked(True)
-        self.mask_checkbox.stateChanged.connect(self._toggle_mask_visibility)
+        self.mask_checkbox.stateChanged.connect(self.toggle_mask_visibility)
         self.label_checkbox = QCheckBox("Labels [N]")
         self.label_checkbox.setChecked(True)
-        self.label_checkbox.stateChanged.connect(self._toggle_label_visibility)
+        self.label_checkbox.stateChanged.connect(self.toggle_label_visibility)
 
         self.threshold_slider = QRangeSlider(Qt.Orientation.Horizontal)
         self.threshold_slider.setMinimum(self._SLIDER_MIN)
         self.threshold_slider.setMaximum(self._SLIDER_MAX)
         self.threshold_slider.setValue((2000, 8000))
-        self.threshold_slider.valueChanged.connect(self._on_threshold_slider_changed)
+        self.threshold_slider.valueChanged.connect(self.on_threshold_slider_changed)
 
         top_row = QHBoxLayout()
         top_row.addWidget(load_button)
@@ -235,7 +250,7 @@ class RPOCMaskEditor(QMainWindow):
         toggle_row.addWidget(self.mask_checkbox)
         toggle_row.addWidget(self.label_checkbox)
         toggle_row.addWidget(QLabel("Threshold"))
-        toggle_row.addWidget(self.threshold_slider, 1)
+        toggle_row.addWidget(cast(QWidget, self.threshold_slider), 1)
 
         self.channels_row = QHBoxLayout()
         self.channel_checkboxes: list[QCheckBox] = []
@@ -249,7 +264,7 @@ class RPOCMaskEditor(QMainWindow):
         ]
 
         self.image_scene = QGraphicsScene()
-        self.image_item = self.image_scene.addPixmap(QPixmap())
+        self.image_item = cast(QGraphicsPixmapItem, self.image_scene.addPixmap(QPixmap()))
         self.image_view = _ImageViewer(self.image_scene, self)
 
         left = QVBoxLayout()
@@ -269,7 +284,7 @@ class RPOCMaskEditor(QMainWindow):
         if image_data is not None:
             self.set_image_data(image_data)
         else:
-            self._update_displayed_image()
+            self.update_displayed_image()
 
     def set_image_data(self, image_data: np.ndarray | RPOCImageInput) -> None:
         if isinstance(image_data, RPOCImageInput):
@@ -288,20 +303,22 @@ class RPOCMaskEditor(QMainWindow):
 
         self.roi_table.setRowCount(0)
         self.image_view.clear_roi_graphics()
-        self._clear_channel_widgets()
-        self._build_channel_widgets()
-        self._adjust_threshold_slider()
-        self._update_displayed_image()
+        self.clear_channel_widgets()
+        self.build_channel_widgets()
+        self.adjust_threshold_slider()
+        self.update_displayed_image()
 
-    def _clear_channel_widgets(self) -> None:
+    def clear_channel_widgets(self) -> None:
         while self.channels_row.count():
             item = self.channels_row.takeAt(0)
+            if item is None:
+                continue
             widget = item.widget()
             if widget is not None:
                 widget.deleteLater()
         self.channel_checkboxes.clear()
 
-    def _build_channel_widgets(self) -> None:
+    def build_channel_widgets(self) -> None:
         image_input = self.state.image_input
         if image_input is None:
             self.channels_row.addStretch(1)
@@ -309,24 +326,24 @@ class RPOCMaskEditor(QMainWindow):
         for i, label in enumerate(image_input.channel_labels):
             cb = QCheckBox(f"{label} [{i + 1}]")
             cb.setChecked(self.state.channel_visibility[i])
-            cb.stateChanged.connect(lambda state, idx=i: self._on_channel_toggle(idx, state))
+            cb.stateChanged.connect(lambda state, idx=i: self.on_channel_toggle(idx, state))
             self.channel_checkboxes.append(cb)
             self.channels_row.addWidget(cb)
         self.channels_row.addStretch(1)
 
-    def _on_channel_toggle(self, idx: int, state: int) -> None:
+    def on_channel_toggle(self, idx: int, state: int) -> None:
         if idx < 0 or idx >= len(self.state.channel_visibility):
             return
         self.state.channel_visibility[idx] = bool(state)
-        self._update_displayed_image()
+        self.update_displayed_image()
 
-    def _adjust_threshold_slider(self) -> None:
+    def adjust_threshold_slider(self) -> None:
         image_input = self.state.image_input
         if image_input is None:
             return
         global_min = float(np.min(image_input.data))
         global_max = float(np.max(image_input.data))
-        self._set_threshold_domain(global_min, global_max)
+        self.set_threshold_domain(global_min, global_max)
 
         span = max(self.data_max - self.data_min, 1e-9)
         low_data = self.data_min + 0.2 * span
@@ -342,7 +359,7 @@ class RPOCMaskEditor(QMainWindow):
         self.threshold_slider.setValue((low_i, high_i))
         self.threshold_slider.blockSignals(False)
 
-    def _set_threshold_domain(self, data_min: float, data_max: float) -> None:
+    def set_threshold_domain(self, data_min: float, data_max: float) -> None:
         self.data_min = float(data_min)
         self.data_max = float(data_max)
         if self.data_max <= self.data_min:
@@ -352,7 +369,7 @@ class RPOCMaskEditor(QMainWindow):
         else:
             self.threshold_mode = "raw_range"
 
-    def _coerce_slider_bounds(self, low_i: int, high_i: int) -> tuple[int, int]:
+    def coerce_slider_bounds(self, low_i: int, high_i: int) -> tuple[int, int]:
         low = int(max(self._SLIDER_MIN, min(self._SLIDER_MAX, low_i)))
         high = int(max(self._SLIDER_MIN, min(self._SLIDER_MAX, high_i)))
         if low > high:
@@ -365,7 +382,7 @@ class RPOCMaskEditor(QMainWindow):
         return low, high
 
     def slider_to_data(self, low_i: int, high_i: int) -> tuple[float, float]:
-        low_i, high_i = self._coerce_slider_bounds(low_i, high_i)
+        low_i, high_i = self.coerce_slider_bounds(low_i, high_i)
         if self.threshold_mode == "normalized_0_1":
             low = low_i / float(self._SLIDER_MAX)
             high = high_i / float(self._SLIDER_MAX)
@@ -391,16 +408,16 @@ class RPOCMaskEditor(QMainWindow):
             span = max(self.data_max - self.data_min, 1e-9)
             low_i = int(round((low_f - self.data_min) / span * self._SLIDER_MAX))
             high_i = int(round((high_f - self.data_min) / span * self._SLIDER_MAX))
-        return self._coerce_slider_bounds(low_i, high_i)
+        return self.coerce_slider_bounds(low_i, high_i)
 
-    def _get_threshold_bounds(self) -> tuple[float, float]:
+    def get_threshold_bounds(self) -> tuple[float, float]:
         low_i, high_i = self.threshold_slider.value()
         return self.slider_to_data(int(low_i), int(high_i))
 
-    def _on_threshold_slider_changed(self, _value: tuple[int, int]) -> None:
-        self._update_displayed_image()
+    def on_threshold_slider_changed(self, _value: tuple[int, int]) -> None:
+        self.update_displayed_image()
 
-    def _update_displayed_image(self) -> None:
+    def update_displayed_image(self) -> None:
         image_input = self.state.image_input
         if image_input is None:
             self.image_item.setPixmap(QPixmap())
@@ -408,7 +425,7 @@ class RPOCMaskEditor(QMainWindow):
         data = image_input.data
         _, h, w = data.shape
         rgb_overlay = np.zeros((h, w, 3), dtype=np.uint8)
-        low, high = self._get_threshold_bounds()
+        low, high = self.get_threshold_bounds()
         high = max(high, low + 1e-9)
 
         for i, img in enumerate(data):
@@ -424,17 +441,17 @@ class RPOCMaskEditor(QMainWindow):
             channel = (norm[..., None] * color).astype(np.uint8)
             rgb_overlay = np.clip(rgb_overlay + channel, 0, 255)
 
-        qimg = QImage(rgb_overlay.data, w, h, 3 * w, QImage.Format.Format_RGB888)
+        qimg = QImage(rgb_overlay.tobytes(), w, h, 3 * w, QImage.Format.Format_RGB888)
         self.image_item.setPixmap(QPixmap.fromImage(qimg.copy()))
         self.image_scene.setSceneRect(QRectF(qimg.rect()))
 
-    def _find_roi(self, roi_id: int) -> RPOCRoi | None:
+    def find_roi(self, roi_id: int) -> RPOCRoi | None:
         for roi in self.state.rois:
             if roi.roi_id == roi_id:
                 return roi
         return None
 
-    def _find_row_by_roi_id(self, roi_id: int) -> int:
+    def find_row_by_roi_id(self, roi_id: int) -> int:
         for row in range(self.roi_table.rowCount()):
             item = self.roi_table.item(row, 0)
             if item is None:
@@ -444,8 +461,8 @@ class RPOCMaskEditor(QMainWindow):
                 return row
         return -1
 
-    def _upsert_roi_row(self, roi: RPOCRoi) -> None:
-        row = self._find_row_by_roi_id(roi.roi_id)
+    def upsert_roi_row(self, roi: RPOCRoi) -> None:
+        row = self.find_row_by_roi_id(roi.roi_id)
         if row < 0:
             row = self.roi_table.rowCount()
             self.roi_table.insertRow(row)
@@ -465,7 +482,7 @@ class RPOCMaskEditor(QMainWindow):
     def add_roi(self, points: list[tuple[float, float]]) -> None:
         if len(points) < 3:
             return
-        low, high = self._get_threshold_bounds()
+        low, high = self.get_threshold_bounds()
         roi_id = self.state.next_roi_id
         self.state.next_roi_id += 1
         roi = RPOCRoi(
@@ -478,9 +495,9 @@ class RPOCMaskEditor(QMainWindow):
         )
         self.state.rois.append(roi)
         self.image_view.add_roi_graphics(roi.roi_id, roi.points)
-        self._upsert_roi_row(roi)
+        self.upsert_roi_row(roi)
 
-    def _show_table_context_menu(self, pos):
+    def show_table_context_menu(self, pos):
         row = self.roi_table.indexAt(pos).row()
         if row < 0:
             return
@@ -488,9 +505,9 @@ class RPOCMaskEditor(QMainWindow):
         delete_action = menu.addAction("Delete ROI")
         action = menu.exec(self.roi_table.mapToGlobal(pos))
         if action == delete_action:
-            self._delete_roi_row(row)
+            self.delete_roi_row(row)
 
-    def _delete_roi_row(self, row: int) -> None:
+    def delete_roi_row(self, row: int) -> None:
         idx_item = self.roi_table.item(row, 0)
         if idx_item is None:
             return
@@ -501,15 +518,15 @@ class RPOCMaskEditor(QMainWindow):
         self.state.rois = [roi for roi in self.state.rois if roi.roi_id != roi_id]
         self.image_view.remove_roi_graphics(roi_id)
 
-    def _toggle_mask_visibility(self, state: int) -> None:
+    def toggle_mask_visibility(self, state: int) -> None:
         self.state.show_rois = bool(state)
         self.image_view.update_roi_visibility()
 
-    def _toggle_label_visibility(self, state: int) -> None:
+    def toggle_label_visibility(self, state: int) -> None:
         self.state.show_labels = bool(state)
         self.image_view.update_roi_visibility()
 
-    def _get_composite(self) -> np.ndarray | None:
+    def get_composite(self) -> np.ndarray | None:
         image_input = self.state.image_input
         if image_input is None:
             return None
@@ -524,11 +541,11 @@ class RPOCMaskEditor(QMainWindow):
             composite = composite / max_val
         return np.clip(composite, 0, 1)
 
-    def _segment(self) -> None:
-        comp = self._get_composite()
+    def segment(self) -> None:
+        comp = self.get_composite()
         if comp is None:
             return
-        low, high = self._get_threshold_bounds()
+        low, high = self.get_threshold_bounds()
         if self.threshold_mode == "raw_range":
             span = max(self.data_max - self.data_min, 1e-9)
             low = (low - self.data_min) / span
@@ -544,7 +561,7 @@ class RPOCMaskEditor(QMainWindow):
             points = [(float(x), float(y)) for x, y in contour]
             self.add_roi(points)
 
-    def _sync_roi_values_from_table(self) -> None:
+    def sync_roi_values_from_table(self) -> None:
         for row in range(self.roi_table.rowCount()):
             idx_item = self.roi_table.item(row, 0)
             if idx_item is None:
@@ -552,13 +569,18 @@ class RPOCMaskEditor(QMainWindow):
             roi_id = idx_item.data(Qt.ItemDataRole.UserRole)
             if not isinstance(roi_id, int):
                 continue
-            roi = self._find_roi(roi_id)
+            roi = self.find_roi(roi_id)
             if roi is None:
                 continue
+            low_item = self.roi_table.item(row, 2)
+            high_item = self.roi_table.item(row, 3)
+            mod_item = self.roi_table.item(row, 4)
+            if low_item is None or high_item is None or mod_item is None:
+                continue
             try:
-                low_val = float(self.roi_table.item(row, 2).text())
-                high_val = float(self.roi_table.item(row, 3).text())
-                mod_val = float(self.roi_table.item(row, 4).text())
+                low_val = float(low_item.text())
+                high_val = float(high_item.text())
+                mod_val = float(mod_item.text())
             except Exception:
                 continue
             if high_val < low_val:
@@ -571,7 +593,7 @@ class RPOCMaskEditor(QMainWindow):
         image_input = self.state.image_input
         if image_input is None:
             return None
-        self._sync_roi_values_from_table()
+        self.sync_roi_values_from_table()
         _, h, w = image_input.data.shape
         final_mask = np.zeros((h, w), dtype=np.uint8)
 
@@ -594,12 +616,12 @@ class RPOCMaskEditor(QMainWindow):
             final_mask[combined & (roi_mask == 255)] = int(np.clip(roi.modulation_level, 0.0, 1.0) * 255)
         return final_mask
 
-    def _preview_mask(self) -> None:
+    def preview_mask(self) -> None:
         mask = self.generate_final_mask()
         if mask is None:
             return
         h, w = mask.shape
-        qimg = QImage(mask.data, w, h, w, QImage.Format.Format_Grayscale8)
+        qimg = QImage(mask.tobytes(), w, h, w, QImage.Format.Format_Grayscale8)
         dlg = QDialog(self)
         dlg.setWindowTitle("Mask Preview")
         layout = QVBoxLayout(dlg)
@@ -609,7 +631,7 @@ class RPOCMaskEditor(QMainWindow):
         dlg.resize(w, h)
         dlg.exec()
 
-    def _save_mask(self) -> None:
+    def save_mask(self) -> None:
         mask = self.generate_final_mask()
         if mask is None:
             return
@@ -623,7 +645,7 @@ class RPOCMaskEditor(QMainWindow):
             return
         cv2.imwrite(path, mask)
 
-    def _load_image(self) -> None:
+    def load_image(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
             self,
             "Open Image",
@@ -655,6 +677,8 @@ class RPOCMaskEditor(QMainWindow):
         self.close()
 
     def closeEvent(self, event):
+        if event is None:
+            return
         if not self._emitted and not self._closing_via_create:
             mask = self.generate_final_mask()
             if mask is not None and np.any(mask):

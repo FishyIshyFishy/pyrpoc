@@ -11,8 +11,8 @@ from pyrpoc.instruments.instrument_widgets.time_tagger_widget import TimeTaggerI
 
 @instrument_registry.register("time_tagger")
 class TimeTaggerInstrument(BaseInstrument):
-    INSTRUMENT_KEY = "time_tagger"
-    DISPLAY_NAME = "Swabian TimeTagger"
+    instrument_key = "time_tagger"
+    display_name = "Swabian TimeTagger"
 
     def __init__(
         self,
@@ -30,6 +30,7 @@ class TimeTaggerInstrument(BaseInstrument):
         )
         self.last_test_ok: bool | None = None
         self.widget: BaseInstrumentWidget | None = None
+        self.tagger = None
 
     def get_widget(
         self,
@@ -88,6 +89,8 @@ class TimeTaggerInstrument(BaseInstrument):
         laser_event_divider: int = 1,
     ) -> None:
         """Set trigger levels and optional event divider on self.tagger."""
+        if self.tagger is None:
+            raise RuntimeError("create_tagger() must be called before configure_for_flim()")
         self.tagger.setTriggerLevel(laser_ch, laser_trigger_v)
         self.tagger.setTriggerLevel(detector_ch, detector_trigger_v)
         self.tagger.setTriggerLevel(trigger_ch, trigger_v)
@@ -102,6 +105,8 @@ class TimeTaggerInstrument(BaseInstrument):
         buffer_size: int = 4_000_000,
     ) -> object:
         """Create and return a TimeTagStream on self.tagger for FLIM acquisition."""
+        if self.tagger is None:
+            raise RuntimeError("create_tagger() must be called before create_flim_stream()")
         from Swabian import TimeTagger
         return TimeTagger.TimeTagStream(
             tagger=self.tagger,

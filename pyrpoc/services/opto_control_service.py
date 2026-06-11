@@ -77,7 +77,7 @@ class OptoControlService(QObject):
                 {
                     "state": control,
                     "key": key,
-                    "name": getattr(cls, "DISPLAY_NAME", key),
+                    "name": getattr(cls, "display_name", key),
                     "enabled": control.enabled,
                 }
             )
@@ -95,7 +95,7 @@ class OptoControlService(QObject):
         Called by `refresh_instances` during UI rebuild, after which signals from the
         card bind user actions back into the service.
         '''
-        self._require_control(control)
+        self.require_control(control)
         return control.get_widget(parent=parent, display_service=display_service, on_change=on_change)
 
     def set_enabled(self, control: BaseOptoControl, enabled: bool) -> None:
@@ -103,7 +103,7 @@ class OptoControlService(QObject):
 
         Called when the row checkbox changes.
         '''
-        self._require_control(control)
+        self.require_control(control)
         control.enabled = enabled
         self.control_state_changed.emit(control, enabled)
         self.control_changed.emit(control)
@@ -125,10 +125,10 @@ class OptoControlService(QObject):
                 raise
         return rows
 
-    def _require_control(self, control: BaseOptoControl) -> None:
+    def require_control(self, control: BaseOptoControl) -> None:
         if control not in self.app_state.optocontrols:
             raise KeyError("opto-control is not registered")
 
     def mark_control_changed(self, control: BaseOptoControl) -> None:
-        self._require_control(control)
+        self.require_control(control)
         self.control_changed.emit(control)

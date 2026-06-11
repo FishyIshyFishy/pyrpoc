@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 import pyqtgraph as pg
@@ -34,10 +34,10 @@ class _ChannelTile:
 
 @display_registry.register("tiled_2d")
 class Tiled2DDisplay(BaseDisplay):
-    DISPLAY_KEY = "tiled_2d"
-    DISPLAY_NAME = "2D Tiled"
-    ACCEPTED_KINDS = [DataKind.INTENSITY_FRAME, DataKind.PARTIAL_FRAME]
-    DISPLAY_PARAMETERS = {}
+    display_key = "tiled_2d"
+    display_name = "2D Tiled"
+    accepted_kinds = [DataKind.INTENSITY_FRAME, DataKind.PARTIAL_FRAME]
+    display_parameters = {}
 
     def __init__(self, parent: QWidget | None = None):
         super().__init__(parent=parent)
@@ -78,7 +78,7 @@ class Tiled2DDisplay(BaseDisplay):
 
     def clear(self) -> None:
         self._data_chw = None
-        self._sync_channel_tiles(0)
+        self.sync_channel_tiles(0)
 
     def set_data(self, data_chw: np.ndarray) -> None:
         arr = np.asarray(data_chw, dtype=np.float32)
@@ -90,9 +90,9 @@ class Tiled2DDisplay(BaseDisplay):
             raise ValueError("Tiled2DDisplay received invalid spatial dimensions")
 
         self._data_chw = arr
-        self._sync_channel_tiles(arr.shape[0])
+        self.sync_channel_tiles(arr.shape[0])
         for idx in range(arr.shape[0]):
-            self._update_channel_image(idx, arr[idx], from_data=True)
+            self.update_channel_image(idx, arr[idx], from_data=True)
 
     def get_channel_names(self) -> list[str]:
         return [tile.name_edit.text().strip() or f"Input {i + 1}" for i, tile in enumerate(self._tiles)]
@@ -109,7 +109,7 @@ class Tiled2DDisplay(BaseDisplay):
         return RPOCImageInput(
             data=self._data_chw.astype(np.float32, copy=True),
             channel_labels=self.get_channel_names(),
-            source_id=self.DISPLAY_KEY,
+            source_id=self.display_key,
         )
 
     def get_normalized_data_3d(self) -> np.ndarray | None:
@@ -156,9 +156,9 @@ class Tiled2DDisplay(BaseDisplay):
                     }
                 )
             self._pending_channel_state = parsed
-            self._apply_pending_channel_state()
+            self.apply_pending_channel_state()
 
-    def _sync_channel_tiles(self, count: int) -> None:
+    def sync_channel_tiles(self, count: int) -> None:
         while len(self._tiles) > count:
             tile = self._tiles.pop()
             tile.root.setParent(None)
@@ -166,12 +166,12 @@ class Tiled2DDisplay(BaseDisplay):
 
         while len(self._tiles) < count:
             idx = len(self._tiles)
-            self._tiles.append(self._build_tile(idx))
+            self._tiles.append(self.build_tile(idx))
 
-        self._apply_pending_channel_state()
-        self._reflow_tiles()
+        self.apply_pending_channel_state()
+        self.reflow_tiles()
 
-    def _build_tile(self, index: int) -> _ChannelTile:
+    def build_tile(self, index: int) -> _ChannelTile:
         root = QWidget(self._content)
         root_layout = QVBoxLayout(root)
         root_layout.setContentsMargins(6, 6, 6, 6)
@@ -214,35 +214,35 @@ class Tiled2DDisplay(BaseDisplay):
             image_item=image_item,
             hist_widget=hist_widget,
         )
-        autoscale_box.toggled.connect(lambda checked, i=index: self._on_autoscale_toggled(i, checked))
-        hist_widget.item.sigLevelsChanged.connect(lambda _item, i=index: self._on_lut_levels_changed(i))
+        autoscale_box.toggled.connect(lambda checked, i=index: self.on_autoscale_toggled(i, checked))
+        hist_widget.item.sigLevelsChanged.connect(lambda _item, i=index: self.on_lut_levels_changed(i))
         return tile
 
-    def _on_autoscale_toggled(self, idx: int, checked: bool) -> None:
+    def on_autoscale_toggled(self, idx: int, checked: bool) -> None:
         if idx < 0 or idx >= len(self._tiles):
             return
         if checked and self._data_chw is not None and idx < self._data_chw.shape[0]:
-            self._update_channel_image(idx, self._data_chw[idx], from_data=True)
+            self.update_channel_image(idx, self._data_chw[idx], from_data=True)
         elif self._data_chw is not None and idx < self._data_chw.shape[0]:
             tile = self._tiles[idx]
             tile.image_item.setImage(self._data_chw[idx], autoLevels=False)
         self.request_persist()
 
-    def _on_lut_levels_changed(self, idx: int) -> None:
+    def on_lut_levels_changed(self, idx: int) -> None:
         if self._suspend_lut_signal:
             return
         if idx < 0 or idx >= len(self._tiles):
             return
         tile = self._tiles[idx]
-        min_val, max_val = tile.hist_widget.item.getLevels()
+        min_val, max_val = cast(tuple[float, float], tile.hist_widget.item.getLevels())
         if max_val <= min_val:
             max_val = min_val + 1e-12
             tile.hist_widget.item.setLevels(min_val, max_val)
-        tile.min_val = float(min_val)
-        tile.max_val = float(max_val)
+        tile.min_val = min_val
+        tile.max_val = max_val
         self.request_persist()
 
-    def _update_channel_image(self, idx: int, channel: np.ndarray, from_data: bool) -> None:
+    def update_channel_image(self, idx: int, channel: np.ndarray, from_data: bool) -> None:
         tile = self._tiles[idx]
         tile.image_item.setImage(channel, autoLevels=False)
 
@@ -251,12 +251,12 @@ class Tiled2DDisplay(BaseDisplay):
             max_val = float(np.max(channel))
             if max_val <= min_val:
                 max_val = min_val + 1e-12
-            self._apply_levels(tile, min_val, max_val)
+            self.apply_levels(tile, min_val, max_val)
         else:
-            min_val, max_val = tile.hist_widget.item.getLevels()
-            self._apply_levels(tile, min_val, max_val)
+            min_val, max_val = cast(tuple[float, float], tile.hist_widget.item.getLevels())
+            self.apply_levels(tile, min_val, max_val)
 
-    def _apply_levels(self, tile: _ChannelTile, min_val: float, max_val: float) -> None:
+    def apply_levels(self, tile: _ChannelTile, min_val: float, max_val: float) -> None:
         tile.min_val = float(min_val)
         tile.max_val = float(max_val)
         tile.image_item.setLevels((tile.min_val, tile.max_val))
@@ -266,7 +266,7 @@ class Tiled2DDisplay(BaseDisplay):
         finally:
             self._suspend_lut_signal = False
 
-    def _apply_pending_channel_state(self) -> None:
+    def apply_pending_channel_state(self) -> None:
         if not self._pending_channel_state or not self._tiles:
             return
         for row in self._pending_channel_state:
@@ -286,14 +286,13 @@ class Tiled2DDisplay(BaseDisplay):
             tile.autoscale_box.blockSignals(False)
             if max_val <= min_val:
                 max_val = min_val + 1e-12
-            self._apply_levels(tile, min_val, max_val)
+            self.apply_levels(tile, min_val, max_val)
         # Apply persisted state once; live user changes during acquisition
         # should not be overwritten each frame.
         self._pending_channel_state = []
 
-    def _reflow_tiles(self) -> None:
-        while self._grid.count():
-            item = self._grid.takeAt(0)
+    def reflow_tiles(self) -> None:
+        while (item := self._grid.takeAt(0)) is not None:
             widget = item.widget()
             if widget is not None:
                 widget.setParent(self._content)

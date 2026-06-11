@@ -40,6 +40,7 @@ class MaskOptoControlWidget(BaseOptoControlWidget):
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(control, on_change=on_change, parent=parent)
+        self.control: MaskOptoControl = control
         self._display_service = display_service
         self._editor: MaskEditorWidget | None = None
         self.setObjectName("maskOptoControlBody")
@@ -83,16 +84,16 @@ class MaskOptoControlWidget(BaseOptoControlWidget):
         root.addWidget(self.editor_container)
         root.addStretch(1)
 
-        self.port_spin.valueChanged.connect(self._on_port_changed)
-        self.line_spin.valueChanged.connect(self._on_line_changed)
-        self.path_edit.textChanged.connect(self._on_path_changed)
-        self.load_mask_btn.clicked.connect(self._on_load_mask_clicked)
-        self.create_mask_btn.clicked.connect(self._on_create_mask_clicked)
-        self.source_combo.currentIndexChanged.connect(self._on_source_changed)
+        self.port_spin.valueChanged.connect(self.on_port_changed)
+        self.line_spin.valueChanged.connect(self.on_line_changed)
+        self.path_edit.textChanged.connect(self.on_path_changed)
+        self.load_mask_btn.clicked.connect(self.on_load_mask_clicked)
+        self.create_mask_btn.clicked.connect(self.on_create_mask_clicked)
+        self.source_combo.currentIndexChanged.connect(self.on_source_changed)
 
         self._display_signals_connected = False
         self.set_display_service(display_service)
-        self._refresh_display_sources()
+        self.refresh_display_sources()
 
     def refresh_from_model(self) -> None:
         self.port_spin.blockSignals(True)
@@ -105,22 +106,22 @@ class MaskOptoControlWidget(BaseOptoControlWidget):
         self.line_spin.blockSignals(False)
         self.path_edit.blockSignals(False)
 
-    def _emit_change(self) -> None:
+    def emit_change(self) -> None:
         self.request_persist()
 
-    def _on_port_changed(self, value: int) -> None:
+    def on_port_changed(self, value: int) -> None:
         self.control.daq_port = int(value)
-        self._emit_change()
+        self.emit_change()
 
-    def _on_line_changed(self, value: int) -> None:
+    def on_line_changed(self, value: int) -> None:
         self.control.daq_line = int(value)
-        self._emit_change()
+        self.emit_change()
 
-    def _on_path_changed(self, value: str) -> None:
+    def on_path_changed(self, value: str) -> None:
         self.control.mask_path = value.strip()
-        self._emit_change()
+        self.emit_change()
 
-    def _on_load_mask_clicked(self) -> None:
+    def on_load_mask_clicked(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
             self,
             "Select Mask File",
@@ -135,29 +136,29 @@ class MaskOptoControlWidget(BaseOptoControlWidget):
             return
         self.path_edit.setText(path)
         self.control.mask_data = image.astype(np.uint8, copy=True)
-        self._emit_change()
+        self.emit_change()
 
-    def _on_create_mask_clicked(self) -> None:
-        self._ensure_editor()
-        self._set_editor_visible(True)
-        self._refresh_display_sources()
-        self._load_selected_display_data(warn=False)
+    def on_create_mask_clicked(self) -> None:
+        self.ensure_editor()
+        self.set_editor_visible(True)
+        self.refresh_display_sources()
+        self.load_selected_display_data(warn=False)
 
-    def _ensure_editor(self) -> None:
+    def ensure_editor(self) -> None:
         if self._editor is not None:
             return
         from pyrpoc.gui.main_widgets.opto_control_mgr.mask_editor import MaskEditorWidget
 
         self._editor = MaskEditorWidget(parent=self.editor_container)
-        self._editor.create_mask_requested.connect(self._on_editor_create_mask)
-        self._editor.mask_saved.connect(self._on_editor_mask_saved)
-        self._editor.cancel_requested.connect(self._on_editor_cancel)
+        self._editor.create_mask_requested.connect(self.on_editor_create_mask)
+        self._editor.mask_saved.connect(self.on_editor_mask_saved)
+        self._editor.cancel_requested.connect(self.on_editor_cancel)
         self.editor_body_layout.addWidget(self._editor)
 
-    def _on_editor_cancel(self) -> None:
-        self._set_editor_visible(False)
+    def on_editor_cancel(self) -> None:
+        self.set_editor_visible(False)
 
-    def _on_editor_create_mask(self, mask: object) -> None:
+    def on_editor_create_mask(self, mask: object) -> None:
         arr = np.asarray(mask, dtype=np.uint8)
         if arr.ndim != 2:
             QMessageBox.critical(self, "Mask Error", "Generated mask must be a 2D array.")
@@ -170,10 +171,10 @@ class MaskOptoControlWidget(BaseOptoControlWidget):
             return
         self.path_edit.setText(temp_path)
         self.control.mask_data = arr.copy()
-        self._set_editor_visible(False)
-        self._emit_change()
+        self.set_editor_visible(False)
+        self.emit_change()
 
-    def _on_editor_mask_saved(self, path: object, mask: object) -> None:
+    def on_editor_mask_saved(self, path: object, mask: object) -> None:
         path_str = str(path).strip()
         if not path_str:
             return
@@ -182,19 +183,19 @@ class MaskOptoControlWidget(BaseOptoControlWidget):
             return
         self.path_edit.setText(path_str)
         self.control.mask_data = arr.copy()
-        self._set_editor_visible(False)
-        self._emit_change()
+        self.set_editor_visible(False)
+        self.emit_change()
 
-    def _set_editor_visible(self, visible: bool) -> None:
+    def set_editor_visible(self, visible: bool) -> None:
         self.editor_container.setVisible(visible)
         self.create_mask_btn.setEnabled(not visible)
 
-    def _on_display_inventory_changed(self, _state: object) -> None:
+    def on_display_inventory_changed(self, _state: object) -> None:
         if not self.editor_container.isVisible():
             return
-        self._refresh_display_sources()
+        self.refresh_display_sources()
 
-    def _refresh_display_sources(self) -> None:
+    def refresh_display_sources(self) -> None:
         current_display_id = self.source_combo.currentData()
         self.source_combo.blockSignals(True)
         self.source_combo.clear()
@@ -213,10 +214,10 @@ class MaskOptoControlWidget(BaseOptoControlWidget):
                 self.source_combo.setCurrentIndex(idx)
         self.source_combo.blockSignals(False)
 
-    def _on_source_changed(self, _index: int) -> None:
-        self._load_selected_display_data(warn=True)
+    def on_source_changed(self, _index: int) -> None:
+        self.load_selected_display_data(warn=True)
 
-    def _load_selected_display_data(self, warn: bool) -> None:
+    def load_selected_display_data(self, warn: bool) -> None:
         if self._editor is None or self._display_service is None:
             return
         display_id = self.source_combo.currentData()
@@ -257,16 +258,16 @@ class MaskOptoControlWidget(BaseOptoControlWidget):
     def set_display_service(self, display_service: DisplayService | None) -> None:
         self._display_service = display_service
         if self._display_service is not None and not self._display_signals_connected:
-            self._display_service.display_added.connect(self._on_display_inventory_changed)
-            self._display_service.display_removed.connect(self._on_display_inventory_changed)
-            self._display_service.display_changed.connect(self._on_display_inventory_changed)
+            self._display_service.display_added.connect(self.on_display_inventory_changed)
+            self._display_service.display_removed.connect(self.on_display_inventory_changed)
+            self._display_service.display_changed.connect(self.on_display_inventory_changed)
             self._display_signals_connected = True
 
 
 @opto_control_registry.register("mask")
 class MaskOptoControl(BaseOptoControl):
-    OPTOCONTROL_KEY = "mask"
-    DISPLAY_NAME = "Mask"
+    optocontrol_key = "mask"
+    display_name = "Mask"
 
     def __init__(
         self,
@@ -278,13 +279,13 @@ class MaskOptoControl(BaseOptoControl):
         connected: bool = False,
     ):
         super().__init__(
-            alias=alias or self.OPTOCONTROL_KEY,
+            alias=alias or self.optocontrol_key,
             user_label=user_label,
             enabled=enabled,
             instance_id=instance_id,
             connected=connected,
         )
-        self.widget: QWidget | None = None
+        self.widget: MaskOptoControlWidget | None = None
         self.daq_port: int = 0
         self.daq_line: int = 0
         self.mask_path: str = ""
@@ -296,26 +297,27 @@ class MaskOptoControl(BaseOptoControl):
         on_change: Callable[[], None] | None = None,
         display_service: Any | None = None,
     ) -> BaseOptoControlWidget:
-        if self.widget is None:
-            self.widget = MaskOptoControlWidget(
+        widget = self.widget
+        if widget is None:
+            widget = MaskOptoControlWidget(
                 self,
                 on_change=on_change,
                 display_service=display_service,
                 parent=parent,
             )
+            self.widget = widget
         elif parent is not None:
-            self.widget.setParent(parent)
-        if on_change is not None and isinstance(self.widget, BaseOptoControlWidget):
-            self.widget.on_change = on_change
-        if isinstance(self.widget, MaskOptoControlWidget):
-            if display_service is not None:
-                self.widget.set_display_service(display_service)
-            self.widget.refresh_from_model()
-        return self.widget
+            widget.setParent(parent)
+        if on_change is not None:
+            widget.on_change = on_change
+        if display_service is not None:
+            widget.set_display_service(display_service)
+        widget.refresh_from_model()
+        return widget
 
     def get_context(self) -> MaskContext:
         self.context = MaskContext(
-            optocontrol_key=self.OPTOCONTROL_KEY,
+            optocontrol_key=self.optocontrol_key,
             alias=self.alias,
             mask=self.mask_data,
             daq_port=int(self.daq_port),
@@ -323,14 +325,14 @@ class MaskOptoControl(BaseOptoControl):
         )
         return self.context
 
-    def export_persistence_state(self) -> dict[str, object]:
+    def export_persistence_state(self) -> dict[str, Any]:
         return {
             "daq_port": int(self.daq_port),
             "daq_line": int(self.daq_line),
             "mask_path": str(self.mask_path or "").strip(),
         }
 
-    def import_persistence_state(self, state: dict[str, object]) -> None:
+    def import_persistence_state(self, state: dict[str, Any]) -> None:
         self.daq_port = int(state.get("daq_port", self.daq_port))
         self.daq_line = int(state.get("daq_line", self.daq_line))
         self.mask_path = str(state.get("mask_path", self.mask_path) or "").strip()

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections.abc import Callable
-from dataclasses import asdict
+from dataclasses import asdict, dataclass
 from pathlib import Path
 import threading
 from typing import Any
@@ -16,43 +16,42 @@ from pyrpoc.instruments.base_instrument import BaseInstrument
 from pyrpoc.optocontrols.base_optocontrol import BaseOptoControl
 
 
+@dataclass(frozen=True)
 class AcquisitionParameters:
-    """Base class for all modality parameter dataclasses.
+    """Base for frozen modality parameter dataclasses.
 
-    Subclasses should be frozen dataclasses so that parameter state is
-    immutable after configure() assigns them.
-
-    Example:
-        @dataclass(frozen=True)
-        class ConfocalParameters(AcquisitionParameters):
-            x_pixels: int
-            ...
+    Holds the acquisition fields every modality shares; subclasses add their
+    own scan/DAQ-specific fields.
     """
+
+    save_enabled: bool
+    save_path: str
+    num_frames: int
 
 
 class BaseModality(ABC):
-    MODALITY_KEY: str = "base_modality"
-    DISPLAY_NAME: str = "Base Modality"
-    PARAMETERS: ParameterGroups = {}
-    REQUIRED_INSTRUMENTS: list[type[BaseInstrument]] = []
-    OPTIONAL_INSTRUMENTS: list[type[BaseInstrument]] = []
-    ALLOWED_OPTOCONTROLS: list[type[BaseOptoControl]] = []
-    EMITTED_KINDS: list[DataKind] = []
-    ALLOWED_DISPLAYS: list[str] = []
+    modality_key: str = "base_modality"
+    display_name: str = "Base Modality"
+    parameter_groups: ParameterGroups = {}
+    required_instruments: list[type[BaseInstrument]] = []
+    optional_instruments: list[type[BaseInstrument]] = []
+    allowed_optocontrols: list[type[BaseOptoControl]] = []
+    emitted_kinds: list[DataKind] = []
+    allowed_displays: list[str] = []
 
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
 
-        required = getattr(cls, "REQUIRED_INSTRUMENTS", [])
-        optional = getattr(cls, "OPTIONAL_INSTRUMENTS", [])
-        allowed_opto = getattr(cls, "ALLOWED_OPTOCONTROLS", [])
+        required = getattr(cls, "required_instruments", [])
+        optional = getattr(cls, "optional_instruments", [])
+        allowed_opto = getattr(cls, "allowed_optocontrols", [])
 
         if not isinstance(required, list):
-            raise TypeError("REQUIRED_INSTRUMENTS must be a list")
+            raise TypeError("required_instruments must be a list")
         if not isinstance(optional, list):
-            raise TypeError("OPTIONAL_INSTRUMENTS must be a list")
+            raise TypeError("optional_instruments must be a list")
         if not isinstance(allowed_opto, list):
-            raise TypeError("ALLOWED_OPTOCONTROLS must be a list")
+            raise TypeError("allowed_optocontrols must be a list")
 
         for instrument_cls in [*required, *optional]:
             if not isinstance(instrument_cls, type) or not issubclass(instrument_cls, BaseInstrument):
@@ -62,14 +61,14 @@ class BaseModality(ABC):
         for optocontrol_cls in allowed_opto:
             if not isinstance(optocontrol_cls, type) or not issubclass(optocontrol_cls, BaseOptoControl):
                 raise TypeError(
-                    f"{cls.__name__} ALLOWED_OPTOCONTROLS must contain BaseOptoControl subclasses"
+                    f"{cls.__name__} allowed_optocontrols must contain BaseOptoControl subclasses"
                 )
 
-        validate_parameter_groups(getattr(cls, "PARAMETERS", {}))
+        validate_parameter_groups(getattr(cls, "parameter_groups", {}))
 
-        emitted_kinds = getattr(cls, "EMITTED_KINDS", [])
+        emitted_kinds = getattr(cls, "emitted_kinds", [])
         if not isinstance(emitted_kinds, list):
-            raise TypeError("EMITTED_KINDS must be a list")
+            raise TypeError("emitted_kinds must be a list")
 
     def __init__(self):
         self._running = False
@@ -87,7 +86,7 @@ class BaseModality(ABC):
         self._run_started_at = ""
         self._run_frame_limit: int | None = 1
 
-    def _emit_warning(self, message: str) -> None:
+    def emit_warning(self, message: str) -> None:
         """Emit a non-fatal warning to the user via the service layer."""
         if self._warn_callback is not None:
             self._warn_callback(message)
@@ -95,14 +94,14 @@ class BaseModality(ABC):
     @classmethod
     def get_contract(cls) -> dict[str, Any]:
         return {
-            "modality_key": cls.MODALITY_KEY,
-            "display_name": cls.DISPLAY_NAME,
-            "parameters": cls.PARAMETERS,
-            "required_instruments": cls.REQUIRED_INSTRUMENTS,
-            "optional_instruments": cls.OPTIONAL_INSTRUMENTS,
-            "allowed_optocontrols": cls.ALLOWED_OPTOCONTROLS,
-            "emitted_kinds": cls.EMITTED_KINDS,
-            "allowed_displays": cls.ALLOWED_DISPLAYS,
+            "modality_key": cls.modality_key,
+            "display_name": cls.display_name,
+            "parameters": cls.parameter_groups,
+            "required_instruments": cls.required_instruments,
+            "optional_instruments": cls.optional_instruments,
+            "allowed_optocontrols": cls.allowed_optocontrols,
+            "emitted_kinds": cls.emitted_kinds,
+            "allowed_displays": cls.allowed_displays,
         }
 
     # ------------------------------------------------------------------ #
@@ -191,6 +190,8 @@ class BaseModality(ABC):
         pass
 
     def get_frame_limit(self) -> int | None:
+        if self.parameters is None:
+            raise ValueError("modality must be configured before acquisition")
         limit = int(self.parameters.num_frames)
         if limit < 1:
             raise ValueError("num_frames must be >= 1")
@@ -203,20 +204,20 @@ class BaseModality(ABC):
     # Shared frame utilities                                              #
     # ------------------------------------------------------------------ #
 
-    def _split_channels(self, data: np.ndarray) -> list[np.ndarray]:
+    def split_channels(self, data: np.ndarray) -> list[np.ndarray]:
         if data.ndim == 2:
             return [data]
         if data.ndim == 3:
             return [data[index] for index in range(data.shape[0])]
         raise ValueError(f"unsupported frame dimensions {data.ndim}")
 
-    def _resolve_channel_labels(self, channel_count: int) -> list[str]:
+    def resolve_channel_labels(self, channel_count: int) -> list[str]:
         active_labels = self.get_active_channel_labels()
         if active_labels and len(active_labels) == channel_count:
             return list(active_labels)
         return [f"channel_{index}" for index in range(channel_count)]
 
-    def _parameters_as_dict(self) -> dict[str, Any]:
+    def parameters_as_dict(self) -> dict[str, Any]:
         """Serialize self.parameters to a plain dict for metadata/storage."""
         return asdict(self.parameters) if self.parameters is not None else {}
 
@@ -226,7 +227,7 @@ class BaseModality(ABC):
 
     def acquire_continuous(
         self,
-        on_frame: Callable[[np.ndarray], None],
+        on_frame: Callable[[AcquiredData], None],
         *,
         frame_limit: int | None = None,
         should_stop: Callable[[], bool],
@@ -241,15 +242,15 @@ class BaseModality(ABC):
         works for any modality that implements acquire_once().
         """
         thread = threading.Thread(
-            target=self._build_continuous_worker(on_frame, frame_limit, should_stop, on_error, on_finished),
+            target=self.build_continuous_worker(on_frame, frame_limit, should_stop, on_error, on_finished),
             daemon=True,
         )
         thread.start()
         return thread
 
-    def _build_continuous_worker(
+    def build_continuous_worker(
         self,
-        on_frame: Callable[[np.ndarray], None],
+        on_frame: Callable[[AcquiredData], None],
         frame_limit: int | None,
         should_stop: Callable[[], bool],
         on_error: Callable[[Exception], None],

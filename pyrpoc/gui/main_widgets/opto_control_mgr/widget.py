@@ -30,31 +30,31 @@ class OptoControlManagerWidget(QWidget):
         self.add_btn = self.ui.add_btn
         self.instances_layout = self.ui.instances_layout
 
-        self._wire_signals()
-        self._refresh_available()
-        self._refresh_instances()
+        self.wire_signals()
+        self.refresh_available()
+        self.refresh_instances()
 
-    def _wire_signals(self) -> None:
-        self.add_btn.clicked.connect(self._on_add_clicked)
-        self.opto_control_service.inventory_changed.connect(self._refresh_instances)
-        self.modality_service.modality_selected.connect(self._on_modality_selected)
+    def wire_signals(self) -> None:
+        self.add_btn.clicked.connect(self.on_add_clicked)
+        self.opto_control_service.inventory_changed.connect(self.refresh_instances)
+        self.modality_service.modality_selected.connect(self.on_modality_selected)
 
-    def _selected_type_key(self) -> str | None:
+    def selected_type_key(self) -> str | None:
         value = self.type_combo.currentData()
         return str(value) if value else None
 
-    def _refresh_available(self) -> None:
+    def refresh_available(self) -> None:
         handlers.refresh_available(self)
 
-    def _refresh_instances(self) -> None:
+    def refresh_instances(self) -> None:
         '''
         Service inventory changes should only diff cards.
         This preserves expanded card bodies and avoids stale QObject deref on add/remove.
         '''
         handlers.refresh_instances(self)
 
-    def _on_add_clicked(self) -> None:
+    def on_add_clicked(self) -> None:
         handlers.on_add_clicked(self)
 
-    def _on_modality_selected(self, key: str) -> None:
+    def on_modality_selected(self, key: str) -> None:
         handlers.on_modality_selected(self, key)

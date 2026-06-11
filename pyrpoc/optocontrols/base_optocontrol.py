@@ -41,10 +41,10 @@ class BaseOptoControlWidget(QWidget):
 
 
 class BaseOptoControl(ABC):
-    OPTOCONTROL_KEY: str = "base_optocontrol"
-    DISPLAY_NAME: str = "Base Opto-Control"
-    PERSISTENCE_FIELDS: tuple[str, ...] | None = None
-    PERSISTENCE_EXCLUDE_FIELDS: tuple[str, ...] = (
+    optocontrol_key: str = "base_optocontrol"
+    display_name: str = "Base Opto-Control"
+    persistence_fields: tuple[str, ...] | None = None
+    persistence_exclude_fields: tuple[str, ...] = (
         "alias",
         "connected",
         "enabled",
@@ -63,7 +63,7 @@ class BaseOptoControl(ABC):
         instance_id: str | None = None,
         connected: bool = False,
     ):
-        self.alias = alias or self.OPTOCONTROL_KEY
+        self.alias = alias or self.optocontrol_key
         self.instance_id = instance_id or make_instance_id(self.alias)
         self.user_label = user_label
         self.enabled = enabled
@@ -79,8 +79,8 @@ class BaseOptoControl(ABC):
     @classmethod
     def get_contract(cls) -> dict[str, Any]:
         return {
-            "optocontrol_key": cls.OPTOCONTROL_KEY,
-            "display_name": cls.DISPLAY_NAME,
+            "optocontrol_key": cls.optocontrol_key,
+            "display_name": cls.display_name,
         }
 
     @abstractmethod
@@ -101,14 +101,14 @@ class BaseOptoControl(ABC):
 
         The manager displays this in the compact control card and updates it after edits.
         """
-        return self.user_label or self.DISPLAY_NAME
+        return self.user_label or self.display_name
 
     def get_context(self) -> BaseOptoControlContext:
         """Build the control-specific acquisition context for the current run.
 
         Subclasses override this to pass modality-facing, acquisition-only state.
         """
-        return BaseOptoControlContext(optocontrol_key=self.OPTOCONTROL_KEY, alias=self.alias)
+        return BaseOptoControlContext(optocontrol_key=self.optocontrol_key, alias=self.alias)
 
     def cleanup(self) -> None:
         """Release widget/state resources before removal.
@@ -129,14 +129,14 @@ class BaseOptoControl(ABC):
     def export_persistence_state(self) -> dict[str, Any]:
         return export_object_state(
             self,
-            include_fields=self.PERSISTENCE_FIELDS,
-            exclude_fields=self.PERSISTENCE_EXCLUDE_FIELDS,
+            include_fields=self.persistence_fields,
+            exclude_fields=self.persistence_exclude_fields,
         )
 
     def import_persistence_state(self, state: dict[str, Any]) -> None:
         import_object_state(
             self,
             state,
-            include_fields=self.PERSISTENCE_FIELDS,
-            exclude_fields=self.PERSISTENCE_EXCLUDE_FIELDS,
+            include_fields=self.persistence_fields,
+            exclude_fields=self.persistence_exclude_fields,
         )

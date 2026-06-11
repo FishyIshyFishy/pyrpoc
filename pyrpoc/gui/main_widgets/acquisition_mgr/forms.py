@@ -10,7 +10,7 @@ from pyrpoc.gui.main_widgets.acquisition_mgr.ui import AcquisitionManagerUI
 from pyrpoc.gui.main_widgets.instance_card import BaseCardWidget
 
 
-def _build_section_summary(
+def build_section_summary(
     params: list[BaseParameter],
     widget_map: dict[str, tuple[BaseParameter, QWidget]],
 ) -> str:
@@ -27,8 +27,7 @@ def _build_section_summary(
 def clear_param_form(ui: AcquisitionManagerUI, state: AcquisitionManagerState) -> None:
     state.param_widgets.clear()
     state.param_defs.clear()
-    while ui.params_layout.count():
-        item = ui.params_layout.takeAt(0)
+    while (item := ui.params_layout.takeAt(0)) is not None:
         widget = item.widget()
         if widget is not None:
             widget.deleteLater()
@@ -72,20 +71,20 @@ def build_param_form(
         card.set_body_widget(form_widget)
 
         # Set initial summary and wire it to update on any value change
-        def _update_summary(c=card, params=parameters) -> None:
-            c.set_description(_build_section_summary(params, state.param_widgets))
+        def update_summary(c=card, params=parameters) -> None:
+            c.set_description(build_section_summary(params, state.param_widgets))
 
-        _update_summary()
+        update_summary()
 
         for param in parameters:
             _, widget = state.param_widgets[param.label]
 
-            def _on_param_change(update=_update_summary, external=on_change) -> None:
+            def on_param_change(update=update_summary, external=on_change) -> None:
                 update()
                 if external is not None:
                     external()
 
-            param.connect_changed(widget, _on_param_change)
+            param.connect_changed(widget, on_param_change)
 
         ui.params_layout.addWidget(card)
 

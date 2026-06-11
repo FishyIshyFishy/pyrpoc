@@ -39,7 +39,7 @@ def collect_timetagger_data(tagger, config: FLIMConfig, n_frames: int):
     stream = TimeTagger.TimeTagStream(
         tagger=tagger,
         n_max_events=config.stream_buffer_size,
-        channels=[config.laser_ch, config.detector_ch, config.pixel_ch]
+        channels=[config.laser_ch, config.detector_ch, config.pixel_ch],  # pyright: ignore[reportArgumentType]
     )
     
     all_frames_data = []

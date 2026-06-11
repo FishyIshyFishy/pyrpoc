@@ -26,36 +26,36 @@ class DisplayManagerWidget(QWidget):
         self.add_btn = self.ui.add_btn
         self.instances_layout = self.ui.instances_layout
 
-        self._wire_signals()
-        self._refresh_available()
-        self._refresh_instances()
+        self.wire_signals()
+        self.refresh_available()
+        self.refresh_instances()
 
-    def _wire_signals(self) -> None:
-        self.add_btn.clicked.connect(self._on_add_clicked)
+    def wire_signals(self) -> None:
+        self.add_btn.clicked.connect(self.on_add_clicked)
 
-        self.display_service.display_added.connect(lambda _s: self._refresh_instances())
-        self.display_service.display_removed.connect(lambda _s: self._refresh_instances())
-        self.display_service.display_changed.connect(lambda _s: self._refresh_instances())
-        self.display_service.display_error.connect(self._on_display_error)
+        self.display_service.display_added.connect(lambda _s: self.refresh_instances())
+        self.display_service.display_removed.connect(lambda _s: self.refresh_instances())
+        self.display_service.display_changed.connect(lambda _s: self.refresh_instances())
+        self.display_service.display_error.connect(self.on_display_error)
 
-        self.modality_service.modality_selected.connect(self._on_modality_selected)
+        self.modality_service.modality_selected.connect(self.on_modality_selected)
 
-    def _refresh_available(self) -> None:
+    def refresh_available(self) -> None:
         handlers.refresh_available(self)
 
-    def _refresh_instances(self) -> None:
+    def refresh_instances(self) -> None:
         handlers.refresh_instances(self)
 
-    def _on_add_clicked(self) -> None:
+    def on_add_clicked(self) -> None:
         handlers.on_add_clicked(self)
 
-    def _on_display_error(self, state: object, message: str) -> None:
+    def on_display_error(self, state: object, message: str) -> None:
         handlers.on_display_error(self, state, message)
 
-    def _on_modality_selected(self, key: str) -> None:
+    def on_modality_selected(self, key: str) -> None:
         handlers.on_modality_selected(self, key)
 
-    def _selected_display_key(self) -> str:
+    def selected_display_key(self) -> str:
         data = self.display_combo.currentData()
         if isinstance(data, str):
             return data

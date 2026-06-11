@@ -12,7 +12,7 @@ ThemeMode = Literal['dark', 'light']
 _SETTINGS_ORG = 'pyrpoc'
 _SETTINGS_APP = 'pyrpoc'
 _SETTINGS_KEY_THEME_MODE = 'ui/theme_mode'
-AVAILABLE_BREEZE_THEMES = [
+available_breeze_themes = [
     'dark-blue', 
     'dark-blue-alt', 
     'dark-cyan', 
@@ -42,26 +42,26 @@ AVAILABLE_BREEZE_THEMES = [
 
 
 class ThemeController:
-    AVAILABLE_MODES: tuple[ThemeMode, ...] = ('dark', 'light')
+    available_modes: tuple[ThemeMode, ...] = ('dark', 'light')
 
     def __init__(self, app: QApplication):
         self.app = app
         self.settings = QSettings(_SETTINGS_ORG, _SETTINGS_APP)
 
     def get_available_modes(self) -> list[ThemeMode]:
-        return list(self.AVAILABLE_MODES)
+        return list(self.available_modes)
 
     def get_saved_mode(self) -> ThemeMode:
         raw = self.settings.value(_SETTINGS_KEY_THEME_MODE, 'dark')
         mode = str(raw).strip().lower()
-        if mode in self.AVAILABLE_MODES:
+        if mode in self.available_modes:
             return mode
         return 'dark'
 
     def apply_saved_or_default(self) -> ThemeMode:
         return self.apply(self.get_saved_mode(), persist=False)
 
-    def _load_breeze_stylesheet(self, mode: ThemeMode) -> str:
+    def load_breeze_stylesheet(self, mode: ThemeMode) -> str:
         qss_path = ':/dark-pink/stylesheet.qss'
 
         file = QFile(qss_path)
@@ -74,13 +74,13 @@ class ThemeController:
 
     def apply(self, mode: str, persist: bool = True) -> ThemeMode:
         normalized = mode.strip().lower()
-        if normalized not in self.AVAILABLE_MODES:
+        if normalized not in self.available_modes:
             normalized = 'dark'
         selected_mode: ThemeMode = normalized
 
         if persist:
             self.settings.setValue(_SETTINGS_KEY_THEME_MODE, selected_mode)
 
-        base_qss = self._load_breeze_stylesheet(selected_mode)
+        base_qss = self.load_breeze_stylesheet(selected_mode)
         self.app.setStyleSheet(base_qss)
         return selected_mode

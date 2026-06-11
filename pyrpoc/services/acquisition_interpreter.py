@@ -29,23 +29,23 @@ class AcquisitionInterpreter(QObject):
         self._modality_service = modality_service
         self._app_state = app_state
 
-        modality_service.acq_started.connect(self._on_acq_started)
-        modality_service.acq_stopped.connect(self._on_acq_stopped)
+        modality_service.acq_started.connect(self.on_acq_started)
+        modality_service.acq_stopped.connect(self.on_acq_stopped)
 
-    def _on_acq_started(self) -> None:
-        self._modality_service.data_emitted.connect(self._route)
+    def on_acq_started(self) -> None:
+        self._modality_service.data_emitted.connect(self.route)
 
-    def _on_acq_stopped(self) -> None:
+    def on_acq_stopped(self) -> None:
         try:
-            self._modality_service.data_emitted.disconnect(self._route)
+            self._modality_service.data_emitted.disconnect(self.route)
         except RuntimeError:
             pass  # already disconnected
 
-    def _route(self, acquired: AcquiredData) -> None:
+    def route(self, acquired: AcquiredData) -> None:
         for display in self._app_state.displays:
             if not display.attached or not display.docked_visible:
                 continue
-            if acquired.kind in display.ACCEPTED_KINDS:
+            if acquired.kind in display.accepted_kinds:
                 try:
                     display.render(acquired)
                 except Exception as exc:

@@ -34,3 +34,29 @@ include = ["pyrpoc*"]
 [build-system]
 requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
+
+[dependency-groups]
+dev = [
+  "pytest",
+  "pytest-cov",
+  "pyright",
+]
+
+[tool.pyright]
+include = ["pyrpoc"]
+exclude = [
+  "pyrpoc/instruments/swabian_demos",
+  "rpoc_env",
+  "dist",
+  "build",
+  "**/__pycache__",
+  "**/*.egg-info",
+]
+venvPath = "."
+venv = "rpoc_env"
+pythonVersion = "3.13"
+typeCheckingMode = "basic"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

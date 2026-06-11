@@ -31,7 +31,7 @@ def generate_toy_confocal_frame(
     slow_amp = max(float(slow_axis_amplitude), 1e-6)
 
     for channel_index, ai_channel in enumerate(active_channels):
-        channel = _build_toy_channel(
+        channel = build_toy_channel(
             x_pixels=x_pixels,
             y_pixels=y_pixels,
             frame_index=frame_index,
@@ -44,7 +44,7 @@ def generate_toy_confocal_frame(
         )
         frame[channel_index] = channel
 
-    _apply_masks(frame, mask_contexts)
+    apply_masks(frame, mask_contexts)
     return frame
 
 
@@ -99,14 +99,14 @@ def generate_toy_split_confocal_frame(
     else:
         second_portion = np.zeros_like(first_portion)
 
-    first_portion = _overlay_split_label(first_portion, "1")
-    second_portion = _overlay_split_label(second_portion, "2")
+    first_portion = overlay_split_label(first_portion, "1")
+    second_portion = overlay_split_label(second_portion, "2")
 
     split_frame = np.stack((first_portion, second_portion), axis=1).reshape(frame.shape[0] * 2, y_pixels, x_pixels)
     return split_frame.astype(np.float32, copy=False), raw.astype(np.float32, copy=False)
 
 
-def _build_toy_channel(
+def build_toy_channel(
     *,
     x_pixels: int,
     y_pixels: int,
@@ -173,7 +173,7 @@ def _build_toy_channel(
     return channel.astype(np.float32, copy=False)
 
 
-def _apply_masks(
+def apply_masks(
     frame: np.ndarray,
     mask_contexts: list[MaskContext],
 ) -> None:
@@ -198,7 +198,7 @@ def _apply_masks(
             frame[idx, active] += boost
 
 
-def _overlay_split_label(image: np.ndarray, label: str) -> np.ndarray:
+def overlay_split_label(image: np.ndarray, label: str) -> np.ndarray:
     if image.ndim != 2:
         return image
 

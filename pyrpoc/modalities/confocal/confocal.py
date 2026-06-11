@@ -16,19 +16,19 @@ from ..helpers.toy_data import generate_toy_confocal_frame
 from ..base_modality import BaseModality
 from ..mod_registry import modality_registry
 from . import storage
-from .parameters import PARAMETERS, ConfocalParameters
+from .parameters import parameter_groups, ConfocalParameters
 
 
 @modality_registry.register("confocal")
 class ConfocalModality(BaseModality):
-    MODALITY_KEY = "confocal"
-    DISPLAY_NAME = "Confocal"
-    PARAMETERS = PARAMETERS
-    REQUIRED_INSTRUMENTS = []
-    OPTIONAL_INSTRUMENTS = []
-    ALLOWED_OPTOCONTROLS = [MaskOptoControl]
-    EMITTED_KINDS = [DataKind.INTENSITY_FRAME]
-    ALLOWED_DISPLAYS = ["streamed_image", "tiled_2d", "multichan_overlay"]
+    modality_key = "confocal"
+    display_name = "Confocal"
+    parameter_groups = parameter_groups
+    required_instruments = []
+    optional_instruments = []
+    allowed_optocontrols = [MaskOptoControl]
+    emitted_kinds = [DataKind.INTENSITY_FRAME]
+    allowed_displays = ["streamed_image", "tiled_2d", "multichan_overlay"]
 
     def __init__(self):
         super().__init__()
@@ -76,7 +76,7 @@ class ConfocalModality(BaseModality):
                 slow_axis_amplitude=p.slow_axis_amplitude,
             )
         except DaqUnavailableError:
-            self._emit_warning("DAQ unavailable — displaying simulated data")
+            self.emit_warning("DAQ unavailable — displaying simulated data")
             frame = generate_toy_confocal_frame(
                 x_pixels=p.x_pixels,
                 y_pixels=p.y_pixels,

@@ -24,11 +24,11 @@ from .display_registry import display_registry
 _DEFAULT_LASER_PERIOD_PS = 12500  # 80 MHz fallback
 
 
-def _mono_exp(t: np.ndarray, A: float, tau: float, B: float) -> np.ndarray:
+def mono_exp(t: np.ndarray, A: float, tau: float, B: float) -> np.ndarray:
     return A * np.exp(-t / tau) + B
 
 
-def _collect_box_delays(raw: np.ndarray, iy: int, ix: int, half: int) -> np.ndarray:
+def collect_box_delays(raw: np.ndarray, iy: int, ix: int, half: int) -> np.ndarray:
     H, W = raw.shape
     iy0, iy1 = max(0, iy - half), min(H, iy + half + 1)
     ix0, ix1 = max(0, ix - half), min(W, ix + half + 1)
@@ -41,7 +41,7 @@ def _collect_box_delays(raw: np.ndarray, iy: int, ix: int, half: int) -> np.ndar
     return np.concatenate(cells).astype(np.int64) if cells else np.empty(0, dtype=np.int64)
 
 
-def _roll_and_fit(counts: np.ndarray, bin_width_ps: float = 100.0) -> float:
+def roll_and_fit(counts: np.ndarray, bin_width_ps: float = 100.0) -> float:
     """Roll a folded decay histogram so the peak is at t=0, then fit a
     single exponential.  Returns tau in ps, or 0.0 on failure."""
     if counts.sum() < 5:
@@ -58,7 +58,7 @@ def _roll_and_fit(counts: np.ndarray, bin_width_ps: float = 100.0) -> float:
 
     try:
         popt, _ = curve_fit(
-            _mono_exp,
+            mono_exp,
             t,
             rolled,
             p0=[A0, max(tau0, 1.0), B0],
@@ -113,11 +113,11 @@ class _FitWorker(QObject):
             if self._abort:
                 break
             for ix in range(W):
-                delays = _collect_box_delays(raw, iy, ix, half)
+                delays = collect_box_delays(raw, iy, ix, half)
                 if delays.size == 0:
                     continue
                 counts, _ = np.histogram(delays, bins=bins)
-                lifetime_map[iy, ix] = _roll_and_fit(counts)
+                lifetime_map[iy, ix] = roll_and_fit(counts)
 
             self.row_done.emit(lifetime_map.copy())
 
@@ -139,10 +139,10 @@ class FlimDisplay(BaseDisplay):
     while fitting runs in a background thread.
     """
 
-    DISPLAY_KEY = "flim_display"
-    DISPLAY_NAME = "FLIM Lifetime Display"
-    ACCEPTED_KINDS = [DataKind.FLIM_RAW_FRAME]
-    DISPLAY_PARAMETERS = {}
+    display_key = "flim_display"
+    display_name = "FLIM Lifetime Display"
+    accepted_kinds = [DataKind.FLIM_RAW_FRAME]
+    display_parameters = {}
 
     def __init__(self, parent: QWidget | None = None):
         super().__init__(parent=parent)
@@ -209,11 +209,11 @@ class FlimDisplay(BaseDisplay):
 
         self._autoscale_box = QCheckBox("Autoscale")
         self._autoscale_box.setChecked(True)
-        self._autoscale_box.toggled.connect(self._on_autoscale_toggled)
+        self._autoscale_box.toggled.connect(self.on_autoscale_toggled)
         right_col.addWidget(self._autoscale_box)
 
         image_row.addLayout(right_col)
-        self._hist_widget.item.sigLevelsChanged.connect(self._on_lut_levels_changed)
+        self._hist_widget.item.sigLevelsChanged.connect(self.on_lut_levels_changed)
 
         # --- Fit parameters row ---
         params_row = QHBoxLayout()
@@ -234,11 +234,11 @@ class FlimDisplay(BaseDisplay):
 
         self._render_button = QPushButton("Render FLIM Image")
         self._render_button.setEnabled(False)
-        self._render_button.clicked.connect(self._on_render_clicked)
+        self._render_button.clicked.connect(self.on_render_clicked)
         params_row.addWidget(self._render_button)
 
         if self._pending_state:
-            self._apply_pending_state()
+            self.apply_pending_state()
 
     # ------------------------------------------------------------------
     # BaseDisplay interface
@@ -250,10 +250,10 @@ class FlimDisplay(BaseDisplay):
     def render(self, acquired: AcquiredData) -> None:
         if acquired.kind == DataKind.FLIM_RAW_FRAME:
             lp = acquired.metadata.get("laser_period_ps", _DEFAULT_LASER_PERIOD_PS)
-            self._handle_raw_frame(acquired.data, int(lp))
+            self.handle_raw_frame(acquired.data, int(lp))
 
     def clear(self) -> None:
-        self._cancel_fit()
+        self.cancel_fit()
         self._raw_frame_hw = None
         self._lifetime_hw = None
         self._time_trace_curve.setData(x=[], y=[])
@@ -273,7 +273,7 @@ class FlimDisplay(BaseDisplay):
         return RPOCImageInput(
             data=chw,
             channel_labels=["lifetime"],
-            source_id=self.DISPLAY_KEY,
+            source_id=self.display_key,
         )
 
     def get_normalized_data_3d(self) -> np.ndarray | None:
@@ -303,14 +303,14 @@ class FlimDisplay(BaseDisplay):
         if not isinstance(state, dict):
             return
         self._pending_state = state
-        self._apply_pending_state()
+        self.apply_pending_state()
 
     # ------------------------------------------------------------------
     # Internal — data handler
     # ------------------------------------------------------------------
 
-    def _handle_raw_frame(self, raw: np.ndarray, laser_period_ps: int) -> None:
-        self._cancel_fit()
+    def handle_raw_frame(self, raw: np.ndarray, laser_period_ps: int) -> None:
+        self.cancel_fit()
         self._raw_frame_hw = raw
         self._laser_period_ps = laser_period_ps
 
@@ -333,13 +333,13 @@ class FlimDisplay(BaseDisplay):
     # Internal — threaded render
     # ------------------------------------------------------------------
 
-    def _on_render_clicked(self) -> None:
+    def on_render_clicked(self) -> None:
         if self._raw_frame_hw is None:
             return
 
         # If already rendering, treat the button as a cancel
         if self._fit_thread is not None and self._fit_thread.isRunning():
-            self._cancel_fit()
+            self.cancel_fit()
             return
 
         n_bins = self._laser_period_ps // 100
@@ -354,8 +354,8 @@ class FlimDisplay(BaseDisplay):
         worker.moveToThread(thread)
 
         thread.started.connect(worker.run)
-        worker.row_done.connect(self._on_row_done)
-        worker.finished.connect(self._on_fit_finished)
+        worker.row_done.connect(self.on_row_done)
+        worker.finished.connect(self.on_fit_finished)
         worker.finished.connect(thread.quit)
         thread.finished.connect(thread.deleteLater)
 
@@ -370,7 +370,7 @@ class FlimDisplay(BaseDisplay):
         self._render_button.setText("Cancel")
         thread.start()
 
-    def _cancel_fit(self) -> None:
+    def cancel_fit(self) -> None:
         if self._fit_worker is not None:
             self._fit_worker.abort()
         if self._fit_thread is not None and self._fit_thread.isRunning():
@@ -379,7 +379,7 @@ class FlimDisplay(BaseDisplay):
         self._fit_worker = None
         self._fit_thread = None
 
-    def _on_row_done(self, partial_map: np.ndarray) -> None:
+    def on_row_done(self, partial_map: np.ndarray) -> None:
         self._image_item.setImage(partial_map, autoLevels=False)
         if self._autoscale_box.isChecked():
             valid = partial_map[partial_map > 0]
@@ -387,9 +387,9 @@ class FlimDisplay(BaseDisplay):
                 lo, hi = float(valid.min()), float(valid.max())
                 if hi <= lo:
                     hi = lo + 1e-12
-                self._apply_levels(lo, hi)
+                self.apply_levels(lo, hi)
 
-    def _on_fit_finished(self) -> None:
+    def on_fit_finished(self) -> None:
         final = self._image_item.image
         if final is not None:
             self._lifetime_hw = final.copy()
@@ -402,7 +402,7 @@ class FlimDisplay(BaseDisplay):
     # Internal — LUT helpers
     # ------------------------------------------------------------------
 
-    def _on_autoscale_toggled(self, checked: bool) -> None:
+    def on_autoscale_toggled(self, checked: bool) -> None:
         self._autoscale = checked
         if checked and self._lifetime_hw is not None:
             valid = self._lifetime_hw[self._lifetime_hw > 0]
@@ -410,10 +410,10 @@ class FlimDisplay(BaseDisplay):
                 lo, hi = float(valid.min()), float(valid.max())
                 if hi <= lo:
                     hi = lo + 1e-12
-                self._apply_levels(lo, hi)
+                self.apply_levels(lo, hi)
         self.request_persist()
 
-    def _on_lut_levels_changed(self) -> None:
+    def on_lut_levels_changed(self) -> None:
         if self._suspend_lut_signal:
             return
         lo, hi = self._hist_widget.item.getLevels()
@@ -424,7 +424,7 @@ class FlimDisplay(BaseDisplay):
         self._max_val = float(hi) #pyright:ignore
         self.request_persist()
 
-    def _apply_levels(self, lo: float, hi: float) -> None:
+    def apply_levels(self, lo: float, hi: float) -> None:
         self._min_val = lo
         self._max_val = hi
         self._image_item.setLevels((lo, hi))
@@ -434,7 +434,7 @@ class FlimDisplay(BaseDisplay):
         finally:
             self._suspend_lut_signal = False
 
-    def _apply_pending_state(self) -> None:
+    def apply_pending_state(self) -> None:
         state = self._pending_state
         if not state:
             return
@@ -447,7 +447,7 @@ class FlimDisplay(BaseDisplay):
         self._autoscale = autoscale
         if hi <= lo:
             hi = lo + 1e-12
-        self._apply_levels(lo, hi)
+        self.apply_levels(lo, hi)
         if "box_n" in state:
             self._box_spin.setValue(int(state["box_n"]))
         self._pending_state = {}

@@ -1,4 +1,8 @@
-from PyQt6.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QGroupBox, QFormLayout, QDoubleSpinBox, QSpinBox, QProgressBar, QComboBox
+from __future__ import annotations
+
+from typing import Any, cast
+
+from PyQt6.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QGroupBox, QFormLayout, QDoubleSpinBox, QSpinBox, QProgressBar, QComboBox, QWidget
 from PyQt6.QtCore import pyqtSignal, QTimer
 from superqt import QSearchableComboBox
 
@@ -222,18 +226,19 @@ class LocalRPOCDialog(QDialog):
         ])
         
         # Set default values from the parent widget (RPOC channel)
-        if hasattr(self.parent(), 'channel_id') and hasattr(self.parent(), 'app_state'):
-            channel_id = self.parent().channel_id
-            if hasattr(self.parent().app_state, 'rpoc_mask_channels') and channel_id in self.parent().app_state.rpoc_mask_channels:
-                channel_data = self.parent().app_state.rpoc_mask_channels[channel_id]
+        parent: Any = self.parent()
+        if parent is not None and hasattr(parent, 'channel_id') and hasattr(parent, 'app_state'):
+            channel_id = parent.channel_id
+            if hasattr(parent.app_state, 'rpoc_mask_channels') and channel_id in parent.app_state.rpoc_mask_channels:
+                channel_data = parent.app_state.rpoc_mask_channels[channel_id]
                 default_device = channel_data.get('device', 'Dev1')
                 default_port_line = channel_data.get('port_line', 'port0/line0')
                 
                 self.ttl_device_combo.setCurrentText(default_device)
                 self.ttl_port_line_combo.setCurrentText(default_port_line)
         
-        ttl_layout.addRow("Device:", self.ttl_device_combo)
-        ttl_layout.addRow("Port/Line:", self.ttl_port_line_combo)
+        ttl_layout.addRow("Device:", cast(QWidget, self.ttl_device_combo))
+        ttl_layout.addRow("Port/Line:", cast(QWidget, self.ttl_port_line_combo))
         
         ttl_group.setLayout(ttl_layout)
         layout.addWidget(ttl_group)

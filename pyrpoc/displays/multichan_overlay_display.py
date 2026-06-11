@@ -22,7 +22,7 @@ from .base_display import BaseDisplay
 from .display_registry import display_registry
 
 
-def _color_for_index(index: int) -> tuple[int, int, int]:
+def color_for_index(index: int) -> tuple[int, int, int]:
     palette = [
         (255, 80, 80),
         (80, 220, 120),
@@ -36,7 +36,7 @@ def _color_for_index(index: int) -> tuple[int, int, int]:
     return palette[index % len(palette)]
 
 
-def _color_map_from_rgb(rgb: tuple[int, int, int]) -> pg.ColorMap:
+def color_map_from_rgb(rgb: tuple[int, int, int]) -> pg.ColorMap:
     r, g, b = rgb
     return pg.ColorMap(
         pos=np.array([0.0, 1.0], dtype=float),
@@ -57,10 +57,10 @@ class _ChannelControl:
 
 @display_registry.register("multichan_overlay")
 class MultiChannelOverlayDisplay(BaseDisplay):
-    DISPLAY_KEY = "multichan_overlay"
-    DISPLAY_NAME = "2D Overlaid"
-    ACCEPTED_KINDS = [DataKind.INTENSITY_FRAME, DataKind.PARTIAL_FRAME]
-    DISPLAY_PARAMETERS = {}
+    display_key = "multichan_overlay"
+    display_name = "2D Overlaid"
+    accepted_kinds = [DataKind.INTENSITY_FRAME, DataKind.PARTIAL_FRAME]
+    display_parameters = {}
 
     def __init__(self, parent: QWidget | None = None):
         super().__init__(parent=parent)
@@ -111,7 +111,7 @@ class MultiChannelOverlayDisplay(BaseDisplay):
     def clear(self) -> None:
         self._data_chw = None
         self._overlay_item.setImage(np.zeros((1, 1, 3), dtype=np.float32), autoLevels=False, levels=(0.0, 1.0))
-        self._sync_controls(0)
+        self.sync_controls(0)
 
     def set_data(self, data_chw: np.ndarray) -> None:
         arr = np.asarray(data_chw, dtype=np.float32)
@@ -123,10 +123,10 @@ class MultiChannelOverlayDisplay(BaseDisplay):
             raise ValueError("MultiChannelOverlayDisplay received invalid spatial dimensions")
 
         self._data_chw = arr
-        self._sync_controls(arr.shape[0])
+        self.sync_controls(arr.shape[0])
         for idx in range(arr.shape[0]):
-            self._update_channel(idx, arr[idx], from_data=True)
-        self._update_overlay()
+            self.update_channel(idx, arr[idx], from_data=True)
+        self.update_overlay()
 
     def get_channel_names(self) -> list[str]:
         return [f"Input {i + 1}" for i in range(len(self._controls))]
@@ -141,7 +141,7 @@ class MultiChannelOverlayDisplay(BaseDisplay):
         return RPOCImageInput(
             data=self._data_chw.astype(np.float32, copy=True),
             channel_labels=self.get_channel_names(),
-            source_id=self.DISPLAY_KEY,
+            source_id=self.display_key,
         )
 
     def get_normalized_data_3d(self) -> np.ndarray | None:
@@ -186,9 +186,9 @@ class MultiChannelOverlayDisplay(BaseDisplay):
                     }
                 )
             self._pending_channel_state = parsed
-            self._apply_pending_channel_state()
+            self.apply_pending_channel_state()
 
-    def _sync_controls(self, count: int) -> None:
+    def sync_controls(self, count: int) -> None:
         while len(self._controls) > count:
             ctl = self._controls.pop()
             ctl.root.setParent(None)
@@ -196,12 +196,12 @@ class MultiChannelOverlayDisplay(BaseDisplay):
 
         while len(self._controls) < count:
             idx = len(self._controls)
-            self._controls.append(self._build_control(idx))
+            self._controls.append(self.build_control(idx))
 
-        self._apply_pending_channel_state()
-        self._reflow_controls()
+        self.apply_pending_channel_state()
+        self.reflow_controls()
 
-    def _build_control(self, index: int) -> _ChannelControl:
+    def build_control(self, index: int) -> _ChannelControl:
         root = QWidget(self._side_content)
         layout = QVBoxLayout(root)
         layout.setContentsMargins(4, 4, 4, 4)
@@ -215,8 +215,8 @@ class MultiChannelOverlayDisplay(BaseDisplay):
         layout.addWidget(autoscale_box)
 
         source_item = pg.ImageItem()
-        rgb = _color_for_index(index)
-        cmap = _color_map_from_rgb(rgb)
+        rgb = color_for_index(index)
+        cmap = color_map_from_rgb(rgb)
         source_item.setColorMap(cmap)
         hist_widget = pg.HistogramLUTWidget(root)
         hist_widget.setImageItem(source_item)
@@ -230,23 +230,23 @@ class MultiChannelOverlayDisplay(BaseDisplay):
             source_item=source_item,
             rgb=rgb,
         )
-        autoscale_box.toggled.connect(lambda checked, i=index: self._on_autoscale_toggled(i, checked))
-        hist_widget.item.sigLevelsChanged.connect(lambda _item, i=index: self._on_lut_levels_changed(i))
+        autoscale_box.toggled.connect(lambda checked, i=index: self.on_autoscale_toggled(i, checked))
+        hist_widget.item.sigLevelsChanged.connect(lambda _item, i=index: self.on_lut_levels_changed(i))
         return ctl
 
-    def _on_autoscale_toggled(self, idx: int, checked: bool) -> None:
+    def on_autoscale_toggled(self, idx: int, checked: bool) -> None:
         if idx < 0 or idx >= len(self._controls):
             return
         if self._data_chw is None or idx >= self._data_chw.shape[0]:
             return
         if checked:
-            self._update_channel(idx, self._data_chw[idx], from_data=True)
+            self.update_channel(idx, self._data_chw[idx], from_data=True)
         else:
-            self._update_channel(idx, self._data_chw[idx], from_data=False)
-        self._update_overlay()
+            self.update_channel(idx, self._data_chw[idx], from_data=False)
+        self.update_overlay()
         self.request_persist()
 
-    def _on_lut_levels_changed(self, idx: int) -> None:
+    def on_lut_levels_changed(self, idx: int) -> None:
         if self._suspend_lut_signal:
             return
         if idx < 0 or idx >= len(self._controls):
@@ -258,10 +258,10 @@ class MultiChannelOverlayDisplay(BaseDisplay):
             ctl.hist_widget.item.setLevels(min_val, max_val)
         ctl.min_val = float(min_val)#pyright:ignore
         ctl.max_val = float(max_val)#pyright:ignore
-        self._update_overlay()
+        self.update_overlay()
         self.request_persist()
 
-    def _update_channel(self, idx: int, channel: np.ndarray, from_data: bool) -> None:
+    def update_channel(self, idx: int, channel: np.ndarray, from_data: bool) -> None:
         del from_data
         ctl = self._controls[idx]
         ctl.source_item.setImage(channel, autoLevels=False)
@@ -271,12 +271,12 @@ class MultiChannelOverlayDisplay(BaseDisplay):
             max_val = float(np.max(channel))
             if max_val <= min_val:
                 max_val = min_val + 1e-12
-            self._apply_levels(ctl, min_val, max_val)
+            self.apply_levels(ctl, min_val, max_val)
         else:
             min_val, max_val = ctl.hist_widget.item.getLevels()
-            self._apply_levels(ctl, float(min_val), float(max_val)) #pyright:ignore
+            self.apply_levels(ctl, float(min_val), float(max_val)) #pyright:ignore
 
-    def _apply_levels(self, ctl: _ChannelControl, min_val: float, max_val: float) -> None:
+    def apply_levels(self, ctl: _ChannelControl, min_val: float, max_val: float) -> None:
         ctl.min_val = float(min_val)
         ctl.max_val = float(max_val)
         self._suspend_lut_signal = True
@@ -286,7 +286,7 @@ class MultiChannelOverlayDisplay(BaseDisplay):
         finally:
             self._suspend_lut_signal = False
 
-    def _update_overlay(self) -> None:
+    def update_overlay(self) -> None:
         if self._data_chw is None:
             return
         arr = self._data_chw
@@ -308,7 +308,7 @@ class MultiChannelOverlayDisplay(BaseDisplay):
 
         self._overlay_item.setImage(np.clip(rgb, 0.0, 1.0), autoLevels=False, levels=(0.0, 1.0))
 
-    def _apply_pending_channel_state(self) -> None:
+    def apply_pending_channel_state(self) -> None:
         if not self._pending_channel_state or not self._controls:
             return
         for row in self._pending_channel_state:
@@ -324,14 +324,14 @@ class MultiChannelOverlayDisplay(BaseDisplay):
             ctl.autoscale_box.blockSignals(False)
             if max_val <= min_val:
                 max_val = min_val + 1e-12
-            self._apply_levels(ctl, min_val, max_val)
+            self.apply_levels(ctl, min_val, max_val)
         if self._data_chw is not None:
-            self._update_overlay()
+            self.update_overlay()
         # Apply persisted state once; live user changes during acquisition
         # should not be overwritten each frame.
         self._pending_channel_state = []
 
-    def _reflow_controls(self) -> None:
+    def reflow_controls(self) -> None:
         for i in reversed(range(self._side_layout.count())):
             item = self._side_layout.itemAt(i)
             widget = item.widget() #pyright:ignore

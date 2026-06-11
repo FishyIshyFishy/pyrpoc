@@ -30,14 +30,14 @@ class DisplayService(QObject):
         return display_registry.describe_all()
 
     def list_compatible_with(self, kinds: list[DataKind]) -> list[str]:
-        """Return display keys whose ACCEPTED_KINDS overlap with the given kinds."""
+        """Return display keys whose accepted_kinds overlap with the given kinds."""
         compatible: list[str] = []
         if not kinds:
             return compatible
         kind_set = set(kinds)
         for key in display_registry.list_keys():
             display_cls = display_registry.get_class(key)
-            accepted = getattr(display_cls, "ACCEPTED_KINDS", [])
+            accepted = getattr(display_cls, "accepted_kinds", [])
             if kind_set & set(accepted):
                 compatible.append(key)
         return compatible
@@ -63,7 +63,7 @@ class DisplayService(QObject):
         - -> `display_added` signal for tab/list rendering.
         """
         display_cls = display_registry.get_class(key)
-        settings_parameters = display_cls.DISPLAY_PARAMETERS
+        settings_parameters = display_cls.display_parameters
         settings_input = raw_settings or {}
 
         try:
@@ -104,19 +104,19 @@ class DisplayService(QObject):
         display.deleteLater()
 
     def attach(self, display: BaseDisplay) -> None:
-        self._require_state(display)
+        self.require_state(display)
         display.attached = True
         self.display_changed.emit(display)
 
     def detach(self, display: BaseDisplay) -> None:
-        self._require_state(display)
+        self.require_state(display)
         display.attached = False
         self.display_changed.emit(display)
 
     def set_dock_visibility(self, display: BaseDisplay, visible: bool) -> None:
         if display not in self.app_state.displays:
             return
-        self._require_state(display)
+        self.require_state(display)
         if bool(getattr(display, "docked_visible", True)) == bool(visible):
             return
         display.docked_visible = bool(visible)
@@ -127,7 +127,7 @@ class DisplayService(QObject):
         for display in self.app_state.displays:
             key = display.type_key
             cls = display_registry.get_class(key)
-            name = getattr(display, "user_label", None) or getattr(cls, "DISPLAY_NAME", key)
+            name = getattr(display, "user_label", None) or getattr(cls, "display_name", key)
             rows.append(
                 {
                     "state": display,
@@ -147,17 +147,17 @@ class DisplayService(QObject):
         return None
 
     def set_display_name(self, display: BaseDisplay, user_label: str) -> None:
-        self._require_state(display)
+        self.require_state(display)
         label = (user_label or "").strip()
         display.user_label = label or None
         self.display_changed.emit(display)
 
     def mark_display_changed(self, display: BaseDisplay) -> None:
-        self._require_state(display)
+        self.require_state(display)
         self.display_changed.emit(display)
 
     def get_widget(self, display: BaseDisplay) -> BaseDisplay:
-        self._require_state(display)
+        self.require_state(display)
         return display
 
     def get_rpoc_input(self, display: BaseDisplay) -> RPOCImageInput | None:
@@ -175,7 +175,7 @@ class DisplayService(QObject):
             )
         return payload
 
-    def _require_state(self, display: BaseDisplay) -> None:
+    def require_state(self, display: BaseDisplay) -> None:
         if display not in self.app_state.displays:
             raise KeyError("display does not exist")
 

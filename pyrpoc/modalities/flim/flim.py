@@ -19,19 +19,19 @@ from ..helpers.toy_data import generate_toy_confocal_frame
 from ..base_modality import BaseModality
 from ..mod_registry import modality_registry
 from . import storage
-from .parameters import PARAMETERS, FlimParameters
+from .parameters import parameter_groups, FlimParameters
 
 
 @modality_registry.register("flim")
 class FlimModality(BaseModality):
-    MODALITY_KEY = "flim"
-    DISPLAY_NAME = "FLIM"
-    PARAMETERS = PARAMETERS
-    REQUIRED_INSTRUMENTS = [TimeTaggerInstrument]
-    OPTIONAL_INSTRUMENTS = []
-    ALLOWED_OPTOCONTROLS = [MaskOptoControl]
-    EMITTED_KINDS = [DataKind.INTENSITY_FRAME, DataKind.FLIM_RAW_FRAME]
-    ALLOWED_DISPLAYS = ["streamed_image", "flim_display", "tiled_2d", "multichan_overlay"]
+    modality_key = "flim"
+    display_name = "FLIM"
+    parameter_groups = parameter_groups
+    required_instruments = [TimeTaggerInstrument]
+    optional_instruments = []
+    allowed_optocontrols = [MaskOptoControl]
+    emitted_kinds = [DataKind.INTENSITY_FRAME, DataKind.FLIM_RAW_FRAME]
+    allowed_displays = ["streamed_image", "flim_display", "tiled_2d", "multichan_overlay"]
 
     def __init__(self):
         super().__init__()
@@ -60,7 +60,7 @@ class FlimModality(BaseModality):
     # Acquisition lifecycle                                               #
     # ------------------------------------------------------------------ #
 
-    def _setup_tagger(self) -> None:
+    def setup_tagger(self) -> None:
         """Create and configure the TimeTagger and FLIM stream for one acquisition."""
         p = self.parameters
         self._tagger_instrument.create_tagger()
@@ -80,7 +80,7 @@ class FlimModality(BaseModality):
         )
         self._stream.start()
 
-    def _teardown_tagger(self) -> None:
+    def teardown_tagger(self) -> None:
         """Stop the FLIM stream and free the TimeTagger."""
         if self._stream is not None:
             try:
@@ -98,11 +98,11 @@ class FlimModality(BaseModality):
         # True laser period in ps — used to fold divided-pulse delays back into [0, period)
         laser_period_ps = int(round(1e6 / p.laser_frequency_mhz))
 
-        self._setup_tagger()
+        self.setup_tagger()
         try:
             poll_result: dict[str, Any] = {}
 
-            def _poll() -> None:
+            def poll() -> None:
                 try:
                     poll_result["frame"] = poll_one_flim_frame(
                         stream=self._stream,
@@ -119,7 +119,7 @@ class FlimModality(BaseModality):
                 except Exception as exc:
                     poll_result["error"] = exc
 
-            poll_thread = threading.Thread(target=_poll, daemon=True)
+            poll_thread = threading.Thread(target=poll, daemon=True)
             poll_thread.start()
 
             active_ai_channels = list(p.active_ai_channels)
@@ -142,7 +142,7 @@ class FlimModality(BaseModality):
                     daq_trigger_pfi_line=p.daq_trigger_pfi_line,
                 )
             except DaqUnavailableError:
-                self._emit_warning("DAQ unavailable — displaying simulated data")
+                self.emit_warning("DAQ unavailable — displaying simulated data")
                 generate_toy_confocal_frame(
                     x_pixels=p.x_pixels,
                     y_pixels=p.y_pixels,
@@ -178,13 +178,13 @@ class FlimModality(BaseModality):
                 metadata={"laser_period_ps": laser_period_ps},
             ))
         finally:
-            self._teardown_tagger()
+            self.teardown_tagger()
 
     def stop(self) -> None:
         """Signal continuous acquisition to stop and clean up any hardware
         that may have been left mid-frame (e.g. stream interrupted by error)."""
         self._running = False
-        self._teardown_tagger()
+        self.teardown_tagger()
 
     # ------------------------------------------------------------------ #
     # Storage delegation                                                  #

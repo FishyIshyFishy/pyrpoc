@@ -24,7 +24,7 @@ def refresh_available(widget: DisplayManagerWidget) -> None:
     contract = widget.modality_service.get_selected_contract()
     emitted_kinds = contract.get("emitted_kinds", [])
     allowed_displays = set(contract.get("allowed_displays", []))
-    current_key = widget._selected_display_key()
+    current_key = widget.selected_display_key()
     available_rows = {row["key"]: row for row in widget.display_service.list_available()}
 
     widget.display_combo.clear()
@@ -55,15 +55,15 @@ def refresh_instances(widget: DisplayManagerWidget) -> None:
     wanted_displays: set[object] = set()
 
     for row in rows:
-        state = _row_state(row)
+        state = row_state(row)
         if state is not None:
             wanted_displays.add(state)
 
-    _remove_missing_cards(widget, wanted_displays)
+    remove_missing_cards(widget, wanted_displays)
 
     desired_cards: dict[object, DisplayCardWidget] = {}
     for row in rows:
-        state = _row_state(row)
+        state = row_state(row)
         if state is None:
             continue
 
@@ -72,14 +72,14 @@ def refresh_instances(widget: DisplayManagerWidget) -> None:
 
         card = widget.state.card_widgets.get(state)
         if card is None:
-            card = _create_card(widget, state, str(title))
+            card = create_card(widget, state, str(title))
             widget.state.card_widgets[state] = card
 
         card.title_label.setText(str(title))
         card.set_toggle_checked(attached)
         desired_cards[state] = card
 
-    _reorder_cards(widget, desired_cards, rows)
+    reorder_cards(widget, desired_cards, rows)
 
 
 # ---------------------------------------------------------------------------
@@ -87,7 +87,7 @@ def refresh_instances(widget: DisplayManagerWidget) -> None:
 # ---------------------------------------------------------------------------
 
 def on_add_clicked(widget: DisplayManagerWidget) -> None:
-    key = widget._selected_display_key()
+    key = widget.selected_display_key()
     if not key:
         show_error(widget, "No compatible display available for selected modality")
         return
@@ -98,8 +98,8 @@ def on_add_clicked(widget: DisplayManagerWidget) -> None:
     fallback = next((r for r in row if r["key"] == key), None)
     display_name = str(fallback.get("display_name", key)) if isinstance(fallback, dict) else key
 
-    if any(display_cls.DISPLAY_PARAMETERS.values()):
-        settings = prompt_display_parameters(widget, display_cls.DISPLAY_PARAMETERS)
+    if any(display_cls.display_parameters.values()):
+        settings = prompt_display_parameters(widget, display_cls.display_parameters)
         if settings is None:
             return
         raw_settings = settings
@@ -133,7 +133,7 @@ def on_expand_requested(widget: DisplayManagerWidget, state_obj: object) -> None
     if not card.is_expanded():
         return
     if card.body_layout.count() == 0:
-        _build_placeholder_body(card)
+        build_placeholder_body(card)
 
 
 def on_display_error(widget: DisplayManagerWidget, _state: object, message: str) -> None:
@@ -153,7 +153,7 @@ def show_error(widget: DisplayManagerWidget, message: str) -> None:
 # Private helpers
 # ---------------------------------------------------------------------------
 
-def _row_state(row: dict[str, Any]) -> object | None:
+def row_state(row: dict[str, Any]) -> object | None:
     """Extract a stable identity object from a service row."""
     state = row.get("state")
     if state is not None:
@@ -162,7 +162,7 @@ def _row_state(row: dict[str, Any]) -> object | None:
     return display_id if display_id is not None else None
 
 
-def _remove_missing_cards(widget: DisplayManagerWidget, wanted: set[object]) -> None:
+def remove_missing_cards(widget: DisplayManagerWidget, wanted: set[object]) -> None:
     for state, card in list(widget.state.card_widgets.items()):
         if state not in wanted:
             widget.state.card_widgets.pop(state)
@@ -170,7 +170,7 @@ def _remove_missing_cards(widget: DisplayManagerWidget, wanted: set[object]) -> 
             card.deleteLater()
 
 
-def _create_card(
+def create_card(
     widget: DisplayManagerWidget,
     state_obj: object,
     title: str,
@@ -189,19 +189,19 @@ def _create_card(
     return card
 
 
-def _build_placeholder_body(card: DisplayCardWidget) -> None:
+def build_placeholder_body(card: DisplayCardWidget) -> None:
     """Insert a placeholder settings panel into an expanded card body."""
     placeholder = QLabel("Display settings — coming soon", card.body_container)
     placeholder.setStyleSheet("color: palette(mid); font-style: italic; padding: 4px 0;")
     card.set_body_widget(placeholder)
 
 
-def _reorder_cards(
+def reorder_cards(
     widget: DisplayManagerWidget,
     desired_cards: dict[object, DisplayCardWidget],
     rows: list[dict[str, Any]],
 ) -> None:
-    desired_order = [_row_state(row) for row in rows]
+    desired_order = [row_state(row) for row in rows]
 
     while widget.instances_layout.count() > 0:
         item = widget.instances_layout.takeAt(0)

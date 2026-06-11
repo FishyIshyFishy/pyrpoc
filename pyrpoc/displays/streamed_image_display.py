@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 import pyqtgraph as pg
@@ -44,10 +44,10 @@ class StreamedImageDisplay(BaseDisplay):
     unscanned portion shows historical data rather than black.
     """
 
-    DISPLAY_KEY = "streamed_image"
-    DISPLAY_NAME = "Single Channel Streamed"
-    ACCEPTED_KINDS = [DataKind.INTENSITY_FRAME, DataKind.PARTIAL_FRAME]
-    DISPLAY_PARAMETERS = {}
+    display_key = "streamed_image"
+    display_name = "Single Channel Streamed"
+    accepted_kinds = [DataKind.INTENSITY_FRAME, DataKind.PARTIAL_FRAME]
+    display_parameters = {}
 
     def __init__(self, parent: QWidget | None = None):
         super().__init__(parent=parent)
@@ -73,7 +73,7 @@ class StreamedImageDisplay(BaseDisplay):
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(8, 8, 8, 8)
-        self._tile = self._build_tile()
+        self._tile = self.build_tile()
         outer.addWidget(self._tile.root)
 
     # ------------------------------------------------------------------
@@ -95,9 +95,9 @@ class StreamedImageDisplay(BaseDisplay):
         frame = np.asarray(frame, dtype=np.float32)
 
         if acquired.kind == DataKind.PARTIAL_FRAME:
-            self._update_partial(frame)
+            self.update_partial(frame)
         else:
-            self._update_final(frame)
+            self.update_final(frame)
 
     def clear(self) -> None:
         self._data_hw = None
@@ -117,7 +117,7 @@ class StreamedImageDisplay(BaseDisplay):
         return RPOCImageInput(
             data=chw,
             channel_labels=self.get_channel_names(),
-            source_id=self.DISPLAY_KEY,
+            source_id=self.display_key,
         )
 
     def get_normalized_data_3d(self) -> np.ndarray | None:
@@ -159,13 +159,13 @@ class StreamedImageDisplay(BaseDisplay):
         if not isinstance(state, dict):
             return
         self._pending_channel_state = [state]
-        self._apply_pending_state()
+        self.apply_pending_state()
 
     # ------------------------------------------------------------------
     # Internal — frame update paths
     # ------------------------------------------------------------------
 
-    def _update_partial(self, frame: np.ndarray) -> None:
+    def update_partial(self, frame: np.ndarray) -> None:
         """Paint an in-progress frame; fill unscanned (zero) rows from the
         previous complete frame to avoid a black lower half during scanning."""
         if self._last_complete_hw is not None and self._last_complete_hw.shape == frame.shape:
@@ -183,9 +183,9 @@ class StreamedImageDisplay(BaseDisplay):
         if tile.autoscale_box.isChecked():
             hi = float(np.max(blended))
             if hi > tile.max_val:
-                self._apply_levels(tile, 0.0, hi)
+                self.apply_levels(tile, 0.0, hi)
 
-    def _update_final(self, frame: np.ndarray) -> None:
+    def update_final(self, frame: np.ndarray) -> None:
         """Paint the finished frame, update the reference for blank-region fill,
         and (if autoscale) fit levels to the full range."""
         self._data_hw = frame
@@ -199,16 +199,16 @@ class StreamedImageDisplay(BaseDisplay):
             hi = float(np.max(frame))
             if hi <= lo:
                 hi = lo + 1e-12
-            self._apply_levels(tile, lo, hi)
+            self.apply_levels(tile, lo, hi)
         else:
-            lo, hi = tile.hist_widget.item.getLevels()
-            self._apply_levels(tile, float(lo), float(hi))
+            lo, hi = cast(tuple[float, float], tile.hist_widget.item.getLevels())
+            self.apply_levels(tile, lo, hi)
 
     # ------------------------------------------------------------------
     # Internal — widget helpers
     # ------------------------------------------------------------------
 
-    def _build_tile(self) -> _ImageTile:
+    def build_tile(self) -> _ImageTile:
         root = QWidget(self)
         root_layout = QVBoxLayout(root)
         root_layout.setContentsMargins(6, 6, 6, 6)
@@ -252,11 +252,11 @@ class StreamedImageDisplay(BaseDisplay):
             image_item=image_item,
             hist_widget=hist_widget,
         )
-        autoscale_box.toggled.connect(self._on_autoscale_toggled)
-        hist_widget.item.sigLevelsChanged.connect(self._on_lut_levels_changed)
+        autoscale_box.toggled.connect(self.on_autoscale_toggled)
+        hist_widget.item.sigLevelsChanged.connect(self.on_lut_levels_changed)
         return tile
 
-    def _on_autoscale_toggled(self, checked: bool) -> None:
+    def on_autoscale_toggled(self, checked: bool) -> None:
         tile = self._tile
         if tile is None or self._data_hw is None:
             return
@@ -265,24 +265,24 @@ class StreamedImageDisplay(BaseDisplay):
             hi = float(np.max(self._data_hw))
             if hi <= lo:
                 hi = lo + 1e-12
-            self._apply_levels(tile, lo, hi)
+            self.apply_levels(tile, lo, hi)
         self.request_persist()
 
-    def _on_lut_levels_changed(self) -> None:
+    def on_lut_levels_changed(self) -> None:
         if self._suspend_lut_signal:
             return
         tile = self._tile
         if tile is None:
             return
-        lo, hi = tile.hist_widget.item.getLevels()
+        lo, hi = cast(tuple[float, float], tile.hist_widget.item.getLevels())
         if hi <= lo:
             hi = lo + 1e-12
             tile.hist_widget.item.setLevels(lo, hi)
-        tile.min_val = float(lo)
-        tile.max_val = float(hi)
+        tile.min_val = lo
+        tile.max_val = hi
         self.request_persist()
 
-    def _apply_levels(self, tile: _ImageTile, lo: float, hi: float) -> None:
+    def apply_levels(self, tile: _ImageTile, lo: float, hi: float) -> None:
         tile.min_val = lo
         tile.max_val = hi
         tile.image_item.setLevels((lo, hi))
@@ -292,7 +292,7 @@ class StreamedImageDisplay(BaseDisplay):
         finally:
             self._suspend_lut_signal = False
 
-    def _apply_pending_state(self) -> None:
+    def apply_pending_state(self) -> None:
         if not self._pending_channel_state or self._tile is None:
             return
         state = self._pending_channel_state[0]
@@ -309,5 +309,5 @@ class StreamedImageDisplay(BaseDisplay):
         tile.autoscale_box.blockSignals(False)
         if hi <= lo:
             hi = lo + 1e-12
-        self._apply_levels(tile, lo, hi)
+        self.apply_levels(tile, lo, hi)
         self._pending_channel_state = []

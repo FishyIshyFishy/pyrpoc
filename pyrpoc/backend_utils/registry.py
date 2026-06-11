@@ -40,11 +40,11 @@ class Registry:
         return {
             "key": key,
             "class_name": cls.__name__,
-            "display_name": getattr(cls, "DISPLAY_NAME", cls.__name__),
-            "parameters": getattr(cls, "PARAMETERS", {}),
-            "config_parameters": getattr(cls, "CONFIG_PARAMETERS", {}),
-            "display_parameters": getattr(cls, "DISPLAY_PARAMETERS", {}),
-            "actions": getattr(cls, "ACTIONS", []),
+            "display_name": getattr(cls, "display_name", cls.__name__),
+            "parameters": getattr(cls, "parameter_groups", {}),
+            "config_parameters": getattr(cls, "config_parameters", {}),
+            "display_parameters": getattr(cls, "display_parameters", {}),
+            "actions": getattr(cls, "actions", []),
             "contract": cls.get_contract() if hasattr(cls, "get_contract") else {},
         }
 

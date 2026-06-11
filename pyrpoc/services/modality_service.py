@@ -65,7 +65,7 @@ class ModalityService(QObject):
     def get_selected_parameters(self) -> dict[str, list]:
         if self.app_state.modality.selected_class is None:
             return {}
-        return self.app_state.modality.selected_class.PARAMETERS
+        return self.app_state.modality.selected_class.parameter_groups
 
     def get_selected_contract(self) -> dict[str, Any]:
         if self.app_state.modality.selected_class is None:
@@ -79,7 +79,7 @@ class ModalityService(QObject):
             return True, missing
 
         missing: list[type[BaseInstrument]] = []
-        for required_cls in self.app_state.modality.selected_class.REQUIRED_INSTRUMENTS:
+        for required_cls in self.app_state.modality.selected_class.required_instruments:
             instances = self.instrument_service.get_instances_by_class(required_cls)
             if not instances:
                 missing.append(required_cls)
@@ -105,23 +105,23 @@ class ModalityService(QObject):
             raise RuntimeError(msg)
 
         try:
-            cleaned_params = coerce_parameter_values(selected_class.PARAMETERS, raw_params)
+            cleaned_params = coerce_parameter_values(selected_class.parameter_groups, raw_params)
         except Exception as exc:
             self.acq_error.emit(str(exc))
             raise
 
         bound: dict[type[BaseInstrument], BaseInstrument] = {}
-        for required_cls in selected_class.REQUIRED_INSTRUMENTS:
+        for required_cls in selected_class.required_instruments:
             bound_instances = self.instrument_service.get_instances_by_class(required_cls)
             if not bound_instances:
                 raise RuntimeError(f"required instrument {required_cls.__name__} disappeared before configure")
             bound[required_cls] = bound_instances[0]
-        for optional_cls in selected_class.OPTIONAL_INSTRUMENTS:
+        for optional_cls in selected_class.optional_instruments:
             optional_instances = self.instrument_service.get_instances_by_class(optional_cls)
             if optional_instances:
                 bound[optional_cls] = optional_instances[0]
 
-        allowed_types = tuple(selected_class.ALLOWED_OPTOCONTROLS)
+        allowed_types = tuple(selected_class.allowed_optocontrols)
         bound_opto: list[BaseOptoControl] = []
         for control in self.app_state.optocontrols:
             if not control.enabled:
@@ -138,14 +138,14 @@ class ModalityService(QObject):
 
     def start(self, *, force_continuous: bool = False) -> None:
         with self.acquisition_lock:
-            instance, frame_limit = self._prepare_acquisition_start(force_continuous=force_continuous)
+            instance, frame_limit = self.prepare_acquisition_start(force_continuous=force_continuous)
             self.acquisition_stop_requested = threading.Event()
             self._frames_emitted = 0
             self._active_frame_limit = frame_limit
             self._active_modality_instance = instance
             try:
                 self._acq_warned_messages = set()
-                instance._warn_callback = self._emit_acq_warning
+                instance._warn_callback = self.emit_acq_warning
                 instance.prepare_acquisition_storage(frame_limit=frame_limit)
                 self.app_state.modality.running = True
                 self.acq_started.emit()
@@ -166,13 +166,13 @@ class ModalityService(QObject):
             raise TypeError(f"modality emitted {type(acquired).__name__}, expected AcquiredData")
 
         if acquired.kind.is_persistent:
-            instance = self._require_active_instance()
+            instance = self.require_active_instance()
             instance.save_acquired_frame(acquired, frame_index=self._frames_emitted)
             self._frames_emitted += 1
 
         self.data_emitted.emit(acquired)
 
-    def _emit_acq_warning(self, message: str) -> None:
+    def emit_acq_warning(self, message: str) -> None:
         if message not in self._acq_warned_messages:
             self._acq_warned_messages.add(message)
             self.acq_warning.emit(message)
@@ -217,7 +217,7 @@ class ModalityService(QObject):
     def get_parameter_values(self) -> dict[str, Any]:
         return {entry.label: entry.value for entry in self.app_state.modality.configured_params}
 
-    def _prepare_acquisition_start(self, *, force_continuous: bool) -> tuple[BaseModality, int | None]:
+    def prepare_acquisition_start(self, *, force_continuous: bool) -> tuple[BaseModality, int | None]:
         selected_class = self.app_state.modality.selected_class
         instance = self.app_state.modality.instance
         if selected_class is None or instance is None:
@@ -237,7 +237,7 @@ class ModalityService(QObject):
         frame_limit = None if force_continuous else instance.get_frame_limit()
         return instance, frame_limit
 
-    def _require_active_instance(self) -> BaseModality:
+    def require_active_instance(self) -> BaseModality:
         instance = self._active_modality_instance
         if instance is None:
             raise RuntimeError("acquisition callback received without active modality instance")

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import cast
 import random
 
 import cv2
@@ -44,6 +45,7 @@ class MaskRoi:
 class _MaskImageView(QGraphicsView):
     def __init__(self, scene: QGraphicsScene, editor: "MaskEditorWidget"):
         super().__init__(scene)
+        self.gscene: QGraphicsScene = scene
         self.editor = editor
         self.setRenderHints(self.renderHints() | QPainter.RenderHint.Antialiasing)
         self.setMouseTracking(True)
@@ -59,23 +61,29 @@ class _MaskImageView(QGraphicsView):
         self._zoom_level = 0
 
     def wheelEvent(self, event) -> None:
+        if event is None:
+            return
         factor = 1.15 if event.angleDelta().y() > 0 else 0.87
         self._zoom_level += 1 if factor > 1.0 else -1
         self.scale(factor, factor)
 
     def mousePressEvent(self, event) -> None:
+        if event is None:
+            return
         if event.button() == Qt.MouseButton.LeftButton:
             scene_pos = self.mapToScene(event.pos())
             scene_pos = self.editor.clamp_scene_point(scene_pos)
             self._drawing = True
             self._current_points = [scene_pos]
             self._live_path = QPainterPath(scene_pos)
-            self._clear_live_path()
-            self._live_path_item = self.scene().addPath(self._live_path, self._path_pen)
+            self.clear_live_path()
+            self._live_path_item = self.gscene.addPath(self._live_path, self._path_pen)
             return
         super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event) -> None:
+        if event is None:
+            return
         if self._drawing and self._live_path is not None:
             scene_pos = self.mapToScene(event.pos())
             scene_pos = self.editor.clamp_scene_point(scene_pos)
@@ -87,19 +95,21 @@ class _MaskImageView(QGraphicsView):
         super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event) -> None:
+        if event is None:
+            return
         if event.button() == Qt.MouseButton.LeftButton and self._drawing:
             self._drawing = False
             points = [(float(p.x()), float(p.y())) for p in self._current_points]
-            self._clear_live_path()
+            self.clear_live_path()
             self._current_points = []
             self._live_path = None
             self.editor.add_roi(points)
             return
         super().mouseReleaseEvent(event)
 
-    def _clear_live_path(self) -> None:
+    def clear_live_path(self) -> None:
         if self._live_path_item is not None:
-            self.scene().removeItem(self._live_path_item)
+            self.gscene.removeItem(self._live_path_item)
             self._live_path_item = None
 
     def clear_rois(self) -> None:
@@ -109,23 +119,23 @@ class _MaskImageView(QGraphicsView):
     def remove_roi(self, roi_id: int) -> None:
         item = self._roi_items.pop(roi_id, None)
         if item is not None:
-            self.scene().removeItem(item)
+            self.gscene.removeItem(item)
         label = self._roi_labels.pop(roi_id, None)
         if label is not None:
-            self.scene().removeItem(label)
+            self.gscene.removeItem(label)
 
     def add_roi(self, roi: MaskRoi) -> None:
         self.remove_roi(roi.roi_id)
         if len(roi.points) < 3:
             return
 
-        color = self._color_for_roi(roi.roi_id)
+        color = self.color_for_roi(roi.roi_id)
         path = QPainterPath(QPointF(roi.points[0][0], roi.points[0][1]))
         for x, y in roi.points[1:]:
             path.lineTo(QPointF(x, y))
         path.closeSubpath()
 
-        outline = self.scene().addPath(path, QPen(color, 2))
+        outline = cast(QGraphicsPathItem, self.gscene.addPath(path, QPen(color, 2)))
         outline.setBrush(QColor(color.red(), color.green(), color.blue(), 80))
         self._roi_items[roi.roi_id] = outline
 
@@ -136,10 +146,10 @@ class _MaskImageView(QGraphicsView):
         cy = sum(p[1] for p in roi.points) / len(roi.points)
         label.setPos(cx - bounds.width() / 2, cy - bounds.height() / 2)
         label.setZValue(10_000)
-        self.scene().addItem(label)
+        self.gscene.addItem(label)
         self._roi_labels[roi.roi_id] = label
 
-    def _color_for_roi(self, roi_id: int) -> QColor:
+    def color_for_roi(self, roi_id: int) -> QColor:
         rng = random.Random(roi_id * 17 + 11)
         return QColor(rng.randint(60, 255), rng.randint(60, 255), rng.randint(60, 255))
 
@@ -168,14 +178,14 @@ class MaskEditorWidget(QWidget):
         self._channel_visibility = [True]
         self._data_min = 0.0
         self._data_max = 1.0
-        self._apply_new_data(image_data)
+        self.apply_new_data(image_data)
 
-        self._build_ui()
-        self._rebuild_channel_boxes()
-        self._reset_threshold_controls()
-        self._update_view_image()
+        self.build_ui()
+        self.rebuild_channel_boxes()
+        self.reset_threshold_controls()
+        self.update_view_image()
 
-    def _build_ui(self) -> None:
+    def build_ui(self) -> None:
         root = QHBoxLayout(self)
 
         left = QVBoxLayout()
@@ -197,8 +207,8 @@ class MaskEditorWidget(QWidget):
             high_default = low_default
         self.low_spin.setValue(low_default)
         self.high_spin.setValue(high_default)
-        self.low_spin.valueChanged.connect(self._on_threshold_changed)
-        self.high_spin.valueChanged.connect(self._on_threshold_changed)
+        self.low_spin.valueChanged.connect(self.on_threshold_changed)
+        self.high_spin.valueChanged.connect(self.on_threshold_changed)
 
         self.low_slider = QSlider(Qt.Orientation.Horizontal, self)
         self.high_slider = QSlider(Qt.Orientation.Horizontal, self)
@@ -206,8 +216,8 @@ class MaskEditorWidget(QWidget):
         self.high_slider.setRange(int_min, int_max)
         self.low_slider.setValue(low_default)
         self.high_slider.setValue(high_default)
-        self.low_slider.valueChanged.connect(self._on_low_slider_changed)
-        self.high_slider.valueChanged.connect(self._on_high_slider_changed)
+        self.low_slider.valueChanged.connect(self.on_low_slider_changed)
+        self.high_slider.valueChanged.connect(self.on_high_slider_changed)
 
         threshold_form.addRow("Low", self.low_spin)
         threshold_form.addRow("High", self.high_spin)
@@ -230,7 +240,7 @@ class MaskEditorWidget(QWidget):
         delete_btn = QPushButton("Delete Selected ROI", self)
         preview_btn.clicked.connect(self.preview_mask)
         save_btn.clicked.connect(self.save_mask)
-        create_btn.clicked.connect(self._emit_create)
+        create_btn.clicked.connect(self.emit_create)
         cancel_btn.clicked.connect(self.cancel_requested.emit)
         delete_btn.clicked.connect(self.delete_selected_roi)
         button_row.addWidget(preview_btn)
@@ -251,8 +261,8 @@ class MaskEditorWidget(QWidget):
         right.addWidget(self.roi_table)
         root.addLayout(right, 2)
 
-    def _apply_new_data(self, image_data: np.ndarray | None) -> None:
-        self._data = self._coerce_input_data(image_data)
+    def apply_new_data(self, image_data: np.ndarray | None) -> None:
+        self._data = self.coerce_input_data(image_data)
         self._h = int(self._data.shape[1])
         self._w = int(self._data.shape[2])
         self._channel_visibility = [True] * int(self._data.shape[0])
@@ -261,9 +271,11 @@ class MaskEditorWidget(QWidget):
         if self._data_max <= self._data_min:
             self._data_max = self._data_min + 1e-9
 
-    def _rebuild_channel_boxes(self) -> None:
+    def rebuild_channel_boxes(self) -> None:
         while self.channels_row.count() > 1:
             item = self.channels_row.takeAt(1)
+            if item is None:
+                continue
             child = item.widget()
             if child is not None:
                 child.deleteLater()
@@ -271,12 +283,12 @@ class MaskEditorWidget(QWidget):
         for idx in range(self._data.shape[0]):
             cb = QCheckBox(f"C{idx + 1}", self)
             cb.setChecked(True)
-            cb.toggled.connect(lambda checked, i=idx: self._on_channel_toggled(i, checked))
+            cb.toggled.connect(lambda checked, i=idx: self.on_channel_toggled(i, checked))
             self.channel_boxes.append(cb)
             self.channels_row.addWidget(cb)
         self.channels_row.addStretch(1)
 
-    def _reset_threshold_controls(self) -> None:
+    def reset_threshold_controls(self) -> None:
         int_min = int(np.floor(self._data_min))
         int_max = int(np.ceil(self._data_max))
         low_default = int(round(self._data_min + 0.2 * (self._data_max - self._data_min)))
@@ -301,19 +313,19 @@ class MaskEditorWidget(QWidget):
         self.high_slider.blockSignals(False)
 
     def set_image_data(self, image_data: np.ndarray | None) -> None:
-        self._apply_new_data(image_data)
+        self.apply_new_data(image_data)
         self._rois.clear()
         self._next_roi_id = 1
         self.roi_table.setRowCount(0)
         self.image_view.clear_rois()
-        self._rebuild_channel_boxes()
-        self._reset_threshold_controls()
-        self._set_dirty(False)
-        self._update_view_image()
+        self.rebuild_channel_boxes()
+        self.reset_threshold_controls()
+        self.set_dirty(False)
+        self.update_view_image()
 
-    def _coerce_input_data(self, image_data: np.ndarray | None) -> np.ndarray:
+    def coerce_input_data(self, image_data: np.ndarray | None) -> np.ndarray:
         if image_data is None:
-            return self._generate_default_data()
+            return self.generate_default_data()
         arr = np.asarray(image_data, dtype=np.float32)
         if arr.ndim == 2:
             return arr[None, ...]
@@ -324,7 +336,7 @@ class MaskEditorWidget(QWidget):
                 return np.moveaxis(arr, -1, 0)
         raise ValueError("image_data must be [H,W], [C,H,W], or [H,W,C] with <= 8 channels")
 
-    def _generate_default_data(self) -> np.ndarray:
+    def generate_default_data(self) -> np.ndarray:
         rng = np.random.default_rng(20260217)
         h, w = 256, 256
         channels = []
@@ -344,14 +356,14 @@ class MaskEditorWidget(QWidget):
         y = min(max(point.y(), 0.0), float(self._h - 1))
         return QPointF(x, y)
 
-    def _on_channel_toggled(self, idx: int, checked: bool) -> None:
+    def on_channel_toggled(self, idx: int, checked: bool) -> None:
         if idx < 0 or idx >= len(self._channel_visibility):
             return
         self._channel_visibility[idx] = bool(checked)
-        self._update_view_image()
+        self.update_view_image()
 
-    def _on_threshold_changed(self, _value: int) -> None:
-        low, high = self._coerced_thresholds()
+    def on_threshold_changed(self, _value: int) -> None:
+        low, high = self.coerced_thresholds()
         self.low_spin.blockSignals(True)
         self.high_spin.blockSignals(True)
         self.low_slider.blockSignals(True)
@@ -364,24 +376,24 @@ class MaskEditorWidget(QWidget):
         self.high_spin.blockSignals(False)
         self.low_slider.blockSignals(False)
         self.high_slider.blockSignals(False)
-        self._update_view_image()
+        self.update_view_image()
 
-    def _on_low_slider_changed(self, value: int) -> None:
+    def on_low_slider_changed(self, value: int) -> None:
         self.low_spin.setValue(value)
 
-    def _on_high_slider_changed(self, value: int) -> None:
+    def on_high_slider_changed(self, value: int) -> None:
         self.high_spin.setValue(value)
 
-    def _coerced_thresholds(self) -> tuple[int, int]:
+    def coerced_thresholds(self) -> tuple[int, int]:
         low = int(self.low_spin.value())
         high = int(self.high_spin.value())
         if high < low:
             low, high = high, low
         return low, high
 
-    def _update_view_image(self) -> None:
+    def update_view_image(self) -> None:
         display = np.zeros((self._h, self._w, 3), dtype=np.float32)
-        low, high = self._coerced_thresholds()
+        low, high = self.coerced_thresholds()
         active = np.zeros((self._h, self._w), dtype=bool)
         channel_colors = (
             np.array([255.0, 64.0, 64.0], dtype=np.float32),
@@ -407,7 +419,7 @@ class MaskEditorWidget(QWidget):
         display[active] = 255
 
         rgb = display.astype(np.uint8)
-        qimg = QImage(rgb.data, self._w, self._h, 3 * self._w, QImage.Format.Format_RGB888)
+        qimg = QImage(rgb.tobytes(), self._w, self._h, 3 * self._w, QImage.Format.Format_RGB888)
         self._display_qimage = qimg.copy()
         self.image_item.setPixmap(QPixmap.fromImage(self._display_qimage))
         self.scene.setSceneRect(QRectF(self._display_qimage.rect()))
@@ -415,7 +427,7 @@ class MaskEditorWidget(QWidget):
     def add_roi(self, points: list[tuple[float, float]]) -> None:
         if len(points) < 3:
             return
-        low, high = self._coerced_thresholds()
+        low, high = self.coerced_thresholds()
         roi = MaskRoi(
             roi_id=self._next_roi_id,
             points=[(float(x), float(y)) for x, y in points],
@@ -426,10 +438,10 @@ class MaskEditorWidget(QWidget):
         self._next_roi_id += 1
         self._rois.append(roi)
         self.image_view.add_roi(roi)
-        self._upsert_roi_row(roi)
-        self._set_dirty(True)
+        self.upsert_roi_row(roi)
+        self.set_dirty(True)
 
-    def _upsert_roi_row(self, roi: MaskRoi) -> None:
+    def upsert_roi_row(self, roi: MaskRoi) -> None:
         row = self.roi_table.rowCount()
         self.roi_table.insertRow(row)
         id_item = QTableWidgetItem(f"ROI {roi.roi_id}")
@@ -453,7 +465,7 @@ class MaskEditorWidget(QWidget):
         self.roi_table.removeRow(row)
         self._rois = [roi for roi in self._rois if roi.roi_id != roi_id]
         self.image_view.remove_roi(roi_id)
-        self._set_dirty(True)
+        self.set_dirty(True)
 
     def has_rois(self) -> bool:
         return len(self._rois) > 0
@@ -461,7 +473,7 @@ class MaskEditorWidget(QWidget):
     def is_dirty(self) -> bool:
         return self._dirty
 
-    def _set_dirty(self, dirty: bool) -> None:
+    def set_dirty(self, dirty: bool) -> None:
         if self._dirty == dirty:
             return
         self._dirty = dirty
@@ -492,7 +504,7 @@ class MaskEditorWidget(QWidget):
         if mask is None:
             QMessageBox.warning(self, "No ROI", "Draw at least one ROI before previewing.")
             return
-        qimg = QImage(mask.data, self._w, self._h, self._w, QImage.Format.Format_Grayscale8).copy()
+        qimg = QImage(mask.tobytes(), self._w, self._h, self._w, QImage.Format.Format_Grayscale8).copy()
         dlg = QDialog(self)
         dlg.setWindowTitle("Mask Preview")
         layout = QVBoxLayout(dlg)
@@ -521,7 +533,7 @@ class MaskEditorWidget(QWidget):
             return
         self.mask_saved.emit(str(path), mask.astype(np.uint8))
 
-    def _emit_create(self) -> None:
+    def emit_create(self) -> None:
         mask = self.generate_mask()
         if mask is None:
             QMessageBox.warning(self, "No ROI", "Draw at least one ROI before creating the mask.")

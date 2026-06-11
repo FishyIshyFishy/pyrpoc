@@ -13,7 +13,7 @@ def make_instance_id(prefix: str) -> str:
     return f"{safe}-{uuid4().hex[:12]}"
 
 
-def _to_persistable(value: Any, depth: int = 6) -> tuple[bool, Any]:
+def to_persistable(value: Any, depth: int = 6) -> tuple[bool, Any]:
     if depth <= 0:
         return False, None
     if isinstance(value, (str, int, float, bool)) or value is None:
@@ -23,7 +23,7 @@ def _to_persistable(value: Any, depth: int = 6) -> tuple[bool, Any]:
     if isinstance(value, list):
         out: list[Any] = []
         for item in value:
-            ok, converted = _to_persistable(item, depth=depth - 1)
+            ok, converted = to_persistable(item, depth=depth - 1)
             if not ok:
                 return False, None
             out.append(converted)
@@ -31,7 +31,7 @@ def _to_persistable(value: Any, depth: int = 6) -> tuple[bool, Any]:
     if isinstance(value, tuple):
         out_t: list[Any] = []
         for item in value:
-            ok, converted = _to_persistable(item, depth=depth - 1)
+            ok, converted = to_persistable(item, depth=depth - 1)
             if not ok:
                 return False, None
             out_t.append(converted)
@@ -41,7 +41,7 @@ def _to_persistable(value: Any, depth: int = 6) -> tuple[bool, Any]:
         for key, item in value.items():
             if not isinstance(key, (str, int, float, bool)):
                 return False, None
-            ok, converted = _to_persistable(item, depth=depth - 1)
+            ok, converted = to_persistable(item, depth=depth - 1)
             if not ok:
                 return False, None
             out_d[str(key)] = converted
@@ -68,7 +68,7 @@ def export_object_state(
             continue
         if callable(value):
             continue
-        ok, persisted = _to_persistable(value)
+        ok, persisted = to_persistable(value)
         if ok:
             out[key] = persisted
     return out

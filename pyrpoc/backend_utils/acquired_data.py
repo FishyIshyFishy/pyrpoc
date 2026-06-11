@@ -11,7 +11,7 @@ class DataKind(str, Enum):
     """Tag that identifies what a piece of acquired data represents.
 
     Modalities attach a DataKind to every AcquiredData they emit.
-    Displays declare which kinds they accept via ACCEPTED_KINDS.
+    Displays declare which kinds they accept via accepted_kinds.
     The AcquisitionInterpreter uses this tag for routing — no display
     knowledge leaks into the modality layer, and no modality knowledge
     leaks into the display layer.

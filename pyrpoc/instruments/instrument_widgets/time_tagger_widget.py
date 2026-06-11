@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from typing import TYPE_CHECKING
 
 from PyQt6.QtWidgets import (
     QHBoxLayout,
@@ -12,7 +13,7 @@ from PyQt6.QtWidgets import (
 
 from pyrpoc.instruments.base_instrument import BaseInstrumentWidget
 
-if False:  # pragma: no cover
+if TYPE_CHECKING:
     from pyrpoc.instruments.time_tagger import TimeTaggerInstrument
 
 
@@ -35,7 +36,7 @@ class TimeTaggerInstrumentWidget(BaseInstrumentWidget):
         row.setSpacing(6)
 
         self.test_btn = QPushButton("Test Connection", self)
-        self.test_btn.clicked.connect(self._on_test_clicked)
+        self.test_btn.clicked.connect(self.on_test_clicked)
         row.addWidget(self.test_btn)
 
         self.status_label = QLabel(self)
@@ -44,20 +45,20 @@ class TimeTaggerInstrumentWidget(BaseInstrumentWidget):
 
         root.addLayout(row)
 
-        self._sync_status_label()
+        self.sync_status_label()
 
     def refresh_from_model(self) -> None:
-        self._sync_status_label()
+        self.sync_status_label()
 
-    def _on_test_clicked(self) -> None:
+    def on_test_clicked(self) -> None:
         self.test_btn.setEnabled(False)
         self.status_label.setText("Testing\u2026")
         ok = self.instrument.test_connection()
         self.status_label.setText("OK" if ok else "FAILED")
         self.test_btn.setEnabled(True)
-        self._request_model_persist()
+        self.request_model_persist()
 
-    def _sync_status_label(self) -> None:
+    def sync_status_label(self) -> None:
         val = self.instrument.last_test_ok
         if val is None:
             self.status_label.setText("Not tested")

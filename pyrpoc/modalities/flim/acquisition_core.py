@@ -149,7 +149,7 @@ def acquire_daq_frame(
 # TimeTagger: delay calculation
 # ---------------------------------------------------------------------------
 
-def _compute_delays(
+def compute_delays(
     detector_ts: np.ndarray,
     laser_ts: np.ndarray,
 ) -> tuple[np.ndarray, np.ndarray] | None:
@@ -171,7 +171,7 @@ def _compute_delays(
 # TimeTagger: pixel binning
 # ---------------------------------------------------------------------------
 
-def _bin_delays_into_pixels(
+def bin_delays_into_pixels(
     valid_det_ts: np.ndarray,
     delays_ps: np.ndarray,
     frame_start_ps: int,
@@ -203,7 +203,7 @@ def _bin_delays_into_pixels(
 # TimeTagger: frame finalisation
 # ---------------------------------------------------------------------------
 
-def _finalize_frame(
+def finalize_frame(
     pixel_lists: list[list[int]],
     y_pixels: int,
     total_x_pixels: int,
@@ -221,7 +221,7 @@ def _finalize_frame(
 # TimeTagger: public poll_one_flim_frame
 # ---------------------------------------------------------------------------
 
-def _partial_intensity(
+def partial_intensity(
     pixel_lists: list[list[int]],
     y_pixels: int,
     total_x: int,
@@ -299,13 +299,13 @@ def poll_one_flim_frame(
         det_batch = ts[(ch == detector_ch) & in_frame]
 
         laser_aug = np.concatenate([laser_carry, laser_batch]) if laser_carry.size else laser_batch
-        batch_result = _compute_delays(det_batch, laser_aug)
+        batch_result = compute_delays(det_batch, laser_aug)
         if batch_result is not None:
             valid_det_ts, delays_ps = batch_result
             # Fold delays into one true laser period so that photons matched to
             # a divided laser pulse land at the correct position in the decay curve.
             delays_ps = delays_ps % int(laser_period_ps)
-            _bin_delays_into_pixels(
+            bin_delays_into_pixels(
                 valid_det_ts=valid_det_ts,
                 delays_ps=delays_ps,
                 frame_start_ps=frame_start_ps,
@@ -322,4 +322,4 @@ def poll_one_flim_frame(
     if frame_start_ps is None:
         raise RuntimeError("Stream ended before the frame-start trigger was detected.")
 
-    return _finalize_frame(pixel_lists, y_pixels, total_x, extra_left, x_pixels)
+    return finalize_frame(pixel_lists, y_pixels, total_x, extra_left, x_pixels)

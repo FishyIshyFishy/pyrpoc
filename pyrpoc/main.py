@@ -10,7 +10,7 @@ from pyrpoc.gui.styles.theme_manager import ThemeController
 from pyrpoc.services.app_controller import AppController
 
 
-def _configure_qt_fontdir() -> None:
+def configure_qt_fontdir() -> None:
     if os.name != "nt":
         return
     if os.environ.get("QT_QPA_FONTDIR"):
@@ -24,7 +24,7 @@ def _configure_qt_fontdir() -> None:
 
 
 def main() -> int:
-    _configure_qt_fontdir()
+    configure_qt_fontdir()
     app = QApplication(sys.argv)
     theme_controller = ThemeController(app)
     theme_controller.apply_saved_or_default()

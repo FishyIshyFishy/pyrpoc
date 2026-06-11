@@ -12,7 +12,7 @@ from pyrpoc.backend_utils.parameter_utils import (
 
 from ..base_modality import AcquisitionParameters
 
-PARAMETERS = {
+parameter_groups = {
     "scan": [
         NumberParameter(
             label="X Pixels",

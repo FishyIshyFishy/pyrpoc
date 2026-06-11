@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -136,7 +136,7 @@ class PathParameter(TextParameter):
         if self.tooltip:
             browse_btn.setToolTip(self.tooltip)
 
-        def _pick_file() -> None:
+        def pick_file() -> None:
             current = line_edit.text().strip()
             if current:
                 start = str(Path(current).expanduser())
@@ -158,13 +158,13 @@ class PathParameter(TextParameter):
             if selected:
                 line_edit.setText(selected)
 
-        browse_btn.clicked.connect(_pick_file)
+        browse_btn.clicked.connect(pick_file)
 
         layout.addWidget(line_edit, 1)
         layout.addWidget(browse_btn)
         return root
 
-    def _get_line_edit(self, widget: QWidget) -> QLineEdit:
+    def get_line_edit(self, widget: QWidget) -> QLineEdit:
         if not isinstance(widget, QWidget):
             raise TypeError("PathParameter expects a QWidget container")
         line_edit = widget.findChild(QLineEdit)
@@ -190,10 +190,10 @@ class PathParameter(TextParameter):
         return Path(str(value)).expanduser()
 
     def get_value(self, widget: QWidget) -> Any:
-        return self._get_line_edit(widget).text()
+        return self.get_line_edit(widget).text()
 
     def set_value(self, widget: QWidget, value: Any) -> None:
-        line_edit = self._get_line_edit(widget)
+        line_edit = self.get_line_edit(widget)
         line_edit.blockSignals(True)
         line_edit.setText("" if value is None else str(value))
         line_edit.blockSignals(False)
@@ -202,7 +202,7 @@ class PathParameter(TextParameter):
         super().connect_changed(widget, callback)
         if callback is None:
             return
-        line_edit = self._get_line_edit(widget)
+        line_edit = self.get_line_edit(widget)
         line_edit.textChanged.connect(lambda *_: callback())
 
 
@@ -297,6 +297,7 @@ class NumberParameter(BaseParameter):
             widget.valueChanged.connect(lambda *_: callback())
 
 
+@dataclass
 class CheckboxParameter(BaseParameter):
     default: bool = False
 
@@ -343,8 +344,9 @@ class CheckboxParameter(BaseParameter):
             widget.toggled.connect(lambda *_: callback())
 
 
+@dataclass
 class ChoiceParameter(BaseParameter):
-    choices: list[str]
+    choices: list[str] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         super().__post_init__()
@@ -447,15 +449,15 @@ class ChannelSelectionParameter(BaseParameter):
             container.setToolTip(self.tooltip)
         return container
 
-    def _get_buttons(self, widget: QWidget) -> list[QToolButton]:
+    def get_buttons(self, widget: QWidget) -> list[QToolButton]:
         return getattr(widget, "_channel_buttons", [])
 
     def get_value(self, widget: QWidget) -> list[int]:
-        return [i for i, btn in enumerate(self._get_buttons(widget)) if btn.isChecked()]
+        return [i for i, btn in enumerate(self.get_buttons(widget)) if btn.isChecked()]
 
     def set_value(self, widget: QWidget, value: Any) -> None:
         active = set(value) if value is not None else set()
-        for i, btn in enumerate(self._get_buttons(widget)):
+        for i, btn in enumerate(self.get_buttons(widget)):
             btn.blockSignals(True)
             btn.setChecked(i in active)
             btn.blockSignals(False)
@@ -469,7 +471,7 @@ class ChannelSelectionParameter(BaseParameter):
         super().connect_changed(widget, callback)
         if callback is None:
             return
-        for btn in self._get_buttons(widget):
+        for btn in self.get_buttons(widget):
             btn.toggled.connect(lambda *_: callback())
 
     def format_summary(self, widget: QWidget) -> str:
@@ -479,7 +481,7 @@ class ChannelSelectionParameter(BaseParameter):
         return ", ".join(f"AI{i}" for i in active)
 
 
-def _validate_single_parameter(param: BaseParameter) -> None:
+def validate_single_parameter(param: BaseParameter) -> None:
     if not isinstance(param, BaseParameter):
         raise TypeError(f"parameter '{getattr(param, 'label', '<unknown>')}' is not a BaseParameter")
     param.validate_default(param.default)
@@ -497,7 +499,7 @@ def validate_parameter_groups(groups: ParameterGroups) -> None:
             raise TypeError(f"group '{group_name}' must be a list of BaseParameter objects")
 
         for param in params:
-            _validate_single_parameter(param)
+            validate_single_parameter(param)
             if param.label in seen_labels:
                 raise ValueError(f"duplicate parameter label '{param.label}' across groups")
             seen_labels.add(param.label)
@@ -526,7 +528,7 @@ def validate_action_list(actions: list[Action]) -> None:
 
         action_param_labels: set[str] = set()
         for param in action.parameters:
-            _validate_single_parameter(param)
+            validate_single_parameter(param)
 
             if param.label in action_param_labels:
                 raise ValueError(f"duplicate parameter label '{param.label}' in action '{action.label}'")

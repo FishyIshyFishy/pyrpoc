@@ -114,7 +114,7 @@ class InstrumentService(QObject):
                 {
                     "state": instrument,
                     "key": key,
-                    "name": getattr(cls, "DISPLAY_NAME", key),
+                    "name": getattr(cls, "display_name", key),
                 }
             )
         return rows
@@ -134,15 +134,15 @@ class InstrumentService(QObject):
         - -> this method
         - -> concrete `BaseInstrument.get_widget`.
         """
-        self._require_instrument(instrument)
+        self.require_instrument(instrument)
         return instrument.get_widget(parent=parent, on_change=on_change)
 
     def get_instance(self, instrument: BaseInstrument) -> BaseInstrument:
-        self._require_instrument(instrument)
+        self.require_instrument(instrument)
         return instrument
 
     def get_instance_key(self, instrument: BaseInstrument) -> str:
-        self._require_instrument(instrument)
+        self.require_instrument(instrument)
         return instrument.type_key
 
     def clear_all(self) -> None:
@@ -158,9 +158,9 @@ class InstrumentService(QObject):
             self.remove_instrument(instrument)
 
     def mark_instance_changed(self, instrument: BaseInstrument) -> None:
-        self._require_instrument(instrument)
+        self.require_instrument(instrument)
         self.instance_changed.emit(instrument)
 
-    def _require_instrument(self, instrument: BaseInstrument) -> None:
+    def require_instrument(self, instrument: BaseInstrument) -> None:
         if instrument not in self.app_state.instruments:
             raise KeyError("instrument is not registered")

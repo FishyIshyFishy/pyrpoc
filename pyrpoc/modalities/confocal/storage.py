@@ -31,9 +31,9 @@ def save_acquired_frame(modality, frame: np.ndarray, *, frame_index: int) -> Non
     if modality._save_root_path is None:
         raise RuntimeError("save_path is required when save_enabled is true")
 
-    channel_data = modality._split_channels(frame)
+    channel_data = modality.split_channels(frame)
     if not modality._save_channel_paths:
-        labels = modality._resolve_channel_labels(len(channel_data))
+        labels = modality.resolve_channel_labels(len(channel_data))
         modality._save_channel_labels = labels
         modality._save_channel_paths = {
             label: modality._save_root_path.with_name(
@@ -73,13 +73,13 @@ def write_metadata(modality, last_error: str | None) -> None:
     payload = {
         "run_id": modality._run_id,
         "started": modality._run_started_at,
-        "modality_key": modality.MODALITY_KEY,
+        "modality_key": modality.modality_key,
         "save_root_path": str(modality._save_root_path),
         "save_json_path": str(modality._save_json_path),
         "tiff_paths": {label: str(path) for label, path in modality._save_channel_paths.items()},
         "frames_saved": modality._saved_frame_count,
         "frame_limit": modality._run_frame_limit,
-        "parameters": modality._parameters_as_dict(),
+        "parameters": modality.parameters_as_dict(),
         "last_error": last_error,
     }
     modality._save_json_path.write_text(json.dumps(payload, indent=2, default=str), encoding="utf-8")

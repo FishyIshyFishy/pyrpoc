@@ -15,6 +15,7 @@ from pyrpoc.domain.session_state import (
 )
 from pyrpoc.gui.main_gui import MainGUI
 from pyrpoc.gui.styles.theme_manager import ThemeController
+from pyrpoc.instruments.base_instrument import BaseInstrument
 from pyrpoc.persistence.session_repository import SessionRepository
 from .display_service import DisplayService
 from .instrument_service import InstrumentService
@@ -50,9 +51,9 @@ class SessionCoordinator(QObject):
         self._save_timer.setSingleShot(True)
         self._save_timer.setInterval(300)
         self._save_timer.timeout.connect(self.save_now)
-        self._wire_autosave_signals()
+        self.wire_autosave_signals()
 
-    def _wire_autosave_signals(self) -> None:
+    def wire_autosave_signals(self) -> None:
         """
         Autosave wiring flow:
         - from inventory/state mutation signals
@@ -75,7 +76,7 @@ class SessionCoordinator(QObject):
             return
         self._save_timer.start()
 
-    def _values_to_raw(self, values: list[ParameterValue]) -> dict[str, Any]:
+    def values_to_raw(self, values: list[ParameterValue]) -> dict[str, Any]:
         return {entry.label: entry.value for entry in values}
 
     def capture_snapshot(self) -> SessionState:
@@ -165,7 +166,7 @@ class SessionCoordinator(QObject):
         try:
             session = self.repository.load_or_default()
             if self.repository.last_load_error:
-                self._show_restore_warning(self.repository.last_load_error)
+                self.show_restore_warning(self.repository.last_load_error)
             self.theme_controller.apply(session.theme_mode)
 
             self.display_service.clear_all()
@@ -186,7 +187,7 @@ class SessionCoordinator(QObject):
                         persisted_state=row.persisted_state,
                         connected=False,
                     )
-                    self._restore_instrument_connection(instrument)
+                    self.restore_instrument_connection(instrument)
                 except Exception:
                     pass
 
@@ -205,7 +206,7 @@ class SessionCoordinator(QObject):
 
             for row in session.displays:
                 try:
-                    settings = self._values_to_raw(list(row.config_values))
+                    settings = self.values_to_raw(list(row.config_values))
                     self.display_service.create_display(
                         row.type_key,
                         settings,
@@ -223,7 +224,7 @@ class SessionCoordinator(QObject):
                 try:
                     self.modality_service.select_modality(session.modality.selected_key)
                     if session.modality.configured_params:
-                        self.modality_service.configure(self._values_to_raw(session.modality.configured_params))
+                        self.modality_service.configure(self.values_to_raw(session.modality.configured_params))
                     restored_modality = True
                 except Exception:
                     restored_modality = False
@@ -239,7 +240,7 @@ class SessionCoordinator(QObject):
         finally:
             self._restore_in_progress = False
 
-    def _show_restore_warning(self, detail: str) -> None:
+    def show_restore_warning(self, detail: str) -> None:
         QMessageBox.warning(
             self.main_window,
             "Session Restore Warning",
@@ -247,10 +248,8 @@ class SessionCoordinator(QObject):
             f"{detail}",
         )
 
-    def _restore_instrument_connection(self, instrument: object) -> None:
-        if not hasattr(instrument, "connect"):
-            return
-        name = str(getattr(instrument, "user_label", "") or getattr(instrument, "type_key", "instrument"))
+    def restore_instrument_connection(self, instrument: BaseInstrument) -> None:
+        name = str(instrument.user_label or instrument.type_key or "instrument")
         try:
             connected = bool(instrument.connect())
         except Exception:

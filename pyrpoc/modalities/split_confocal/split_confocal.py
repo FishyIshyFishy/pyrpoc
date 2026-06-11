@@ -18,19 +18,19 @@ from ..helpers.toy_data import generate_toy_split_confocal_frame
 from ..base_modality import BaseModality
 from ..mod_registry import modality_registry
 from . import storage
-from .parameters import PARAMETERS, SplitConfocalParameters
+from .parameters import parameter_groups, SplitConfocalParameters
 
 
 @modality_registry.register("split_confocal")
 class SplitConfocalModality(BaseModality):
-    MODALITY_KEY = "split_confocal"
-    DISPLAY_NAME = "Split Confocal"
-    PARAMETERS = PARAMETERS
-    REQUIRED_INSTRUMENTS = []
-    OPTIONAL_INSTRUMENTS = []
-    ALLOWED_OPTOCONTROLS = [MaskOptoControl]
-    EMITTED_KINDS = [DataKind.INTENSITY_FRAME]
-    ALLOWED_DISPLAYS = ["streamed_image", "tiled_2d", "multichan_overlay"]
+    modality_key = "split_confocal"
+    display_name = "Split Confocal"
+    parameter_groups = parameter_groups
+    required_instruments = []
+    optional_instruments = []
+    allowed_optocontrols = [MaskOptoControl]
+    emitted_kinds = [DataKind.INTENSITY_FRAME]
+    allowed_displays = ["streamed_image", "tiled_2d", "multichan_overlay"]
 
     def __init__(self):
         super().__init__()
@@ -86,7 +86,7 @@ class SplitConfocalModality(BaseModality):
         except Exception as exc:
             if not isinstance(exc, (DaqUnavailableError, RuntimeError)):
                 raise
-            self._emit_warning(f"DAQ unavailable — displaying simulated data ({exc})")
+            self.emit_warning(f"DAQ unavailable — displaying simulated data ({exc})")
             pixel_samples = max(1, int(p.dwell_time_us * 1e-6 * p.sample_rate_hz))
             frame, raw = generate_toy_split_confocal_frame(
                 x_pixels=p.x_pixels,

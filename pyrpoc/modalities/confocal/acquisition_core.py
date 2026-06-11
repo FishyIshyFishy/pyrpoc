@@ -37,7 +37,7 @@ def extract_mask_contexts(opto_controls: list[BaseOptoControl]) -> list[MaskCont
 # Mask TTL signal generation
 # ---------------------------------------------------------------------------
 
-def _resize_mask_nearest(mask_bool: np.ndarray, target_h: int, target_w: int) -> np.ndarray:
+def resize_mask_nearest(mask_bool: np.ndarray, target_h: int, target_w: int) -> np.ndarray:
     source_h, source_w = mask_bool.shape
     if source_h <= 0 or source_w <= 0:
         return np.zeros((target_h, target_w), dtype=bool)
@@ -46,7 +46,7 @@ def _resize_mask_nearest(mask_bool: np.ndarray, target_h: int, target_w: int) ->
     return mask_bool[np.ix_(y_idx, x_idx)]
 
 
-def _preprocess_mask_to_scan_grid(
+def preprocess_mask_to_scan_grid(
     raw_mask: object,
     total_x: int,
     total_y: int,
@@ -68,7 +68,7 @@ def _preprocess_mask_to_scan_grid(
 
     mask_bool = mask > 0
     if mask_bool.shape != (total_y, scan_x_pixels):
-        mask_bool = _resize_mask_nearest(mask_bool, target_h=total_y, target_w=scan_x_pixels)
+        mask_bool = resize_mask_nearest(mask_bool, target_h=total_y, target_w=scan_x_pixels)
 
     padded = np.zeros((total_y, total_x), dtype=bool)
     padded[:, extra_left : extra_left + scan_x_pixels] = mask_bool
@@ -90,7 +90,7 @@ def generate_mask_ttl_signals(
             continue
         channel_name = f"{device_name}/port{int(context.daq_port)}/line{int(context.daq_line)}"
         try:
-            padded = _preprocess_mask_to_scan_grid(
+            padded = preprocess_mask_to_scan_grid(
                 context.mask,
                 total_x=total_x,
                 total_y=total_y,
@@ -113,7 +113,7 @@ def generate_mask_ttl_signals(
 # Raw DAQ acquire + reshape
 # ---------------------------------------------------------------------------
 
-def _extract_kept_samples(
+def extract_kept_samples(
     channel_data: np.ndarray,
     total_y: int,
     total_x: int,
@@ -127,7 +127,7 @@ def _extract_kept_samples(
     return kept.reshape(total_y, x_pixels * pixel_samples).astype(np.float32, copy=False)
 
 
-def _run_daq(
+def run_daq(
     device_name: str,
     sample_rate_hz: float,
     fast_axis_ao: int,
@@ -223,7 +223,7 @@ def _run_daq(
                 raise RuntimeError("Unexpected NI-DAQ data shape")
 
             channels_out = [
-                _extract_kept_samples(ch_data, total_y, total_x, pixel_samples, extra_left, x_pixels)
+                extract_kept_samples(ch_data, total_y, total_x, pixel_samples, extra_left, x_pixels)
                 for ch_data in acq_data
             ]
             return np.stack(channels_out, axis=0).astype(np.float32, copy=False), total_y, x_pixels, pixel_samples
@@ -242,7 +242,7 @@ def _run_daq(
             static_do_task.close()
 
 
-def _reshape_to_frame(
+def reshape_to_frame(
     scan_data: np.ndarray,
     total_y: int,
     x_pixels: int,
@@ -301,7 +301,7 @@ def acquire_frame(
         mask_contexts=mask_contexts,
         scan_x_pixels=x_pixels,
     )
-    scan_data, total_y_out, x_out, px_out = _run_daq(
+    scan_data, total_y_out, x_out, px_out = run_daq(
         device_name=device_name,
         sample_rate_hz=sample_rate_hz,
         fast_axis_ao=fast_axis_ao,
@@ -315,4 +315,4 @@ def acquire_frame(
         dwell_time_us=dwell_time_us,
         active_ai_channels=active_ai_channels,
     )
-    return _reshape_to_frame(scan_data, total_y_out, x_out, px_out)
+    return reshape_to_frame(scan_data, total_y_out, x_out, px_out)

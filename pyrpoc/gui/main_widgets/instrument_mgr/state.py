@@ -1,8 +1,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
 from pyrpoc.gui.main_widgets.instance_card import RemovableCardWidget as InstanceCardWidget
+
+if TYPE_CHECKING:
+    from pyrpoc.backend_utils.parameter_utils import BaseParameter
 
 
 @dataclass

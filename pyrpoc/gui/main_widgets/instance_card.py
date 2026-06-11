@@ -84,7 +84,7 @@ class BaseCardWidget(QFrame):
 
         self.setObjectName(card_name)
         self.setFrameShape(QFrame.Shape.NoFrame)
-        self.setStyleSheet(self._compose_stylesheet(active=False))
+        self.setStyleSheet(self.compose_stylesheet(active=False))
 
         root = QVBoxLayout(self)
         root.setContentsMargins(6, 4, 6, 4)
@@ -99,12 +99,12 @@ class BaseCardWidget(QFrame):
         self.expand_btn.setArrowType(Qt.ArrowType.RightArrow)
         self.expand_btn.setAutoRaise(True)
         self.expand_btn.setToolTip("Expand")
-        self.expand_btn.clicked.connect(self._on_expand_clicked)
+        self.expand_btn.clicked.connect(self.on_expand_clicked)
         self._header_row.addWidget(self.expand_btn)
 
         self.toggle_checkbox = QCheckBox("", self)
         self.toggle_checkbox.setToolTip("Toggle")
-        self.toggle_checkbox.toggled.connect(self._on_toggle_changed)
+        self.toggle_checkbox.toggled.connect(self.on_toggle_changed)
         self._header_row.addWidget(self.toggle_checkbox)
 
         self.title_label = QLabel(title, self)
@@ -112,7 +112,7 @@ class BaseCardWidget(QFrame):
 
         # Subclasses may insert additional header widgets here via
         # _append_header_widget() before the layout is finalised.
-        self._finalise_header(root)
+        self.finalise_header(root)
 
         # ── Description line (shown collapsed only) ──────────────────────────
         self._description_label = QLabel("", self)
@@ -135,7 +135,7 @@ class BaseCardWidget(QFrame):
     # Subclass extension points
     # ------------------------------------------------------------------
 
-    def _finalise_header(self, root: QVBoxLayout) -> None:
+    def finalise_header(self, root: QVBoxLayout) -> None:
         """Called at the end of __init__ to add the header row to *root*.
 
         Subclasses that need to insert extra widgets into ``_header_row``
@@ -147,11 +147,11 @@ class BaseCardWidget(QFrame):
     # Internal slots
     # ------------------------------------------------------------------
 
-    def _on_expand_clicked(self) -> None:
+    def on_expand_clicked(self) -> None:
         self.expand_requested.emit(self.state_obj)
 
-    def _on_toggle_changed(self, checked: bool) -> None:
-        self._apply_active_visual(bool(checked))
+    def on_toggle_changed(self, checked: bool) -> None:
+        self.apply_active_visual(bool(checked))
         if self._toggle_guard:
             return
         self.toggle_changed.emit(self.state_obj, checked)
@@ -177,7 +177,7 @@ class BaseCardWidget(QFrame):
         if guarded:
             self._toggle_guard = True
         self.toggle_checkbox.setChecked(checked)
-        self._apply_active_visual(bool(checked))
+        self.apply_active_visual(bool(checked))
         if guarded:
             self._toggle_guard = False
 
@@ -196,8 +196,7 @@ class BaseCardWidget(QFrame):
         self.setToolTip(text)
 
     def set_body_widget(self, body: QWidget | None) -> None:
-        while self.body_layout.count():
-            item = self.body_layout.takeAt(0)
+        while (item := self.body_layout.takeAt(0)) is not None:
             child = item.widget()
             if child is not None:
                 child.setParent(None)  # type: ignore[arg-type]
@@ -219,22 +218,24 @@ class BaseCardWidget(QFrame):
     # Visuals
     # ------------------------------------------------------------------
 
-    def _apply_active_visual(self, active: bool) -> None:
-        self.setStyleSheet(self._compose_stylesheet(active=bool(active)))
-        self.style().unpolish(self)
-        self.style().polish(self)
+    def apply_active_visual(self, active: bool) -> None:
+        self.setStyleSheet(self.compose_stylesheet(active=bool(active)))
+        style = self.style()
+        if style is not None:
+            style.unpolish(self)
+            style.polish(self)
         self.update()
 
-    def _accent_css_checked(self) -> str:
+    def accent_css_checked(self) -> str:
         """Return the CSS value used for the checked-checkbox background."""
         if self._accent_color:
             return self._accent_color
         return "palette(highlight)"
 
-    def _accent_css_active_bg(self) -> str:
+    def accent_css_active_bg(self) -> str:
         if self._accent_color:
             # derive a very muted tint from the hex colour
-            r, g, b = _hex_to_rgb(self._accent_color)
+            r, g, b = hex_to_rgb(self._accent_color)
             return f"rgba({r}, {g}, {b}, 18)"
         # palette-based tint
         highlight = QColor(self.palette().color(self.palette().ColorRole.Highlight))
@@ -242,24 +243,24 @@ class BaseCardWidget(QFrame):
         muted.setAlpha(46)
         return f"rgba({muted.red()}, {muted.green()}, {muted.blue()}, {muted.alpha()})"
 
-    def _accent_css_active_border(self) -> str:
+    def accent_css_active_border(self) -> str:
         if self._accent_color:
-            r, g, b = _hex_to_rgb(self._accent_color)
+            r, g, b = hex_to_rgb(self._accent_color)
             return f"rgba({r}, {g}, {b}, 150)"
         highlight = QColor(self.palette().color(self.palette().ColorRole.Highlight))
         muted = QColor(highlight)
         muted.setAlpha(150)
         return f"rgba({muted.red()}, {muted.green()}, {muted.blue()}, {muted.alpha()})"
 
-    def _compose_stylesheet(self, active: bool) -> str:
+    def compose_stylesheet(self, active: bool) -> str:
         n = self._card_name
-        checked_bg = self._accent_css_checked()
+        checked_bg = self.accent_css_checked()
         active_block = ""
         if active:
             active_block = (
                 f"#{n} {{"
-                f"background: {self._accent_css_active_bg()};"
-                f"border: 1px solid {self._accent_css_active_border()};"
+                f"background: {self.accent_css_active_bg()};"
+                f"border: 1px solid {self.accent_css_active_border()};"
                 "}"
             )
         return (
@@ -325,7 +326,7 @@ class RemovableCardWidget(BaseCardWidget):
             lambda: self.remove_requested.emit(self.state_obj)
         )
 
-    def _finalise_header(self, root: QVBoxLayout) -> None:
+    def finalise_header(self, root: QVBoxLayout) -> None:
         """Insert remove button before committing header row to layout."""
         self.remove_btn.setParent(self)  # type: ignore[arg-type]
         self._header_row.addWidget(self.remove_btn)
@@ -336,7 +337,7 @@ class RemovableCardWidget(BaseCardWidget):
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _hex_to_rgb(hex_color: str) -> tuple[int, int, int]:
+def hex_to_rgb(hex_color: str) -> tuple[int, int, int]:
     """Parse ``"#rrggbb"`` → ``(r, g, b)``."""
     h = hex_color.lstrip("#")
     return int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
