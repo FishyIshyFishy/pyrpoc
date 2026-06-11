@@ -149,13 +149,23 @@ Two long-standing gaps were fixed so the GUI fully remembers itself across resta
 The acquisition form already rebuilds from `get_parameter_values()`, so switching now
 re-populates each modality's remembered values automatically — no widget changes needed.
 
-**2. ADS dock layout (was: never saved).** `MainGUI` gained `save_dock_layout()` /
-`restore_dock_layout()` wrapping `CDockManager.saveState()/restoreState()` (base64 in the
-session). `restore_dock_layout()` runs **after** all default + per-display docks exist
-(display docks use the persisted `instance_id` as a stable object name, so they match), and
-sets a `restoring_layout` guard so ADS visibility toggles during restore can't fire the
-dock-closed/toggled handlers (which would otherwise detach/hide displays). Layout is captured
-on every autosave and on window close — covering the close/reopen workflow.
+**2. ADS dock layout (was: never saved *and* never restorable).** `MainGUI` gained
+`save_dock_layout()` / `restore_dock_layout()` wrapping `CDockManager.saveState()/
+restoreState()` (base64 in the session), run **after** all default + per-display docks exist,
+behind a `restoring_layout` guard so ADS visibility toggles during restore can't fire the
+dock-closed/toggled handlers (which would otherwise detach/hide displays). Captured on every
+autosave and on window close.
+
+**The actual root cause** (proven empirically with a PyQt6Ads probe, not guessed): ADS keys
+its save/restore lookup map by each dock's `objectName` **at `addDockWidget` time**, falling
+back to the *window title* when it is unset. `build_default_docks` set `objectName` *after*
+the add, so the four default docks were registered under their titles ("Acquisition", …).
+`saveState` then recorded title-based keys, and on the next launch `restoreState` returned
+`True` but **silently no-op'd** — the "no error, layout not restored" symptom. The fix is one
+line of ordering: set `objectName` *before* `addDockWidget` (now done in `add_dock`; display
+docks already did). Verified by `tests/gui/test_dock_layout.py::test_dock_layout_actually_
+round_trips`, which asserts a rearranged layout restores byte-identically in a fresh GUI
+(this test fails with the old after-add ordering).
 
 **3. Generic & forward-compatible.** The codec stores `params_by_modality` as a plain
 `{key: [{label, value}]}` map, so adding a new modality needs **zero** persistence changes.

@@ -98,26 +98,26 @@ class MainGUI(QWidget):
             dock_specs[0].title,
             AcquisitionManagerWidget(self.modality_service),
             dock_specs[0].area,
+            object_name="dock.acquisition",
         )
-        dock_acq.setObjectName("dock.acquisition")
         self.dock_by_key[dock_specs[0].key] = dock_acq
 
         dock_instruments = self.add_dock(
             dock_specs[1].title,
             InstrumentManagerWidget(self.instrument_service),
             dock_specs[1].area,
+            object_name="dock.instruments",
             tab_with=dock_acq,
         )
-        dock_instruments.setObjectName("dock.instruments")
         self.dock_by_key[dock_specs[1].key] = dock_instruments
 
         dock_displays = self.add_dock(
             dock_specs[2].title,
             DisplayManagerWidget(self.display_service, self.modality_service),
             dock_specs[2].area,
+            object_name="dock.displays",
             tab_with=dock_acq,
         )
-        dock_displays.setObjectName("dock.displays")
         self.dock_by_key[dock_specs[2].key] = dock_displays
 
         dock_opto = self.add_dock(
@@ -128,9 +128,9 @@ class MainGUI(QWidget):
                 self.display_service,
             ),
             dock_specs[3].area,
+            object_name="dock.optocontrols",
             tab_with=dock_acq,
         )
-        dock_opto.setObjectName("dock.optocontrols")
         self.dock_by_key[dock_specs[3].key] = dock_opto
 
     def add_dock(
@@ -138,9 +138,13 @@ class MainGUI(QWidget):
         title: str,
         widget: QWidget,
         area: qtads.DockWidgetArea,
+        object_name: str,
         tab_with: qtads.CDockWidget | None = None,
     ) -> qtads.CDockWidget:
         dock = qtads.CDockWidget(title)
+        # ADS keys its save/restore lookup map by the object name at addDockWidget
+        # time (falling back to the title if unset), so this MUST precede the add.
+        dock.setObjectName(object_name)
         dock.setWidget(widget)
         self.docks.append(dock)
 

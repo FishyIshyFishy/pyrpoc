@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import PyQt6Ads as qtads
+
 import pyrpoc.displays  # noqa: F401  -- registers display types
 import pyrpoc.modalities  # noqa: F401  -- registers modalities
 
 from pyrpoc.domain.app_state import AppState
-from pyrpoc.gui.main_gui import MainGUI
+from pyrpoc.gui.main_gui import DockKey, MainGUI
 from pyrpoc.gui.styles.theme_manager import ThemeController
 from pyrpoc.services.display_service import DisplayService
 from pyrpoc.services.instrument_service import InstrumentService
@@ -45,3 +47,26 @@ def test_restore_dock_layout_is_robust(qapp):
         assert gui.restoring_layout is False
     finally:
         gui.deleteLater()
+
+
+def test_dock_layout_actually_round_trips(qapp):
+    """The real regression test: a rearranged layout must restore byte-identically
+    in a fresh GUI. This only holds when default docks set objectName *before*
+    addDockWidget; with the old (after-add) order, restoreState silently no-ops.
+    """
+    gui1 = build_gui(qapp)
+    # Rearrange: pull the Instruments dock out of the left tab group into the right area.
+    moved = gui1.dock_by_key[DockKey.INSTRUMENTS]
+    gui1.dock_manager.addDockWidget(qtads.DockWidgetArea.RightDockWidgetArea, moved)
+    saved = gui1.save_dock_layout()
+    gui1.deleteLater()
+
+    assert saved  # a real, non-empty layout was captured
+
+    gui2 = build_gui(qapp)
+    try:
+        gui2.restore_dock_layout(saved)
+        # Re-saving the restored layout reproduces the exact saved state.
+        assert gui2.save_dock_layout() == saved
+    finally:
+        gui2.deleteLater()
