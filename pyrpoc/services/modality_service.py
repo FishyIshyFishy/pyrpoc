@@ -51,14 +51,14 @@ class ModalityService(QObject):
             self.app_state.modality.selected_key = None
             self.app_state.modality.selected_class = None
             self.app_state.modality.instance = None
-            self.app_state.modality.configured_params = []
             self.acq_error.emit(f"unknown modality '{key}'")
             raise
 
+        # Keep params_by_modality intact so re-selecting a modality restores its
+        # remembered values (configured_params reads from that map by key).
         self.app_state.modality.selected_key = key
         self.app_state.modality.selected_class = cls
         self.app_state.modality.instance = cls()
-        self.app_state.modality.configured_params = []
         self.modality_selected.emit(key)
         self.validate_required_instruments()
 
@@ -211,7 +211,11 @@ class ModalityService(QObject):
             raise
 
     def set_parameter_values(self, raw_params: dict[str, Any]) -> None:
-        self.app_state.modality.configured_params = [ParameterValue(label=k, value=v) for k, v in raw_params.items()]
+        key = self.app_state.modality.selected_key
+        if key is not None:
+            self.app_state.modality.params_by_modality[key] = [
+                ParameterValue(label=k, value=v) for k, v in raw_params.items()
+            ]
         self.modality_params_changed.emit(dict(raw_params))
 
     def get_parameter_values(self) -> dict[str, Any]:

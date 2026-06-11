@@ -5,7 +5,7 @@ from typing import Any
 
 from .app_state import ParameterValue
 
-schema_version = 5
+schema_version = 6
 
 
 @dataclass
@@ -43,7 +43,8 @@ class DisplaySessionState:
 @dataclass
 class ModalitySessionState:
     selected_key: str | None = None
-    configured_params: list[ParameterValue] = field(default_factory=list)
+    # modality key -> remembered parameter values for that modality
+    params_by_modality: dict[str, list[ParameterValue]] = field(default_factory=dict)
 
 
 @dataclass
@@ -54,3 +55,5 @@ class SessionState:
     optocontrols: list[OptoControlSessionState] = field(default_factory=list)
     displays: list[DisplaySessionState] = field(default_factory=list)
     modality: ModalitySessionState | None = None
+    # Base64-encoded PyQt6Ads CDockManager.saveState() for full dock-layout restore.
+    ads_layout: str | None = None

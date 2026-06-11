@@ -88,12 +88,13 @@ class SessionCoordinator(QObject):
         - -> this method
         - -> repository JSON encode/write.
         """
-        modality_state = None
-        if self.app_state.modality.selected_key is not None:
-            modality_state = ModalitySessionState(
-                selected_key=self.app_state.modality.selected_key,
-                configured_params=list(self.app_state.modality.configured_params),
-            )
+        modality_state = ModalitySessionState(
+            selected_key=self.app_state.modality.selected_key,
+            params_by_modality={
+                key: list(values)
+                for key, values in self.app_state.modality.params_by_modality.items()
+            },
+        )
 
         return SessionState(
             theme_mode=self.theme_controller.get_saved_mode(),
@@ -133,6 +134,7 @@ class SessionCoordinator(QObject):
                 for row in self.app_state.optocontrols
             ],
             modality=modality_state,
+            ads_layout=self.main_window.save_dock_layout(),
         )
 
     def save_now(self) -> None:
@@ -148,7 +150,7 @@ class SessionCoordinator(QObject):
         self.app_state.modality.selected_key = None
         self.app_state.modality.selected_class = None
         self.app_state.modality.instance = None
-        self.app_state.modality.configured_params = []
+        self.app_state.modality.params_by_modality = {}
         self.save_now()
 
     def restore_on_startup(self) -> None:
@@ -176,7 +178,7 @@ class SessionCoordinator(QObject):
             self.app_state.modality.selected_key = None
             self.app_state.modality.selected_class = None
             self.app_state.modality.instance = None
-            self.app_state.modality.configured_params = []
+            self.app_state.modality.params_by_modality = {}
 
             for row in session.instruments:
                 try:
@@ -219,12 +221,19 @@ class SessionCoordinator(QObject):
                 except Exception:
                     continue
 
+            if session.modality is not None:
+                self.app_state.modality.params_by_modality = {
+                    key: list(values)
+                    for key, values in session.modality.params_by_modality.items()
+                }
+
             restored_modality = False
             if session.modality and session.modality.selected_key:
                 try:
                     self.modality_service.select_modality(session.modality.selected_key)
-                    if session.modality.configured_params:
-                        self.modality_service.configure(self.values_to_raw(session.modality.configured_params))
+                    remembered = self.modality_service.get_parameter_values()
+                    if remembered:
+                        self.modality_service.configure(remembered)
                     restored_modality = True
                 except Exception:
                     restored_modality = False
@@ -236,6 +245,9 @@ class SessionCoordinator(QObject):
                         self.modality_service.select_modality(str(rows[0]["key"]))
                     except Exception:
                         pass
+
+            # Docks (default + per-display) all exist now; restore the saved layout last.
+            self.main_window.restore_dock_layout(session.ads_layout)
 
         finally:
             self._restore_in_progress = False

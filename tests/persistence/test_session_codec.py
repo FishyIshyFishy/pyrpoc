@@ -114,8 +114,12 @@ def make_state() -> SessionState:
         ],
         modality=ModalitySessionState(
             selected_key="confocal",
-            configured_params=[ParameterValue(label="X Pixels", value=256)],
+            params_by_modality={
+                "confocal": [ParameterValue(label="X Pixels", value=256)],
+                "flim": [ParameterValue(label="Laser Frequency MHz", value=80.0)],
+            },
         ),
+        ads_layout="ZmFrZS1sYXlvdXQ=",
     )
 
 
@@ -130,7 +134,10 @@ def test_full_round_trip_preserves_fields():
     assert restored.displays[0].dock_visible is False
     assert restored.modality is not None
     assert restored.modality.selected_key == "confocal"
-    assert restored.modality.configured_params[0].value == 256
+    # Every modality's params are remembered, not just the active one.
+    assert restored.modality.params_by_modality["confocal"][0].value == 256
+    assert restored.modality.params_by_modality["flim"][0].value == 80.0
+    assert restored.ads_layout == "ZmFrZS1sYXlvdXQ="
 
 
 def test_from_json_rejects_unsupported_version():
@@ -153,3 +160,32 @@ def test_from_json_accepts_legacy_version_and_config_map():
 def test_from_json_requires_object():
     with pytest.raises(ValueError):
         SessionCodec.from_json_dict([])  # type: ignore[arg-type]
+
+
+def test_legacy_single_modality_params_map_under_selected_key():
+    # Pre-v6 sessions stored one `configured_params` list for the active modality.
+    raw = {
+        "schema_version": 5,
+        "modality": {
+            "selected_key": "confocal",
+            "configured_params": [{"label": "X Pixels", "value": 128}],
+        },
+    }
+    restored = SessionCodec.from_json_dict(raw)
+    assert restored.modality is not None
+    assert restored.modality.params_by_modality["confocal"][0].value == 128
+
+
+def test_ads_layout_round_trips():
+    restored = SessionCodec.from_json_dict(SessionCodec.to_json_dict(SessionState(ads_layout="QUJD")))
+    assert restored.ads_layout == "QUJD"
+
+
+def test_ads_layout_non_string_decodes_to_none():
+    restored = SessionCodec.from_json_dict({"schema_version": 6, "ads_layout": 123})
+    assert restored.ads_layout is None
+
+
+def test_empty_modality_map_round_trips():
+    restored = SessionCodec.from_json_dict(SessionCodec.to_json_dict(SessionState()))
+    assert restored.modality is None or restored.modality.params_by_modality == {}

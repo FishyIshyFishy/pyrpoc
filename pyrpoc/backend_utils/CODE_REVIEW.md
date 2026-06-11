@@ -124,7 +124,7 @@ Swabian `TimeTagStream(channels=[...])` calls (the vendor stub wants an internal
 
 ## Test suite
 
-181 tests in `tests/`, mirroring the package layout, runnable with `pytest` from the repo
+192 tests in `tests/`, mirroring the package layout, runnable with `pytest` from the repo
 root (`rpoc_env`). Hardware (nidaqmx/TimeTagger/pyvisa/cellpose) and live Qt widgets are
 mocked or avoided at the boundary; `conftest.py` sets the offscreen Qt platform and exposes
 a `qapp` fixture so widget-level tests can be added later.
@@ -135,3 +135,40 @@ legacy + version guard) and repository (atomic save / corrupt-file fallback), ra
 toy-data generators, the confocal acquisition-core pure functions (mask grid/TTL/reshape),
 RPOC segmentation algorithms and `RPOCImageInput`, modality parameter parsing, the
 `BaseModality` template + threaded acquisition loop, and the FLIM photon-lifetime math.
+
+## Persistence overhaul (per-modality params + ADS dock layout)
+
+Two long-standing gaps were fixed so the GUI fully remembers itself across restarts.
+
+**1. Per-modality parameters (was: only the active modality survived).**
+`ModalityState.configured_params` was a single list, and `select_modality()` reset it to
+`[]` on every switch, so changing modalities reverted others to defaults. Now
+`ModalityState` holds `params_by_modality: dict[str, list[ParameterValue]]` and
+`configured_params` is a read-only property that reads the selected key's entry.
+`select_modality()` no longer clears it; `set_parameter_values()` writes to the per-key map.
+The acquisition form already rebuilds from `get_parameter_values()`, so switching now
+re-populates each modality's remembered values automatically — no widget changes needed.
+
+**2. ADS dock layout (was: never saved).** `MainGUI` gained `save_dock_layout()` /
+`restore_dock_layout()` wrapping `CDockManager.saveState()/restoreState()` (base64 in the
+session). `restore_dock_layout()` runs **after** all default + per-display docks exist
+(display docks use the persisted `instance_id` as a stable object name, so they match), and
+sets a `restoring_layout` guard so ADS visibility toggles during restore can't fire the
+dock-closed/toggled handlers (which would otherwise detach/hide displays). Layout is captured
+on every autosave and on window close — covering the close/reopen workflow.
+
+**3. Generic & forward-compatible.** The codec stores `params_by_modality` as a plain
+`{key: [{label, value}]}` map, so adding a new modality needs **zero** persistence changes.
+`schema_version` bumped to 6; pre-v6 sessions (single `configured_params`) are migrated under
+their `selected_key`, and the brittle hardcoded version tuple was replaced with a
+`1 <= v <= schema_version` range check.
+
+Tested by: per-modality switching memory (`tests/services/test_modality_persistence.py`),
+ADS save/restore robustness (`tests/gui/test_dock_layout.py`), the codec round-trip + legacy
+migration (`tests/persistence/test_session_codec.py`), and a full close→reopen→switch
+round-trip through the real `SessionCoordinator` + `MainGUI`
+(`tests/services/test_session_roundtrip.py`).
+
+Note: there is no reliable cross-version ADS "layout changed" signal, so a pure dock-drag
+with no other change is only persisted on the next autosave trigger or on close (which covers
+the close/reopen case). `app_state.GuiLayoutState` is now unused and can be removed.

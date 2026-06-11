@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 
-from PyQt6.QtCore import pyqtSignal
+from PyQt6.QtCore import QByteArray, pyqtSignal
 from PyQt6.QtGui import QAction, QCloseEvent
 from PyQt6.QtWidgets import QVBoxLayout, QWidget
 from PyQt6 import sip
@@ -63,6 +63,9 @@ class MainGUI(QWidget):
 
         self.dock_manager = qtads.CDockManager(self)
         self.dock_manager.setStyleSheet("")
+        # Guards the dock close/toggle handlers while restoreState() reshuffles docks,
+        # so ADS visibility changes during restore don't mutate display inventory.
+        self.restoring_layout = False
         self.docks: list[qtads.CDockWidget] = []
         self.dock_by_key: dict[DockKey, qtads.CDockWidget] = {}
         self.display_docks: dict[BaseDisplay, qtads.CDockWidget] = {}
@@ -147,6 +150,32 @@ class MainGUI(QWidget):
             self.dock_manager.addDockWidgetTab(area, dock)
 
         return dock
+
+    def save_dock_layout(self) -> str | None:
+        """Return the full dock-manager layout as base64 for session persistence."""
+        try:
+            state = self.dock_manager.saveState()
+        except Exception:
+            return None
+        if state.isEmpty():
+            return None
+        return state.toBase64().data().decode("ascii")
+
+    def restore_dock_layout(self, layout_base64: str | None) -> None:
+        """Restore a saved dock layout. All referenced docks must already exist."""
+        if not layout_base64:
+            return
+        data = QByteArray.fromBase64(layout_base64.encode("ascii"))
+        if data.isEmpty():
+            return
+        self.restoring_layout = True
+        try:
+            self.dock_manager.restoreState(data)
+        except Exception:
+            pass
+        finally:
+            self.restoring_layout = False
+        self.refresh_view_menu()
 
     def set_style(self, theme_mode: str) -> None:
         applied = self.theme_controller.apply(theme_mode)
@@ -301,6 +330,8 @@ class MainGUI(QWidget):
         return display in self.display_service.app_state.displays
 
     def on_display_dock_toggled(self, display: BaseDisplay, visible: bool) -> None:
+        if self.restoring_layout:
+            return
         if not self.display_active(display):
             return
         if bool(getattr(display, "docked_visible", True)) == bool(visible):
@@ -308,6 +339,8 @@ class MainGUI(QWidget):
         self.display_service.set_dock_visibility(display, visible)
 
     def on_display_dock_closed(self, display: BaseDisplay) -> None:
+        if self.restoring_layout:
+            return
         if not self.display_active(display):
             return
         try:

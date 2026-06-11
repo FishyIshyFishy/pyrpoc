@@ -62,6 +62,23 @@ class SessionCodec:
         return out
 
     @classmethod
+    def decode_params_by_modality(cls, modality_raw: dict[str, Any]) -> dict[str, list[ParameterValue]]:
+        """Decode the per-modality parameter map (with a single-list legacy fallback)."""
+        raw_map = modality_raw.get("params_by_modality")
+        if isinstance(raw_map, dict):
+            return {
+                str(key): cls.decode_param_values(values)
+                for key, values in raw_map.items()
+                if isinstance(values, list)
+            }
+        # legacy (schema <= 5): one configured_params list belonging to selected_key
+        legacy = modality_raw.get("configured_params")
+        selected_key = modality_raw.get("selected_key")
+        if isinstance(legacy, list) and isinstance(selected_key, str) and selected_key:
+            return {selected_key: cls.decode_param_values(legacy)}
+        return {}
+
+    @classmethod
     def decode_config_values_with_legacy_fallback(cls, item: dict[str, Any]) -> list[ParameterValue]:
         """
         Accept modern and legacy config shapes.
@@ -152,7 +169,10 @@ class SessionCodec:
         else:
             raw["modality"] = {
                 "selected_key": state.modality.selected_key,
-                "configured_params": cls.encode_param_values(state.modality.configured_params),
+                "params_by_modality": {
+                    key: cls.encode_param_values(values)
+                    for key, values in state.modality.params_by_modality.items()
+                },
             }
         return raw
 
@@ -162,7 +182,7 @@ class SessionCodec:
             raise ValueError("session data must be an object")
 
         version = int(raw.get("schema_version", -1))
-        if version not in (1, 2, 3, 4, schema_version):
+        if version < 1 or version > schema_version:
             raise ValueError("unsupported session schema version")
 
         instruments: list[InstrumentSessionState] = []
@@ -241,8 +261,10 @@ class SessionCodec:
         if isinstance(modality_raw, dict):
             modality = ModalitySessionState(
                 selected_key=modality_raw.get("selected_key"),
-                configured_params=cls.decode_param_values(modality_raw.get("configured_params", [])),
+                params_by_modality=cls.decode_params_by_modality(modality_raw),
             )
+
+        ads_layout = raw.get("ads_layout")
         return SessionState(
             schema_version=version,
             theme_mode=str(raw.get("theme_mode", "system")),
@@ -250,4 +272,5 @@ class SessionCodec:
             optocontrols=optocontrols,
             displays=displays,
             modality=modality,
+            ads_layout=ads_layout if isinstance(ads_layout, str) else None,
         )
