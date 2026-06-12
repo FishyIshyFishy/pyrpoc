@@ -267,7 +267,9 @@ class SessionCodec:
         ads_layout = raw.get("ads_layout")
         return SessionState(
             schema_version=version,
-            theme_mode=str(raw.get("theme_mode", "system")),
+            # older sessions stored a "theme_mode" of dark/light/system; unknown
+            # names fall back to the default theme when applied
+            theme=str(raw.get("theme", raw.get("theme_mode", "dark-pink"))),
             instruments=instruments,
             optocontrols=optocontrols,
             displays=displays,

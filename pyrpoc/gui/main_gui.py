@@ -3,9 +3,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 
-from PyQt6.QtCore import QByteArray, pyqtSignal
-from PyQt6.QtGui import QAction, QCloseEvent
-from PyQt6.QtWidgets import QVBoxLayout, QWidget
+from PyQt6.QtCore import QByteArray, QUrl, pyqtSignal
+from PyQt6.QtGui import QAction, QCloseEvent, QDesktopServices
+from PyQt6.QtWidgets import QMessageBox, QVBoxLayout, QWidget
 from PyQt6 import sip
 import PyQt6Ads as qtads
 
@@ -16,6 +16,7 @@ from pyrpoc.gui.main_widgets.display_mgr import DisplayManagerWidget
 from pyrpoc.gui.main_widgets.instrument_mgr import InstrumentManagerWidget
 from pyrpoc.gui.main_widgets.menubar import MainMenuBar
 from pyrpoc.gui.main_widgets.opto_control_mgr import OptoControlManagerWidget
+from pyrpoc.gui.styles.theme_engine import ThemeError
 from pyrpoc.gui.styles.theme_manager import ThemeController
 from pyrpoc.services.display_service import DisplayService
 from pyrpoc.services.instrument_service import InstrumentService
@@ -82,9 +83,10 @@ class MainGUI(QWidget):
         layout.addWidget(self.dock_manager)
 
         self.refresh_view_menu()
-        selected_mode = self.theme_controller.get_saved_mode()
-        self.menubar.populate_style_menu(selected_mode)
+        self.refresh_style_menu()
         self.menubar.style_selected.connect(self.set_style)
+        self.menubar.open_themes_folder_requested.connect(self.open_themes_folder)
+        self.menubar.themes_reload_requested.connect(self.refresh_style_menu)
 
     def build_default_docks(self) -> None:
         dock_specs = [
@@ -181,9 +183,24 @@ class MainGUI(QWidget):
             self.restoring_layout = False
         self.refresh_view_menu()
 
-    def set_style(self, theme_mode: str) -> None:
-        applied = self.theme_controller.apply(theme_mode)
+    def set_style(self, theme_name: str) -> None:
+        try:
+            applied = self.theme_controller.apply(theme_name)
+        except ThemeError as exc:
+            QMessageBox.warning(self, "Theme Error", str(exc))
+            applied = self.theme_controller.get_saved_theme()
         self.menubar.set_active_style(applied)
+
+    def refresh_style_menu(self) -> None:
+        self.menubar.populate_style_menu(
+            self.theme_controller.available_themes(),
+            self.theme_controller.get_saved_theme(),
+        )
+
+    def open_themes_folder(self) -> None:
+        folder = self.theme_controller.user_themes_dir
+        folder.mkdir(parents=True, exist_ok=True)
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(folder)))
 
     def refresh_view_menu(self) -> None:
         for display in list(self.display_dock_actions):

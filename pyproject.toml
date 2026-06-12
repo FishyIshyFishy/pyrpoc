@@ -15,11 +15,10 @@ dependencies = [
   "opencv-python",
   "pillow",
   "matplotlib",
-  "pyqt6",       
+  "pyqt6",
   "PyQt6Ads",
   "pyqtgraph",
-  "pyqtdarktheme",
-  "superqt",    
+  "superqt",
   "nidaqmx",   
   "pyvisa",      
   "tifffile"
@@ -30,6 +29,13 @@ pyrpoc = "pyrpoc.main:main"
 
 [tool.setuptools.packages.find]
 include = ["pyrpoc*"]
+
+[tool.setuptools.package-data]
+pyrpoc = [
+  "gui/styles/templates/*.in",
+  "gui/styles/templates/icons/*.in",
+  "gui/styles/themes/*.json",
+]
 
 [build-system]
 requires = ["setuptools>=61.0"]

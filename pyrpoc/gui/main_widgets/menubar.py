@@ -8,6 +8,8 @@ from PyQt6 import sip
 
 class MainMenuBar(QMenuBar):
     style_selected = pyqtSignal(str)
+    open_themes_folder_requested = pyqtSignal()
+    themes_reload_requested = pyqtSignal()
     new_requested = pyqtSignal()
     open_requested = pyqtSignal()
     save_requested = pyqtSignal()
@@ -65,23 +67,29 @@ class MainMenuBar(QMenuBar):
                     action.setCheckable(True)
                 self.view_menu.addAction(action)
 
-    def populate_style_menu(self, selected_mode: str) -> None:
+    def populate_style_menu(self, theme_names: list[str], selected_theme: str) -> None:
         self.style_menu.clear()
+        for action in self._style_group.actions():
+            self._style_group.removeAction(action)
         self._style_actions.clear()
-        mode_items = [
-            ("system", "Follow System"),
-            ("dark", "Dark"),
-            ("light", "Light"),
-        ]
-        for mode, label in mode_items:
-            action = QAction(label, self.style_menu)
+        for name in theme_names:
+            action = QAction(name.replace("-", " ").title(), self.style_menu)
             action.setCheckable(True)
-            action.triggered.connect(lambda checked, m=mode: self.style_selected.emit(m))
+            action.triggered.connect(lambda checked, n=name: self.style_selected.emit(n))
             self._style_group.addAction(action)
             self.style_menu.addAction(action)
-            self._style_actions[mode] = action
-        self.set_active_style(selected_mode)
+            self._style_actions[name] = action
 
-    def set_active_style(self, selected_mode: str) -> None:
-        for mode, action in self._style_actions.items():
-            action.setChecked(mode == selected_mode)
+        self.style_menu.addSeparator()
+        open_folder_action = QAction("Open Themes Folder...", self.style_menu)
+        open_folder_action.triggered.connect(self.open_themes_folder_requested.emit)
+        self.style_menu.addAction(open_folder_action)
+        reload_action = QAction("Reload Themes", self.style_menu)
+        reload_action.triggered.connect(self.themes_reload_requested.emit)
+        self.style_menu.addAction(reload_action)
+
+        self.set_active_style(selected_theme)
+
+    def set_active_style(self, selected_theme: str) -> None:
+        for name, action in self._style_actions.items():
+            action.setChecked(name == selected_theme)

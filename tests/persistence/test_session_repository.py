@@ -21,10 +21,10 @@ def test_load_default_when_missing(tmp_path):
 
 def test_save_then_load_round_trip(tmp_path):
     repo = make_repo(tmp_path)
-    repo.save(SessionState(theme_mode="dark"))
+    repo.save(SessionState(theme="dark-pink"))
     assert repo.path.exists()
     restored = repo.load_or_default()
-    assert restored.theme_mode == "dark"
+    assert restored.theme == "dark-pink"
     assert repo.last_load_error is None
 
 

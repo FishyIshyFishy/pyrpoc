@@ -90,7 +90,7 @@ def test_pick_instance_id_uses_existing_or_generates():
 
 def make_state() -> SessionState:
     return SessionState(
-        theme_mode="dark",
+        theme="light-blue",
         instruments=[
             InstrumentSessionState(
                 type_key="time_tagger",
@@ -123,10 +123,20 @@ def make_state() -> SessionState:
     )
 
 
+def test_legacy_theme_mode_key_still_reads():
+    raw = {"schema_version": schema_version, "theme_mode": "dark"}
+    assert SessionCodec.from_json_dict(raw).theme == "dark"
+
+
+def test_missing_theme_defaults_to_dark_pink():
+    raw = {"schema_version": schema_version}
+    assert SessionCodec.from_json_dict(raw).theme == "dark-pink"
+
+
 def test_full_round_trip_preserves_fields():
     restored = SessionCodec.from_json_dict(SessionCodec.to_json_dict(make_state()))
     assert restored.schema_version == schema_version
-    assert restored.theme_mode == "dark"
+    assert restored.theme == "light-blue"
     assert restored.instruments[0].type_key == "time_tagger"
     assert restored.instruments[0].connected is True
     assert restored.instruments[0].config_values[0].value == 1

@@ -97,7 +97,7 @@ class SessionCoordinator(QObject):
         )
 
         return SessionState(
-            theme_mode=self.theme_controller.get_saved_mode(),
+            theme=self.theme_controller.get_saved_theme(),
             instruments=[
                 InstrumentSessionState(
                     type_key=instrument.type_key,
@@ -169,7 +169,7 @@ class SessionCoordinator(QObject):
             session = self.repository.load_or_default()
             if self.repository.last_load_error:
                 self.show_restore_warning(self.repository.last_load_error)
-            self.theme_controller.apply(session.theme_mode)
+            self.theme_controller.apply_or_default(session.theme)
 
             self.display_service.clear_all()
             self.opto_control_service.clear_all()

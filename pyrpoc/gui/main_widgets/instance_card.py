@@ -7,7 +7,7 @@ BaseCardWidget
     collapsible body area, and a muted description line shown while collapsed.
 
 RemovableCardWidget(BaseCardWidget)
-    Adds a pink "X" remove button to the header row.  Used by instrument,
+    Adds an accent-colored "X" remove button to the header row.  Used by instrument,
     opto-control, and display managers.  Acquisition parameter-group cards use
     BaseCardWidget directly because they are never individually removable.
 """
@@ -25,13 +25,6 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-
-# Accent used for the remove "X" button and for cards that want a fixed pink
-# accent instead of the palette highlight.  The toggle checkbox in
-# BaseCardWidget always uses the palette highlight colour so it integrates
-# naturally with whatever theme is loaded.
-_REMOVE_BTN_COLOR = "#e75480"
-
 
 class BaseCardWidget(QFrame):
     """Collapsible card with an optional toggle checkbox.
@@ -186,7 +179,9 @@ class BaseCardWidget(QFrame):
 
     def set_description(self, text: str) -> None:
         self._description_label.setText(text)
-        self._description_label.setStyleSheet("color: white;")
+        self._description_label.setStyleSheet(
+            "color: palette(text); font-size: 9pt; padding-left: 22px;"
+        )
         self._description_label.setVisible(bool(text) and not self._expanded)
 
     def set_marker_text(self, text: str) -> None:  # noqa: ARG002
@@ -289,7 +284,7 @@ class BaseCardWidget(QFrame):
 
 
 class RemovableCardWidget(BaseCardWidget):
-    """BaseCardWidget with a pink "X" remove button in the header.
+    """BaseCardWidget with an accent-colored "X" remove button in the header.
 
     Used by instrument, opto-control, and display managers.
 
@@ -315,7 +310,7 @@ class RemovableCardWidget(BaseCardWidget):
         self.remove_btn.setAutoRaise(True)
         self.remove_btn.setText("X")
         self.remove_btn.setStyleSheet(
-            f"QToolButton {{ color: {_REMOVE_BTN_COLOR}; font-weight: 700; }}"
+            "QToolButton { color: palette(highlight); font-weight: 700; }"
         )
         self.remove_btn.setToolTip("Remove")
         super().__init__(

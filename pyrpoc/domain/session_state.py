@@ -50,7 +50,7 @@ class ModalitySessionState:
 @dataclass
 class SessionState:
     schema_version: int = schema_version
-    theme_mode: str = "system"
+    theme: str = "dark-pink"
     instruments: list[InstrumentSessionState] = field(default_factory=list)
     optocontrols: list[OptoControlSessionState] = field(default_factory=list)
     displays: list[DisplaySessionState] = field(default_factory=list)
