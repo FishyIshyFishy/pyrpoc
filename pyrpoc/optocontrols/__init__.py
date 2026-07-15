@@ -1,3 +1,3 @@
-from .base_optocontrol import *
-from .opto_control_registry import *
-from .mask import *
+"""Optocontrol logic and decorators (Qt-free). Editor widgets live in ``gui``."""
+
+from . import mask  # noqa: F401  (registers the optocontrol)

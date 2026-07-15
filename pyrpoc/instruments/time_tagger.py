@@ -1,12 +1,7 @@
 from __future__ import annotations
 
-from collections.abc import Callable
-
-from PyQt6.QtWidgets import QWidget
-
-from pyrpoc.instruments.base_instrument import BaseInstrument, BaseInstrumentWidget
-from pyrpoc.instruments.instrument_registry import instrument_registry
-from pyrpoc.instruments.instrument_widgets.time_tagger_widget import TimeTaggerInstrumentWidget
+from .base import BaseInstrument
+from .registry import instrument_registry
 
 
 @instrument_registry.register("time_tagger")
@@ -29,21 +24,7 @@ class TimeTaggerInstrument(BaseInstrument):
             connected=connected,
         )
         self.last_test_ok: bool | None = None
-        self.widget: BaseInstrumentWidget | None = None
         self.tagger = None
-
-    def get_widget(
-        self,
-        parent: QWidget | None = None,
-        on_change: Callable[[], None] | None = None,
-    ) -> BaseInstrumentWidget:
-        if self.widget is None:
-            self.widget = TimeTaggerInstrumentWidget(self, on_change=on_change, parent=parent)
-        elif parent is not None:
-            self.widget.setParent(parent)
-        if on_change is not None:
-            self.widget.on_change = on_change
-        return self.widget
 
     def get_collapsed_summary(self) -> str:
         if self.last_test_ok is None:
@@ -64,7 +45,7 @@ class TimeTaggerInstrument(BaseInstrument):
         return self.last_test_ok
 
     def create_tagger(self) -> None:
-        """Create a TimeTagger from self.serial and store it as self.tagger."""
+        """Create a TimeTagger and store it as self.tagger."""
         from Swabian import TimeTagger
         self.tagger = TimeTagger.createTimeTagger()
 
@@ -113,14 +94,8 @@ class TimeTaggerInstrument(BaseInstrument):
         binwidth_ps: int,
     ) -> object:
         """Create the hardware Flim measurement that histograms laser-to-photon
-        delays into per-pixel decay curves.
-
-        Binning happens on the FPGA and only the (n_pixels x n_bins) histogram
-        crosses USB, so the 80 MHz laser stream is never transferred and the
-        device cannot overflow the way raw TimeTagStream acquisition does. The
-        pixel/frame channels carry the DAQ scan markers that assign photons to
-        pixels.
-        """
+        delays into per-pixel decay curves. Binning happens on the FPGA, so only
+        the (n_pixels x n_bins) histogram crosses USB."""
         if self.tagger is None:
             raise RuntimeError("create_tagger() must be called before create_flim_measurement()")
         from Swabian import TimeTagger

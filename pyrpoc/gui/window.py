@@ -1,0 +1,380 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+from enum import Enum
+
+from PyQt6.QtCore import QByteArray, pyqtSignal
+from PyQt6.QtGui import QAction, QCloseEvent
+from PyQt6.QtWidgets import QVBoxLayout, QWidget
+from PyQt6 import sip
+import PyQt6Ads as qtads
+
+from pyrpoc.gui.displays.base_display import BaseDisplay
+from pyrpoc.gui.displays.display_registry import display_registry
+from pyrpoc.gui.panels.acquisition import AcquisitionManagerWidget
+from pyrpoc.gui.panels.displays import DisplayManagerWidget
+from pyrpoc.gui.panels.instruments import InstrumentManagerWidget
+from pyrpoc.gui.menubar import MainMenuBar
+from pyrpoc.gui.panels.optocontrols import OptoControlManagerWidget
+from pyrpoc.gui.theme.theme_manager import ThemeController
+from pyrpoc.gui.services.display_service import DisplayService
+from pyrpoc.gui.services.instrument_service import InstrumentService
+from pyrpoc.gui.services.acquisition_service import AcquisitionService
+from pyrpoc.gui.services.opto_control_service import OptoControlService
+
+
+qtads.CDockManager.setConfigFlag(qtads.CDockManager.eConfigFlag.DisableTabTextEliding, True)
+qtads.CDockManager.setConfigFlag(qtads.CDockManager.eConfigFlag.OpaqueSplitterResize, False)
+
+
+class DockKey(str, Enum):
+    ACQUISITION = "acquisition"
+    INSTRUMENTS = "instruments"
+    DISPLAYS = "displays"
+    OPTOCONTROLS = "optocontrols"
+
+
+@dataclass(frozen=True)
+class DockSpec:
+    key: DockKey
+    title: str
+    area: qtads.DockWidgetArea
+
+
+class MainGUI(QWidget):
+    closing = pyqtSignal()
+
+    def __init__(
+        self,
+        instrument_service: InstrumentService,
+        acquisition_service: AcquisitionService,
+        display_service: DisplayService,
+        opto_control_service: OptoControlService,
+        theme_controller: ThemeController,
+    ):
+        super().__init__()
+        self.setWindowTitle("pyrpoc")
+
+        self.instrument_service = instrument_service
+        self.acquisition_service = acquisition_service
+        self.display_service = display_service
+        self.opto_control_service = opto_control_service
+        self.theme_controller = theme_controller
+
+        self.dock_manager = qtads.CDockManager(self)
+        self.dock_manager.setStyleSheet("")
+        # Guards the dock close/toggle handlers while restoreState() reshuffles docks,
+        # so ADS visibility changes during restore don't mutate display inventory.
+        self.restoring_layout = False
+        self.docks: list[qtads.CDockWidget] = []
+        self.dock_by_key: dict[DockKey, qtads.CDockWidget] = {}
+        self.display_docks: dict[BaseDisplay, qtads.CDockWidget] = {}
+        self.display_dock_actions: dict[BaseDisplay, QAction] = {}
+        self.menubar = MainMenuBar(self)
+        self.build_default_docks()
+
+        self.display_service.display_added.connect(self.on_display_added)
+        self.display_service.display_removed.connect(self.on_display_removed)
+        self.display_service.display_changed.connect(self.on_display_changed)
+
+        layout = QVBoxLayout(self)
+        layout.setMenuBar(self.menubar)
+        layout.addWidget(self.dock_manager)
+
+        self.refresh_view_menu()
+        selected_mode = self.theme_controller.get_saved_mode()
+        self.menubar.populate_style_menu(selected_mode)
+        self.menubar.style_selected.connect(self.set_style)
+
+    def build_default_docks(self) -> None:
+        dock_specs = [
+            DockSpec(DockKey.ACQUISITION, "Acquisition", qtads.DockWidgetArea.LeftDockWidgetArea),
+            DockSpec(DockKey.INSTRUMENTS, "Instruments", qtads.DockWidgetArea.LeftDockWidgetArea),
+            DockSpec(DockKey.DISPLAYS, "Displays", qtads.DockWidgetArea.LeftDockWidgetArea),
+            DockSpec(DockKey.OPTOCONTROLS, "OptoControls", qtads.DockWidgetArea.LeftDockWidgetArea),
+        ]
+
+        dock_acq = self.add_dock(
+            dock_specs[0].title,
+            AcquisitionManagerWidget(self.acquisition_service),
+            dock_specs[0].area,
+            object_name="dock.acquisition",
+        )
+        self.dock_by_key[dock_specs[0].key] = dock_acq
+
+        dock_instruments = self.add_dock(
+            dock_specs[1].title,
+            InstrumentManagerWidget(self.instrument_service),
+            dock_specs[1].area,
+            object_name="dock.instruments",
+            tab_with=dock_acq,
+        )
+        self.dock_by_key[dock_specs[1].key] = dock_instruments
+
+        dock_displays = self.add_dock(
+            dock_specs[2].title,
+            DisplayManagerWidget(self.display_service, self.acquisition_service),
+            dock_specs[2].area,
+            object_name="dock.displays",
+            tab_with=dock_acq,
+        )
+        self.dock_by_key[dock_specs[2].key] = dock_displays
+
+        dock_opto = self.add_dock(
+            dock_specs[3].title,
+            OptoControlManagerWidget(
+                self.opto_control_service,
+                self.acquisition_service,
+                self.display_service,
+            ),
+            dock_specs[3].area,
+            object_name="dock.optocontrols",
+            tab_with=dock_acq,
+        )
+        self.dock_by_key[dock_specs[3].key] = dock_opto
+
+    def add_dock(
+        self,
+        title: str,
+        widget: QWidget,
+        area: qtads.DockWidgetArea,
+        object_name: str,
+        tab_with: qtads.CDockWidget | None = None,
+    ) -> qtads.CDockWidget:
+        dock = qtads.CDockWidget(title)
+        # ADS keys its save/restore lookup map by the object name at addDockWidget
+        # time (falling back to the title if unset), so this MUST precede the add.
+        dock.setObjectName(object_name)
+        dock.setWidget(widget)
+        self.docks.append(dock)
+
+        if tab_with is None:
+            self.dock_manager.addDockWidget(area, dock)
+        else:
+            self.dock_manager.addDockWidgetTab(area, dock)
+
+        return dock
+
+    def save_dock_layout(self) -> str | None:
+        """Return the full dock-manager layout as base64 for session persistence."""
+        try:
+            state = self.dock_manager.saveState()
+        except Exception:
+            return None
+        if state.isEmpty():
+            return None
+        return state.toBase64().data().decode("ascii")
+
+    def restore_dock_layout(self, layout_base64: str | None) -> None:
+        """Restore a saved dock layout. All referenced docks must already exist."""
+        if not layout_base64:
+            return
+        data = QByteArray.fromBase64(layout_base64.encode("ascii"))
+        if data.isEmpty():
+            return
+        self.restoring_layout = True
+        try:
+            self.dock_manager.restoreState(data)
+        except Exception:
+            pass
+        finally:
+            self.restoring_layout = False
+        self.refresh_view_menu()
+
+    def set_style(self, theme_mode: str) -> None:
+        applied = self.theme_controller.apply(theme_mode)
+        self.menubar.set_active_style(applied)
+
+    def refresh_view_menu(self) -> None:
+        for display in list(self.display_dock_actions):
+            action = self.display_dock_actions.get(display)
+            if action is None or sip.isdeleted(action):
+                self.display_dock_actions.pop(display, None)
+                continue
+        self.menubar.populate_view_menu(
+            [dock for dock in self.dock_by_key.values()],
+            list(self.display_dock_actions.values()),
+        )
+
+    def display_title(self, display: BaseDisplay) -> str:
+        name = getattr(display, "user_label", None)
+        if name:
+            return name
+        try:
+            cls = display_registry.get_class(display.type_key)
+            return getattr(cls, "display_name", display.type_key)
+        except Exception:
+            return display.type_key
+
+    def on_display_added(self, state: object) -> None:
+        if not isinstance(state, BaseDisplay):
+            return
+        if state in self.display_docks:
+            self.on_display_changed(state)
+            return
+
+        dock = qtads.CDockWidget(self.display_title(state))
+        dock.setObjectName(self.display_dock_object_name(state))
+        dock.setWidget(state)
+        self.display_docks[state] = dock
+
+        try:
+            self.dock_manager.addDockWidget(qtads.DockWidgetArea.RightDockWidgetArea, dock)
+        except Exception:
+            try:
+                self.dock_manager.addDockWidget(qtads.DockWidgetArea.LeftDockWidgetArea, dock)
+            except Exception:
+                dock.deleteLater()
+                self.display_docks.pop(state, None)
+                return
+
+        action = QAction(self.display_title(state), self)
+        action.setCheckable(True)
+        visible = bool(getattr(state, "docked_visible", True))
+        action.setChecked(visible)
+        action.toggled.connect(lambda checked, display=state: self.on_display_dock_toggled(display, checked))
+        self.display_dock_actions[state] = action
+
+        if not visible:
+            self.set_display_visibility(state, False, update_action=False)
+        else:
+            self.set_display_visibility(state, True, update_action=False)
+
+        if hasattr(dock, "closed"):
+            dock.closed.connect(lambda *_args, display=state: self.on_display_dock_closed(display))
+
+        self.refresh_view_menu()
+
+    def on_display_removed(self, state: object) -> None:
+        if not isinstance(state, BaseDisplay):
+            return
+        dock = self.display_docks.pop(state, None)
+        action = self.display_dock_actions.pop(state, None)
+
+        if action is not None:
+            if sip.isdeleted(action):
+                action = None
+            else:
+                try:
+                    action.toggled.disconnect()
+                except Exception:
+                    pass
+                try:
+                    self.menubar.view_menu.removeAction(action)
+                except Exception:
+                    pass
+                action.setParent(None)
+                action.deleteLater()
+
+        if dock is not None:
+            if sip.isdeleted(dock):
+                dock = None
+
+            if dock is not None:
+                detached_widget: QWidget | None = None
+                try:
+                    if hasattr(self.dock_manager, "removeDockWidget"):
+                        self.dock_manager.removeDockWidget(dock)
+                except Exception:
+                    pass
+                try:
+                    detached_widget = dock.takeWidget()
+                except Exception:
+                    detached_widget = None
+                if detached_widget is not None:
+                    try:
+                        detached_widget.setParent(None)
+                    except Exception:
+                        pass
+                dock.deleteLater()
+
+        self.refresh_view_menu()
+
+    def display_dock_object_name(self, display: BaseDisplay) -> str:
+        instance_id = str(getattr(display, "instance_id", "")).strip()
+        if not instance_id:
+            instance_id = str(id(display))
+        safe = "".join(ch if ch.isalnum() or ch in {"_", "-"} else "_" for ch in instance_id)
+        return f"dock.display.{safe}"
+
+    def on_display_changed(self, state: object) -> None:
+        if not isinstance(state, BaseDisplay):
+            return
+        dock = self.display_docks.get(state)
+        action = self.display_dock_actions.get(state)
+        if dock is not None and sip.isdeleted(dock):
+            self.display_docks.pop(state, None)
+            dock = None
+        if action is not None and sip.isdeleted(action):
+            self.display_dock_actions.pop(state, None)
+            action = None
+
+        name = self.display_title(state)
+        if dock is not None:
+            try:
+                dock.setWindowTitle(name)
+            except Exception:
+                pass
+        if action is not None:
+            action.setText(name)
+            if action.isChecked() != bool(getattr(state, "docked_visible", True)):
+                action.blockSignals(True)
+                action.setChecked(bool(getattr(state, "docked_visible", True)))
+                action.blockSignals(False)
+
+        toggle_action = dock.toggleViewAction() if dock is not None else None
+        if toggle_action is not None:
+            desired_visible = bool(getattr(state, "docked_visible", True))
+            current_visible = bool(toggle_action.isChecked())
+            if current_visible != desired_visible:
+                self.set_display_visibility(state, desired_visible, update_action=False)
+        self.refresh_view_menu()
+
+    def display_active(self, display: BaseDisplay) -> bool:
+        return display in self.display_service.app_state.displays
+
+    def on_display_dock_toggled(self, display: BaseDisplay, visible: bool) -> None:
+        if self.restoring_layout:
+            return
+        if not self.display_active(display):
+            return
+        if bool(getattr(display, "docked_visible", True)) == bool(visible):
+            return
+        self.display_service.set_dock_visibility(display, visible)
+
+    def on_display_dock_closed(self, display: BaseDisplay) -> None:
+        if self.restoring_layout:
+            return
+        if not self.display_active(display):
+            return
+        try:
+            self.display_service.detach(display)
+        except Exception:
+            pass
+        try:
+            self.display_service.set_dock_visibility(display, False)
+        except Exception:
+            self.set_display_visibility(display, False)
+
+    def set_display_visibility(self, display: BaseDisplay, visible: bool, update_action: bool = True) -> None:
+        dock = self.display_docks.get(display)
+        if dock is None or sip.isdeleted(dock):
+            if dock is not None:
+                self.display_docks.pop(display, None)
+            return
+
+        if dock is not None:
+            dock.toggleView(visible)
+        action = self.display_dock_actions.get(display)
+        if action is not None and sip.isdeleted(action):
+            self.display_dock_actions.pop(display, None)
+            action = None
+        if action is not None and update_action:
+            if action.isChecked() != visible:
+                action.blockSignals(True)
+                action.setChecked(visible)
+                action.blockSignals(False)
+
+    def closeEvent(self, event: QCloseEvent) -> None:
+        self.closing.emit()
+        super().closeEvent(event)

@@ -6,8 +6,8 @@ import sys
 
 from PyQt6.QtWidgets import QApplication
 
-from pyrpoc.gui.styles.theme_manager import ThemeController
-from pyrpoc.services.app_controller import AppController
+from pyrpoc.gui.theme.theme_manager import ThemeController
+from pyrpoc.gui.app import AppController
 
 
 def configure_qt_fontdir() -> None:

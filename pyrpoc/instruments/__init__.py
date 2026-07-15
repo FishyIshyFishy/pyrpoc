@@ -1,3 +1,3 @@
-from .base_instrument import *
-from .instrument_registry import *
-from .time_tagger import *
+"""Instrument logic (Qt-free). Editor widgets live in ``gui``."""
+
+from . import time_tagger  # noqa: F401  (registers the instrument)
