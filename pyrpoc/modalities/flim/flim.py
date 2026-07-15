@@ -1,25 +1,28 @@
 from __future__ import annotations
 
-import threading
-from typing import Any
+import time
 
 import numpy as np
 
 from pyrpoc.backend_utils.acquired_data import AcquiredData, DataKind
 from pyrpoc.instruments.time_tagger import TimeTaggerInstrument
-from pyrpoc.optocontrols.base_optocontrol import BaseOptoControl
-from pyrpoc.optocontrols.mask import MaskOptoControl  # used by load_optocontrols type signature
+from pyrpoc.optocontrols.mask import MaskOptoControl  # used by allowed_optocontrols
 
 from .acquisition_core import (
     DaqUnavailableError,
-    acquire_daq_frame,
-    poll_one_flim_frame,
+    flim_scan,
+    flim_intensity,
+    read_flim_frame,
 )
-from ..helpers.toy_data import generate_toy_confocal_frame
+from ..helpers.toy_data import generate_toy_flim_frame
 from ..base_modality import BaseModality
 from ..mod_registry import modality_registry
 from . import storage
 from .parameters import parameter_groups, FlimParameters
+
+# Settle time after the galvo scan finishes so the last photons reach the
+# Flim measurement before the frame is read.
+frame_settle_s = 5e-3
 
 
 @modality_registry.register("flim")
@@ -38,7 +41,7 @@ class FlimModality(BaseModality):
         self.parameters: FlimParameters  # narrows base type for type checker
         self._frame_idx = 0
         self._tagger_instrument: TimeTaggerInstrument = None
-        self._stream = None
+        self._flim = None
         self._pending_flim_frame: np.ndarray | None = None
         self._raw_frames: list[np.ndarray] = []
 
@@ -60,71 +63,52 @@ class FlimModality(BaseModality):
     # Acquisition lifecycle                                               #
     # ------------------------------------------------------------------ #
 
+    def laser_period_ps(self) -> int:
+        return int(round(1e6 / self.parameters.laser_frequency_mhz))
+
     def setup_tagger(self) -> None:
-        """Create and configure the TimeTagger and FLIM stream for one acquisition."""
+        """Create the TimeTagger and start the hardware Flim measurement."""
         p = self.parameters
+        total_x = p.x_pixels + p.extra_left + p.extra_right
         self._tagger_instrument.create_tagger()
         self._tagger_instrument.configure_for_flim(
-            laser_ch=p.laser_channel,
-            detector_ch=p.detector_channel,
-            trigger_ch=p.daq_trigger_channel,
-            laser_trigger_v=p.laser_trigger_v,
-            detector_trigger_v=p.detector_trigger_v,
-            trigger_v=p.trigger_v,
-            laser_event_divider=p.laser_event_divider,
+            p.laser_channel,
+            p.detector_channel,
+            p.pixel_channel,
+            p.frame_channel,
+            p.laser_trigger_v,
+            p.detector_trigger_v,
+            p.pixel_trigger_v,
+            p.frame_trigger_v,
+            laser_input_delay_ps=p.laser_input_delay_ps,
         )
-        self._stream = self._tagger_instrument.create_flim_stream(
-            laser_ch=p.laser_channel,
-            detector_ch=p.detector_channel,
-            trigger_ch=p.daq_trigger_channel,
+        self._flim = self._tagger_instrument.create_flim_measurement(
+            p.laser_channel,
+            p.detector_channel,
+            p.pixel_channel,
+            p.frame_channel,
+            n_pixels=total_x * p.y_pixels,
+            n_bins=p.histogram_bins,
+            binwidth_ps=p.histogram_binwidth_ps,
         )
-        self._stream.start()
 
     def teardown_tagger(self) -> None:
-        """Stop the FLIM stream and free the TimeTagger."""
-        if self._stream is not None:
+        """Stop the Flim measurement and free the TimeTagger."""
+        if self._flim is not None:
             try:
-                self._stream.stop()
+                self._flim.stop()
             except Exception:
                 pass
-            self._stream = None
+            self._flim = None
         if self._tagger_instrument is not None:
             self._tagger_instrument.free_tagger()
 
     def acquire_once(self, on_data) -> None:
         p = self.parameters
-        pixel_dwell_ps = int(round(p.dwell_time_us * 1e6))
-        scan_duration_s = ((p.x_pixels+p.extra_left+p.extra_right) * p.y_pixels * p.dwell_time_us * 1e-6)
-        # True laser period in ps — used to fold divided-pulse delays back into [0, period)
-        laser_period_ps = int(round(1e6 / p.laser_frequency_mhz))
-
         self.setup_tagger()
         try:
-            poll_result: dict[str, Any] = {}
-
-            def poll() -> None:
-                try:
-                    poll_result["frame"] = poll_one_flim_frame(
-                        stream=self._stream,
-                        x_pixels=p.x_pixels,
-                        y_pixels=p.y_pixels,
-                        extra_left=p.extra_left,
-                        extra_right=p.extra_right,
-                        pixel_dwell_ps=pixel_dwell_ps,
-                        laser_ch=p.laser_channel,
-                        detector_ch=p.detector_channel,
-                        trigger_ch=p.daq_trigger_channel,
-                        laser_period_ps=laser_period_ps,
-                    )
-                except Exception as exc:
-                    poll_result["error"] = exc
-
-            poll_thread = threading.Thread(target=poll, daemon=True)
-            poll_thread.start()
-
-            active_ai_channels = list(p.active_ai_channels)
             try:
-                acquire_daq_frame(
+                flim_scan(
                     device_name=p.device_name,
                     sample_rate_hz=p.sample_rate_hz,
                     fast_axis_ao=p.fast_axis_ao,
@@ -138,17 +122,29 @@ class FlimModality(BaseModality):
                     fast_axis_amplitude=p.fast_axis_amplitude,
                     slow_axis_offset=p.slow_axis_offset,
                     slow_axis_amplitude=p.slow_axis_amplitude,
-                    active_ai_channels=active_ai_channels,
-                    daq_trigger_pfi_line=p.daq_trigger_pfi_line,
+                    frame_trigger_pfi=p.frame_trigger_pfi_line,
+                    pixel_clock_ctr=p.pixel_clock_ctr,
+                    pixel_clock_pfi=p.pixel_clock_pfi_line,
+                )
+                time.sleep(frame_settle_s)
+                total_x = p.x_pixels + p.extra_left + p.extra_right
+                hist_frame = read_flim_frame(
+                    self._flim,
+                    n_bins=p.histogram_bins,
+                    y_pixels=p.y_pixels,
+                    total_x_pixels=total_x,
+                    extra_left=p.extra_left,
+                    x_pixels=p.x_pixels,
                 )
             except DaqUnavailableError:
-                self.emit_warning("DAQ unavailable — displaying simulated data")
-                generate_toy_confocal_frame(
+                self.emit_warning("DAQ unavailable — displaying simulated FLIM data")
+                hist_frame = generate_toy_flim_frame(
                     x_pixels=p.x_pixels,
                     y_pixels=p.y_pixels,
-                    active_channels=active_ai_channels if active_ai_channels else [0],
+                    n_bins=p.histogram_bins,
+                    binwidth_ps=p.histogram_binwidth_ps,
+                    laser_period_ps=self.laser_period_ps(),
                     frame_index=self._frame_idx,
-                    mask_contexts=[],
                     fast_axis_offset=p.fast_axis_offset,
                     fast_axis_amplitude=p.fast_axis_amplitude,
                     slow_axis_offset=p.slow_axis_offset,
@@ -156,33 +152,31 @@ class FlimModality(BaseModality):
                 )
 
             self._frame_idx += 1
-
-            poll_thread.join(timeout=scan_duration_s * 2 + 5)
-            if "error" in poll_result:
-                raise RuntimeError(f"TimeTagger poll failed: {poll_result['error']}") from poll_result["error"]
-
-            flim_frame = poll_result.get("frame")
-            self._pending_flim_frame = flim_frame
-            if flim_frame is None:
-                raise RuntimeError("TimeTagger poll did not return a frame within the expected window")
-            intensity = np.vectorize(len)(flim_frame).astype(np.float32)
-            on_data(AcquiredData(
-                data=intensity[np.newaxis].astype(np.float32),
-                kind=DataKind.INTENSITY_FRAME,
-                channel_labels=["intensity"],
-            ))
-            on_data(AcquiredData(
-                data=flim_frame,
-                kind=DataKind.FLIM_RAW_FRAME,
-                channel_labels=["delays"],
-                metadata={"laser_period_ps": laser_period_ps},
-            ))
+            self.emit_flim_frame(on_data, hist_frame)
         finally:
             self.teardown_tagger()
 
+    def emit_flim_frame(self, on_data, hist_frame: np.ndarray) -> None:
+        self._pending_flim_frame = hist_frame
+        intensity = flim_intensity(hist_frame)
+        on_data(AcquiredData(
+            data=intensity[np.newaxis].astype(np.float32),
+            kind=DataKind.INTENSITY_FRAME,
+            channel_labels=["intensity"],
+        ))
+        on_data(AcquiredData(
+            data=hist_frame,
+            kind=DataKind.FLIM_RAW_FRAME,
+            channel_labels=["histogram"],
+            metadata={
+                "laser_period_ps": self.laser_period_ps(),
+                "binwidth_ps": self.parameters.histogram_binwidth_ps,
+                "n_bins": self.parameters.histogram_bins,
+            },
+        ))
+
     def stop(self) -> None:
-        """Signal continuous acquisition to stop and clean up any hardware
-        that may have been left mid-frame (e.g. stream interrupted by error)."""
+        """Signal continuous acquisition to stop and clean up the TimeTagger."""
         self._running = False
         self.teardown_tagger()
 

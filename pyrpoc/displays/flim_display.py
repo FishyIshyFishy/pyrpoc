@@ -21,24 +21,19 @@ from pyrpoc.rpoc.types import RPOCImageInput
 from .base_display import BaseDisplay
 from .display_registry import display_registry
 
-_DEFAULT_LASER_PERIOD_PS = 12500  # 80 MHz fallback
+default_binwidth_ps = 100  # 80 MHz / 125 bins fallback
 
 
 def mono_exp(t: np.ndarray, A: float, tau: float, B: float) -> np.ndarray:
     return A * np.exp(-t / tau) + B
 
 
-def collect_box_delays(raw: np.ndarray, iy: int, ix: int, half: int) -> np.ndarray:
-    H, W = raw.shape
+def collect_box_histogram(cube: np.ndarray, iy: int, ix: int, half: int) -> np.ndarray:
+    """Sum the per-pixel decay histograms over an (2*half+1) box around (iy, ix)."""
+    H, W = cube.shape[:2]
     iy0, iy1 = max(0, iy - half), min(H, iy + half + 1)
     ix0, ix1 = max(0, ix - half), min(W, ix + half + 1)
-    cells = [
-        raw[r, c]
-        for r in range(iy0, iy1)
-        for c in range(ix0, ix1)
-        if len(raw[r, c]) > 0
-    ]
-    return np.concatenate(cells).astype(np.int64) if cells else np.empty(0, dtype=np.int64)
+    return cube[iy0:iy1, ix0:ix1, :].sum(axis=(0, 1))
 
 
 def roll_and_fit(counts: np.ndarray, bin_width_ps: float = 100.0) -> float:
@@ -89,35 +84,34 @@ class _FitWorker(QObject):
 
     def __init__(
         self,
-        raw: np.ndarray,
+        cube: np.ndarray,
         half: int,
-        bins: np.ndarray,
+        binwidth_ps: float,
     ) -> None:
         super().__init__()
-        self._raw = raw
+        self._cube = cube
         self._half = half
-        self._bins = bins
+        self._binwidth_ps = binwidth_ps
         self._abort = False
 
     def abort(self) -> None:
         self._abort = True
 
     def run(self) -> None:
-        raw = self._raw
-        H, W = raw.shape
+        cube = self._cube
+        H, W = cube.shape[:2]
         half = self._half
-        bins = self._bins
+        binwidth = self._binwidth_ps
         lifetime_map = np.zeros((H, W), dtype=np.float32)
 
         for iy in range(H):
             if self._abort:
                 break
             for ix in range(W):
-                delays = collect_box_delays(raw, iy, ix, half)
-                if delays.size == 0:
+                counts = collect_box_histogram(cube, iy, ix, half)
+                if counts.sum() == 0:
                     continue
-                counts, _ = np.histogram(delays, bins=bins)
-                lifetime_map[iy, ix] = roll_and_fit(counts)
+                lifetime_map[iy, ix] = roll_and_fit(counts, binwidth)
 
             self.row_done.emit(lifetime_map.copy())
 
@@ -132,10 +126,10 @@ class _FitWorker(QObject):
 class FlimDisplay(BaseDisplay):
     """FLIM display.
 
-    When a FLIM_RAW_FRAME arrives the global decay histogram is shown
-    immediately, rolled so the peak lands at t=0.  Click
-    "Render FLIM Image" to run a per-pixel single-exponential fit using
-    the box-summing parameter.  The lifetime image fills in row by row
+    Consumes a FLIM_RAW_FRAME (a (H, W, n_bins) per-pixel decay-histogram
+    cube). The global decay histogram is shown immediately, rolled so the peak
+    lands at t=0. Click "Render FLIM Image" to run a per-pixel single-exponential
+    fit using the box-summing parameter. The lifetime image fills in row by row
     while fitting runs in a background thread.
     """
 
@@ -149,7 +143,7 @@ class FlimDisplay(BaseDisplay):
         pg.setConfigOptions(imageAxisOrder="row-major")
 
         self._raw_frame_hw: np.ndarray | None = None
-        self._laser_period_ps: int = _DEFAULT_LASER_PERIOD_PS
+        self._binwidth_ps: int = default_binwidth_ps
         self._lifetime_hw: np.ndarray | None = None
         self._suspend_lut_signal = False
         self._min_val: float = 0.0
@@ -249,8 +243,8 @@ class FlimDisplay(BaseDisplay):
 
     def render(self, acquired: AcquiredData) -> None:
         if acquired.kind == DataKind.FLIM_RAW_FRAME:
-            lp = acquired.metadata.get("laser_period_ps", _DEFAULT_LASER_PERIOD_PS)
-            self.handle_raw_frame(acquired.data, int(lp))
+            bw = acquired.metadata.get("binwidth_ps", default_binwidth_ps)
+            self.handle_raw_frame(acquired.data, int(bw))
 
     def clear(self) -> None:
         self.cancel_fit()
@@ -309,22 +303,17 @@ class FlimDisplay(BaseDisplay):
     # Internal — data handler
     # ------------------------------------------------------------------
 
-    def handle_raw_frame(self, raw: np.ndarray, laser_period_ps: int) -> None:
+    def handle_raw_frame(self, cube: np.ndarray, binwidth_ps: int) -> None:
         self.cancel_fit()
-        self._raw_frame_hw = raw
-        self._laser_period_ps = laser_period_ps
+        self._raw_frame_hw = cube
+        self._binwidth_ps = binwidth_ps
 
-        n_bins = laser_period_ps // 100
-        bins = np.arange(0, n_bins * 100 + 100, 100, dtype=np.int64)
-
-        cells = [cell for cell in raw.flat if len(cell) > 0]
-        if cells:
-            all_delays = np.concatenate(cells).astype(np.int64)
-            counts, _ = np.histogram(all_delays, bins=bins)
+        counts = np.asarray(cube, dtype=np.float64).sum(axis=(0, 1))
+        if counts.sum() > 0:
             i_peak = int(np.argmax(counts))
             rolled = np.roll(counts, -i_peak)
-            x = np.arange(len(rolled), dtype=float) * 100.0
-            self._time_trace_curve.setData(x=x, y=rolled.astype(float))
+            x = np.arange(len(rolled), dtype=float) * float(binwidth_ps)
+            self._time_trace_curve.setData(x=x, y=rolled)
 
         self._render_button.setEnabled(True)
         self._render_button.setText("Render FLIM Image")
@@ -342,13 +331,10 @@ class FlimDisplay(BaseDisplay):
             self.cancel_fit()
             return
 
-        n_bins = self._laser_period_ps // 100
-        bins = np.arange(0, n_bins * 100 + 100, 100, dtype=np.int64)
-
         worker = _FitWorker(
-            raw=self._raw_frame_hw,
+            cube=self._raw_frame_hw,
             half=self._box_spin.value() // 2,
-            bins=bins,
+            binwidth_ps=self._binwidth_ps,
         )
         thread = QThread(self)
         worker.moveToThread(thread)
@@ -363,7 +349,7 @@ class FlimDisplay(BaseDisplay):
         self._fit_thread = thread
 
         # Clear the image so progress is visible from the start
-        H, W = self._raw_frame_hw.shape
+        H, W = self._raw_frame_hw.shape[:2]
         blank = np.zeros((H, W), dtype=np.float32)
         self._image_item.setImage(blank, autoLevels=False)
 

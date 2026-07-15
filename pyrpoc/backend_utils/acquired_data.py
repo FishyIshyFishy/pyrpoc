@@ -19,8 +19,8 @@ class DataKind(str, Enum):
 
     INTENSITY_FRAME = "intensity_frame"          # final per-frame intensity image — saved to disk
     PARTIAL_FRAME = "partial_frame"              # live in-progress frame — not saved
-    FLIM_RAW_FRAME = "flim_raw_frame"            # (H, W) object array of per-pixel int64 delay arrays
-    FLIM_PARTIAL_HISTOGRAM = "flim_partial_histogram"  # 1D int64 array of photon counts per 100 ps bin
+    FLIM_RAW_FRAME = "flim_raw_frame"            # (H, W, n_bins) float32 per-pixel decay histograms
+    FLIM_PARTIAL_HISTOGRAM = "flim_partial_histogram"  # 1D array of photon counts per histogram bin
 
     @property
     def is_persistent(self) -> bool:

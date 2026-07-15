@@ -82,34 +82,56 @@ class TimeTaggerInstrument(BaseInstrument):
         self,
         laser_ch: int,
         detector_ch: int,
-        trigger_ch: int,
+        pixel_ch: int,
+        frame_ch: int,
         laser_trigger_v: float,
         detector_trigger_v: float,
-        trigger_v: float,
-        laser_event_divider: int = 1,
+        pixel_trigger_v: float,
+        frame_trigger_v: float,
+        *,
+        laser_input_delay_ps: int = 0,
     ) -> None:
-        """Set trigger levels and optional event divider on self.tagger."""
+        """Set per-channel trigger levels and the laser input delay used to
+        slide the decay curve into the histogram window."""
         if self.tagger is None:
             raise RuntimeError("create_tagger() must be called before configure_for_flim()")
         self.tagger.setTriggerLevel(laser_ch, laser_trigger_v)
         self.tagger.setTriggerLevel(detector_ch, detector_trigger_v)
-        self.tagger.setTriggerLevel(trigger_ch, trigger_v)
-        if int(laser_event_divider) > 1:
-            self.tagger.setEventDivider(laser_ch, int(laser_event_divider))
+        self.tagger.setTriggerLevel(pixel_ch, pixel_trigger_v)
+        self.tagger.setTriggerLevel(frame_ch, frame_trigger_v)
+        if laser_input_delay_ps:
+            self.tagger.setInputDelay(laser_ch, int(laser_input_delay_ps))
 
-    def create_flim_stream(
+    def create_flim_measurement(
         self,
         laser_ch: int,
         detector_ch: int,
-        trigger_ch: int,
-        buffer_size: int = 4_000_000,
+        pixel_ch: int,
+        frame_ch: int,
+        n_pixels: int,
+        n_bins: int,
+        binwidth_ps: int,
     ) -> object:
-        """Create and return a TimeTagStream on self.tagger for FLIM acquisition."""
+        """Create the hardware Flim measurement that histograms laser-to-photon
+        delays into per-pixel decay curves.
+
+        Binning happens on the FPGA and only the (n_pixels x n_bins) histogram
+        crosses USB, so the 80 MHz laser stream is never transferred and the
+        device cannot overflow the way raw TimeTagStream acquisition does. The
+        pixel/frame channels carry the DAQ scan markers that assign photons to
+        pixels.
+        """
         if self.tagger is None:
-            raise RuntimeError("create_tagger() must be called before create_flim_stream()")
+            raise RuntimeError("create_tagger() must be called before create_flim_measurement()")
         from Swabian import TimeTagger
-        return TimeTagger.TimeTagStream(
-            tagger=self.tagger,
-            n_max_events=buffer_size,
-            channels=[laser_ch, detector_ch, trigger_ch],  # pyright:ignore
+        return TimeTagger.Flim(
+            self.tagger,
+            start_channel=laser_ch,
+            click_channel=detector_ch,
+            pixel_begin_channel=pixel_ch,
+            n_pixels=int(n_pixels),
+            n_bins=int(n_bins),
+            binwidth=int(binwidth_ps),
+            frame_begin_channel=frame_ch,
+            n_frame_average=1,
         )
