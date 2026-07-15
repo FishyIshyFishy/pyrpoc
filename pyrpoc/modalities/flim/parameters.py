@@ -3,7 +3,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from pyrpoc.backend_utils.parameter_utils import (
-    ChannelSelectionParameter,
     CheckboxParameter,
     NumberParameter,
     PathParameter,
@@ -84,11 +83,11 @@ parameter_groups = {
         ),
         NumberParameter(
             label="Sample Rate (Hz)",
-            default=100_000.0,
+            default=1_000_000.0,
             minimum=1.0,
             maximum=5_000_000.0,
             step=1_000.0,
-            tooltip="DAQ sample rate in Hz",
+            tooltip="DAQ AO sample rate in Hz; the pixel clock is divided down from it",
             number_type=float,
         ),
         NumberParameter(
@@ -107,10 +106,26 @@ parameter_groups = {
             tooltip="Analog output channel for the slow (Y) galvo",
             number_type=int,
         ),
-        ChannelSelectionParameter(
-            label="Active AI Channels",
-            num_channels=9,
-            tooltip="Toggle which analog input channels are active",
+        NumberParameter(
+            label="Frame Trigger PFI Line",
+            default=0,
+            minimum=0,
+            tooltip="NI-DAQ PFI line that exports the AO start trigger (frame marker)",
+            number_type=int,
+        ),
+        NumberParameter(
+            label="Pixel Clock Counter",
+            default=0,
+            minimum=0,
+            tooltip="NI-DAQ counter (ctr) used to generate the pixel clock",
+            number_type=int,
+        ),
+        NumberParameter(
+            label="Pixel Clock PFI Line",
+            default=1,
+            minimum=0,
+            tooltip="NI-DAQ PFI line that outputs the pixel clock pulses",
+            number_type=int,
         ),
     ],
     "timetagger": [
@@ -118,36 +133,50 @@ parameter_groups = {
             label="Laser Channel",
             default=1,
             minimum=1,
-            tooltip="TimeTagger input channel for laser sync",
+            tooltip="TimeTagger input channel for the laser sync (start)",
             number_type=int,
         ),
         NumberParameter(
             label="Detector Channel",
             default=2,
             minimum=1,
-            tooltip="TimeTagger input channel for SPAD detector",
+            tooltip="TimeTagger input channel for the SPAD detector (click)",
             number_type=int,
         ),
         NumberParameter(
-            label="DAQ Trigger Channel",
+            label="Pixel Channel",
             default=3,
             minimum=1,
-            tooltip="TimeTagger input channel for the DAQ frame-start trigger",
+            tooltip="TimeTagger input channel for the DAQ pixel clock",
             number_type=int,
         ),
         NumberParameter(
-            label="DAQ Trigger PFI Line",
-            default=0,
-            minimum=0,
-            tooltip="NI-DAQ PFI line number exported as the frame-start trigger",
+            label="Frame Channel",
+            default=4,
+            minimum=1,
+            tooltip="TimeTagger input channel for the DAQ frame-start trigger",
             number_type=int,
         ),
         NumberParameter(
             label="Laser Frequency MHz",
             default=80.0,
             minimum=0.001,
-            tooltip="Laser repetition rate in MHz (used to fold delays)",
+            tooltip="Laser repetition rate in MHz",
             number_type=float,
+        ),
+        NumberParameter(
+            label="Histogram Bins",
+            default=125,
+            minimum=2,
+            tooltip="Number of decay-histogram bins per pixel",
+            number_type=int,
+        ),
+        NumberParameter(
+            label="Histogram Bin Width (ps)",
+            default=100,
+            minimum=1,
+            tooltip="Decay-histogram bin width in ps (bins x width should span one laser period)",
+            number_type=int,
         ),
         NumberParameter(
             label="Laser Trigger V",
@@ -162,16 +191,21 @@ parameter_groups = {
             number_type=float,
         ),
         NumberParameter(
-            label="Trigger V",
-            default=0.2,
-            tooltip="Trigger threshold for DAQ trigger channel (V)",
+            label="Pixel Trigger V",
+            default=0.5,
+            tooltip="Trigger threshold for the pixel clock channel (V)",
             number_type=float,
         ),
         NumberParameter(
-            label="Laser Event Divider",
-            default=1,
-            minimum=1,
-            tooltip="Only keep 1 in N laser sync events (reduces data rate)",
+            label="Frame Trigger V",
+            default=0.5,
+            tooltip="Trigger threshold for the frame trigger channel (V)",
+            number_type=float,
+        ),
+        NumberParameter(
+            label="Laser Input Delay (ps)",
+            default=0,
+            tooltip="Delay added to the laser channel to position the decay in the histogram window",
             number_type=int,
         ),
     ],
@@ -220,17 +254,22 @@ class FlimParameters(AcquisitionParameters):
     sample_rate_hz: float
     fast_axis_ao: int
     slow_axis_ao: int
-    active_ai_channels: tuple[int, ...]
+    frame_trigger_pfi_line: int
+    pixel_clock_ctr: int
+    pixel_clock_pfi_line: int
     # timetagger
     laser_channel: int
     detector_channel: int
-    daq_trigger_channel: int
-    daq_trigger_pfi_line: int
+    pixel_channel: int
+    frame_channel: int
     laser_frequency_mhz: float
+    histogram_bins: int
+    histogram_binwidth_ps: int
     laser_trigger_v: float
     detector_trigger_v: float
-    trigger_v: float
-    laser_event_divider: int
+    pixel_trigger_v: float
+    frame_trigger_v: float
+    laser_input_delay_ps: int
     # acquisition
     save_enabled: bool
     save_path: str
@@ -249,19 +288,24 @@ class FlimParameters(AcquisitionParameters):
             slow_axis_amplitude=max(float(p["Slow Axis Amplitude"]), 1e-6),
             dwell_time_us=float(p["Dwell Time (us)"]),
             device_name=str(p.get("DAQ Device", "Dev1")) or "Dev1",
-            sample_rate_hz=float(p.get("Sample Rate (Hz)", 100_000.0)),
+            sample_rate_hz=float(p.get("Sample Rate (Hz)", 1_000_000.0)),
             fast_axis_ao=int(p.get("Fast Axis AO", 0)),
             slow_axis_ao=int(p.get("Slow Axis AO", 1)),
-            active_ai_channels=tuple(int(c) for c in p.get("Active AI Channels", list(range(9)))),
+            frame_trigger_pfi_line=int(p["Frame Trigger PFI Line"]),
+            pixel_clock_ctr=int(p["Pixel Clock Counter"]),
+            pixel_clock_pfi_line=int(p["Pixel Clock PFI Line"]),
             laser_channel=int(p["Laser Channel"]),
             detector_channel=int(p["Detector Channel"]),
-            daq_trigger_channel=int(p["DAQ Trigger Channel"]),
-            daq_trigger_pfi_line=int(p["DAQ Trigger PFI Line"]),
+            pixel_channel=int(p["Pixel Channel"]),
+            frame_channel=int(p["Frame Channel"]),
             laser_frequency_mhz=float(p["Laser Frequency MHz"]),
+            histogram_bins=int(p["Histogram Bins"]),
+            histogram_binwidth_ps=int(p["Histogram Bin Width (ps)"]),
             laser_trigger_v=float(p["Laser Trigger V"]),
             detector_trigger_v=float(p["Detector Trigger V"]),
-            trigger_v=float(p["Trigger V"]),
-            laser_event_divider=int(p["Laser Event Divider"]),
+            pixel_trigger_v=float(p["Pixel Trigger V"]),
+            frame_trigger_v=float(p["Frame Trigger V"]),
+            laser_input_delay_ps=int(p["Laser Input Delay (ps)"]),
             save_enabled=bool(p.get("save_enabled", False)),
             save_path=str(p.get("save_path", "acquisition")),
             num_frames=int(p.get("num_frames", 1)),

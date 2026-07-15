@@ -106,6 +106,48 @@ def generate_toy_split_confocal_frame(
     return split_frame.astype(np.float32, copy=False), raw.astype(np.float32, copy=False)
 
 
+def generate_toy_flim_frame(
+    *,
+    x_pixels: int,
+    y_pixels: int,
+    n_bins: int,
+    binwidth_ps: int,
+    laser_period_ps: int,
+    frame_index: int,
+    fast_axis_offset: float,
+    fast_axis_amplitude: float,
+    slow_axis_offset: float,
+    slow_axis_amplitude: float,
+) -> np.ndarray:
+    """Build a synthetic ``(y_pixels, x_pixels, n_bins)`` FLIM histogram cube so
+    the display works without a TimeTagger. Each pixel holds an exponential
+    decay whose lifetime varies spatially and whose amplitude follows a toy
+    intensity image."""
+    if x_pixels <= 0 or y_pixels <= 0 or n_bins <= 0:
+        raise ValueError("FLIM dimensions must be positive")
+
+    intensity = build_toy_channel(
+        x_pixels=x_pixels,
+        y_pixels=y_pixels,
+        frame_index=frame_index,
+        channel_index=0,
+        ai_channel=0,
+        fast_axis_offset=float(fast_axis_offset),
+        fast_axis_amplitude=max(float(fast_axis_amplitude), 1e-6),
+        slow_axis_offset=float(slow_axis_offset),
+        slow_axis_amplitude=max(float(slow_axis_amplitude), 1e-6),
+    )
+
+    bin_centers = (np.arange(n_bins, dtype=np.float32) + 0.5) * float(binwidth_ps)
+    peak_ps = 0.05 * float(laser_period_ps)
+    tau_map = 800.0 + 2200.0 * intensity  # ps, brighter pixels live longer
+    decay = np.exp(-np.clip(bin_centers - peak_ps, 0.0, None)[None, None, :] / tau_map[:, :, None])
+    decay[:, :, bin_centers < peak_ps] = 0.0
+
+    counts = decay * (50.0 * intensity[:, :, None] + 1.0)
+    return counts.astype(np.float32, copy=False)
+
+
 def build_toy_channel(
     *,
     x_pixels: int,
