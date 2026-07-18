@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>pyrpoc UX survey</title>
+  <link rel="stylesheet" href="survey.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="brand" id="brand-title">UX survey</div>
+      <div class="progress" id="progress" hidden>
+        <div class="progress-label" id="progress-label">Case 1 of 1</div>
+        <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+      </div>
+    </div>
+  </header>
+
+  <main id="app" class="app">
+    <!-- survey.js renders the active screen here -->
+  </main>
+
+  <footer class="footer">
+    <span id="footer-note">Your answers stay in your browser until you download them.</span>
+  </footer>
+
+  <!-- Classic scripts + globals (no modules/fetch) so the page works from file:// offline. -->
+  <script src="cases.js"></script>
+  <script src="survey.js"></script>
+</body>
+</html>

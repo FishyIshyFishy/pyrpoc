@@ -1,0 +1,854 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>pyrpoc UX survey</title>
+  <style>
+:root {
+  --bg: #f6f7f9;
+  --surface: #ffffff;
+  --surface-2: #f0f2f5;
+  --border: #d8dce2;
+  --border-strong: #b7bec9;
+  --text: #1c2430;
+  --muted: #5b6675;
+  --accent: #2f6fed;
+  --accent-soft: rgba(47, 111, 237, 0.12);
+  --accent-border: rgba(47, 111, 237, 0.55);
+  --danger: #e75480;
+  --radius: 12px;
+  --maxw: 1040px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #14171c;
+    --surface: #1c2027;
+    --surface-2: #232833;
+    --border: #2c333f;
+    --border-strong: #3a4250;
+    --text: #e7ebf1;
+    --muted: #9aa4b2;
+    --accent: #5b8cff;
+    --accent-soft: rgba(91, 140, 255, 0.16);
+    --accent-border: rgba(91, 140, 255, 0.6);
+  }
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-size: 16px;
+  line-height: 1.5;
+}
+
+/* ---- top bar / progress ---- */
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+.topbar-inner {
+  max-width: var(--maxw);
+  margin: 0 auto;
+  padding: 12px 20px;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+.brand { font-weight: 700; font-size: 1.05rem; white-space: nowrap; }
+.progress { flex: 1; min-width: 0; }
+.progress-label { font-size: 0.8rem; color: var(--muted); margin-bottom: 4px; }
+.progress-track {
+  height: 6px;
+  background: var(--surface-2);
+  border-radius: 999px;
+  overflow: hidden;
+}
+.progress-fill {
+  height: 100%;
+  width: 0%;
+  background: var(--accent);
+  border-radius: 999px;
+  transition: width 0.25s ease;
+}
+
+/* ---- layout ---- */
+.app {
+  max-width: var(--maxw);
+  margin: 0 auto;
+  padding: 28px 20px 64px;
+}
+.footer {
+  max-width: var(--maxw);
+  margin: 0 auto;
+  padding: 16px 20px 40px;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+/* ---- generic pieces ---- */
+.chip {
+  display: inline-block;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--accent);
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-border);
+  border-radius: 999px;
+  padding: 3px 10px;
+  margin-bottom: 14px;
+}
+.prompt { font-size: 1.5rem; font-weight: 700; margin: 0 0 8px; }
+.context { color: var(--muted); margin: 0 0 24px; max-width: 70ch; }
+
+.btn {
+  appearance: none;
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-weight: 600;
+  padding: 10px 20px;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease, opacity 0.12s ease;
+}
+.btn:hover { background: var(--surface-2); }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.btn-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+.btn-primary:hover { filter: brightness(1.06); background: var(--accent); }
+.btn-ghost { background: transparent; border-color: transparent; color: var(--muted); }
+.btn-ghost:hover { background: var(--surface-2); }
+
+.field { display: block; margin-bottom: 16px; }
+.field label { display: block; font-weight: 600; margin-bottom: 6px; font-size: 0.9rem; }
+.field input, .field textarea {
+  width: 100%;
+  font: inherit;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+.field textarea { min-height: 72px; resize: vertical; }
+
+/* ---- intro / done cards ---- */
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 28px;
+  max-width: 720px;
+}
+.panel h1 { margin: 0 0 12px; font-size: 1.8rem; }
+.panel p { color: var(--muted); }
+.panel .row { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 20px; align-items: center; }
+
+/* ---- A/B options ---- */
+.options {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 18px;
+  margin: 8px 0 20px;
+}
+.option {
+  position: relative;
+  text-align: left;
+  background: var(--surface);
+  border: 2px solid var(--border);
+  border-radius: var(--radius);
+  padding: 18px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  transition: border-color 0.12s ease, background 0.12s ease, transform 0.06s ease;
+}
+.option:hover { border-color: var(--border-strong); }
+.option:active { transform: translateY(1px); }
+.option.selected {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.option-key {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  border: 1px solid var(--border-strong);
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+  display: grid;
+  place-items: center;
+}
+.option.selected .option-key {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+.option-label { font-weight: 700; font-size: 1.1rem; padding-right: 28px; }
+.option-desc { color: var(--muted); font-size: 0.9rem; }
+.option .preview {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px;
+  overflow-x: auto;
+}
+.option .preview pre {
+  margin: 0;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.8rem;
+  line-height: 1.35;
+  white-space: pre;
+}
+.option .preview img { max-width: 100%; display: block; border-radius: 4px; }
+
+/* ---- per-case comment + nav ---- */
+.comment { margin: 4px 0 24px; max-width: 720px; }
+.navbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border-top: 1px solid var(--border);
+  padding-top: 20px;
+}
+.navbar .spacer { flex: 1; }
+.hint { color: var(--muted); font-size: 0.85rem; }
+
+.empty {
+  background: var(--surface);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius);
+  padding: 28px;
+  color: var(--muted);
+}
+.empty code {
+  background: var(--surface-2);
+  padding: 2px 6px;
+  border-radius: 6px;
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+}
+
+.summary-list { list-style: none; padding: 0; margin: 16px 0; }
+.summary-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+}
+.summary-list .op { color: var(--muted); }
+.summary-list .pick { font-weight: 600; }
+.summary-list .pick.none { color: var(--danger); font-weight: 500; }
+
+</style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="brand" id="brand-title">UX survey</div>
+      <div class="progress" id="progress" hidden>
+        <div class="progress-label" id="progress-label">Case 1 of 1</div>
+        <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+      </div>
+    </div>
+  </header>
+
+  <main id="app" class="app">
+    <!-- survey.js renders the active screen here -->
+  </main>
+
+  <footer class="footer">
+    <span id="footer-note">Your answers stay in your browser until you download them.</span>
+  </footer>
+
+  <!-- Classic scripts + globals (no modules/fetch) so the page works from file:// offline. -->
+  <script>
+/*
+ * cases.js — survey configuration + the A/B cases.
+ *
+ * This file is loaded as a plain <script> (no modules), so it just assigns two
+ * globals: SURVEY_CONFIG and SURVEY_CASES. Edit this file to add your cases;
+ * you do not need to touch survey.js / index.html.
+ *
+ * ---------------------------------------------------------------------------
+ * CASE SCHEMA (each entry in SURVEY_CASES)
+ * ---------------------------------------------------------------------------
+ * {
+ *   id:        "unique-stable-id",   // REQUIRED, unique; used as the key in results. Do not reuse.
+ *   operation: "Short label",         // the operation being compared (shown as a chip)
+ *   prompt:    "Which feels better?", // the question the participant answers
+ *   context:   "optional sentence",   // optional extra explanation shown under the prompt
+ *   options: [                        // 2+ options (A/B = 2). Rendered as side-by-side cards.
+ *     {
+ *       id:          "a",                  // REQUIRED, unique within this case
+ *       label:       "Option A",           // short title
+ *       description: "one-line summary",   // optional
+ *       // Provide AT MOST one preview form per option (all optional):
+ *       previewText: "ASCII / monospace mockup\n...",   // rendered in a <pre> box
+ *       preview:     "<div>arbitrary HTML mockup</div>", // rendered as HTML (you author it; trusted)
+ *       image:       "img/foo.png",                       // relative path or data: URI
+ *     },
+ *     { id: "b", label: "Option B", description: "...", previewText: "..." }
+ *   ]
+ * }
+ *
+ * Notes:
+ *  - Keep `id`s stable across edits so results from different people line up.
+ *  - `SURVEY_CONFIG.shuffleOptionOrder` randomizes left/right per participant to
+ *    reduce position bias; the presented order is recorded in the results.
+ */
+
+window.SURVEY_CONFIG = {
+  surveyId: "pyrpoc-ux-v1",          // bump when you change the case set meaningfully
+  schemaVersion: 1,                   // results file format version (leave as-is)
+  title: "pyrpoc UX preferences",
+  intro:
+    "Thanks for helping shape the new pyrpoc interface. You'll see a series of " +
+    "A/B choices about how common operations could work. For each one, pick the " +
+    "option you'd prefer to use — there are no wrong answers, go with your gut. " +
+    "At the end you'll download a small file; please send it back so your input " +
+    "can be folded into the design.",
+  collectParticipant: true,           // show optional name/role fields at the start
+  shuffleOptionOrder: true,           // randomize option positions per participant
+  allowComments: true,                // optional "why?" note under each case
+  requireChoice: true,                // must choose before advancing
+  returnTo:
+    "Email the downloaded file to ishaan.singh@manasai.co (or send it however " +
+    "you got this survey).",
+};
+
+/*
+ * SURVEY_CASES — REPLACE the single placeholder below with your real A/B cases.
+ * The scaffold ships with one obvious example so the page renders and you can
+ * see the format. Delete it once you add real cases.
+ */
+window.SURVEY_CASES = [
+  {
+    id: "example-placeholder",
+    operation: "EXAMPLE — replace me",
+    prompt: "This is a placeholder case so the survey renders. Which mockup do you prefer?",
+    context:
+      "Real cases go in cases.js (see the schema comment at the top of this file). " +
+      "Delete this example once you add your own.",
+    options: [
+      {
+        id: "a",
+        label: "Option A",
+        description: "A short description of what this choice means.",
+        previewText:
+          "+---------------------------+\n" +
+          "|  [ Start ]   Status: idle |\n" +
+          "|                           |\n" +
+          "|      ( example A )        |\n" +
+          "+---------------------------+",
+      },
+      {
+        id: "b",
+        label: "Option B",
+        description: "A short description of the alternative.",
+        previewText:
+          "+---------------------------+\n" +
+          "|  > Snap   >> Live   [] X   |\n" +
+          "|                           |\n" +
+          "|      ( example B )        |\n" +
+          "+---------------------------+",
+      },
+    ],
+  },
+];
+
+</script>
+  <script>
+/*
+ * survey.js — the survey engine. No dependencies, no build step, no network.
+ * Reads the globals defined in cases.js (SURVEY_CONFIG, SURVEY_CASES), renders
+ * one A/B case at a time, records choices, and lets the participant download a
+ * JSON results file at the end. You should not need to edit this file to add
+ * cases — edit cases.js instead.
+ */
+(function () {
+  "use strict";
+
+  var DEFAULTS = {
+    surveyId: "survey",
+    schemaVersion: 1,
+    title: "Survey",
+    intro: "",
+    collectParticipant: true,
+    shuffleOptionOrder: true,
+    allowComments: true,
+    requireChoice: true,
+    returnTo: "",
+  };
+
+  var CONFIG = Object.assign({}, DEFAULTS, window.SURVEY_CONFIG || {});
+  var CASES = Array.isArray(window.SURVEY_CASES) ? window.SURVEY_CASES : [];
+  var STORAGE_KEY = "uxsurvey:" + CONFIG.surveyId;
+
+  var app = document.getElementById("app");
+  var brandEl = document.getElementById("brand-title");
+  var progressEl = document.getElementById("progress");
+  var progressLabel = document.getElementById("progress-label");
+  var progressFill = document.getElementById("progress-fill");
+  var footerNote = document.getElementById("footer-note");
+
+  var state = {
+    screen: "intro", // "intro" | "case" | "done"
+    index: 0,
+    participant: { name: "", role: "", email: "", notes: "" },
+    responses: {}, // caseId -> { choiceId, comment, dwellMs }
+    order: {}, // caseId -> [optionId, ...] presented order
+    startedAt: null,
+    finishedAt: null,
+    caseShownAt: null,
+  };
+
+  // ----------------------------------------------------------------- helpers
+  function el(tag, props, children) {
+    var node = document.createElement(tag);
+    if (props) {
+      Object.keys(props).forEach(function (k) {
+        if (k === "class") node.className = props[k];
+        else if (k === "text") node.textContent = props[k];
+        else if (k === "html") node.innerHTML = props[k];
+        else if (k === "onclick") node.addEventListener("click", props[k]);
+        else if (k === "oninput") node.addEventListener("input", props[k]);
+        else if (k in node) node[k] = props[k];
+        else node.setAttribute(k, props[k]);
+      });
+    }
+    (children || []).forEach(function (c) {
+      if (c == null) return;
+      node.appendChild(typeof c === "string" ? document.createTextNode(c) : c);
+    });
+    return node;
+  }
+
+  function shuffle(arr) {
+    var a = arr.slice();
+    for (var i = a.length - 1; i > 0; i--) {
+      var j = Math.floor(Math.random() * (i + 1));
+      var t = a[i];
+      a[i] = a[j];
+      a[j] = t;
+    }
+    return a;
+  }
+
+  function slug(s) {
+    return String(s || "")
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "") || "anon";
+  }
+
+  function loadSaved() {
+    try {
+      var raw = window.localStorage.getItem(STORAGE_KEY);
+      if (!raw) return;
+      var saved = JSON.parse(raw);
+      if (saved && typeof saved === "object") {
+        state.participant = Object.assign(state.participant, saved.participant || {});
+        state.responses = saved.responses || {};
+        state.order = saved.order || {};
+        state.startedAt = saved.startedAt || null;
+      }
+    } catch (e) {
+      /* localStorage unavailable (some file:// contexts) — resume is best-effort */
+    }
+  }
+
+  function save() {
+    try {
+      window.localStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify({
+          participant: state.participant,
+          responses: state.responses,
+          order: state.order,
+          startedAt: state.startedAt,
+        })
+      );
+    } catch (e) {
+      /* ignore */
+    }
+  }
+
+  function clearSaved() {
+    try {
+      window.localStorage.removeItem(STORAGE_KEY);
+    } catch (e) {
+      /* ignore */
+    }
+  }
+
+  function presentedOrder(c) {
+    if (state.order[c.id]) return state.order[c.id];
+    var ids = (c.options || []).map(function (o) {
+      return o.id;
+    });
+    if (CONFIG.shuffleOptionOrder) ids = shuffle(ids);
+    state.order[c.id] = ids;
+    return ids;
+  }
+
+  function stampDwell() {
+    if (state.screen === "case" && state.caseShownAt != null && CASES[state.index]) {
+      var c = CASES[state.index];
+      var r = state.responses[c.id] || (state.responses[c.id] = {});
+      r.dwellMs = (r.dwellMs || 0) + (Date.now() - state.caseShownAt);
+      state.caseShownAt = null;
+    }
+  }
+
+  function answeredCount() {
+    return CASES.filter(function (c) {
+      return state.responses[c.id] && state.responses[c.id].choiceId;
+    }).length;
+  }
+
+  // --------------------------------------------------------------- rendering
+  function setProgress() {
+    if (state.screen === "case" && CASES.length) {
+      progressEl.hidden = false;
+      progressLabel.textContent = "Case " + (state.index + 1) + " of " + CASES.length;
+      progressFill.style.width = ((state.index + 1) / CASES.length) * 100 + "%";
+    } else if (state.screen === "done") {
+      progressEl.hidden = false;
+      progressLabel.textContent = "Complete";
+      progressFill.style.width = "100%";
+    } else {
+      progressEl.hidden = true;
+    }
+  }
+
+  function render() {
+    brandEl.textContent = CONFIG.title || "Survey";
+    app.innerHTML = "";
+    if (state.screen === "intro") renderIntro();
+    else if (state.screen === "case") renderCase();
+    else if (state.screen === "done") renderDone();
+    setProgress();
+    window.scrollTo(0, 0);
+  }
+
+  function renderIntro() {
+    var children = [
+      el("h1", { text: CONFIG.title || "Survey" }),
+      el("p", { text: CONFIG.intro || "" }),
+    ];
+
+    if (CONFIG.collectParticipant) {
+      var mk = function (key, label, type) {
+        var input = el("input", {
+          type: type || "text",
+          value: state.participant[key] || "",
+          oninput: function (e) {
+            state.participant[key] = e.target.value;
+            save();
+          },
+        });
+        return el("div", { class: "field" }, [el("label", { text: label }), input]);
+      };
+      children.push(mk("name", "Name (optional)"));
+      children.push(mk("role", "Role / how you use the microscope (optional)"));
+      children.push(mk("email", "Email (optional)", "email"));
+    }
+
+    if (!CASES.length) {
+      children.push(
+        el("div", { class: "empty", html: "No cases defined yet. Add them in <code>cases.js</code> (see the schema comment at the top of that file)." })
+      );
+    }
+
+    var startBtn = el("button", {
+      class: "btn btn-primary",
+      text: CASES.length ? "Start" : "Nothing to answer yet",
+      disabled: !CASES.length,
+      onclick: startSurvey,
+    });
+    children.push(el("div", { class: "row" }, [startBtn]));
+
+    app.appendChild(el("div", { class: "panel" }, children));
+  }
+
+  function renderCase() {
+    var c = CASES[state.index];
+    if (!c) {
+      state.screen = "done";
+      return render();
+    }
+    state.caseShownAt = Date.now();
+    var resp = state.responses[c.id] || {};
+    var orderIds = presentedOrder(c);
+    var byId = {};
+    (c.options || []).forEach(function (o) {
+      byId[o.id] = o;
+    });
+
+    var wrap = el("div", {}, []);
+    if (c.operation) wrap.appendChild(el("div", { class: "chip", text: c.operation }));
+    wrap.appendChild(el("div", { class: "prompt", text: c.prompt || "" }));
+    if (c.context) wrap.appendChild(el("p", { class: "context", text: c.context }));
+
+    var grid = el("div", { class: "options" }, []);
+    orderIds.forEach(function (oid, i) {
+      var o = byId[oid];
+      if (!o) return;
+      var isSel = resp.choiceId === o.id;
+      var card = el("div", {
+        class: "option" + (isSel ? " selected" : ""),
+        role: "button",
+        tabindex: "0",
+        "data-oid": o.id,
+        onclick: function () {
+          selectOption(c.id, o.id);
+        },
+      }, []);
+      card.appendChild(el("div", { class: "option-key", text: String(i + 1) }));
+      card.appendChild(el("div", { class: "option-label", text: o.label || o.id }));
+      if (o.description) card.appendChild(el("div", { class: "option-desc", text: o.description }));
+
+      if (o.previewText != null) {
+        var pre = el("pre", { text: String(o.previewText) });
+        card.appendChild(el("div", { class: "preview" }, [pre]));
+      } else if (o.image) {
+        var img = el("img", { src: o.image, alt: (o.label || o.id) + " preview" });
+        card.appendChild(el("div", { class: "preview" }, [img]));
+      } else if (o.preview != null) {
+        card.appendChild(el("div", { class: "preview", html: String(o.preview) }));
+      }
+      grid.appendChild(card);
+    });
+    wrap.appendChild(grid);
+
+    if (CONFIG.allowComments) {
+      var ta = el("textarea", {
+        placeholder: "Optional: why? (anything that made you pick this)",
+        value: resp.comment || "",
+        oninput: function (e) {
+          var r = state.responses[c.id] || (state.responses[c.id] = {});
+          r.comment = e.target.value;
+          save();
+        },
+      });
+      wrap.appendChild(el("div", { class: "field comment" }, [ta]));
+    }
+
+    var canAdvance = !CONFIG.requireChoice || !!resp.choiceId;
+    var isLast = state.index === CASES.length - 1;
+    var nav = el("div", { class: "navbar" }, [
+      el("button", { class: "btn btn-ghost", text: "Back", onclick: goBack }),
+      el("span", { class: "spacer" }, []),
+      !canAdvance ? el("span", { class: "hint", text: "Pick an option to continue" }) : null,
+      el("button", {
+        class: "btn btn-primary",
+        text: isLast ? "Finish" : "Next",
+        disabled: !canAdvance,
+        onclick: goNext,
+      }),
+    ]);
+    wrap.appendChild(nav);
+    app.appendChild(wrap);
+  }
+
+  function renderDone() {
+    state.finishedAt = state.finishedAt || Date.now();
+    save();
+
+    var list = el("ul", { class: "summary-list" }, []);
+    CASES.forEach(function (c) {
+      var r = state.responses[c.id] || {};
+      var opt = (c.options || []).filter(function (o) {
+        return o.id === r.choiceId;
+      })[0];
+      var pick = opt
+        ? el("span", { class: "pick", text: opt.label || opt.id })
+        : el("span", { class: "pick none", text: "— not answered" });
+      list.appendChild(
+        el("li", {}, [el("span", { class: "op", text: c.operation || c.prompt || c.id }), pick])
+      );
+    });
+
+    var children = [
+      el("h1", { text: "All done — thank you!" }),
+      el("p", {
+        text:
+          "You answered " + answeredCount() + " of " + CASES.length +
+          " cases. Download your results below" + (CONFIG.returnTo ? ", then:" : "."),
+      }),
+    ];
+    if (CONFIG.returnTo) children.push(el("p", { text: CONFIG.returnTo }));
+    children.push(list);
+    children.push(
+      el("div", { class: "row" }, [
+        el("button", { class: "btn btn-primary", text: "Download my results", onclick: downloadResults }),
+        el("button", { class: "btn btn-ghost", text: "Back to last case", onclick: function () {
+          state.screen = "case";
+          state.index = Math.max(0, CASES.length - 1);
+          render();
+        } }),
+        el("button", { class: "btn btn-ghost", text: "Start over", onclick: startOver }),
+      ])
+    );
+    app.appendChild(el("div", { class: "panel" }, children));
+  }
+
+  // ------------------------------------------------------------- transitions
+  function startSurvey() {
+    if (!CASES.length) return;
+    if (!state.startedAt) state.startedAt = Date.now();
+    state.screen = "case";
+    state.index = 0;
+    save();
+    render();
+  }
+
+  function selectOption(caseId, optionId) {
+    var r = state.responses[caseId] || (state.responses[caseId] = {});
+    r.choiceId = optionId;
+    save();
+    render(); // re-render to reflect selection + enable Next
+  }
+
+  function goNext() {
+    var c = CASES[state.index];
+    var resp = state.responses[c.id] || {};
+    if (CONFIG.requireChoice && !resp.choiceId) return;
+    stampDwell();
+    if (state.index >= CASES.length - 1) {
+      state.screen = "done";
+      state.finishedAt = Date.now();
+    } else {
+      state.index += 1;
+    }
+    save();
+    render();
+  }
+
+  function goBack() {
+    stampDwell();
+    if (state.index <= 0) {
+      state.screen = "intro";
+    } else {
+      state.index -= 1;
+    }
+    save();
+    render();
+  }
+
+  function startOver() {
+    if (!window.confirm("Clear your answers and start over?")) return;
+    clearSaved();
+    state.index = 0;
+    state.responses = {};
+    state.order = {};
+    state.startedAt = null;
+    state.finishedAt = null;
+    state.screen = "intro";
+    render();
+  }
+
+  // --------------------------------------------------------------- results IO
+  function buildResults() {
+    return {
+      surveyId: CONFIG.surveyId,
+      surveyTitle: CONFIG.title,
+      schemaVersion: CONFIG.schemaVersion,
+      generatedAt: new Date().toISOString(),
+      startedAt: state.startedAt ? new Date(state.startedAt).toISOString() : null,
+      finishedAt: state.finishedAt ? new Date(state.finishedAt).toISOString() : null,
+      durationMs: state.startedAt && state.finishedAt ? state.finishedAt - state.startedAt : null,
+      userAgent: navigator.userAgent,
+      participant: state.participant,
+      totalCases: CASES.length,
+      answeredCases: answeredCount(),
+      responses: CASES.map(function (c) {
+        var r = state.responses[c.id] || {};
+        var opt = (c.options || []).filter(function (o) {
+          return o.id === r.choiceId;
+        })[0];
+        return {
+          caseId: c.id,
+          operation: c.operation || "",
+          prompt: c.prompt || "",
+          presentedOrder: state.order[c.id] || (c.options || []).map(function (o) { return o.id; }),
+          choiceId: r.choiceId || null,
+          choiceLabel: opt ? opt.label || opt.id : null,
+          comment: r.comment || "",
+          dwellMs: r.dwellMs || 0,
+        };
+      }),
+    };
+  }
+
+  function downloadResults() {
+    var data = buildResults();
+    var stamp = new Date().toISOString().replace(/[:.]/g, "-");
+    var name = "ux-survey_" + CONFIG.surveyId + "_" + slug(state.participant.name) + "_" + stamp + ".json";
+    var blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+    var url = URL.createObjectURL(blob);
+    var a = el("a", { href: url, download: name });
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(function () {
+      URL.revokeObjectURL(url);
+    }, 1000);
+  }
+
+  // --------------------------------------------------------------- keyboard
+  function onKey(e) {
+    var t = e.target;
+    if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA")) return;
+    if (state.screen !== "case") return;
+    var c = CASES[state.index];
+    if (!c) return;
+    if (e.key >= "1" && e.key <= "9") {
+      var idx = parseInt(e.key, 10) - 1;
+      var orderIds = presentedOrder(c);
+      if (idx < orderIds.length) {
+        selectOption(c.id, orderIds[idx]);
+        e.preventDefault();
+      }
+    } else if (e.key === "Enter") {
+      goNext();
+      e.preventDefault();
+    } else if (e.key === "ArrowLeft") {
+      goBack();
+      e.preventDefault();
+    }
+  }
+
+  // --------------------------------------------------------------- boot
+  loadSaved();
+  if (CONFIG.returnTo) footerNote.textContent = CONFIG.returnTo;
+  document.addEventListener("keydown", onKey);
+  render();
+})();
+
+</script>
+</body>
+</html>
