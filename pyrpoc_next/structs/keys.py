@@ -16,6 +16,7 @@ class ModalityKey(Enum):
     split_confocal = "split_confocal"
     flim = "flim"
     simulated = "simulated"
+    simulated_flim = "simulated_flim"
 
 
 class ModifierKey(Enum):
@@ -41,3 +42,4 @@ class InstrumentKey(Enum):
     prior_stage = "prior_stage"
     zaber_stage = "zaber_stage"
     simulated_daq = "simulated_daq"
+    simulated_tagger = "simulated_tagger"
