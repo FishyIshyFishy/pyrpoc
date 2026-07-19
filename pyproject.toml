@@ -11,18 +11,20 @@ authors = [
 ]
 
 dependencies = [
-  "cellpose", 
+  "cellpose",
   "opencv-python",
   "pillow",
   "matplotlib",
-  "pyqt6",       
+  "pyqt6",
   "PyQt6Ads",
   "pyqtgraph",
   "pyqtdarktheme",
-  "superqt",    
-  "nidaqmx",   
-  "pyvisa",      
-  "tifffile"
+  "superqt",
+  "nidaqmx",
+  "pyvisa",
+  "tifffile",
+  "attrs>=26.1.0",
+  "cattrs>=26.1.0",
 ]
 
 [project.scripts]
