@@ -12,7 +12,12 @@ from pyrpoc_next.acquisition.modifiers.mask import MaskModifier
 from pyrpoc_next.instruments.ni_daq import mask_to_ttl
 from pyrpoc_next.instruments.scanning import RasterScan
 from pyrpoc_next.structs.keys import InstrumentKey
-from pyrpoc_next.structs.parameters import ChannelSelectionParameter, NumberParameter
+from pyrpoc_next.structs.parameters import (
+    ChannelSelectionParameter,
+    CheckboxParameter,
+    NumberParameter,
+    PathParameter,
+)
 
 
 def scan_parameters():
@@ -42,8 +47,16 @@ def frames_parameter():
     return NumberParameter(label="Frames", default=1, minimum=1, number_type=int)
 
 
+def acquisition_parameters():
+    return [
+        CheckboxParameter(label="Save", default=False),
+        PathParameter(label="Save Path", default="acquisition", required=False),
+        frames_parameter(),
+    ]
+
+
 def scanner_parameter_groups():
-    return {"scan": scan_parameters(), "daq": daq_parameters(), "acquisition": [frames_parameter()]}
+    return {"scan": scan_parameters(), "daq": daq_parameters(), "acquisition": acquisition_parameters()}
 
 
 class ScannerModality(Modality):

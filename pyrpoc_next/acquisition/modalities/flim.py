@@ -12,7 +12,7 @@ import time
 import numpy as np
 
 from pyrpoc_next.acquisition.modalities.base import Modality, modality_registry
-from pyrpoc_next.acquisition.modalities.scanner import frames_parameter, scan_parameters
+from pyrpoc_next.acquisition.modalities.scanner import acquisition_parameters, scan_parameters
 from pyrpoc_next.instruments.scanning import RasterScan
 from pyrpoc_next.structs.keys import InstrumentKey, ModalityKey
 from pyrpoc_next.structs.manifest import ModalityManifest
@@ -55,7 +55,7 @@ def flim_parameter_groups():
         "scan": scan_parameters(),
         "daq": flim_daq_parameters(),
         "timetagger": timetagger_parameters(),
-        "acquisition": [frames_parameter()],
+        "acquisition": acquisition_parameters(),
     }
 
 

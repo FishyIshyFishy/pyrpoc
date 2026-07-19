@@ -12,7 +12,7 @@ import numpy as np
 from pyrpoc_next.acquisition.modalities.base import Modality, modality_registry
 from pyrpoc_next.acquisition.modalities.scanner import (
     ScannerModality,
-    frames_parameter,
+    acquisition_parameters,
     scanner_parameter_groups,
 )
 from pyrpoc_next.acquisition.modifiers.mask import MaskModifier
@@ -59,7 +59,7 @@ def simulated_flim_groups():
             NumberParameter(label="Histogram Bin Width (ps)", default=100, minimum=1, number_type=int),
             NumberParameter(label="Laser Frequency (MHz)", default=80.0, minimum=1e-6),
         ],
-        "acquisition": [frames_parameter()],
+        "acquisition": acquisition_parameters(),
     }
 
 
