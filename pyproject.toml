@@ -28,7 +28,8 @@ dependencies = [
 ]
 
 [project.scripts]
-pyrpoc = "pyrpoc.main:main"
+pyrpoc = "pyrpoc_next.main:main"
+pyrpoc-legacy = "pyrpoc.main:main"
 
 [tool.setuptools.packages.find]
 include = ["pyrpoc*"]
