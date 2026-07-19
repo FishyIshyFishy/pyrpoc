@@ -134,3 +134,44 @@ class NIDAQ(Instrument):
             raw = raw[np.newaxis, :]
         cube = raw.reshape(len(scan.ai_channels), scan.y_pixels, scan.total_x, scan.pixel_samples)
         return cube[:, :, scan.extra_left : scan.extra_left + scan.x_pixels, :].astype(np.float32, copy=False)
+
+    def flim_scan(self, scan: RasterScan, frame_trigger_pfi: int, pixel_clock_ctr: int,
+                  pixel_clock_pfi: int) -> None:
+        """Drive one galvo raster while emitting a frame trigger and a pixel clock.
+
+        Reads no analog input — the FLIM image comes from the photon stream. The
+        pixel clock is divided down from the AO sample clock so pixel boundaries stay
+        locked to galvo position.
+        """
+        import nidaqmx as nx
+        from nidaqmx.constants import AcquisitionType, Signal
+
+        waveform = raster_waveform(scan)
+        total_samples = waveform.shape[1]
+        n_pixels = scan.total_x * scan.y_pixels
+        timeout = total_samples / scan.sample_rate_hz + 5.0
+        try:
+            with nx.Task() as ao_task, nx.Task() as co_task:
+                ao_task.ao_channels.add_ao_voltage_chan(f"{self.device_name}/ao{scan.fast_axis_ao}")
+                ao_task.ao_channels.add_ao_voltage_chan(f"{self.device_name}/ao{scan.slow_axis_ao}")
+                ao_task.timing.cfg_samp_clk_timing(
+                    rate=scan.sample_rate_hz, sample_mode=AcquisitionType.FINITE, samps_per_chan=total_samples
+                )
+                ao_task.export_signals.export_signal(
+                    Signal.START_TRIGGER, f"/{self.device_name}/PFI{frame_trigger_pfi}"
+                )
+                channel = co_task.co_channels.add_co_pulse_chan_ticks(
+                    f"{self.device_name}/ctr{pixel_clock_ctr}",
+                    source_terminal=f"/{self.device_name}/ao/SampleClock",
+                    high_ticks=1, low_ticks=scan.pixel_samples - 1,
+                )
+                channel.co_pulse_term = f"/{self.device_name}/PFI{pixel_clock_pfi}"
+                co_task.timing.cfg_implicit_timing(sample_mode=AcquisitionType.FINITE, samps_per_chan=n_pixels)
+                co_task.triggers.start_trigger.cfg_dig_edge_start_trig(f"/{self.device_name}/ao/StartTrigger")
+                ao_task.write(waveform, auto_start=False)  # pyright: ignore
+                co_task.start()
+                ao_task.start()
+                ao_task.wait_until_done(timeout=timeout)
+                co_task.wait_until_done(timeout=timeout)
+        except Exception as exc:
+            raise DaqError(f"NI-DAQ FLIM scan failed: {exc}") from exc
