@@ -53,7 +53,7 @@ exclude = [
   "**/*.egg-info",
 ]
 venvPath = "."
-venv = "rpoc_env"
+venv = ".venv"
 pythonVersion = "3.13"
 typeCheckingMode = "basic"
 
