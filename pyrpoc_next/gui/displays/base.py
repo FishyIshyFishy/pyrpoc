@@ -23,11 +23,17 @@ class DisplayWidget(QWidget):
 
     def __init__(self):
         super().__init__()
+        self.attached = True
         self.parcel_received.connect(self.handle)
 
     def render(self, parcel: Parcel) -> None:
-        """DisplaySink entry point (worker thread): hand off to the GUI thread."""
-        self.parcel_received.emit(parcel)
+        """DisplaySink entry point (worker thread): hand off to the GUI thread.
+
+        Detached displays skip the hand-off, so the manager's attach toggle can
+        pause a display's live updates without removing it.
+        """
+        if self.attached:
+            self.parcel_received.emit(parcel)
 
     def handle(self, parcel: Parcel) -> None:
         """Draw a parcel on the GUI thread."""

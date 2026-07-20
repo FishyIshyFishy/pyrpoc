@@ -79,6 +79,29 @@ def test_simulated_instrument_has_no_editor(qapp):
     assert editor_for(SimulatedDAQ(), lambda: None) is None
 
 
+def test_display_manager_adds_and_gates(qapp):
+    from pyrpoc_next.gui.panels import DisplayManagerWidget
+    from pyrpoc_next.gui.panels.displays.handlers import on_add_clicked, on_attach_toggled
+
+    opened, closed = [], []
+    state = AppState()
+    panel = DisplayManagerWidget(
+        state,
+        open_dock=lambda widget, title: opened.append(title) or ("dock", title),
+        close_dock=lambda dock: closed.append(dock),
+    )
+    assert panel.display_combo.count() == 4  # all registered displays offered
+
+    on_add_clicked(panel)
+    assert len(state.displays) == 1
+    assert len(opened) == 1  # a dock was opened for it
+    display = state.displays[0]
+    assert display.attached is True
+
+    on_attach_toggled(panel, display, False)
+    assert display.attached is False  # detaching gates its live updates
+
+
 def test_simulated_run_reaches_a_real_display(qapp):
     display = StreamedDisplay()
     seen = []
