@@ -33,6 +33,9 @@ class DisplayWidget(QWidget):
         """Draw a parcel on the GUI thread."""
         raise NotImplementedError
 
+    def request_persist(self) -> None:
+        """Autosave-on-edit hook. Session persistence is deferred (G2); no-op for now."""
+
 
 class DisplayRegistry:
     """Maps a DisplayKey to its display widget class."""
