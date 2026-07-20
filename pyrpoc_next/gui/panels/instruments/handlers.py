@@ -9,8 +9,9 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, cast
 
-from PyQt6.QtWidgets import QHBoxLayout, QLabel, QMessageBox, QPushButton, QWidget
+from PyQt6.QtWidgets import QHBoxLayout, QLabel, QMessageBox, QPushButton, QVBoxLayout, QWidget
 
+from pyrpoc_next.gui.panels.instruments.editors import editor_for
 from pyrpoc_next.gui.widgets.cards import RemovableCardWidget
 from pyrpoc_next.instruments import instrument_registry
 from pyrpoc_next.instruments.base import Instrument
@@ -88,10 +89,20 @@ def on_expand_requested(widget: InstrumentManagerWidget, instrument: object) -> 
 
 
 def build_body(instrument: Instrument, card: RemovableCardWidget) -> QWidget:
-    """The minimal expanded body: a status line and a Test Connection button."""
+    """Expanded body: the instrument's config editor (if any) above a status line
+    and a Test Connection button."""
     body = QWidget()
-    layout = QHBoxLayout(body)
-    layout.setContentsMargins(0, 0, 0, 0)
+    outer = QVBoxLayout(body)
+    outer.setContentsMargins(0, 0, 0, 0)
+    outer.setSpacing(4)
+
+    editor = editor_for(instrument, lambda: refresh_card_text(card, instrument))
+    if editor is not None:
+        outer.addWidget(editor)
+
+    controls = QWidget()
+    row = QHBoxLayout(controls)
+    row.setContentsMargins(0, 0, 0, 0)
     status = QLabel(instrument.summary())
     test = QPushButton("Test Connection")
 
@@ -101,8 +112,9 @@ def build_body(instrument: Instrument, card: RemovableCardWidget) -> QWidget:
         refresh_card_text(card, instrument)
 
     test.clicked.connect(run_test)
-    layout.addWidget(status, 1)
-    layout.addWidget(test)
+    row.addWidget(status, 1)
+    row.addWidget(test)
+    outer.addWidget(controls)
     return body
 
 

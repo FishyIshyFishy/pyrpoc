@@ -54,6 +54,31 @@ def test_instruments_panel_adds_instrument(qapp):
     assert len(panel.state.card_widgets) == 1  # a card was created for it
 
 
+def test_ni_daq_editor_updates_device_name(qapp):
+    from PyQt6.QtWidgets import QLineEdit
+
+    from pyrpoc_next.gui.panels.instruments.editors import editor_for
+    from pyrpoc_next.instruments import NIDAQ
+
+    daq = NIDAQ()
+    calls = []
+    editor = editor_for(daq, lambda: calls.append(1))
+    assert editor is not None  # NI-DAQ has a device-name editor
+
+    line = editor.findChild(QLineEdit)
+    line.setText("Dev3")
+    line.editingFinished.emit()
+    assert daq.device_name == "Dev3"
+    assert calls  # on_change fired
+
+
+def test_simulated_instrument_has_no_editor(qapp):
+    from pyrpoc_next.gui.panels.instruments.editors import editor_for
+    from pyrpoc_next.instruments import SimulatedDAQ
+
+    assert editor_for(SimulatedDAQ(), lambda: None) is None
+
+
 def test_simulated_run_reaches_a_real_display(qapp):
     display = StreamedDisplay()
     seen = []
