@@ -43,12 +43,15 @@ def test_main_window_builds_and_seeds_a_block(qapp):
 
 
 def test_instruments_panel_adds_instrument(qapp):
-    from pyrpoc_next.gui.panels import InstrumentsPanel
+    from pyrpoc_next.gui.panels import InstrumentManagerWidget
+    from pyrpoc_next.gui.panels.instruments.handlers import on_add_clicked
 
     state = AppState()
-    panel = InstrumentsPanel(state)
-    panel.add()
+    panel = InstrumentManagerWidget(state)
+    assert panel.type_combo.count() > 0  # dropdown populated from the registry
+    on_add_clicked(panel)  # same path the Add button triggers
     assert len(state.instruments) == 1
+    assert len(panel.state.card_widgets) == 1  # a card was created for it
 
 
 def test_simulated_run_reaches_a_real_display(qapp):

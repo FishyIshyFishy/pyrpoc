@@ -16,7 +16,7 @@ from PyQt6.QtWidgets import QVBoxLayout, QWidget
 from pyrpoc_next.core import Controller
 from pyrpoc_next.gui.bridge import RunBridge
 from pyrpoc_next.gui.menubar import MainMenuBar
-from pyrpoc_next.gui.panels import AcquisitionPanel, DisplaysPanel, InstrumentsPanel, RoutineEditor
+from pyrpoc_next.gui.panels import AcquisitionPanel, DisplaysPanel, InstrumentManagerWidget, RoutineEditor
 
 qtads.CDockManager.setConfigFlag(qtads.CDockManager.eConfigFlag.DisableTabTextEliding, True)
 qtads.CDockManager.setConfigFlag(qtads.CDockManager.eConfigFlag.OpaqueSplitterResize, False)
@@ -38,7 +38,7 @@ class MainWindow(QWidget):
         self.menubar = MainMenuBar(self)
 
         self.acquisition = AcquisitionPanel(controller, self.bridge)
-        self.instruments = InstrumentsPanel(controller.state)
+        self.instruments = InstrumentManagerWidget(controller.state)
         self.displays = DisplaysPanel(controller.state, self.open_display_dock, self.close_dock)
         self.routine_editor = RoutineEditor(controller)
         self.routine_editor.changed.connect(self.acquisition.rebuild)
