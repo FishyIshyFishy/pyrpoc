@@ -121,6 +121,9 @@ class AcquisitionPanel(QWidget):
             load = QPushButton("Load Mask...")
             load.clicked.connect(self.load_mask)
             body_layout.addWidget(load)
+            edit = QPushButton("Open Mask Editor...")
+            edit.clicked.connect(self.open_mask_editor)
+            body_layout.addWidget(edit)
         card.set_body_widget(body)
         return {"card": card, "groups": groups, "key": slot.key}
 
@@ -139,6 +142,14 @@ class AcquisitionPanel(QWidget):
         import cv2
 
         self.masks[ModifierKey.mask] = cv2.imread(path, cv2.IMREAD_GRAYSCALE).astype(np.uint8)
+
+    def open_mask_editor(self) -> None:
+        """Open the interactive editor; a created mask is attached to the mask modifier."""
+        from pyrpoc_next.gui.panels.mask_editor import MaskEditorDialog
+
+        dialog = MaskEditorDialog(list(self.state.displays), self)
+        if dialog.exec() and dialog.mask is not None:
+            self.masks[ModifierKey.mask] = dialog.mask
 
     def sync_routine(self) -> None:
         """Write the panel's current values back into the routine before a run."""
