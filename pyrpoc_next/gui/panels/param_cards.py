@@ -32,6 +32,8 @@ class ParameterGroupCard(BaseCardWidget):
         current = {value.label: value.value for value in (values or [])}
         for param in params:
             widget = create_widget(param)
+            if param.tooltip:
+                widget.setToolTip(param.tooltip)
             value = current.get(param.label, param.default)
             if value is not None:
                 set_value(param, widget, value)
