@@ -38,8 +38,11 @@ class Controller:
     def check(self) -> CompatibilityReport:
         return check_routine(self.state)
 
-    def play(self) -> CompatibilityReport:
-        """Validate and, if clear, start the active block. Returns the report either way."""
+    def play(self, continuous: bool = False) -> CompatibilityReport:
+        """Validate and, if clear, start the active block. Returns the report either way.
+
+        With continuous=True the run has no frame limit and stops only on request.
+        """
         report = self.check()
         if report.blocked:
             return report
@@ -49,7 +52,8 @@ class Controller:
         self.state.run_status = RunStatus.running
         if self.on_started:
             self.on_started()
-        self.runner.start(modality, self.sink, frame_limit=values["Frames"], on_finished=self.finished)
+        frame_limit = None if continuous else values["Frames"]
+        self.runner.start(modality, self.sink, frame_limit=frame_limit, on_finished=self.finished)
         return report
 
     def stop(self) -> None:

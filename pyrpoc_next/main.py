@@ -10,9 +10,9 @@ def main() -> int:
 
     app = QApplication(sys.argv)
     try:
-        import qdarktheme
+        from pyrpoc_next.gui.styles.theme import apply_dark_theme
 
-        qdarktheme.setup_theme("dark")
+        apply_dark_theme(app)
     except Exception:
         pass
 

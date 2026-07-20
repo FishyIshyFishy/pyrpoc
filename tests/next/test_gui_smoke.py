@@ -25,12 +25,30 @@ def test_display_registry_has_all(qapp):
     }
 
 
-def test_main_window_builds(qapp):
+def test_theme_loads(qapp):
+    from pyrpoc_next.gui.styles.theme import dark_stylesheet
+
+    assert len(dark_stylesheet()) > 1000  # the breeze qss resource is present
+
+
+def test_main_window_builds_and_seeds_a_block(qapp):
     from pyrpoc_next.gui import MainWindow
 
     window = MainWindow(Controller())
     assert window.dock_manager is not None
+    # the routine editor seeds one block, so the acquisition tab renders one block card
+    assert len(window.controller.state.routine.blocks) == 1
+    assert len(window.acquisition.block_cards) == 1
     window.close()
+
+
+def test_instruments_panel_adds_instrument(qapp):
+    from pyrpoc_next.gui.panels import InstrumentsPanel
+
+    state = AppState()
+    panel = InstrumentsPanel(state)
+    panel.add()
+    assert len(state.instruments) == 1
 
 
 def test_simulated_run_reaches_a_real_display(qapp):
