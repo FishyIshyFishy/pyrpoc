@@ -47,3 +47,32 @@ When a new version is released, open PowerShell and run:
 ```
 uv tool upgrade pyrpoc
 ```
+## Developer installation (editable mode)
+
+1. Navigate to the desired project directory and clone the repository:
+   ```
+   git clone https://github.com/FishyIshyFishy/pyrpoc.git
+   cd pyrpoc
+   ```
+
+
+2. Create the virtual environment and install the project in editable mode along with the development dependencies
+   ```
+   uv sync
+   ```
+
+3. Run the software from the clone:
+   ```
+   uv run pyrpoc
+   ```
+
+   `uv run` automatically uses the project's `.venv`, so you never need to activate it manually. If you prefer to activate it anyway:
+
+   ```
+   .venv\Scripts\Activate.ps1
+   pyrpoc
+   ```
+
+   To run tests, use `uv run pytest`, and to type check, `uv run pyright`. 
+
+4. When dependencies change, adjust `pyproject.toml` and rerun `uv sync`. To add packages, use `uv add <package-name>`. To add a dev only package, use `uv add -dev <package-name>`.
