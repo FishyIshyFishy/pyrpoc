@@ -4,7 +4,7 @@ This script allows you to check your parameters.
 
 from json import load
 from matplotlib import pyplot as plt
-from pnr_constants import FRONT_EDGE, REAR_EDGE, LASER_CHANNEL, FOLDER, FILENAME
+from pyrpoc.docs.swabian_demos.Experimental.pnr.pnr_constants import FRONT_EDGE, REAR_EDGE, LASER_CHANNEL, FOLDER, FILENAME
 
 from Swabian import TimeTagger
 

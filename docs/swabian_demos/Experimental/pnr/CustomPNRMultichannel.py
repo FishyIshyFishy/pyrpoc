@@ -1,4 +1,4 @@
-from custom_pnr_constants import FRONT_EDGE, REAR_EDGE, LASER_CHANNEL, FOLDER, FILENAME, CALIBRATION_FILES
+from pyrpoc.docs.swabian_demos.Experimental.pnr.custom_pnr_constants import FRONT_EDGE, REAR_EDGE, LASER_CHANNEL, FOLDER, FILENAME, CALIBRATION_FILES
 from json import load
 import numba
 import numpy as np

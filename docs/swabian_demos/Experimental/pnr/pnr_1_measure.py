@@ -4,7 +4,7 @@ You will need to adjust the settings in pnr_constants.py file to your specific
 configuration.
 """
 
-from pnr_constants import FRONT_EDGE, REAR_EDGE, LASER_CHANNEL, FOLDER, FILENAME
+from pyrpoc.docs.swabian_demos.Experimental.pnr.pnr_constants import FRONT_EDGE, REAR_EDGE, LASER_CHANNEL, FOLDER, FILENAME
 
 from Swabian import TimeTagger
 

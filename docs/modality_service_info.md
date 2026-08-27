@@ -1,4 +1,5 @@
 # Acquisition Pipeline — Design Reference
+WARNING: POSSIBLY DEPRECATED
 
 This document describes the full acquisition pipeline from button click to frame display, covering every layer: instruments, optocontrols, modalities, parameters, displays. It also records deliberate design decisions so they are not accidentally reversed.
 
