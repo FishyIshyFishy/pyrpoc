@@ -1,286 +1,270 @@
-# Plan to enable new stuff
-## Current problems
-Currently, base class of `pyrpoc.modalities.base_modality.py` owns the loop. There is 
+# pyrpoc redesign
+
+Design document for a from-scratch rebuild of the pyrpoc backend. Scoped deliberately to what exists in the codebase today: confocal, split confocal, and FLIM acquisition; DAQ/galvo and TimeTagger hardware; four displays; RPOC masks. Section 13 lists what was considered and left out, so the omissions are visible without cluttering the rest.
+
+## 1. Why
+Currently the base class `pyrpoc.modalities.base_modality` owns the loop:
+
 ```python
 while not should_stop: acquire_once()
 ```
-meaning that every workflow must be some sort of looped acquisition. Click-driven with context, autofocusing, etc. are not one frame repeated. Further, this is an example of the fact that modalities are function calls with a kill switch. They are not extensible programs.
 
-Additionally, the UI owns all parameters. `pyrpoc.gui.main_widgets.acquisition_mgr.py` has `collect_values()` which owns scraping widgets for parameters. This violates the state living in a model, and the UI being a view on top of the model. The state is not the view, the view should just be something that reads and writes to the state. 
+Every workflow must therefore be some form of looped acquisition. A modality is a function call with a kill switch, not an extensible program. The cost is already visible: because `acquire_once()` must be self-contained, `FlimModality` calls `setup_tagger()` and `teardown_tagger()` on **every single frame** — creating and freeing the TimeTagger once per frame — since there is nowhere to put per-run setup.
 
-There is also no place for feature logic that spans acquisition and display to live. This is why `export_rpoc_input()` exists for every display, and every modality has to have a list of allowed displays. While these are necessary functionalities, it is weird to have them within abstract display/modality logic.
+Additionally, the UI owns all parameters. `gui.main_widgets.acquisition_mgr.collect_values()` scrapes widgets for parameter values. State should live in a model, and the UI should be a view that reads and writes it. Because the form *is* the state, nothing except the form can parameterise an acquisition.
 
-## Proposed new file layout
+There is also no place for feature logic that spans acquisition and display. This is why `export_rpoc_input()` exists on every display and why every modality carries a list of allowed displays. Both are necessary functionality filed inside abstract display/modality classes because there was no third place to put them.
+
+Two further problems, discovered while designing the replacement:
+
+Acquired arrays live inside display widgets (`self._data_chw` in `tiled_2d_display.py` and its equivalents). That array is the original, not a cache. Closing a display destroys the data; two displays over one run keep two drifting copies; and `export_rpoc_input()` exists only because a widget is the sole owner of pixels.
+
+Storage is duplicated per modality. `confocal/storage.py` and `split_confocal/storage.py` are the same file plus an auxiliary-payload block, and that block exists only because split-confocal produces a second output stream and there was no way to declare one.
+
+## 2. What is settled
+1. **The loop belongs to the experiment, not to a base class.** Whoever writes the experiment writes its control flow, including per-run setup and teardown.
+2. **Acquired data cannot live in widgets.** It must outlive the display that showed it and be shareable between displays.
+3. **Parameters cannot live in widgets.** They live in a model; the form is a view onto it.
+4. **Bounded hardware actions are separable from the program that calls them.** The scan is a function; the experiment is a program that calls it.
+5. **Views and acquisitions must not reference each other.** Something else connects them, and that something has one identifiable home.
+
+## 3. The definition test
+One design tool, used repeatedly below and worth keeping afterwards
+```
+Can you state what a thing is in one sentence without listing its fields? And does a new requirement get handled by *using* it, or by *extending* it?
+```
+
+An abstraction that gains a field every time a new question is asked is not abstracting anything — its shape is set by whichever question was asked last. That is what happened to `BaseModality` (`emitted_kinds`, `allowed_displays`, `get_frame_limit`, `prepare_acquisition_storage`, ... each added for one caller), and an earlier draft of this document repeated the mistake with a "Recipe" type that accumulated a field per feature discussed. Both were deleted.
+
+Every concept in section 4 passes this test. If one of them starts growing a field per conversation, it has the same disease.
+
+## 4. Core concepts
+
+**Program** — something with a `run()` that drives hardware or pseudo-hardware and emits data over time. This is what a "modality" should have been. Its attributes are not a declaration format; they are the three things the runner must know in order to start it. Note how there is nothing about labels, menus, or how it was launched, because a program should not know it is in a dropdown.
+
+```python
+# programs/confocal.py
+class Confocal(Program):
+    uses   = [Galvo, DAQ]            # what to claim
+    params = ConfocalParams          # what to configure
+    emits  = {"intensity": Image2D}  # what datasets to create
+
+    def run(self, ctx):
+        p = ctx.params
+        for i in range(p.num_frames):
+            ctx.status(f"frame {i+1}/{p.num_frames}")
+            ctx.publish("intensity", raster_scan(**p.scan, **p.daq))
+            ctx.check_cancel()
+```
+
+**RunContext (`ctx`)** — the service surface handed to a running program. Deliberately small.
+```python
+ctx.params                            # the parameter object for this run
+ctx.devices                           # resolved device handles
+ctx.publish(stream, data, **coords)   # write into one of this run's datasets
+ctx.status(text)                      # progress -> run bar
+ctx.check_cancel()                    # raises Cancelled
+```
+
+It is one concrete class in `run/`, written once and never subclassed. Programs call it; they never implement it. It is the same idea as today's `acquire_continuous(on_frame, frame_limit, should_stop, on_error, on_finished)` — those five loose arguments already form a run context — given a name and one place to live.
+
+| `ctx` member | today's equivalent |
+|---|---|
+| `ctx.params` | `self.parameters` |
+| `ctx.devices` | the dict passed to `load_instruments()` |
+| `ctx.publish(...)` | the `on_data` / `on_frame` callback |
+| `ctx.check_cancel()` | `should_stop()` |
+| `ctx.status(...)` | — (the widget sets its own status label) |
+
+`ctx.publish` buys little over `on_frame` on its own; the leverage is that the stream name is declared in `emits`, so a view binding exists before the run starts rather than being inferred from a `kind` tag mid-flight. That is what makes FLIM's two outputs addressable separately.
+
+**Operation** — one bounded hardware action. A plain function: explicit arguments in, arrays out. No `self`, no loop, no saving, no Qt, no knowledge of what it is used for. The unit is a *clock domain*, not a device — the raster operation drives AO + AI + DO as one synchronised NI task because they share a sample clock. Splitting it into separate "positioner" and "detector" objects would misrepresent the hardware.
+
+Operations come in **two forms**, and the distinction matters more than it looks:
+
+```python
+def raster_scan(...) -> np.ndarray:              # returns one complete frame
+    ...
+
+def raster_scan_streaming(..., chunk_rows=16):   # yields progressively complete frames
+    for chunk in read_in_chunks(...):
+        yield reshape_partial(...)
+```
+
+An operation that produces data incrementally is a **generator, never a callback taker**. Handing an operation an `on_partial=` callback would invert control again — the program's logic ends up executing inside the operation's stack frame, stopping early becomes awkward, and every new emission point has to be anticipated as another callback parameter. A generator lets the program pull, decide what to do with each yield, and break out. Two separate functions rather than one with a flag, so programs that do not want partial frames pay nothing.
+
+This — not `ctx.publish` — is what would make progressive display work. Today `DataKind.PARTIAL_FRAME` is defined, three displays accept it, and `streamed_image_display.py:97` handles it, but **nothing emits it**, because `run_daq` performs one blocking `ai_task.read(number_of_samples_per_channel=total_samples)` and the partial data does not exist. No amount of callback plumbing fixes that; the read has to become incremental.
+
+**Device** — an addressable piece of the instrument, with configuration, calibration, a panel, and persistence. Two properties vary:
+
+```python
+class DAQ(Device):
+    owns_connection = True     # an NI resource with open/close
+
+class TimeTagger(Device):
+    owns_connection = True     # its own SDK and USB handle
+
+class Galvo(Device):
+    backed_by = DAQ            # no connection of its own
+    # fast_ao, slow_ao, per-axis limits
+```
+
+A galvo has no driver — it is mirrors moved by voltages on someone else's AO channels. But it has a wiring config you set up once and reuse, so it needs identity, a panel, and persistence. Separating *identity* from *connection* gives it those without pretending it opens a port. Today the galvo is invisible: `required_instruments` is empty for confocal and `fast_axis_ao` / `slow_axis_ao` / `active_ai_channels` are loose per-modality parameters, duplicated across all three modalities.
+
+**Claims propagate up `backed_by`.** Claiming the galvo claims its DAQ. Today only one modality runs at a time so this is trivial, but it is where the existing `validate_required_instruments()` logic lands.
+
+The galvo is *data* consumed by operations that know they are driving NI AO. It must not grow a `move()` method that pretends the raster could call it polymorphically.
+
+**Dataset** — where **acquired** arrays live: a run output, with incremental writes, change notification, provenance (which program, which parameters, when), and a save policy. Views render datasets; they never own arrays. A multi-frame run is one dataset that grows, which is why frame counting leaves the program entirely.
+
+The **dataset library** is the collection of these — the run outputs currently open in the app, like a list of open documents.
+
+**Presets are not datasets.** A mask is authored, not acquired: you draw it once, name it, save it, and load it into runs for months. It has no provenance and no run that produced it. Acquired data is an *output*; a preset is an *input*. Filing both in the library means a few masks hidden among hundreds of acquisition results, so presets are plain files referenced by a path parameter, and the mask editor reads an acquired dataset and writes a file. The asymmetry is deliberate.
+
+**View** — renders one or more streams from datasets, emits interaction events. Never references a program.
+
+```python
+class Tiled2D(View):
+    renders = [Image2D]
+```
+
+**Parameter model** — a dataclass holding the authoritative values, with the form generated from its field metadata and writing back into it. Parameters are organised into **shared groups** — `ScanGroup`, `DaqGroup`, `SaveGroup`, `ModulationGroup` — referenced by several programs. Confocal, split confocal, and FLIM currently redeclare the same nine scan fields and five DAQ fields in three separate `parameters.py` files; shared groups mean one definition and one configured value. This is the existing `parameter_groups` idea, promoted from a form-layout hint to the actual model.
+
+**Catalog entry** — a way to launch a program. This is presentation data and lives in the shell:
+
+```python
+# shell/catalog.py
+Entry(Confocal,      label="Confocal",       group="Imaging")
+Entry(SplitConfocal, label="Split Confocal", group="Imaging")
+Entry(FLIM,          label="FLIM",           group="Imaging")
+```
+
+The selector's contents are curated by hand, because what belongs in a dropdown is a design decision. Keeping labels here rather than on the program is what lets one program be offered more than once later, and keeps `Program` from growing presentation fields.
+
+**What is deliberately not a concept:** there is no "modality" type, no "recipe" type, and no "feature" type. Those name categories, not things. A view is not a program. A device is not a program. An operation is not a program — it returns, it has no lifecycle and no claims.
+
+## 5. File layout
+
 ```
 pyrpoc/
 ├── app.py              entry point; builds the app, wires top-level pieces
 │
 ├── core/               shared vocabulary. no Qt, no hardware, no I/O.
-│   ├── space.py        coordinate spaces, Frame, units
-│   ├── context.py      Point, Region, DatasetRef — the plug/socket types
-│   ├── streams.py      stream identity + shape contracts (Image2D, Cube3D, Trace1D)
-│   ├── params.py       parameter field types, validation, coercion
-│   ├── modulation.py   MaskSpec — what a mask is, not how it's drawn or applied
+│   ├── streams.py      shape contracts (Image2D, Cube3D, Trace1D)
+│   ├── params.py       parameter field types, shared groups, validation, coercion
+│   ├── modulation.py   MaskBinding (mask file path + port/line); load/save of mask files
 │   └── errors.py
 │
-├── devices/            one folder per hardware thing; driver + its panel together
-│   ├── base.py
+├── devices/            one folder per addressable thing; driver and panel together
+│   ├── base.py         Device; owns_connection / backed_by
 │   ├── registry.py
 │   ├── daq/
 │   │   ├── device.py
 │   │   ├── simulated.py
 │   │   └── panel.py
-│   ├── galvo/          device.py holds the volts↔sample calibration
+│   ├── galvo/          AO channel assignment and limits
 │   ├── time_tagger/
-│   └── stage/
+│   └── stage/          prior, zaber
 │
 ├── operations/         bounded hardware actions. plain functions. no self, no loop.
-│   ├── raster.py       waveform gen + synchronized AO/AI/DO scan
-│   ├── point.py        dwell at one position
-│   ├── tagger.py       read a FLIM frame
-│   └── modulation.py   MaskSpec → per-pixel TTL waveform
+│   ├── raster.py       waveform gen + synchronised AO/AI/DO scan
+│   ├── split_raster.py t0/t1 gated variant; different DO gating and sample splitting
+│   ├── tagger.py       FLIM scan trigger + histogram frame read
+│   └── modulation.py   MaskBinding + loaded mask array -> per-pixel TTL waveform
 │
 ├── data/
-│   ├── dataset.py      array + frame + incremental writes + change notification
+│   ├── dataset.py      array + incremental writes + change notification + save policy
 │   ├── library.py      the live collection of datasets, with identity
-│   ├── io.py           save/load: tiff, npz, ome
-│   └── transforms.py   normalize, project, slice — shared by views and recipes
+│   ├── io.py           save/load: tiff, npz
+│   └── transforms.py   normalise, project, slice — shared by views and programs
 │
-├── run/                executes procedures
-│   ├── procedure.py    Procedure base + RunContext
-│   ├── runner.py       worker thread, inbox, cancellation, status
-│   └── claims.py       device locks / exclusivity
+├── run/                executes programs
+│   ├── program.py      Program base + RunContext
+│   ├── runner.py       worker thread, cancellation, status, dataset setup
+│   └── claims.py       device claims; propagation along backed_by
 │
-├── recipes/            THE feature folder — the only one you add to for a feature
-│   ├── base.py         @recipe declaration schema
+├── programs/           one file per experiment
+│   ├── confocal.py
+│   ├── split_confocal.py
+│   └── flim.py
+│
+├── views/              render datasets, emit interaction events
+│   ├── base.py         View; renders = [...]
 │   ├── registry.py
-│   ├── confocal/       recipe.py · params.py · procedure.py
-│   ├── point_scan/
-│   ├── z_stack/
-│   ├── mosaic/
-│   ├── flim/
-│   └── fit_lifetime/   a recipe that touches no hardware
+│   ├── image_2d.py     (was tiled_2d)
+│   ├── streamed.py
+│   ├── overlay.py      (was multichan_overlay)
+│   ├── decay.py        (was flim_display)
+│   └── mask_editor.py  (was rpoc/editor.py)
 │
-├── views/              render datasets, offer context, emit interaction events
-│   ├── base.py         renders streams; declares `offers = [Point, Region]`
-│   ├── registry.py
-│   ├── image_2d.py
-│   ├── overlay.py
-│   ├── mosaic_canvas.py
-│   ├── decay.py
-│   └── mask_editor.py
-│
-├── shell/              application chrome
+├── shell/              application chrome; the only module that may know everything
 │   ├── window.py
-│   ├── launcher.py     recipe launcher (replaces the modality dropdown)
+│   ├── catalog.py      ways to launch programs: label, group
+│   ├── launcher.py     the selector, built from catalog entries
 │   ├── param_form.py   generic form generated from a params model
-│   ├── run_bar.py      what's running, what step, stop/pause
-│   ├── menus.py        needs/offers matching → context menus
+│   ├── run_bar.py      what is running, what step, stop
 │   ├── docking.py
 │   └── theme/
 │
 └── session/            config persistence only
-    ├── state.py        what exists, how it's configured, layout
+    ├── state.py        what exists, how it is configured, layout
     └── store.py        JSON read/write
 ```
 
-## Core concepts
+## 6. Derivation of the layout
 
-The layout above only makes sense once these nouns are pinned down. Each is a distinct
-kind of thing with a distinct reason to exist.
+A folder structure does exactly two jobs: it tells you where a new thing goes, and it constrains what may depend on what. The second is the one usually forgotten, and the one that decides whether the codebase stays workable — folders are the only lightweight mechanism available for saying "this part may not know about that part." If folders do not encode dependency constraints they are filing cabinets, and filing does not prevent tangling.
 
-**Device** — a handle on one piece of hardware. Owns its connection, settings, calibration, and its settings panel. Has a simulated sibling (`simulated.py`) so the whole app runs with nothing plugged in.
+### 6.1 Things that change together live together
 
-**Operation** — one bounded hardware action. A plain function: explicit arguments in, arrays out. No `self`, no loop, no saving, no Qt, no knowledge of what it is being used for. The unit is a *clock domain*, not a device — the raster operation drives AO + AI + DO together because they share a sample clock, and splitting them into separate "positioner" and "detector" objects would misrepresent the hardware.
+The test is not "are they similar" but **when you make a typical change, do you touch both?**
 
-**Procedure** — the experiment, written as ordinary Python running on a worker thread. It decides which operations to call, in what order, with what arguments, and what to do with the results. This is the piece that is currently cut in half between `acquire_once()` and `build_continuous_worker()`; here it is whole, and it belongs to whoever is writing the feature rather than to a base class.
+This is where a `gui/` folder fails. The time tagger's driver and its settings panel change together constantly — add a trigger-voltage parameter to the device, add a field to the panel, same sitting, same reason. The time tagger's panel and the tiled image display never change together. But a `gui/` folder files the second pair as siblings and separates the first, because it groups by which library a file imports, and "imports PyQt6" is not a thing that changes together.
 
-```python
-class ZStack(Procedure):
-    def run(self, ctx):
-        for z in ctx.params.z_positions:
-            ctx.devices.stage.move_z(z)
-            ctx.publish("stack", raster_scan(**ctx.params.scan), z=z)
-```
+The cost is visible today. Adding FLIM touched five folders: `modalities/flim/`, `instruments/time_tagger.py`, `instruments/instrument_widgets/time_tagger_widget.py`, `displays/flim_display.py`, and new entries in `backend_utils/acquired_data.py`. Five places to read to understand it, five to hunt to remove it, and nothing tells you when you have found them all.
 
-**RunContext (`ctx`)** — the service surface handed to a procedure. Deliberately small; it will attract additions and should be defended.
+So: group by subject, not technology. There is no `gui/` folder because "is Qt" was never the thing that mattered.
 
-```python
-ctx.params                            # the parameter object for this run
-ctx.devices                           # resolved device handles
-ctx.publish(stream, data, **coords)   # write into a dataset
-ctx.wait_for(event, timeout=None)     # blocking read of the inbox
-ctx.poll(event)                       # non-blocking
-ctx.sleep(seconds)                    # cancellable
-ctx.status(text)                      # progress -> run bar
-ctx.check_cancel()                    # raises Cancelled
-```
+### 6.2 Some things serve one feature, some serve many
 
-`wait_for` is what makes click-driven acquisition possible at all: a running procedure has an inbox, so input can arrive from a view, a script, a scheduler, or another procedure without the procedure knowing who sent it. Today the only signal that can enter a running acquisition is the stop flag.
+That rule alone would put everything in feature folders, which does not work. A 2D image view is not owned by confocal; the raster waveform generator is used by confocal, split confocal, and FLIM alike.
 
-**Recipe** — the feature unit, and what "modality" becomes. A declaration binding together: the context it consumes, the devices it requires, its parameter model, its procedure, and the streams it produces.
+Second question, applied to every file: **does this serve one thing or many?**
 
-```python
-@recipe
-class PointScan:
-    name      = "Scan here"
-    needs     = [Point, Galvo, DAQ]
-    params    = PointScanParams        # optional; absent -> runs immediately
-    procedure = PointScanProcedure
-    produces  = {"preview": Image2D}
-```
-
-A modality is *not* a subclass of a recipe. "Modality" stops existing as a type. How a
-recipe is launched — main launcher, view context menu, toolbar, script — is a property
-derived from what it `needs`, not a class distinction. That way a new launch surface
-never requires a new class.
-
-**Context types** (`Point`, `Region`, `DatasetRef`) — the plug-and-socket vocabulary. A
-view declares what it can offer; a recipe declares what it needs; the shell computes
-which recipes appear where. Nobody writes "PointScan goes in the image_2d context menu."
-Write a new point-offering view and it immediately hosts every point-recipe, including
-ones written later. Write a new point-recipe and it appears in every point-offering view.
-This is what replaces `allowed_displays`.
-
-**Stream** — a named output of a running procedure, carrying a shape contract
-(`Image2D`, `Cube3D`, `Trace1D`). Two things that `DataKind` currently conflates are
-deliberately separated: *what the array is* (the contract — used to check a view can
-render it) and *which output it came from* (the name — used to bind it to a specific
-view). That separation is what lets one FLIM run send its DAQ image to one display and
-its Swabian image to another, which is impossible today without minting a fake DataKind.
-
-**Dataset** — where acquired arrays actually live. Owns the array, its coordinate frame,
-incremental writes, and change notification. Views render datasets; they never own
-arrays. Aggregating structures (a mosaic, a z-stack) are datasets that accept writes at
-coordinates — which is why "record many spots into one plane" needs no special display
-type.
-
-**View** — renders one or more streams from datasets, declares what context it can offer,
-emits interaction events. Never references a recipe or a procedure.
-
-**Parameter model** — a dataclass that holds the authoritative values, with the form
-generated from its field metadata and writing back into it. The form is a view onto the
-parameters, not the place they live.
-
-## "Derivation" of the layout
-
-A folder structure does exactly two jobs: it tells you where a new thing goes, and it
-constrains what may depend on what. The second job is the one usually forgotten, and it
-is the one that decides whether the codebase stays workable — folders are the only
-lightweight mechanism available for saying "this part may not know about that part." If
-folders do not encode dependency constraints they are filing cabinets, and filing does
-not prevent tangling. Everything below follows from those two jobs.
-
-### 1. Things that change together live together
-
-The test for whether two files belong in one folder is not "are they similar." It is:
-**when you make a typical change, do you touch both?**
-
-This is where a `gui/` folder fails. The time tagger's driver and its settings panel
-change together constantly — add a trigger-voltage parameter to the device, add a field
-to the panel, same sitting, same reason. The time tagger's panel and the mosaic canvas
-never change together and have nothing to do with each other. But a `gui/` folder files
-the second pair as siblings and separates the first pair, because it groups by *which
-library the file imports*, and "imports PyQt6" is not a thing that changes together.
-
-The cost is visible in the current tree. Adding FLIM touched five folders:
-`modalities/flim/`, `instruments/time_tagger.py`,
-`instruments/instrument_widgets/time_tagger_widget.py`, `displays/flim_display.py`, plus
-new entries in `backend_utils/acquired_data.py`. To understand FLIM you read five places;
-to remove it you hunt five places; nothing tells you when you have found them all.
-
-So: group by subject, not by technology. There is no `gui/` folder because "is Qt" was
-never the thing that mattered.
-
-### 2. Some things serve one feature, some serve many
-
-That rule alone would put everything in feature folders, which does not work. A 2D image
-view is not owned by confocal — every recipe producing images uses it. A raster scan is
-not owned by z-stack — confocal, mosaic, and z-stack all call it.
-
-So a second question, applied to every file: **does this serve one thing or many?**
-
-- Serves one -> lives inside that thing's folder (the time tagger's panel; confocal's procedure).
+- Serves one -> lives inside that thing's folder (the time tagger's panel).
 - Serves many -> lives in a folder of its kind, alongside interchangeable siblings (`views/`, `operations/`).
 
-This is why the tree is mixed: `devices/time_tagger/panel.py` contains Qt while `views/`
-is a separate folder that is entirely Qt. That looks inconsistent until the rule is
-applied, and then it is forced — the panel serves exactly one device, the image view
-serves every recipe.
+This is why the tree is mixed: `devices/time_tagger/panel.py` contains Qt while `views/` is a separate folder that is entirely Qt. Forced by the rule, not inconsistent — the panel serves exactly one device, the image view serves every program.
 
-The same question keeps producing answers. Why is `procedure.py` inside
-`recipes/confocal/` while `raster.py` sits in a shared `operations/` folder? A procedure
-belongs to exactly one recipe; a raster scan belongs to many.
+### 6.3 Dependency order comes from what changes most
 
-### 3. Dependency order comes from what changes most
+The thing changed constantly is **programs**, so programs sit at the bottom with everything else ignorant of them: *nothing imports `programs/`.* If any part depended on a specific program, that program could never be deleted and the next would have to imitate it.
 
-Order the layers by asking what you want to change freely.
+The thing changed least is the **shared vocabulary** — the nouns two folders both need to say. Those sit at the top importing nothing. When two folders need the same word, the word cannot live in either, or one starts importing the other for no reason.
 
-The thing changed constantly is **features**, so features sit at the bottom of the
-dependency graph with everything else ignorant of them. Hence the strongest rule in the
-tree: *nothing imports `recipes/`.* If any part depended on a specific recipe, that recipe
-could never be deleted and the next one would have to imitate it.
+The middle follows physical reality: hardware exists regardless of what you do with it, so `devices` depends only on vocabulary. An action on hardware needs the hardware, so `operations` depends on `devices`. Data exists regardless of how it was acquired, so `data` depends only on vocabulary — which is why saving is not a program's job. Running a program needs actions and somewhere to put results, so `run` depends on both.
 
-The thing changed least is the **shared vocabulary** — the nouns two folders both need to
-say, like `Point` and `Frame`. Those sit at the top importing nothing. When two folders
-need the same word, the word cannot live in either, or one starts importing the other for
-no reason.
+Views render data, so they need `data` and vocabulary and **nothing else should be permitted**. Settled statement 5 stops being a principle to remember and becomes `views/` being unable to import `run/` or `programs/`.
 
-The middle falls out of physical reality:
+### 6.4 `core/` is the folder to distrust
 
-- Hardware exists regardless of what you do with it -> `devices` depends only on vocabulary.
-- An action on hardware needs the hardware -> `operations` depends on `devices`.
-- Data exists regardless of how it was acquired -> `data` depends only on vocabulary. This is why saving is not a modality's job.
-- Running a program needs actions to run and somewhere to put results -> `run` depends on `operations` and `data`.
-- A feature composes all of the above -> `recipes` at the bottom.
-
-Then views. Views render data, so they need `data` and vocabulary. Nothing else — and
-nothing else should be *permitted*. "Acquiring data and showing data are distinct things"
-stops being a principle to remember and becomes `views/` being unable to import `run/` or
-`recipes/`. The structure holds the rule so discipline does not have to.
-
-### 4. `core/` is the folder to distrust
-
-`core/` exists for one reason: two folders need to say the same word. That is the only
-honest justification and it is narrow.
-
-It is also the folder that rots, because "shared" is slippery and anything homeless
-drifts there. That is exactly what `backend_utils/` became — `array_contracts`,
-`state_helpers`, `parameter_utils`, `registry`, `contracts` landed there not because many
-folders needed them but because they were not obviously GUI. "Not GUI" is not a subject.
+It exists for one reason: two folders need to say the same word. That justification is narrow, and the folder rots because "shared" is slippery. `backend_utils/` became exactly this — `array_contracts`, `state_helpers`, `parameter_utils`, `registry`, `contracts` landed there not because many folders needed them but because they were not obviously GUI. "Not GUI" is not a subject.
 
 One test keeps it honest: **if only one folder imports it, it does not belong in `core/`.**
 
-### 5. Two kinds of state, split by lifetime
+### 6.5 Two kinds of state, split by lifetime
 
-Configuration is small, JSON, and exists so the workbench comes back on relaunch.
-Acquired data is gigabytes, lives in TIFF, and exists because it is the experimental
-result — opened as a file months later, possibly in another program.
+Configuration is small, JSON, and exists so the workbench returns on relaunch. Acquired data is large, lives in TIFF, and exists because it is the experimental result — opened as a file months later, possibly in another program. Different size, format, lifetime, and reason to exist. Merge them and the session file tries to hold arrays, or the TIFFs try to remember dock layout.
 
-Different size, format, lifetime, and reason to exist: four independent reasons they are
-different subjects. Merge them and the session file starts trying to hold arrays, or the
-TIFFs start trying to remember dock layout.
+### 6.6 One place is allowed to know everything
 
-### 6. One place is allowed to know everything
+Ignorant parts still have to be connected. The connecting code has to exist somewhere, and the only choice is whether it lives in one identifiable place or smeared across the parts meant to stay ignorant. Smeared is the current state: `export_rpoc_input()` on every display and `allowed_displays` on every modality are both connection logic hiding inside generic classes.
 
-Ignorant parts still have to be connected by something. A display that knows nothing
-about acquisition must nonetheless end up feeding a click into a running scan, and that
-connecting code has to physically exist somewhere.
+`shell/` is that place and may import everything. Naming the promiscuous module explicitly is the trick; it also makes it obvious when it grows too big, which a smeared version never does. This is also why `shell/catalog.py` is the right home for launch presentation — a presentation layer is *supposed* to be an enumerated pile of design decisions.
 
-That cannot be designed away — the only choice is whether it lives in one identifiable
-place or smeared across the parts that were supposed to stay ignorant. Smeared is the
-current state: `export_rpoc_input()` on every display and `allowed_displays` on every
-modality are both connection logic hiding inside generic classes.
+It gives a second, independent reason `views/` and `shell/` are separate despite both being Qt: different import permissions. `views/` may not touch `run/`; `shell/` must.
 
-`shell/` is that one place and it is allowed to import everything. Naming the promiscuous
-module explicitly is the whole trick; it also makes it obvious when it grows too big,
-which a smeared version never does.
-
-This also gives a second, independent reason `views/` and `shell/` are separate despite
-both being Qt: they have different import permissions. `views/` may not touch `run/`;
-`shell/` must. Different permissions means different folders, and Qt never entered into it.
-
-## Hierarchy of folders/desired dependencies and why
+## 7. Dependency hierarchy
 
 ```
 core         -> (nothing)
@@ -289,133 +273,199 @@ operations   -> core, devices
 data         -> core
 run          -> core, data, operations, devices
 views        -> core, data
-recipes      -> core, data, operations, devices, run
+programs     -> core, data, operations, devices, run
 session      -> core
 shell        -> everything
 ```
 
-Read top to bottom as "may import." Nothing may import in the other direction.
+Read as "may import." Nothing may import in the other direction.
 
-### The rules that carry the weight
+### Rules that carry the weight
 
-1. **`views/` may not import `run/` or `recipes/`.** This is the display/acquisition
-   separation, enforced by the import graph rather than by discipline. A view knows how
-   to render a dataset and what context it can offer; it never knows what will consume
-   that context.
+1. **`views/` may not import `run/` or `programs/`.** The display/acquisition separation, enforced by the import graph rather than by discipline.
+2. **Nothing may import `programs/`** except `shell/` (to launch them) and a registry (to collect them). Any program can be deleted outright.
+3. **`operations/` may not import `data/`.** Operations return arrays; turning an array into a dataset write is the program's job. Keeps operations pure and testable with no state.
+4. **Qt appears only in `views/`, `shell/`, and `devices/*/panel.py`.**
+5. **`shell/` is the only module allowed to know everything.** When it gets fat, that is a signal to examine, not a thing to hide by pushing wiring back into `views/` or `programs/`.
 
-2. **Nothing may import `recipes/`** except `shell/` (to list them) and
-   `recipes/registry.py` (to collect them). No recipe can become load-bearing for another
-   part of the system, so any recipe can be deleted outright.
+### Consequences
 
-3. **`operations/` may not import `data/`.** Operations return arrays. Turning an array
-   into a dataset write is the procedure's job. This keeps operations pure functions,
-   testable with no state, no Qt, and no store.
+- A new experiment is one file in `programs/` plus one row in `shell/catalog.py`.
+- Deleting an experiment is deleting that file and that row.
+- `run/` never knows what any program does; it only knows how to execute one.
+- Everything outside `views/` and `shell/` is importable and testable headless.
 
-4. **Qt appears only in `views/`, `shell/`, and `devices/*/panel.py`.** Everything else
-   imports in a test with no display. That is not true today.
+## 8. Worked examples
 
-5. **`shell/` is the only module allowed to know everything.** Wiring lives there and
-   nowhere else. When it gets fat, that is a signal to look at, not a thing to hide by
-   pushing wiring back into `views/` or `recipes/`.
+All four exist in the codebase today.
 
-### Consequences worth noticing
+### 8.1 Confocal
 
-- A feature is added by creating one folder under `recipes/` and editing nothing else.
-- A recipe is deleted by deleting its folder.
-- `run/` never knows what any procedure does; it only knows how to execute one.
-- The entire non-visual system (`core`, `devices`, `operations`, `data`, `run`, `recipes`,
-  `session`) is importable and testable headless.
+**User:** pick "Confocal" from the selector. The parameter panel fills with the Scan, DAQ and Save groups. Type a filename. An image view opens because the program declares it emits one. Hit play; the run bar reads "frame 3/10". It stops on its own or you stop it. The dataset remains in the library afterwards.
 
-## Where the current code lands
+**Code:** `programs/confocal.py` as shown in section 4.
+
+Note what is absent: **no saving**. The runner reads `emits` plus the Save group and creates the dataset with a save policy before calling `run()`. Frames are written as they are published. This is why all three `storage.py` files collapse into `data/io.py`, and why `prepare_acquisition_storage` / `save_acquired_frame` / `finalize_acquisition_storage` disappear from every program.
+
+Also absent: frame counting. `num_frames` is a number the program loops over, so `get_frame_limit()`, `_run_frame_limit`, `_saved_frame_count`, and `_frames_emitted` all go away.
+
+### 8.2 Confocal with a preset mask
+
+**User:** draw a mask in the mask editor from an existing image; it saves as a file. In the **Modulation** group of the parameter panel, a small table: mask file | port | line. Pick the file, set port 0 line 3. Hit play. Because Modulation is a shared group, Split Confocal and FLIM see the same setting without re-picking.
+
+```python
+# core/modulation.py
+@dataclass(frozen=True)
+class MaskBinding:
+    path: Path      # a .tif/.npy the user drew and saved
+    port: int
+    line: int
+```
+
+```python
+# programs/confocal.py — run() gains two lines
+    ttl = mask_ttl(p.modulation, scan=p.scan, device=p.daq.device_name)
+    for i in range(p.num_frames):
+        ctx.publish("intensity", raster_scan(**p.scan, **p.daq, ttl=ttl))
+```
+
+`mask_ttl` is the existing `preprocess_mask_to_scan_grid` + `generate_mask_ttl_signals`, taking loaded mask arrays instead of `MaskContext` objects.
+
+**What disappears:** `BaseOptoControl`, `BaseOptoControlWidget`, the optocontrol registry and manager panel, `prepare_for_acquisition`, `get_context`, `MaskContext`, `extract_mask_contexts`, `allowed_optocontrols`, and the `optocontrols` list in `AppState`. Roughly 700 lines become a frozen dataclass, a parameter field, and a pure function.
+
+**Tradeoff to accept:** masks stop being globally toggleable objects and become run parameters. You lose the enable/disable card. You gain that a run's parameters fully describe what happened — saved metadata records exactly which masks on which lines, which today it does not, because the enabled flag lived outside the modality.
+
+### 8.3 Split confocal
+
+**User:** "Split Confocal" sits next to "Confocal" in the selector. Same Scan / DAQ / Save / Modulation groups plus a Split group with `t0_samples` and `t1_samples`. It emits two streams, so a second view can be opened for the raw pixel stream — or ignored, and it is still saved.
+
+```python
+# programs/split_confocal.py
+class SplitConfocal(Program):
+    uses   = [Galvo, DAQ]
+    params = SplitConfocalParams        # ConfocalParams + t0_samples, t1_samples
+    emits  = {"intensity": Image2D, "raw_pixel_stream": Image2D}
+
+    def run(self, ctx):
+        p = ctx.params
+        ttl = split_mask_ttl(p.modulation, scan=p.scan, t0_samples=p.t0_samples,
+                             device=p.daq.device_name)
+        for _ in range(p.num_frames):
+            split, raw = split_raster_scan(**p.scan, **p.daq, ttl=ttl,
+                                           t0_samples=p.t0_samples, t1_samples=p.t1_samples)
+            ctx.publish("intensity", split, channels=p.split_channel_labels())
+            ctx.publish("raw_pixel_stream", raw)
+            ctx.check_cancel()
+```
+
+Two points, because this is the case that motivated the redesign:
+
+**The `run()` body duplicates confocal's shape, and that is correct.** Do not give them a shared base class. Ten lines of duplicated orchestration is far cheaper than a template method with a mode flag — that is the trap `BaseModality` fell into, and the second flag is always worse than the first. Sharing happens where code is genuinely identical: `generate_raster_waveform` lives in `operations/` and both call it. Where they genuinely differ — DO gating on `t0_samples`, splitting samples into alternating t0/t2 channels — they call different operations.
+
+**The auxiliary payload machinery dies.** Today the raw stream travels as `_pending_auxiliary["raw_pixel_stream"]`, picked up by `append_auxiliary_payload` and `flush_auxiliary_payloads` into an npz side-channel invisible to displays. It is a second output smuggled through storage because there was no way to declare one. Here it is a declared stream: viewable, bindable to its own view, saved by the same path as everything else.
+
+### 8.4 FLIM
+
+**User:** pick "FLIM". Greyed out with "needs TimeTagger" if none is configured. Two streams, so an image view and a decay view both open. Hit play.
+
+```python
+# programs/flim.py
+class FLIM(Program):
+    uses   = [Galvo, DAQ, TimeTagger]
+    params = FlimParams
+    emits  = {"intensity": Image2D, "histogram": Cube3D}
+
+    def run(self, ctx):
+        p = ctx.params
+        tagger = ctx.devices[TimeTagger]
+        flim = tagger.start_flim_measurement(p)        # once, before the loop
+        try:
+            for _ in range(p.num_frames):
+                flim_scan(**p.scan, **p.daq, **p.triggers)
+                ctx.sleep(p.frame_settle_s)
+                cube = read_flim_frame(flim, **p.histogram)
+                ctx.publish("histogram", cube)
+                ctx.publish("intensity", flim_intensity(cube))
+                ctx.check_cancel()
+        finally:
+            tagger.stop_flim_measurement(flim)          # once, after
+```
+
+This is the clearest illustration of settled statement 1. Today `FlimModality.acquire_once` calls `setup_tagger()` at the top and `teardown_tagger()` in a `finally` — **per frame** — because `acquire_once` must be self-contained and there is nowhere else for per-run setup to go. A ten-frame FLIM run creates and frees the TimeTagger ten times. Once the program owns the loop, setup is simply outside it.
+
+It also shows why streams are named rather than tagged. Today the two outputs are distinguished by minting `DataKind.FLIM_RAW_FRAME`, which is a stream name wearing a type's clothing — hence `DataKind` splitting into shape contracts (`core/streams.py`) and stream names (keys in `emits`).
+
+## 9. Where the current code lands
 
 | today | new home | notes |
 |---|---|---|
 | `instruments/` + `instrument_widgets/` | `devices/<name>/` | driver and panel rejoined |
-| `modalities/*/acquisition_core.py` | `operations/` | mostly as-is; this is the healthiest code in the repo |
-| `modalities/*/parameters.py` | `recipes/<name>/params.py` | schema and dataclass unified into one definition |
-| `acquire_once` + `build_continuous_worker` | `recipes/<name>/procedure.py` | the two halves rejoined into one program |
-| `modalities/*/storage.py` (x3, near-identical) | `data/io.py` | one copy |
-| `modalities/helpers/toy_data.py` | `devices/*/simulated.py` | kills the repeated `except DaqUnavailableError` fallback in every modality |
+| galvo/AI channels (loose params today) | `devices/galvo/` | gains identity, panel; stops being redeclared per modality |
+| `modalities/*/acquisition_core.py` | `operations/` | mostly as-is; the healthiest code in the repo |
+| `modalities/*/parameters.py` | `core/params.py` groups + `programs/*` | schema and dataclass unified; scan/DAQ/save groups shared across all three |
+| `acquire_once` + `build_continuous_worker` | `programs/*.py` | the two halves rejoined into one program |
+| `modalities/*/storage.py` (x3) | `data/io.py` | one copy; save policy is a dataset property |
+| `modalities/helpers/toy_data.py` | `devices/*/simulated.py` | kills the repeated `except DaqUnavailableError` fallback in all three modalities |
 | `displays/` | `views/` | minus the arrays they currently own |
-| `optocontrols/` | split three ways | `core/modulation.py` (the spec), `operations/modulation.py` (TTL generation), `views/mask_editor.py` (the editor) |
-| `rpoc/editor.py` | `views/mask_editor.py` | |
-| `backend_utils/` | dissolved | `contracts`/`parameter_utils` -> `core/`; the rest into whichever folder actually uses it |
-| `services/` | dissolved | instrument -> `devices/registry`; display -> `views/registry`; modality -> `run/runner` + `recipes/registry`; interpreter -> `shell/` binding; session -> `session/` |
-| `gui/` | `shell/` | |
-| `domain/stores.py` | delete | dead code; only referenced by its own test |
+| `optocontrols/` | split three ways | `core/modulation.py`, `operations/modulation.py`, `views/mask_editor.py` |
+| `rpoc/editor.py`, `rpoc/segmentation_methods.py` | `views/mask_editor.py` | mask authoring reads a dataset, writes a file |
+| `backend_utils/` | dissolved | `contracts`/`parameter_utils` -> `core/`; the rest into whichever folder uses it |
+| `services/` | dissolved | instrument -> `devices/registry`; display -> `views/registry`; modality -> `run/runner`; interpreter -> `shell/`; session -> `session/` |
+| `gui/` | `shell/` | plus the new `catalog.py` |
+| `domain/stores.py` | delete | dead code; referenced only by its own test |
+| `DataKind` | split | shape contract (`core/streams.py`) vs stream name (a key in `emits`); the two `*_PARTIAL_*` members are dead today and become ordinary streams if streaming reads land |
 
-## Design decisions already made
+## 10. Decisions made
 
-- **The procedure owns the loop.** No base class supplies `while not should_stop`. Frame
-  counting, `num_frames`, and the storage hooks disappear from any base class along with it.
-- **A running procedure has an inbox.** This is the only structural way for anything
-  outside to reach a live acquisition. Clicks are one sender among many.
-- **Parameters live in a model; the form reads and writes it.** No widget scraping.
-- **Acquired arrays live in datasets, not in widgets.** Data outlives the display that
-  showed it, two views can share one dataset, and saving is a dataset operation.
-- **Recipe `needs`/view `offers` matching generates context menus.** No hardcoded lists in
-  either direction. `allowed_displays` and `export_rpoc_input` both die here.
-- **Streams are named and explicitly bound to views**, with shape contracts used to
-  validate the binding rather than perform it.
-- **Simulation is a device variant**, not a `try/except` inside each acquisition.
-- **Session config and acquired data are separate subsystems** with separate formats and
-  lifetimes.
-- **Masks become datasets plus a recipe parameter**, not a global inventory filtered by
-  `allowed_optocontrols`.
+- **The program owns the loop.** No base class supplies `while not should_stop`. Frame counting, `num_frames`, per-run setup/teardown, and the storage hooks leave the base class with it.
+- **Parameters live in a model, organised into shared groups.** The form reads and writes it.
+- **Acquired arrays live in datasets.** Data outlives its display, two views can share one dataset, and saving is a dataset property configured by the runner from `emits` + the Save group.
+- **Launch presentation lives in `shell/catalog.py`,** not on programs.
+- **Streams are named in `emits` and carry shape contracts.** Contracts validate a view binding; names perform it.
+- **Devices separate identity from connection.** `owns_connection` and `backed_by`; claims propagate along `backed_by`.
+- **Simulation is a device variant,** not a `try/except` inside each acquisition.
+- **Session config and acquired data are separate subsystems.**
+- **Masks are files referenced by a parameter,** not a global inventory filtered by `allowed_optocontrols` and not entries in the dataset library. Presets are authored inputs; datasets are run outputs.
+- **Operations that produce data incrementally are generators, not callback takers.**
+- **Similar programs duplicate their `run()` rather than sharing a base class.** Sharing happens at the operation level, where the code is genuinely identical.
 
-## Open questions to settle before or during migration
+## 11. Open questions
 
-1. **Click semantics.** Two UX shapes look identical and are mechanically unrelated:
-   launching a new run from a right-click, versus feeding a point to a procedure already
-   parked on `ctx.wait_for`. Proposed rule: left-click feeds a waiting run (with a visible
-   affordance on views that can currently feed it), right-click offers recipes to launch.
-   Needs a decision before `shell/menus.py` is written.
-2. **Mask UX regression.** Masks-as-datasets removes the dedicated optocontrol manager
-   panel in favour of "pick from the dataset library." Confirm that is acceptable.
-3. **Hardware contention policy.** `needs = [Galvo, DAQ]` doubles as a lock declaration.
-   Proposal: launching an exclusive recipe while another holds the hardware prompts to
-   stop the current one rather than silently queueing — queueing is surprising on a
-   microscope where the sample is changing.
-4. **Coordinate/calibration model.** `point_scan` and `mosaic` both need a real mapping
-   between display pixels, sample coordinates, and galvo volts / stage position. Today
-   `fast_axis_offset`/`amplitude` are dimensionless volts private to each modality. The
-   calibration belongs on the galvo and stage devices, with `core/space.py` holding the
-   `Frame` type. This is not needed for the confocal or z-stack migration and can be
-   deferred, but it blocks the click-driven and mosaic recipes.
-5. **Dataset backing for long runs.** A multi-hour mosaic may exceed memory. Decide
-   whether `Dataset` needs on-disk backing (memmap / zarr) or whether in-memory plus
-   periodic flush is enough for now.
-6. **Naming: `views/` vs `shell/`.** The boundary is real (different import permissions)
-   but the names are weak. If it reads ambiguously later, rename `shell/` rather than
-   merging them.
+1. **Streaming reads.** Decided: For now, do not try to implement any streaming, but ensure the architecture will be extensible to that. 
+2. **Are claims needed yet?** Decided: only one modality runs at a time today. But make sure the software is extensible. 
+3. **What `mask_editor` is.** Decided: it authors a preset from an acquired dataset. That makes it a view with a save action. The segmentation code in `rpoc/segmentation_methods.py` is depcrecated and can be fully removed. 
+4. **Naming: `views/` vs `shell/`.** Decided: The boundary is real (different import permissions) but the names are weak. Keep views/ and shell/, and put the rule in each __init__.py docstring so the name doesn't have to carry it: """Renders datasets. Must not import run/ or programs/.""" One line, and it's where anyone adding a file will see it.
 
-## Invariants to verify when the migration is done
+## 12. Invariants to verify
 
-Mechanical checks, suitable for a lint script or a test:
+Mechanical, suitable for a lint script or test:
 
-- `views/` imports nothing from `run/` or `recipes/`.
-- Nothing imports `recipes/` except `shell/` and `recipes/registry.py`.
+- `views/` imports nothing from `run/` or `programs/`.
+- Nothing imports `programs/` except `shell/` and the program registry.
 - `operations/` imports nothing from `data/`.
 - `PyQt6` appears only under `views/`, `shell/`, and `devices/*/panel.py`.
-- No module imports anything above it in the hierarchy table.
+- No module imports anything above it in the section 7 table.
 - The test suite runs headless with no Qt application and no hardware.
+- No `Program` subclass defines an attribute outside `uses`, `params`, `emits`, `run`.
 
-And the human check, applied to the next feature added: list the folders touched. If the
-count tracks how much genuinely *new capability* was added, the structure is working. If
-it tracks nothing in particular, it is not.
+And the human check, applied to the next feature: list the folders touched. If the count tracks how much genuinely *new capability* was added, the structure is working.
 
-## Notes for the migration-plan session
+## 13. Deliberately out of scope
 
-- Repository is `pyrpoc/` in this workspace. Current tree is to be replaced wholesale, not
-  incrementally patched in place — but the migration itself should be phased so the app
-  stays runnable between phases.
-- The highest-value existing code to carry over largely unchanged is
-  `modalities/*/acquisition_core.py` (the NI-DAQ waveform generation, synchronized task
-  setup, and reshaping) and `instruments/time_tagger.py`. Preserve the hardware maths;
-  restructure everything around it.
+Considered during design and cut, because nothing in the codebase needs them yet. Recorded so they are visibly omissions rather than oversights, and so the hook each one would attach to is known.
+
+**An inbox on the running program** (`ctx.wait_for(Type)`). Today the only signal that can enter a running acquisition is the stop flag — the "kill switch" half of section 1 is not fixed by this document. The hook is one queue on `RunContext` plus the runner recording what type the program is blocked on. Needed by anything where input arrives *during* a run: click-driven acquisition, live parameter changes, hardware triggers, a scheduler.
+
+**Context types and generated context menus** (`Point`, `Region`, and a `View.offers` declaration matched against catalog entries). This is the un-hardcoded replacement for `allowed_displays` in the display->acquisition direction. Depends on coordinate frames to be useful.
+
+**Nested runs** (`ctx.run_sub`). Needed by any outer loop that wraps an inner acquisition — z-stacks, mosaics, time-lapse. Without it, `z_stack_flim` and `mosaic_flim` become separate programs and the combinatorial explosion returns one level up. This is the one omission that would change what `run/runner.py` has to be, so check it before the runner is considered finished.
+
+**On-disk dataset backing** (memmap/zarr). Needed when a single run exceeds memory. Today the largest run is `num_frames` full frames held in RAM, which is fine.
+
+## 14. Notes for the migration-plan session
+
+- Repository is `pyrpoc/` in this workspace. The current tree is replaced wholesale, but migration should be phased so the app stays runnable between phases.
+- Highest-value code to carry over largely unchanged: `modalities/*/acquisition_core.py` (NI-DAQ waveform generation, synchronised task setup, reshaping) and `instruments/time_tagger.py`. Preserve the hardware maths; restructure around it.
 - `tests/` mirrors the new tree one-to-one.
-- Suggested phase ordering, to be confirmed and expanded: (1) `core/` vocabulary and the
-  parameter model, (2) `run/` plus `Procedure`/`RunContext` with confocal ported as the
-  first recipe, (3) `data/` and datasets, moving arrays out of views, (4) `views/` and the
-  `needs`/`offers` matching, retiring `allowed_displays` and `export_rpoc_input`, (5)
-  remaining recipes, (6) `shell/` and `session/`, (7) delete the old tree.
+- Suggested phase ordering, to be confirmed and expanded: (1) `core/` vocabulary and the parameter model with shared groups; (2) `run/` plus `Program`/`RunContext`, with confocal ported as the first program; (3) `data/` and datasets, moving arrays out of displays; (4) `views/` and `shell/catalog.py`, retiring `allowed_displays` and `export_rpoc_input`; (5) split confocal and FLIM; (6) `shell/` and `session/`; (7) delete the old tree.
+- Section 2 is the acceptance criteria. Section 3 is the tool to apply if any new concept starts accumulating fields during implementation. Section 13 is the list to re-read before declaring `run/` finished.
