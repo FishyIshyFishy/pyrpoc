@@ -7,8 +7,10 @@ import sys
 from PyQt6.QtGui import QGuiApplication
 from PyQt6.QtWidgets import QApplication, QWidget
 
-from pyrpoc.gui.styles.theme_manager import ThemeController
-from pyrpoc.services.app_controller import AppController
+from pyrpoc.shell.app import Application
+from pyrpoc.shell.display_bridge import DisplayBridge
+from pyrpoc.shell.theme.manager import ThemeController
+from pyrpoc.shell.window import MainWindow
 
 
 def configure_qt_fontdir() -> None:
@@ -65,17 +67,31 @@ def fit_to_available_screen(
     window.move(frame.topLeft())
 
 
+def build(theme_controller: ThemeController) -> tuple[Application, MainWindow]:
+    """Build the application and its window. Shared by main() and the tests."""
+    app = Application()
+    DisplayBridge(app, app)          # temporary; deleted in phase 8
+    window = MainWindow(app, theme_controller)
+    return app, window
+
+
 def main() -> int:
     configure_qt_fontdir()
-    app = QApplication(sys.argv)
-    theme_controller = ThemeController(app)
+    qt_app = QApplication(sys.argv)
+    theme_controller = ThemeController(qt_app)
     theme_controller.apply_saved_or_default()
 
-    controller = AppController(theme_controller=theme_controller)
-    fit_to_available_screen(controller.main_window, 1400, 850)
-    controller.show()
-    fit_to_available_screen(controller.main_window)
-    return app.exec()
+    app, window = build(theme_controller)
+
+    # A fresh workbench needs a card and a galvo, or nothing can run.
+    if not app.devices:
+        app.add_device("daq")
+        app.add_device("galvo")
+
+    fit_to_available_screen(window, 1400, 850)
+    window.show()
+    fit_to_available_screen(window)
+    return qt_app.exec()
 
 
 if __name__ == "__main__":
