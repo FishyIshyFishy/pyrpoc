@@ -4,7 +4,8 @@ import os
 from pathlib import Path
 import sys
 
-from PyQt6.QtWidgets import QApplication
+from PyQt6.QtGui import QGuiApplication
+from PyQt6.QtWidgets import QApplication, QWidget
 
 from pyrpoc.gui.styles.theme_manager import ThemeController
 from pyrpoc.services.app_controller import AppController
@@ -23,6 +24,47 @@ def configure_qt_fontdir() -> None:
             return
 
 
+def fit_to_available_screen(
+    window: QWidget,
+    width: int | None = None,
+    height: int | None = None,
+) -> None:
+    """Size and position a window so it lands inside a visible screen area.
+
+    Qt's default placement can drop a window outside the desktop on multi-monitor
+    high-DPI setups: Qt reports a secondary screen's origin in native pixels while
+    its size stays logical, which leaves a hole in the logical coordinate space
+    that default placement can land in. Anchoring to a real availableGeometry()
+    keeps the window reachable. Call once before show() to pick the spot, and
+    again afterwards to re-clamp now that the frame margins are known.
+    """
+    screen = window.screen() or QGuiApplication.primaryScreen()
+    if screen is None:
+        if width is not None and height is not None:
+            window.resize(width, height)
+        return
+
+    avail = screen.availableGeometry()
+    if avail.isEmpty():
+        if width is not None and height is not None:
+            window.resize(width, height)
+        return
+
+    frame_margin = window.frameGeometry().size() - window.size()
+    target_width = window.width() if width is None else width
+    target_height = window.height() if height is None else height
+    window.resize(
+        min(target_width, avail.width() - frame_margin.width()),
+        min(target_height, avail.height() - frame_margin.height()),
+    )
+
+    frame = window.frameGeometry()
+    frame.moveCenter(avail.center())
+    frame.moveLeft(max(avail.left(), min(frame.left(), avail.right() - frame.width() + 1)))
+    frame.moveTop(max(avail.top(), min(frame.top(), avail.bottom() - frame.height() + 1)))
+    window.move(frame.topLeft())
+
+
 def main() -> int:
     configure_qt_fontdir()
     app = QApplication(sys.argv)
@@ -30,8 +72,9 @@ def main() -> int:
     theme_controller.apply_saved_or_default()
 
     controller = AppController(theme_controller=theme_controller)
-    controller.main_window.resize(1400, 850)
+    fit_to_available_screen(controller.main_window, 1400, 850)
     controller.show()
+    fit_to_available_screen(controller.main_window)
     return app.exec()
 
 
