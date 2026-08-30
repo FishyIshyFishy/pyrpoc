@@ -13,9 +13,12 @@ T = TypeVar("T")
 
 
 class Registry(Generic[T]):
-    def __init__(self, name: str, base_class: type):
+    def __init__(self, name: str, base_class: type, *, stamp: bool = True):
         self.name = name
         self.base_class = base_class
+        #: Whether to record the key on the class. Off for programs, so a
+        #: Program subclass keeps to the four attributes section 12 allows.
+        self.stamp = stamp
         self.entries: dict[str, type[T]] = {}
 
     def register(self, key: str) -> Callable[[type], type]:
@@ -25,7 +28,8 @@ class Registry(Generic[T]):
             if key in self.entries:
                 raise KeyError(f"{key!r} is already registered in {self.name}")
             self.entries[key] = cls  # type: ignore[assignment]
-            cls.registry_key = key   # type: ignore[attr-defined]
+            if self.stamp:
+                cls.registry_key = key  # type: ignore[attr-defined]
             return cls
 
         return decorator
