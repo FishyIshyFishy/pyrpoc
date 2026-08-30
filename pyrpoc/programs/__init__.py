@@ -8,5 +8,15 @@ its row in shell/catalog.py.
 
 from .registry import program_registry
 from .confocal import Confocal, ConfocalParams
+from .split_confocal import SplitConfocal, SplitConfocalParams
+from .flim import FLIM, FlimParams
 
-__all__ = ["program_registry", "Confocal", "ConfocalParams"]
+__all__ = [
+    "program_registry",
+    "Confocal",
+    "ConfocalParams",
+    "SplitConfocal",
+    "SplitConfocalParams",
+    "FLIM",
+    "FlimParams",
+]

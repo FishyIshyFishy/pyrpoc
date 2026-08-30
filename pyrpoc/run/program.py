@@ -80,6 +80,18 @@ class RunContext:
             dataset.channel_labels = list(channels)
         return dataset.append(data, **coords)
 
+    def describe(self, stream: str, **metadata: Any) -> None:
+        """Record metadata on one of this run's datasets.
+
+        FLIM uses it for laser_period_ps / binwidth_ps / n_bins, which v3.0
+        attached to every AcquiredData it emitted. Per stream and set once, not
+        per frame.
+        """
+        dataset = self.datasets.get(stream)
+        if dataset is None:
+            raise KeyError(f"{stream!r} is not declared in emits")
+        dataset.metadata.update(metadata)
+
     def status(self, text: str) -> None:
         if self._on_status is not None:
             self._on_status(text)
