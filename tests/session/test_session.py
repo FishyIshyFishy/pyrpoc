@@ -22,7 +22,7 @@ def sample() -> SessionState:
             DeviceState("daq", "daq-1", "Upstairs card", {"config": {"device_name": "Dev3"}}),
             DeviceState("galvo", "galvo-1", None, {"config": {"fast_ao": 2}}),
         ],
-        views=[ViewState("tiled_2d", "view-1", "Channels", True, {"channels": []})],
+        views=[ViewState("image_2d", "view-1", "Channels", True, {"channels": []})],
         selected_program="flim",
         params_by_program={"confocal": {"scan": {"x_pixels": 64}}},
         ads_layout="Zm9v",
@@ -109,11 +109,11 @@ def test_rows_without_a_key_are_skipped():
         {
             "schema_version": SCHEMA_VERSION,
             "devices": [{"key": "daq"}, {"instance_id": "orphan"}, "junk"],
-            "views": [{"key": "tiled_2d"}, {}],
+            "views": [{"key": "image_2d"}, {}],
         }
     )
     assert [row.key for row in state.devices] == ["daq"]
-    assert [row.key for row in state.views] == ["tiled_2d"]
+    assert [row.key for row in state.views] == ["image_2d"]
 
 
 def test_params_that_are_not_objects_are_skipped():

@@ -14,7 +14,7 @@ from pathlib import Path
 from PyQt6.QtCore import QObject, QTimer
 
 from pyrpoc.devices.registry import device_registry
-from pyrpoc.displays.display_registry import display_registry
+from pyrpoc.views.registry import view_registry
 from pyrpoc.session.state import DeviceState, SessionState, ViewState
 from pyrpoc.session.store import SessionStore
 
@@ -71,9 +71,7 @@ def apply(state: SessionState, app: Application, window=None) -> None:
 
     for row in state.views:
         try:
-            cls = display_registry.get_class(row.key)
-            view = cls()
-            view.configure({})
+            view = view_registry.get(row.key)()
             if row.instance_id:
                 view.instance_id = row.instance_id
             view.user_label = row.user_label

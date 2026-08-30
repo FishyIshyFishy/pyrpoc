@@ -7,8 +7,8 @@ to examine, not something to hide by pushing wiring back into views/ or
 programs/.
 
 It replaces AppState plus the five services: instrument -> devices here,
-display -> views here, modality -> run/runner, interpreter -> display_bridge,
-session -> session/.
+display -> views here, modality -> run/runner, interpreter -> the dataset
+notification below, session -> session/.
 """
 
 from __future__ import annotations
@@ -47,6 +47,7 @@ class Application(QObject):
         self.params_by_program: dict[str, Any] = {}
 
         self.bridge.run_started.connect(lambda: self.state_changed.emit())
+        self.bridge.dataset_changed.connect(self.on_dataset_changed)
 
     # -- programs ----------------------------------------------------------- #
 
@@ -99,7 +100,26 @@ class Application(QObject):
 
     # -- views -------------------------------------------------------------- #
 
+    def on_dataset_changed(self, dataset, index: int) -> None:
+        """Refresh the views showing this dataset.
+
+        A hidden view is skipped and catches up when it is shown again -- in
+        v3.0 it missed those frames permanently, because the interpreter skipped
+        anything not currently visible and there was nothing to catch up from.
+        """
+        del index
+        for view in list(self.views):
+            if view.dataset() is not dataset:
+                continue
+            if not getattr(view, "docked_visible", True):
+                continue
+            try:
+                view.refresh()
+            except Exception as exc:  # noqa: BLE001 - one bad view must not stop a run
+                view.last_error = str(exc)
+
     def add_view(self, view: Any) -> Any:
+        view.attach_library(self.library)
         self.views.append(view)
         self.views_changed.emit()
         self.state_changed.emit()

@@ -9,7 +9,6 @@ from PyQt6.QtWidgets import QApplication, QWidget
 
 from pyrpoc.session.store import SessionStore, default_session_path
 from pyrpoc.shell.app import Application
-from pyrpoc.shell.display_bridge import DisplayBridge
 from pyrpoc.shell.session_io import Autosave
 from pyrpoc.shell.theme.manager import ThemeController
 from pyrpoc.shell.window import MainWindow
@@ -75,7 +74,6 @@ def build(
 ) -> tuple[Application, MainWindow, Autosave]:
     """Build the application, its window and its autosave. Shared with the tests."""
     app = Application()
-    DisplayBridge(app, app)          # temporary; deleted in phase 8
     window = MainWindow(app, theme_controller)
     autosave = Autosave(
         app,

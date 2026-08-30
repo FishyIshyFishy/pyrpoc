@@ -42,15 +42,14 @@ def test_capture_records_the_selected_program_and_its_parameters(app):
 
 
 def test_capture_records_views(app):
-    from pyrpoc.displays.tiled_2d_display import Tiled2DDisplay
+    from pyrpoc.views.image_2d import Image2DView
 
-    view = Tiled2DDisplay()
-    view.configure({})
+    view = Image2DView()
     view.user_label = "Channels"
     app.add_view(view)
 
     state = capture(app)
-    assert [row.key for row in state.views] == ["tiled_2d"]
+    assert [row.key for row in state.views] == ["image_2d"]
     assert state.views[0].user_label == "Channels"
 
 
@@ -82,10 +81,9 @@ def test_apply_restores_parameters_per_program(app):
 
 
 def test_apply_restores_views_and_their_state(app):
-    from pyrpoc.displays.tiled_2d_display import Tiled2DDisplay
+    from pyrpoc.views.image_2d import Image2DView
 
-    view = Tiled2DDisplay()
-    view.configure({})
+    view = Image2DView()
     view.user_label = "Channels"
     app.add_view(view)
     state = capture(app)

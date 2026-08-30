@@ -16,7 +16,6 @@ from pyrpoc.core.errors import MissingDevice
 from pyrpoc.core.streams import Image2D
 from pyrpoc.shell import catalog
 from pyrpoc.shell.app import Application
-from pyrpoc.shell.display_bridge import DisplayBridge
 from pyrpoc.shell.launcher import LauncherPanel
 from pyrpoc.shell.param_form import ParamForm
 
@@ -307,18 +306,15 @@ def test_dataset_changes_arrive_on_the_gui_thread(app, monkeypatch):
     assert all(thread is gui_thread for thread in seen_on)
 
 
-def test_the_display_bridge_renders_into_a_v30_display(app, monkeypatch):
-    """Temporary, deleted in phase 8, but it must work while it is here."""
-    from pyrpoc.displays.tiled_2d_display import Tiled2DDisplay
+def test_a_view_renders_the_run_it_is_bound_to(app, monkeypatch):
+    from pyrpoc.views.image_2d import Image2DView
 
     monkeypatch.setattr(
         "pyrpoc.programs.confocal.raster_scan",
         lambda **kwargs: np.full((2, 8, 8), 7.0, np.float32),
     )
-    DisplayBridge(app, app)
-    display = Tiled2DDisplay()
-    display.configure({})
-    app.add_view(display)
+    view = Image2DView()
+    app.add_view(view)
 
     app.select_program("confocal")
     small_scan(app.current_params())
@@ -328,7 +324,10 @@ def test_the_display_bridge_renders_into_a_v30_display(app, monkeypatch):
     pump(until=lambda: not handle.thread.is_alive())
     pump(0.2)
 
-    np.testing.assert_array_equal(display._data_chw, np.full((2, 8, 8), 7.0, np.float32))
+    assert view.dataset() is handle.datasets["intensity"]
+    np.testing.assert_array_equal(
+        view.dataset().latest(), np.full((2, 8, 8), 7.0, np.float32)
+    )
 
 
 def test_a_saved_run_writes_the_expected_files(app, monkeypatch, tmp_path):

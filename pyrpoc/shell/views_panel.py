@@ -4,8 +4,8 @@ Replaces gui/main_widgets/display_mgr/. The dropdown is filtered by shape
 contract rather than by a program's hardcoded ``allowed_displays`` list, which
 was connection logic hiding inside a modality class.
 
-In phase 6 the entries are still the v3.0 display widgets fed by
-display_bridge.py; phase 8 swaps them for views that read a bound dataset.
+Each view carries its own source picker, so closing one no longer destroys its
+data and two views can show the same run.
 """
 
 from __future__ import annotations
@@ -19,7 +19,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from pyrpoc.displays.display_registry import display_registry
+from pyrpoc.views.registry import view_registry
 
 from .app import Application
 from .cards import RemovableCardWidget
@@ -36,9 +36,8 @@ class ViewsPanel(QWidget):
 
         top = QHBoxLayout()
         self.type_combo = QComboBox(self)
-        for key in display_registry.list_keys():
-            cls = display_registry.get_class(key)
-            self.type_combo.addItem(getattr(cls, "display_name", key), key)
+        for key in view_registry.keys():
+            self.type_combo.addItem(view_registry.get(key).display_name, key)
         self.add_btn = QPushButton("Add", self)
         top.addWidget(self.type_combo, 1)
         top.addWidget(self.add_btn)
@@ -61,10 +60,9 @@ class ViewsPanel(QWidget):
         key = self.type_combo.currentData()
         if not isinstance(key, str):
             return
-        cls = display_registry.get_class(key)
-        widget = cls()
-        widget.configure({})
-        self.app.add_view(widget)
+        view = view_registry.get(key)()
+        view.attach_library(self.app.library)
+        self.app.add_view(view)
 
     def refresh(self) -> None:
         while self.instances_layout.count():
@@ -75,7 +73,7 @@ class ViewsPanel(QWidget):
                 widget.deleteLater()
 
         for view in self.app.views:
-            title = getattr(view, "user_label", None) or getattr(view, "display_name", "View")
+            title = view.title
             card = RemovableCardWidget(view, title, self.content)
             card.set_toggle_visible(False)
             card.remove_requested.connect(lambda obj: self.app.remove_view(obj))

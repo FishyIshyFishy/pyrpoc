@@ -57,11 +57,7 @@ def test_channel_levels_are_the_min_and_max():
     assert channel_levels(np.array([[1.0, 5.0]], np.float32)) == (1.0, 5.0)
 
 
-def test_the_real_v30_widget_still_agrees(qapp):
-    """Belt and braces: run the actual widget method, not just a copy of it."""
-    from pyrpoc.displays.tiled_2d_display import Tiled2DDisplay
-
-    display = Tiled2DDisplay()
+def test_normalisation_is_idempotent():
     data = np.random.default_rng(5).normal(size=(2, 3, 4)).astype(np.float32)
-    display.set_data(data)
-    np.testing.assert_array_equal(display.get_normalized_data_3d(), normalize_channels(data))
+    once = normalize_channels(data)
+    np.testing.assert_allclose(normalize_channels(once), once, atol=1e-6)
