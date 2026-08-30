@@ -1,8 +1,12 @@
 # pyrpoc v3.1 build: implementation plan
 
-The code is on v3.0.2 with the phase 0 rollbacks applied. This document is the
+> **Status: built.** All nine phases are implemented and committed, one commit
+> per phase. What follows is the specification as written before the build; see
+> "Where the build departed from this plan" at the end for the differences.
+
+The code was on v3.0.2 with the phase 0 rollbacks applied. This document is the
 build specification for v3.1: what to write, where it goes, what it must
-compute, and what proves it. It is written to be executed in one pass.
+compute, and what proves it. It was written to be executed in one pass.
 
 Companion documents:
 
@@ -1426,3 +1430,88 @@ Three rules for the build, in order of how expensive they are to get wrong:
    can compare new output against `modalities/*` directly for the same inputs.
    That comparison is the strongest check in this build and it is gone after
    phase 9.
+
+
+---
+
+# Where the build departed from this plan
+
+Recorded after the fact, so the diff can be read against intent.
+
+**Phases 6 and 7 were resequenced.** The plan had phase 6 keep the old
+parameter form alive behind a temporary label-to-model adapter, with the real
+form arriving in phase 7. That adapter was never written: the device panels need
+a form generator anyway, so `shell/param_form.py` landed in phase 6 and the
+adapter had nothing left to do. Phase 6 became "the interface moves onto the new
+runner" (replacing `gui/` and `services/` wholesale) and phase 7 became
+"session persistence at schema 7". The other temporary piece, the display
+bridge, was written as planned and deleted in phase 8.
+
+Persistence is absent at the phase 6 commit only.
+
+**`gui/` was renamed to `shell/` in phase 6, not phase 9.** Half the chrome in
+`gui/` and half in `shell/` would have been worse than moving it once.
+
+**`core/registry.py` was added.** Devices, views and programs each need a
+key-to-class map; three near-identical copies would have been worse. It carries
+a `stamp` flag, off for programs, so a `Program` subclass keeps to the four
+attributes section 12 allows.
+
+**`Device.config_cls` rather than `config`.** The plan named the class attribute
+and the instance attribute the same thing. They hold different types.
+
+**Device panels hold only what a generated form cannot produce.** The plan had
+`devices/*/panel.py` build its own form from a local factory in phase 2 and
+switch to `shell/param_form.py` in phase 7 — which `devices/` may not import.
+Instead `shell/devices_panel.py` generates the form from `sections(device.config)`
+and `Device.panel()` returns the device-specific extras (the connection test).
+Adding a config field now adds its row with no panel edit at all.
+
+**The v3.0 storage oracle was frozen rather than lost.** Phases 3 to 8 compared
+`data/io.py` against `modalities/*/storage.py` directly. Rather than delete that
+check with the old code, `tests/reference/generate_storage_reference.py` recorded
+the v3.0 output while both were in the tree, and the tests compare against the
+recording. The mask-TTL comparisons were repointed at the phase 0 golden arrays,
+which pin the same thing more directly.
+
+**Surviving v3.0 tests moved with their code** into `tests/operations/` and
+`tests/devices/`, including the virtual-TimeTagger FLIM test — the only
+automated coverage of the real Swabian Flim measurement. It skips without the
+SDK.
+
+## Bugs found during the build
+
+Four, all fixed, none of them regressions from the migration itself:
+
+1. **A coercion failure escaped into a Qt slot.** PyQt aborts the process on an
+   exception raised in a slot, so any out-of-bounds widget value would have
+   killed the application. `ParamForm` now reports through an `invalid` signal.
+2. **The end-of-run status message was overwritten by "ready"** as soon as it
+   was set.
+3. **`tifffile.imread` returns only the first frame** of the per-channel TIFFs
+   this application writes, because appending page by page puts every frame in
+   its own series. That is v3.0 behaviour and is preserved; `data/io.load_frames`
+   reads every page, and it is documented where an analysis script will find it.
+4. **`int(40.0e-6 * 1e5)` is 3, not 4.** The raster samples-per-pixel formula
+   truncates, so a dwell time that looks like a whole number of samples may not
+   be. Found by a test that hardcoded the value it expected; both formulas are
+   now pinned by `tests/operations/test_pixel_samples.py`.
+
+## Final state
+
+445 tests pass, 1 skips (the virtual TimeTagger, which needs the Swabian SDK).
+`tests/test_import_rules.py` enforces the section 7 table with no exemptions
+left, and `tests/test_headless.py` confirms `core`, `devices`, `operations`,
+`data`, `run`, `programs` and `session` all import without Qt.
+
+| folder | modules |
+|---|---|
+| `shell/` | 17 |
+| `devices/` | 11 |
+| `views/` | 6 |
+| `core/` | 6 |
+| `programs/` | 5 |
+| `operations/` | 5 |
+| `data/` | 5 |
+| `run/` | 4 |
+| `session/` | 3 |

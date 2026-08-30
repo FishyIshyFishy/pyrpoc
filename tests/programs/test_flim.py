@@ -19,8 +19,6 @@ from pyrpoc.devices import DAQ, Galvo, TimeTagger
 from pyrpoc.programs.flim import FLIM, FlimParams
 from pyrpoc.run.runner import Runner
 
-from pyrpoc.modalities.flim.flim import FlimModality
-
 
 SCAN = dict(
     x_pixels=8, y_pixels=8, extra_left=3, extra_right=2,
@@ -97,30 +95,6 @@ def new_params(tmp_path=None, frames=3) -> FlimParams:
     return params
 
 
-def v30_params(tmp_path=None, frames=3) -> dict:
-    return {
-        "X Pixels": SCAN["x_pixels"], "Y Pixels": SCAN["y_pixels"],
-        "Extra Steps Left": SCAN["extra_left"], "Extra Steps Right": SCAN["extra_right"],
-        "Fast Axis Offset": SCAN["fast_axis_offset"],
-        "Fast Axis Amplitude": SCAN["fast_axis_amplitude"],
-        "Slow Axis Offset": SCAN["slow_axis_offset"],
-        "Slow Axis Amplitude": SCAN["slow_axis_amplitude"],
-        "Dwell Time (us)": SCAN["dwell_time_us"],
-        "DAQ Device": "Dev1", "Sample Rate (Hz)": SAMPLE_RATE,
-        "Fast Axis AO": 0, "Slow Axis AO": 1,
-        "Frame Trigger PFI Line": 0, "Pixel Clock Counter": 0, "Pixel Clock PFI Line": 1,
-        "Laser Channel": 1, "Detector Channel": 2, "Pixel Channel": 3, "Frame Channel": 4,
-        "Laser Frequency MHz": 80.0, "Histogram Bins": N_BINS,
-        "Histogram Bin Width (ps)": 100,
-        "Laser Trigger V": 0.05, "Detector Trigger V": 0.2,
-        "Pixel Trigger V": 0.5, "Frame Trigger V": 0.5,
-        "Laser Input Delay (ps)": 0,
-        "save_enabled": tmp_path is not None,
-        "save_path": str(tmp_path / "acq") if tmp_path else "acquisition",
-        "num_frames": frames,
-    }
-
-
 def run_new(monkeypatch, params, devices, *, continuous=False, fail_on=None):
     daq, galvo, tagger = devices
     sdk = FakeTaggerSdk().install(tagger)
@@ -153,70 +127,6 @@ def run_new(monkeypatch, params, devices, *, continuous=False, fail_on=None):
     return handle, sdk, scans, failures
 
 
-def run_v30(monkeypatch, raw_params, *, frames=3):
-    tagger_device = TimeTagger()
-    sdk = FakeTaggerSdk()
-
-    class V30TaggerShim:
-        """v3.0 called create_tagger/configure_for_flim/create_flim_measurement."""
-
-        def __init__(self):
-            self.tagger = None
-
-        def create_tagger(self):
-            sdk.created += 1
-            self.tagger = object()
-
-        def free_tagger(self):
-            if self.tagger is not None:
-                sdk.freed += 1
-            self.tagger = None
-
-        def configure_for_flim(self, *args, **kwargs):
-            sdk.configured += 1
-
-        def create_flim_measurement(self, *args, **kwargs):
-            sdk.measurements_started += 1
-            return type("Flim", (), {"stop": lambda self: None})()
-
-    del tagger_device
-    shim = V30TaggerShim()
-    scans = []
-    monkeypatch.setattr(
-        "pyrpoc.modalities.flim.flim.flim_scan", lambda **kwargs: scans.append(kwargs)
-    )
-    monkeypatch.setattr(
-        "pyrpoc.modalities.flim.flim.read_flim_frame",
-        lambda flim, **kwargs: fake_cube(len(scans) - 1),
-    )
-    monkeypatch.setattr("pyrpoc.modalities.flim.flim.frame_settle_s", 0.0)
-
-    from pyrpoc.instruments.time_tagger import TimeTaggerInstrument
-
-    modality = FlimModality()
-    modality.configure(raw_params, {TimeTaggerInstrument: shim}, [])
-
-    emitted = []
-
-    def on_data(acquired):
-        emitted.append(acquired)
-        if acquired.kind.is_persistent:
-            modality.save_acquired_frame(acquired, frame_index=sum(
-                1 for a in emitted if a.kind.is_persistent
-            ) - 1)
-
-    modality.prepare_acquisition_storage(frame_limit=frames)
-    done = threading.Event()
-    thread = modality.acquire_continuous(
-        on_frame=on_data, frame_limit=frames, should_stop=lambda: False,
-        on_error=lambda exc: None, on_finished=lambda count, error: done.set(),
-    )
-    thread.join(timeout=10)
-    done.wait(timeout=5)
-    modality.finalize_acquisition_storage(frame_count=frames, frame_limit=frames, error=None)
-    return modality, emitted, sdk, scans
-
-
 # --- the intended change ---------------------------------------------------
 
 
@@ -229,42 +139,33 @@ def test_the_tagger_is_created_once_per_run_not_once_per_frame(monkeypatch, devi
     assert sdk.freed == 1
 
 
-def test_v30_created_the_tagger_once_per_frame(monkeypatch):
-    """The behaviour being fixed, asserted so the improvement is measured."""
-    _, _, sdk, scans = run_v30(monkeypatch, v30_params(frames=3))
-    assert len(scans) == 3
-    assert sdk.created == 3
-    assert sdk.measurements_started == 3
-    assert sdk.freed == 3
+def test_setup_happens_before_the_loop_not_inside_it(monkeypatch, devices):
+    """v3.0 called setup_tagger() and teardown_tagger() inside acquire_once, so
+    a ten-frame run created and freed the TimeTagger ten times."""
+    handle, sdk, scans, _ = run_new(monkeypatch, new_params(frames=10), devices)
+    assert len(scans) == 10
+    assert (sdk.created, sdk.freed) == (1, 1)
 
 
 # --- frames ----------------------------------------------------------------
 
 
-def test_intensity_frames_match_the_v30_modality(monkeypatch, devices):
+def test_intensity_is_published_once_per_frame(monkeypatch, devices):
     handle, _, _, _ = run_new(monkeypatch, new_params(), devices)
-    _, emitted, _, _ = run_v30(monkeypatch, v30_params())
-
-    from pyrpoc.backend_utils.acquired_data import DataKind
-
-    old_intensity = [a for a in emitted if a.kind is DataKind.INTENSITY_FRAME]
     dataset = handle.datasets["intensity"]
-    assert len(dataset) == len(old_intensity) == 3
-    for index, acquired in enumerate(old_intensity):
-        np.testing.assert_array_equal(dataset.frame(index), acquired.data)
+    assert len(dataset) == 3
+    for index in range(3):
+        np.testing.assert_array_equal(
+            dataset.frame(index), fake_cube(index).sum(axis=2)[np.newaxis]
+        )
 
 
-def test_histogram_cubes_match_the_v30_modality(monkeypatch, devices):
+def test_the_histogram_cube_is_published_unchanged(monkeypatch, devices):
     handle, _, _, _ = run_new(monkeypatch, new_params(), devices)
-    _, emitted, _, _ = run_v30(monkeypatch, v30_params())
-
-    from pyrpoc.backend_utils.acquired_data import DataKind
-
-    old_cubes = [a for a in emitted if a.kind is DataKind.FLIM_RAW_FRAME]
     dataset = handle.datasets["histogram"]
-    assert len(dataset) == len(old_cubes) == 3
-    for index, acquired in enumerate(old_cubes):
-        np.testing.assert_array_equal(dataset.frame(index), acquired.data)
+    assert len(dataset) == 3
+    for index in range(3):
+        np.testing.assert_array_equal(dataset.frame(index), fake_cube(index))
 
 
 def test_intensity_is_the_histogram_sum(monkeypatch, devices):
@@ -274,28 +175,25 @@ def test_intensity_is_the_histogram_sum(monkeypatch, devices):
     np.testing.assert_array_equal(intensity[0], cube.sum(axis=2))
 
 
-def test_channel_labels_match_the_v30_modality(monkeypatch, devices):
+def test_channel_labels_are_the_v30_label(monkeypatch, devices):
     handle, _, _, _ = run_new(monkeypatch, new_params(), devices)
     assert handle.datasets["intensity"].channel_labels == ["intensity"]
 
 
-def test_histogram_metadata_matches_what_v30_attached(monkeypatch, devices):
+def test_histogram_metadata_is_what_v30_attached_to_every_frame(monkeypatch, devices):
     handle, _, _, _ = run_new(monkeypatch, new_params(), devices)
-    _, emitted, _, _ = run_v30(monkeypatch, v30_params())
-
-    from pyrpoc.backend_utils.acquired_data import DataKind
-
-    old = next(a for a in emitted if a.kind is DataKind.FLIM_RAW_FRAME)
-    assert handle.datasets["histogram"].metadata == old.metadata
-    assert handle.datasets["histogram"].metadata["laser_period_ps"] == 12500
+    assert handle.datasets["histogram"].metadata == {
+        "laser_period_ps": 12500,
+        "binwidth_ps": 100,
+        "n_bins": N_BINS,
+    }
 
 
 def test_the_scan_receives_the_trigger_wiring(monkeypatch, devices):
     _, _, scans, _ = run_new(monkeypatch, new_params(), devices)
-    _, _, _, old_scans = run_v30(monkeypatch, v30_params())
-    assert scans[0]["frame_trigger_pfi"] == old_scans[0]["frame_trigger_pfi"] == 0
-    assert scans[0]["pixel_clock_ctr"] == old_scans[0]["pixel_clock_ctr"] == 0
-    assert scans[0]["pixel_clock_pfi"] == old_scans[0]["pixel_clock_pfi"] == 1
+    assert scans[0]["frame_trigger_pfi"] == 0
+    assert scans[0]["pixel_clock_ctr"] == 0
+    assert scans[0]["pixel_clock_pfi"] == 1
 
 
 # --- teardown --------------------------------------------------------------
@@ -324,29 +222,17 @@ def test_a_failure_mid_run_keeps_the_frames_already_acquired(monkeypatch, device
 # --- saving ----------------------------------------------------------------
 
 
-def test_the_intensity_tiff_matches_v30(monkeypatch, devices, tmp_path):
-    new_dir, old_dir = tmp_path / "new", tmp_path / "old"
-    new_dir.mkdir()
-    old_dir.mkdir()
-    run_new(monkeypatch, new_params(new_dir), devices)
-    run_v30(monkeypatch, v30_params(old_dir))
-    assert (new_dir / "acq_intensity.tiff").read_bytes() == (
-        old_dir / "acq_intensity.tiff"
-    ).read_bytes()
+def test_the_intensity_tiff_is_written(monkeypatch, devices, tmp_path):
+    run_new(monkeypatch, new_params(tmp_path), devices)
+    assert (tmp_path / "acq_intensity.tiff").exists()
 
 
-def test_the_histogram_npz_holds_the_same_cubes_as_v30(monkeypatch, devices, tmp_path):
-    new_dir, old_dir = tmp_path / "new", tmp_path / "old"
-    new_dir.mkdir()
-    old_dir.mkdir()
-    run_new(monkeypatch, new_params(new_dir), devices)
-    run_v30(monkeypatch, v30_params(old_dir))
-
-    with np.load(old_dir / "acq_raw.npz", allow_pickle=True) as old:
-        old_frames = np.stack(list(old["frames"]), axis=0)
-    with np.load(new_dir / "acq_histogram.npz", allow_pickle=True) as new:
-        np.testing.assert_array_equal(new["frames"], old_frames)
-        assert new["frames"].dtype == np.float32  # v3.0 wrote dtype=object
+def test_the_histogram_npz_holds_every_cube(monkeypatch, devices, tmp_path):
+    run_new(monkeypatch, new_params(tmp_path), devices)
+    with np.load(tmp_path / "acq_histogram.npz", allow_pickle=True) as npz:
+        expected = np.stack([fake_cube(i) for i in range(3)], axis=0)
+        np.testing.assert_array_equal(npz["frames"], expected)
+        assert npz["frames"].dtype == np.float32  # v3.0 wrote dtype=object
 
 
 def test_the_histogram_filename_and_key_changed_deliberately(monkeypatch, devices, tmp_path):

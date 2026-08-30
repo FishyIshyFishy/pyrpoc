@@ -35,8 +35,8 @@ pytestmark = pytest.mark.skipif(
     not _flim_stack_ok, reason="Swabian virtual TimeTagger FLIM stack unavailable"
 )
 
-from pyrpoc.instruments.time_tagger import TimeTaggerInstrument
-from pyrpoc.modalities.flim.acquisition_core import reshape_flim_frame, flim_intensity
+from pyrpoc.devices.time_tagger.device import TimeTagger as TimeTaggerDevice
+from pyrpoc.operations.tagger import flim_intensity, reshape_flim_frame
 
 
 laser_period_ps = 12_500  # 80 MHz
@@ -98,10 +98,13 @@ class SyntheticFlim:
         self.pixel_ch = self._pattern(self.pixel_dwell_ps, start_delay=100)
 
     def run_and_read(self, n_frames=5):
-        instrument = TimeTaggerInstrument()
-        instrument.tagger = self.tagger
-        flim = instrument.create_flim_measurement(
-            self.laser_ch, self.det_ch, self.pixel_ch, self.frame_ch,
+        device = TimeTaggerDevice()
+        device.tagger = self.tagger
+        device.config.laser_channel = self.laser_ch
+        device.config.detector_channel = self.det_ch
+        device.config.pixel_channel = self.pixel_ch
+        device.config.frame_channel = self.frame_ch
+        flim = device.start_flim_measurement(
             n_pixels=self.n_pixels, n_bins=self.n_bins, binwidth_ps=self.binwidth_ps,
         )
         self.tagger.run()

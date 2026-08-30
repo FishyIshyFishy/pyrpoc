@@ -1,4 +1,8 @@
-"""Split confocal, checked against the v3.0 modality still in the tree."""
+"""Split confocal.
+
+The mask gate is checked against ``tests/reference/phase0_references.npz``;
+saved-file compatibility lives in tests/data/test_io.py.
+"""
 
 from __future__ import annotations
 
@@ -21,7 +25,7 @@ from pyrpoc.programs.split_confocal import (
 )
 from pyrpoc.run.runner import Runner
 
-from pyrpoc.modalities.split_confocal.split_confocal import SplitConfocalModality
+from tests.reference.generate_references import reference_path
 
 
 SCAN = dict(
@@ -66,25 +70,6 @@ def new_params(tmp_path=None, frames=3, masks=()) -> SplitConfocalParams:
     return params
 
 
-def v30_params(tmp_path=None, frames=3) -> dict:
-    return {
-        "X Pixels": SCAN["x_pixels"], "Y Pixels": SCAN["y_pixels"],
-        "Extra Steps Left": SCAN["extra_left"], "Extra Steps Right": SCAN["extra_right"],
-        "Fast Axis Offset": SCAN["fast_axis_offset"],
-        "Fast Axis Amplitude": SCAN["fast_axis_amplitude"],
-        "Slow Axis Offset": SCAN["slow_axis_offset"],
-        "Slow Axis Amplitude": SCAN["slow_axis_amplitude"],
-        "Dwell Time (us)": SCAN["dwell_time_us"],
-        "DAQ Device": "Dev1", "Sample Rate (Hz)": SAMPLE_RATE,
-        "Fast Axis AO": 0, "Slow Axis AO": 1,
-        "Active AI Channels": list(AI_CHANNELS),
-        "t0 Samples": T0, "t1 Samples": T1,
-        "save_enabled": tmp_path is not None,
-        "save_path": str(tmp_path / "acq") if tmp_path else "acquisition",
-        "num_frames": frames,
-    }
-
-
 def run_new(monkeypatch, params, devices):
     calls = []
 
@@ -101,55 +86,25 @@ def run_new(monkeypatch, params, devices):
     return handle, calls
 
 
-def run_v30(monkeypatch, raw_params, *, frames=3):
-    calls = []
-
-    def fake(**kwargs):
-        calls.append(kwargs)
-        return fake_split(len(calls) - 1)
-
-    monkeypatch.setattr(
-        "pyrpoc.modalities.split_confocal.split_confocal.acquire_daq_split_confocal", fake
-    )
-    modality = SplitConfocalModality()
-    modality.configure(raw_params, {}, [])
-    modality.prepare_acquisition_storage(frame_limit=frames)
-
-    emitted = []
-
-    def on_data(acquired):
-        emitted.append(acquired)
-        modality.save_acquired_frame(acquired, frame_index=len(emitted) - 1)
-
-    done = threading.Event()
-    thread = modality.acquire_continuous(
-        on_frame=on_data, frame_limit=frames, should_stop=lambda: False,
-        on_error=lambda exc: None, on_finished=lambda count, error: done.set(),
-    )
-    thread.join(timeout=10)
-    done.wait(timeout=5)
-    modality.finalize_acquisition_storage(frame_count=len(emitted), frame_limit=frames, error=None)
-    return modality, emitted, calls
-
-
 # --- frames ----------------------------------------------------------------
 
 
-def test_intensity_frames_match_the_v30_modality(monkeypatch, devices):
-    handle, _ = run_new(monkeypatch, new_params(), devices)
-    _, emitted, _ = run_v30(monkeypatch, v30_params())
-    dataset = handle.datasets["intensity"]
-    assert len(dataset) == len(emitted) == 3
-    for index, acquired in enumerate(emitted):
-        np.testing.assert_array_equal(dataset.frame(index), acquired.data)
+def test_both_streams_publish_what_the_operation_returned(monkeypatch, devices):
+    handle, calls = run_new(monkeypatch, new_params(), devices)
+    assert len(calls) == 3
+    for index in range(3):
+        expected_split, expected_raw = fake_split(index)
+        np.testing.assert_array_equal(handle.datasets["intensity"].frame(index), expected_split)
+        np.testing.assert_array_equal(
+            handle.datasets["raw_pixel_stream"].frame(index), expected_raw
+        )
 
 
-def test_channel_labels_match_the_v30_modality(monkeypatch, devices):
+def test_channel_labels_are_the_v30_interleaved_labels(monkeypatch, devices):
     handle, _ = run_new(monkeypatch, new_params(), devices)
-    modality, _, _ = run_v30(monkeypatch, v30_params())
-    labels = handle.datasets["intensity"].channel_labels
-    assert labels == modality.get_active_channel_labels()
-    assert labels == ["ai0_t0", "ai0_t2", "ai1_t0", "ai1_t2"]
+    assert handle.datasets["intensity"].channel_labels == [
+        "ai0_t0", "ai0_t2", "ai1_t0", "ai1_t2"
+    ]
 
 
 def test_channel_labels_interleave_t0_and_t2(devices):
@@ -159,10 +114,9 @@ def test_channel_labels_interleave_t0_and_t2(devices):
 
 
 def test_split_timing_reaches_the_operation(monkeypatch, devices):
-    _, new_calls = run_new(monkeypatch, new_params(), devices)
-    _, _, old_calls = run_v30(monkeypatch, v30_params())
-    assert new_calls[0]["t0_samples"] == old_calls[0]["t0_samples"] == T0
-    assert new_calls[0]["t1_samples"] == old_calls[0]["t1_samples"] == T1
+    _, calls = run_new(monkeypatch, new_params(), devices)
+    assert calls[0]["t0_samples"] == T0
+    assert calls[0]["t1_samples"] == T1
 
 
 # --- the raw stream --------------------------------------------------------
@@ -193,34 +147,19 @@ def test_the_raw_stream_is_in_the_library_and_can_be_bound(monkeypatch, devices)
     assert library.matching(Image2D) == [handle.datasets["intensity"]]
 
 
-def test_the_raw_npz_matches_v30_and_keeps_its_filename(monkeypatch, devices, tmp_path):
-    new_dir, old_dir = tmp_path / "new", tmp_path / "old"
-    new_dir.mkdir()
-    old_dir.mkdir()
-    run_new(monkeypatch, new_params(new_dir), devices)
-    run_v30(monkeypatch, v30_params(old_dir))
-
-    new_npz = new_dir / "acq_raw_pixel_stream.npz"
-    old_npz = old_dir / "acq_raw_pixel_stream.npz"
-    assert new_npz.exists() and old_npz.exists()
-
-    with np.load(new_npz, allow_pickle=True) as new, np.load(old_npz, allow_pickle=True) as old:
-        assert sorted(new.files) == sorted(old.files)
-        np.testing.assert_array_equal(new["frames"], old["frames"])
-        np.testing.assert_array_equal(new["frame_indices"], old["frame_indices"])
+def test_the_raw_npz_keeps_its_v30_filename_and_keys(monkeypatch, devices, tmp_path):
+    run_new(monkeypatch, new_params(tmp_path), devices)
+    written = tmp_path / "acq_raw_pixel_stream.npz"
+    assert written.exists(), "the v3.0 filename must be unchanged"
+    with np.load(written, allow_pickle=True) as npz:
+        assert sorted(npz.files) == ["frame_indices", "frames", "parameters"]
+        assert npz["frames"].shape[0] == 3
 
 
-def test_the_intensity_tiffs_match_v30(monkeypatch, devices, tmp_path):
-    new_dir, old_dir = tmp_path / "new", tmp_path / "old"
-    new_dir.mkdir()
-    old_dir.mkdir()
-    run_new(monkeypatch, new_params(new_dir), devices)
-    run_v30(monkeypatch, v30_params(old_dir))
-
+def test_one_tiff_per_split_channel(monkeypatch, devices, tmp_path):
+    run_new(monkeypatch, new_params(tmp_path), devices)
     for label in ("ai0_t0", "ai0_t2", "ai1_t0", "ai1_t2"):
-        assert (new_dir / f"acq_{label}.tiff").read_bytes() == (
-            old_dir / f"acq_{label}.tiff"
-        ).read_bytes()
+        assert (tmp_path / f"acq_{label}.tiff").exists()
 
 
 def test_metadata_counts_frames_against_the_intensity_stream(monkeypatch, devices, tmp_path):
@@ -234,30 +173,24 @@ def test_metadata_counts_frames_against_the_intensity_stream(monkeypatch, device
 # --- masks -----------------------------------------------------------------
 
 
-def test_the_ttl_is_gated_to_t0_like_v30(devices, tmp_path):
-    from pyrpoc.backend_utils.opto_control_contexts import MaskContext
-    from pyrpoc.modalities.split_confocal import acquisition_core as v30_core
-
+def test_the_ttl_gate_matches_the_phase0_golden_array(devices, tmp_path):
+    """The t0 gate is the only thing split confocal does differently here."""
+    golden = dict(np.load(reference_path))
     daq, _ = devices
-    mask = np.zeros((SCAN["y_pixels"], SCAN["x_pixels"]), np.uint8)
+
+    mask = np.zeros((6, 8), np.uint8)
     mask[1:4, 2:6] = 255
     path = save_mask(tmp_path / "m.png", mask)
 
-    new_ttl = build_ttl(new_params(masks=[MaskBinding(path, 0, 3)]), daq)
-    old_ttl = v30_core.generate_mask_ttl_signals(
-        total_x=SCAN["x_pixels"] + SCAN["extra_left"] + SCAN["extra_right"],
-        total_y=SCAN["y_pixels"],
-        pixel_samples=PIXEL_SAMPLES,
-        extra_left=SCAN["extra_left"],
-        extra_right=SCAN["extra_right"],
-        device_name="Dev1",
-        mask_contexts=[MaskContext("mask", "m", mask, 0, 3)],
-        scan_x_pixels=SCAN["x_pixels"],
-        t0_samples=T0,
-    )
-    assert sorted(new_ttl) == sorted(old_ttl)
-    for channel, signal in new_ttl.items():
-        np.testing.assert_array_equal(signal, old_ttl[channel])
+    params = new_params(masks=[MaskBinding(path, 0, 3)])
+    params.scan.x_pixels, params.scan.y_pixels = 8, 6
+    params.scan.extra_left, params.scan.extra_right = 3, 2
+    params.scan.dwell_time_us, params.daq.sample_rate_hz = 4.0, 1_000_000.0
+    assert pixel_samples(4.0, 1_000_000.0) == 4
+
+    ttl = build_ttl(params, daq)
+    np.testing.assert_array_equal(ttl["Dev1/port0/line3"], golden["split_mask_ttl"])
+    assert ttl["Dev1/port0/line3"].sum() < golden["confocal_mask_ttl"].sum()
 
 
 # --- shape -----------------------------------------------------------------

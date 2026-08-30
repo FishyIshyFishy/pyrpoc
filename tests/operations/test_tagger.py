@@ -5,7 +5,8 @@ import types
 import numpy as np
 import pytest
 
-from pyrpoc.modalities.flim import acquisition_core as acq
+from pyrpoc.core.errors import DaqError
+from pyrpoc.operations import tagger as acq
 
 
 # --------------------------------------------------------------------------- #
@@ -110,8 +111,8 @@ def run_scan_with_fake_daq(monkeypatch, **overrides):
     kwargs = dict(
         device_name="Dev1",
         sample_rate_hz=1_000_000.0,
-        fast_axis_ao=0,
-        slow_axis_ao=1,
+        fast_ao=0,
+        slow_ao=1,
         raster_waveform=np.zeros((2, 48), dtype=np.float64),
         n_pixels=24,
         pixel_samples=2,
@@ -154,12 +155,12 @@ def test_run_flim_scan_wraps_failures(monkeypatch):
         raise RuntimeError("no device")
 
     monkeypatch.setattr(acq, "nx", types.SimpleNamespace(Task=boom))
-    with pytest.raises(acq.DaqUnavailableError):
+    with pytest.raises(acq.DaqError):
         acq.run_flim_scan(
             device_name="Dev1",
             sample_rate_hz=1e6,
-            fast_axis_ao=0,
-            slow_axis_ao=1,
+            fast_ao=0,
+            slow_ao=1,
             raster_waveform=np.zeros((2, 4), dtype=np.float64),
             n_pixels=2,
             pixel_samples=2,
@@ -184,8 +185,8 @@ def test_flim_scan_computes_geometry_and_clamps_pixel_samples(monkeypatch):
     acq.flim_scan(
         device_name="Dev1",
         sample_rate_hz=1_000_000.0,
-        fast_axis_ao=0,
-        slow_axis_ao=1,
+        fast_ao=0,
+        slow_ao=1,
         x_pixels=4,
         y_pixels=3,
         extra_left=1,
@@ -213,7 +214,7 @@ def test_flim_scan_floors_pixel_samples_at_two(monkeypatch):
     monkeypatch.setattr(acq, "run_flim_scan", lambda **k: captured.update(k))
     # dwell*rate rounds below 2 -> must be clamped so the tick divider stays valid
     acq.flim_scan(
-        device_name="Dev1", sample_rate_hz=100_000.0, fast_axis_ao=0, slow_axis_ao=1,
+        device_name="Dev1", sample_rate_hz=100_000.0, fast_ao=0, slow_ao=1,
         x_pixels=8, y_pixels=8, extra_left=0, extra_right=0, dwell_time_us=2.0,
         fast_axis_offset=0.0, fast_axis_amplitude=1.0,
         slow_axis_offset=0.0, slow_axis_amplitude=1.0,

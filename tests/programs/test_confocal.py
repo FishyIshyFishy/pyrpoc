@@ -1,8 +1,12 @@
-"""Confocal, checked against the v3.0 modality that is still in the tree.
+"""Confocal.
 
-The hardware call is replaced on both sides with the same fake, so everything
-above it runs for real: the runner's thread, dataset creation from ``emits``,
-publishing, the save policy, and the program's own control flow.
+The hardware call is replaced with a fake, so everything above it runs for real:
+the runner's thread, dataset creation from ``emits``, publishing, the save
+policy, and the program's own control flow.
+
+The mask path is checked against ``tests/reference/phase0_references.npz``,
+which pins what v3.0 computed. Saved-file compatibility is checked in
+tests/data/test_io.py against the frozen v3.0 storage recording.
 """
 
 from __future__ import annotations
@@ -20,9 +24,7 @@ from pyrpoc.data.library import DatasetLibrary
 from pyrpoc.devices import DAQ, Galvo
 from pyrpoc.programs.confocal import Confocal, ConfocalParams, build_ttl, channel_labels
 from pyrpoc.run.runner import Runner
-
-# v3.0, still present until phase 9.
-from pyrpoc.modalities.confocal.confocal import ConfocalModality
+from tests.reference.generate_references import reference_path
 
 
 SCAN = dict(
@@ -56,25 +58,6 @@ def new_params(tmp_path=None, frames=3, masks=()) -> ConfocalParams:
     return params
 
 
-def v30_params(tmp_path=None, frames=3) -> dict:
-    raw = {
-        "X Pixels": SCAN["x_pixels"], "Y Pixels": SCAN["y_pixels"],
-        "Extra Steps Left": SCAN["extra_left"], "Extra Steps Right": SCAN["extra_right"],
-        "Fast Axis Offset": SCAN["fast_axis_offset"],
-        "Fast Axis Amplitude": SCAN["fast_axis_amplitude"],
-        "Slow Axis Offset": SCAN["slow_axis_offset"],
-        "Slow Axis Amplitude": SCAN["slow_axis_amplitude"],
-        "Dwell Time (us)": SCAN["dwell_time_us"],
-        "DAQ Device": "Dev1", "Sample Rate (Hz)": 100_000.0,
-        "Fast Axis AO": 0, "Slow Axis AO": 1,
-        "Active AI Channels": list(AI_CHANNELS),
-        "save_enabled": tmp_path is not None,
-        "save_path": str(tmp_path / "acq") if tmp_path else "acquisition",
-        "num_frames": frames,
-    }
-    return raw
-
-
 def run_new(monkeypatch, params, devices, *, continuous=False, capture=None):
     calls = []
 
@@ -99,57 +82,19 @@ def run_new(monkeypatch, params, devices, *, continuous=False, capture=None):
     return handle, calls
 
 
-def run_v30(monkeypatch, raw_params, *, frames=3):
-    calls = []
-
-    def fake_acquire(**kwargs):
-        calls.append(kwargs)
-        return fake_frame(len(calls) - 1)
-
-    monkeypatch.setattr(
-        "pyrpoc.modalities.confocal.confocal.acquire_daq_confocal", fake_acquire
-    )
-    modality = ConfocalModality()
-    modality.configure(raw_params, {}, [])
-    modality.prepare_acquisition_storage(frame_limit=frames)
-
-    emitted = []
-
-    def on_data(acquired):
-        emitted.append(acquired)
-        modality.save_acquired_frame(acquired, frame_index=len(emitted) - 1)
-
-    done = threading.Event()
-    thread = modality.acquire_continuous(
-        on_frame=on_data,
-        frame_limit=frames,
-        should_stop=lambda: False,
-        on_error=lambda exc: None,
-        on_finished=lambda count, error: done.set(),
-    )
-    thread.join(timeout=10)
-    done.wait(timeout=5)
-    modality.finalize_acquisition_storage(frame_count=len(emitted), frame_limit=frames, error=None)
-    return modality, emitted, calls
-
-
 # --- frames ----------------------------------------------------------------
 
 
-def test_published_frames_match_the_v30_modality(monkeypatch, devices):
-    handle, _ = run_new(monkeypatch, new_params(), devices)
-    _, emitted, _ = run_v30(monkeypatch, v30_params())
-
+def test_every_frame_the_operation_returns_is_published_unchanged(monkeypatch, devices):
+    handle, calls = run_new(monkeypatch, new_params(), devices)
     dataset = handle.datasets["intensity"]
-    assert len(dataset) == len(emitted) == 3
-    for index, acquired in enumerate(emitted):
-        np.testing.assert_array_equal(dataset.frame(index), acquired.data)
+    assert len(dataset) == len(calls) == 3
+    for index in range(3):
+        np.testing.assert_array_equal(dataset.frame(index), fake_frame(index))
 
 
-def test_channel_labels_match_the_v30_modality(monkeypatch, devices):
+def test_channel_labels_are_the_v30_ai_labels(monkeypatch, devices):
     handle, _ = run_new(monkeypatch, new_params(), devices)
-    modality, _, _ = run_v30(monkeypatch, v30_params())
-    assert handle.datasets["intensity"].channel_labels == modality.get_active_channel_labels()
     assert handle.datasets["intensity"].channel_labels == ["ai0", "ai1"]
 
 
@@ -159,54 +104,35 @@ def test_channel_labels_come_from_the_daq_device(devices):
     assert channel_labels(daq) == ["ai0", "ai3", "ai7"]
 
 
-def test_the_operation_receives_the_same_scan_values_v30_passed(monkeypatch, devices):
-    _, new_calls = run_new(monkeypatch, new_params(), devices)
-    _, _, old_calls = run_v30(monkeypatch, v30_params())
-
+def test_the_operation_receives_the_scan_the_devices_and_the_run_settings(monkeypatch, devices):
+    """v3.0 passed these as fast_axis_ao / slow_axis_ao / active_ai_channels."""
+    _, calls = run_new(monkeypatch, new_params(), devices)
     for key, value in SCAN.items():
-        assert new_calls[0][key] == old_calls[0][key] == value
-    assert new_calls[0]["device_name"] == old_calls[0]["device_name"] == "Dev1"
-    assert new_calls[0]["sample_rate_hz"] == old_calls[0]["sample_rate_hz"] == 100_000.0
-    assert new_calls[0]["fast_ao"] == old_calls[0]["fast_axis_ao"] == 0
-    assert new_calls[0]["slow_ao"] == old_calls[0]["slow_axis_ao"] == 1
-    assert tuple(new_calls[0]["ai_channels"]) == tuple(old_calls[0]["active_ai_channels"])
+        assert calls[0][key] == value
+    assert calls[0]["device_name"] == "Dev1"
+    assert calls[0]["sample_rate_hz"] == 100_000.0
+    assert calls[0]["fast_ao"] == 0
+    assert calls[0]["slow_ao"] == 1
+    assert tuple(calls[0]["ai_channels"]) == AI_CHANNELS
 
 
 # --- saving ----------------------------------------------------------------
 
 
-def test_saved_tiffs_match_the_v30_modality(monkeypatch, devices, tmp_path):
-    new_dir = tmp_path / "new"
-    old_dir = tmp_path / "old"
-    new_dir.mkdir()
-    old_dir.mkdir()
-
-    run_new(monkeypatch, new_params(new_dir), devices)
-    run_v30(monkeypatch, v30_params(old_dir))
-
+def test_saving_writes_one_tiff_per_channel(monkeypatch, devices, tmp_path):
+    run_new(monkeypatch, new_params(tmp_path), devices)
     for label in ("ai0", "ai1"):
-        assert (new_dir / f"acq_{label}.tiff").read_bytes() == (
-            old_dir / f"acq_{label}.tiff"
-        ).read_bytes()
+        assert (tmp_path / f"acq_{label}.tiff").exists()
 
 
-def test_saved_metadata_agrees_with_v30_where_the_keys_overlap(monkeypatch, devices, tmp_path):
-    new_dir = tmp_path / "new"
-    old_dir = tmp_path / "old"
-    new_dir.mkdir()
-    old_dir.mkdir()
-
-    run_new(monkeypatch, new_params(new_dir), devices)
-    run_v30(monkeypatch, v30_params(old_dir))
-
-    new_meta = json.loads((new_dir / "acq_meta.json").read_text())
-    old_meta = json.loads((old_dir / "acq_meta.json").read_text())
-
-    assert new_meta["modality_key"] == old_meta["modality_key"] == "confocal"
-    assert new_meta["frames_saved"] == old_meta["frames_saved"] == 3
-    assert new_meta["frame_limit"] == old_meta["frame_limit"] == 3
-    assert new_meta["last_error"] == old_meta["last_error"] is None
-    assert sorted(new_meta["tiff_paths"]) == sorted(old_meta["tiff_paths"]) == ["ai0", "ai1"]
+def test_saved_metadata_keeps_the_v30_shape(monkeypatch, devices, tmp_path):
+    run_new(monkeypatch, new_params(tmp_path), devices)
+    meta = json.loads((tmp_path / "acq_meta.json").read_text())
+    assert meta["modality_key"] == "confocal"   # v3.0 alias, kept for lab scripts
+    assert meta["frames_saved"] == 3
+    assert meta["frame_limit"] == 3
+    assert meta["last_error"] is None
+    assert sorted(meta["tiff_paths"]) == ["ai0", "ai1"]
 
 
 def test_saved_frames_read_back_in_order(monkeypatch, devices, tmp_path):
@@ -237,9 +163,7 @@ def test_masks_are_turned_into_ttl_once_before_the_loop(monkeypatch, devices, tm
     binding = MaskBinding(path, port=0, line=3)
 
     loads = []
-    real_load = __import__(
-        "pyrpoc.programs.confocal", fromlist=["load_mask"]
-    ).load_mask
+    from pyrpoc.core.modulation import load_mask as real_load
 
     def counting_load(p):
         loads.append(p)
@@ -256,33 +180,31 @@ def test_masks_are_turned_into_ttl_once_before_the_loop(monkeypatch, devices, tm
     assert list(ttls[0]) == ["Dev1/port0/line3"]
 
 
-def test_the_ttl_matches_what_v30_generated_for_the_same_mask(devices, tmp_path):
-    from pyrpoc.backend_utils.opto_control_contexts import MaskContext
-    from pyrpoc.modalities.confocal import acquisition_core as v30_core
+def test_the_ttl_matches_the_phase0_golden_array(devices, tmp_path):
+    """The program's mask path, tied to what v3.0 computed for the same mask.
 
+    Uses the reference geometry, which is smaller than the schema minimum --
+    build_ttl is arithmetic, so it does not validate, and that is the point.
+    """
+    from pyrpoc.operations.raster import pixel_samples
+
+    golden = dict(np.load(reference_path))
     daq, _ = devices
-    mask = np.zeros((SCAN["y_pixels"], SCAN["x_pixels"]), np.uint8)
+
+    mask = np.zeros((6, 8), np.uint8)
     mask[1:4, 2:6] = 255
+    np.testing.assert_array_equal(mask, golden["mask_input"])
     path = save_mask(tmp_path / "m.png", mask)
 
     params = new_params(masks=[MaskBinding(path, port=0, line=3)])
-    new_ttl = build_ttl(params, daq)
+    params.scan.x_pixels, params.scan.y_pixels = 8, 6
+    params.scan.extra_left, params.scan.extra_right = 3, 2
+    params.scan.dwell_time_us, params.daq.sample_rate_hz = 4.0, 1_000_000.0
+    assert pixel_samples(4.0, 1_000_000.0) == 4, "the golden array assumes 4 samples per pixel"
 
-    samples = max(1, int(SCAN["dwell_time_us"] * 1e-6 * 100_000.0))
-    old_ttl = v30_core.generate_mask_ttl_signals(
-        total_x=SCAN["x_pixels"] + SCAN["extra_left"] + SCAN["extra_right"],
-        total_y=SCAN["y_pixels"],
-        pixel_samples=samples,
-        extra_left=SCAN["extra_left"],
-        extra_right=SCAN["extra_right"],
-        device_name="Dev1",
-        mask_contexts=[MaskContext("mask", "m", mask, 0, 3)],
-        scan_x_pixels=SCAN["x_pixels"],
-    )
-
-    assert sorted(new_ttl) == sorted(old_ttl)
-    for channel, signal in new_ttl.items():
-        np.testing.assert_array_equal(signal, old_ttl[channel])
+    ttl = build_ttl(params, daq)
+    assert list(ttl) == ["Dev1/port0/line3"]
+    np.testing.assert_array_equal(ttl["Dev1/port0/line3"], golden["confocal_mask_ttl"])
 
 
 def test_no_masks_means_no_ttl(devices):

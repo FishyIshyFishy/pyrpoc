@@ -30,19 +30,10 @@ ALLOWED: dict[str, set[str]] = {
     "shell": {"core", "devices", "operations", "data", "run", "programs", "views", "session"},
 }
 
-# Folders from v3.0 that phase 9 deletes. While they still exist they are
-# exempt: they are the old tree, not the new one.
-LEGACY = {
-    "backend_utils",
-    "displays",
-    "domain",
-    "gui",
-    "instruments",
-    "modalities",
-    "optocontrols",
-    "persistence",
-    "services",
-}
+# Phase 9 deleted the v3.0 tree, so nothing is exempt any more. Kept as an empty
+# set rather than removed, because it is the natural place for an exemption if
+# one is ever needed again -- and an empty one is the honest state.
+LEGACY: set[str] = set()
 
 QT_ALLOWED_PREFIXES = ("views/", "shell/")
 

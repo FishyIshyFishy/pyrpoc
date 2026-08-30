@@ -1,8 +1,20 @@
+"""Waveform generation, sample extraction and frame reshaping.
+
+Moved with the code from tests/modalities/test_daq.py and
+test_confocal_acquisition_core.py. The arithmetic is unchanged; only its home
+is, and tests/reference/ pins that.
+"""
+
 from __future__ import annotations
 
 import numpy as np
+import pytest
 
-from pyrpoc.modalities.helpers.daq import generate_raster_waveform
+from pyrpoc.operations.raster import (
+    extract_kept_samples,
+    generate_raster_waveform,
+    reshape_to_frame,
+)
 
 
 def make(**overrides):
@@ -58,3 +70,23 @@ def test_offset_shifts_fast_axis():
     base = make(fast_axis_offset=0.0)
     shifted = make(fast_axis_offset=5.0)
     assert np.allclose(shifted[0] - base[0], 5.0)
+
+
+def test_extract_kept_samples_clips_overscan():
+    total_y, total_x, pixel_samples, extra_left, x_pixels = 2, 4, 2, 1, 2
+    data = np.arange(total_y * total_x * pixel_samples, dtype=np.float32)
+    kept = extract_kept_samples(data, total_y, total_x, pixel_samples, extra_left, x_pixels)
+    assert kept.shape == (total_y, x_pixels * pixel_samples)
+
+
+def test_reshape_to_frame_averages_pixel_samples():
+    # one channel, total_y=2, x_pixels=2, pixel_samples=3, all-ones -> mean is 1.0
+    scan = np.ones((1, 2, 2 * 3), dtype=np.float32)
+    frame = reshape_to_frame(scan, total_y=2, x_pixels=2, pixel_samples=3)
+    assert frame.shape == (1, 2, 2)
+    assert np.allclose(frame, 1.0)
+
+
+# --------------------------------------------------------------------------- #
+# extract_mask_contexts
+# --------------------------------------------------------------------------- #
