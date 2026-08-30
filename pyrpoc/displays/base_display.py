@@ -9,7 +9,6 @@ from pyrpoc.backend_utils.contracts import ParameterGroups
 from pyrpoc.backend_utils.acquired_data import AcquiredData, DataKind
 from pyrpoc.backend_utils.parameter_utils import validate_parameter_groups
 from pyrpoc.backend_utils.state_helpers import export_object_state, import_object_state, make_instance_id
-from pyrpoc.rpoc.types import RPOCImageInput
 
 if TYPE_CHECKING:
     from pyrpoc.domain.app_state import ParameterValue
@@ -72,9 +71,6 @@ class BaseDisplay(QWidget):
 
     def clear(self) -> None:
         raise NotImplementedError
-
-    def export_rpoc_input(self) -> RPOCImageInput | None:
-        return None
 
     def get_normalized_data_3d(self) -> np.ndarray | None:
         """Return current display data as float32 [C,H,W] in [0,1], or None if unavailable."""

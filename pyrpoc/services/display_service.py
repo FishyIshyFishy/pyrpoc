@@ -9,7 +9,6 @@ from pyrpoc.backend_utils.acquired_data import DataKind
 from pyrpoc.domain.app_state import AppState, ParameterValue
 from pyrpoc.displays.base_display import BaseDisplay
 from pyrpoc.displays.display_registry import display_registry
-from pyrpoc.rpoc.types import RPOCImageInput
 
 
 class DisplayService(QObject):
@@ -159,21 +158,6 @@ class DisplayService(QObject):
     def get_widget(self, display: BaseDisplay) -> BaseDisplay:
         self.require_state(display)
         return display
-
-    def get_rpoc_input(self, display: BaseDisplay) -> RPOCImageInput | None:
-        widget = self.get_widget(display)
-        exporter = getattr(widget, "export_rpoc_input", None)
-        if not callable(exporter):
-            return None
-        payload = exporter()
-        if payload is None:
-            return None
-        if not isinstance(payload, RPOCImageInput):
-            raise TypeError(
-                f"display export_rpoc_input returned {type(payload).__name__}, "
-                "expected RPOCImageInput or None"
-            )
-        return payload
 
     def require_state(self, display: BaseDisplay) -> None:
         if display not in self.app_state.displays:

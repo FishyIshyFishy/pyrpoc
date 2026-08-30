@@ -17,10 +17,8 @@ class DataKind(str, Enum):
     leaks into the display layer.
     """
 
-    INTENSITY_FRAME = "intensity_frame"          # final per-frame intensity image — saved to disk
-    PARTIAL_FRAME = "partial_frame"              # live in-progress frame — not saved
-    FLIM_RAW_FRAME = "flim_raw_frame"            # (H, W, n_bins) float32 per-pixel decay histograms
-    FLIM_PARTIAL_HISTOGRAM = "flim_partial_histogram"  # 1D array of photon counts per histogram bin
+    INTENSITY_FRAME = "intensity_frame"   # final per-frame intensity image — saved to disk
+    FLIM_RAW_FRAME = "flim_raw_frame"     # (H, W, n_bins) float32 per-pixel decay histograms
 
     @property
     def is_persistent(self) -> bool:

@@ -111,10 +111,6 @@ def on_service_error(widget: AcquisitionManagerWidget, message: str) -> None:
     QMessageBox.critical(widget, "Acquisition Error", message)
 
 
-def on_service_warning(widget: AcquisitionManagerWidget, message: str) -> None:
-    QMessageBox.warning(widget, "Acquisition Warning", message)
-
-
 def on_parameter_widgets_changed(widget: AcquisitionManagerWidget) -> None:
     values = collect_values(widget.state.param_widgets)
     widget.modality_service.set_parameter_values(values)

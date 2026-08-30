@@ -16,7 +16,6 @@ from PyQt6.QtWidgets import (
 )
 
 from pyrpoc.backend_utils.acquired_data import AcquiredData, DataKind
-from pyrpoc.rpoc.types import RPOCImageInput
 from .base_display import BaseDisplay
 from .display_registry import display_registry
 
@@ -36,7 +35,7 @@ class _ChannelTile:
 class Tiled2DDisplay(BaseDisplay):
     display_key = "tiled_2d"
     display_name = "2D Tiled"
-    accepted_kinds = [DataKind.INTENSITY_FRAME, DataKind.PARTIAL_FRAME]
+    accepted_kinds = [DataKind.INTENSITY_FRAME]
     display_parameters = {}
 
     def __init__(self, parent: QWidget | None = None):
@@ -102,15 +101,6 @@ class Tiled2DDisplay(BaseDisplay):
             if i < len(names) and str(names[i]).strip():
                 tile.name_edit.setText(str(names[i]).strip())
         self.request_persist()
-
-    def export_rpoc_input(self) -> RPOCImageInput | None:
-        if self._data_chw is None:
-            return None
-        return RPOCImageInput(
-            data=self._data_chw.astype(np.float32, copy=True),
-            channel_labels=self.get_channel_names(),
-            source_id=self.display_key,
-        )
 
     def get_normalized_data_3d(self) -> np.ndarray | None:
         if self._data_chw is None:
