@@ -7,8 +7,10 @@ import sys
 from PyQt6.QtGui import QGuiApplication
 from PyQt6.QtWidgets import QApplication, QWidget
 
+from pyrpoc.session.store import SessionStore, default_session_path
 from pyrpoc.shell.app import Application
 from pyrpoc.shell.display_bridge import DisplayBridge
+from pyrpoc.shell.session_io import Autosave
 from pyrpoc.shell.theme.manager import ThemeController
 from pyrpoc.shell.window import MainWindow
 
@@ -67,12 +69,23 @@ def fit_to_available_screen(
     window.move(frame.topLeft())
 
 
-def build(theme_controller: ThemeController) -> tuple[Application, MainWindow]:
-    """Build the application and its window. Shared by main() and the tests."""
+def build(
+    theme_controller: ThemeController,
+    session_path=None,
+) -> tuple[Application, MainWindow, Autosave]:
+    """Build the application, its window and its autosave. Shared with the tests."""
     app = Application()
     DisplayBridge(app, app)          # temporary; deleted in phase 8
     window = MainWindow(app, theme_controller)
-    return app, window
+    autosave = Autosave(
+        app,
+        window,
+        theme_controller,
+        SessionStore(session_path if session_path is not None else default_session_path()),
+        parent=app,
+    )
+    window.bind_session(autosave)
+    return app, window, autosave
 
 
 def main() -> int:
@@ -81,15 +94,11 @@ def main() -> int:
     theme_controller = ThemeController(qt_app)
     theme_controller.apply_saved_or_default()
 
-    app, window = build(theme_controller)
-
-    # A fresh workbench needs a card and a galvo, or nothing can run.
-    if not app.devices:
-        app.add_device("daq")
-        app.add_device("galvo")
+    app, window, autosave = build(theme_controller)
 
     fit_to_available_screen(window, 1400, 850)
     window.show()
+    autosave.restore()
     fit_to_available_screen(window)
     return qt_app.exec()
 
