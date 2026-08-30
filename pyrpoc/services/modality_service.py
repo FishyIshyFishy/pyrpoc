@@ -3,7 +3,6 @@ from __future__ import annotations
 import threading
 from typing import Any
 
-import numpy as np
 from PyQt6.QtCore import QObject, pyqtSignal
 
 from pyrpoc.backend_utils.parameter_utils import coerce_parameter_values
@@ -24,7 +23,6 @@ class ModalityService(QObject):
     data_emitted = pyqtSignal(object)   # carries AcquiredData
     acq_stopped = pyqtSignal()
     acq_error = pyqtSignal(str)
-    acq_warning = pyqtSignal(str)
 
     def __init__(self, instrument_service: InstrumentService, app_state: AppState, parent=None):
         super().__init__(parent)
@@ -33,7 +31,6 @@ class ModalityService(QObject):
         self._active_frame_limit: int | None = None
         self._active_modality_instance: BaseModality | None = None
         self._frames_emitted: int = 0
-        self._acq_warned_messages: set[str] = set()
         self.acquisition_thread: threading.Thread | None = None
         self.acquisition_stop_requested = threading.Event()
         self.acquisition_lock = threading.Lock()
@@ -144,8 +141,6 @@ class ModalityService(QObject):
             self._active_frame_limit = frame_limit
             self._active_modality_instance = instance
             try:
-                self._acq_warned_messages = set()
-                instance._warn_callback = self.emit_acq_warning
                 instance.prepare_acquisition_storage(frame_limit=frame_limit)
                 self.app_state.modality.running = True
                 self.acq_started.emit()
@@ -171,11 +166,6 @@ class ModalityService(QObject):
             self._frames_emitted += 1
 
         self.data_emitted.emit(acquired)
-
-    def emit_acq_warning(self, message: str) -> None:
-        if message not in self._acq_warned_messages:
-            self._acq_warned_messages.add(message)
-            self.acq_warning.emit(message)
 
     def handle_acquisition_error(self, error: Exception) -> None:
         self.acq_error.emit(str(error))

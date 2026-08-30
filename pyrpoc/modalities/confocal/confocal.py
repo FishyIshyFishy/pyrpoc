@@ -8,11 +8,9 @@ from pyrpoc.optocontrols.base_optocontrol import BaseOptoControl
 from pyrpoc.optocontrols.mask import MaskOptoControl
 
 from .acquisition_core import (
-    DaqUnavailableError,
     acquire_frame as acquire_daq_confocal,
     extract_mask_contexts,
 )
-from ..helpers.toy_data import generate_toy_confocal_frame
 from ..base_modality import BaseModality
 from ..mod_registry import modality_registry
 from . import storage
@@ -28,7 +26,7 @@ class ConfocalModality(BaseModality):
     optional_instruments = []
     allowed_optocontrols = [MaskOptoControl]
     emitted_kinds = [DataKind.INTENSITY_FRAME]
-    allowed_displays = ["streamed_image", "tiled_2d", "multichan_overlay"]
+    allowed_displays = ["tiled_2d", "multichan_overlay"]
 
     def __init__(self):
         super().__init__()
@@ -57,37 +55,23 @@ class ConfocalModality(BaseModality):
     def acquire_once(self, on_data) -> None:
         p = self.parameters
         active_ai_channels = list(p.active_ai_channels)
-        try:
-            frame = acquire_daq_confocal(
-                device_name=p.device_name,
-                sample_rate_hz=p.sample_rate_hz,
-                fast_axis_ao=p.fast_axis_ao,
-                slow_axis_ao=p.slow_axis_ao,
-                active_ai_channels=active_ai_channels,
-                mask_contexts=self._mask_contexts,
-                x_pixels=p.x_pixels,
-                y_pixels=p.y_pixels,
-                extra_left=p.extra_left,
-                extra_right=p.extra_right,
-                dwell_time_us=p.dwell_time_us,
-                fast_axis_offset=p.fast_axis_offset,
-                fast_axis_amplitude=p.fast_axis_amplitude,
-                slow_axis_offset=p.slow_axis_offset,
-                slow_axis_amplitude=p.slow_axis_amplitude,
-            )
-        except DaqUnavailableError:
-            self.emit_warning("DAQ unavailable — displaying simulated data")
-            frame = generate_toy_confocal_frame(
-                x_pixels=p.x_pixels,
-                y_pixels=p.y_pixels,
-                active_channels=active_ai_channels,
-                frame_index=self._frame_idx,
-                mask_contexts=self._mask_contexts,
-                fast_axis_offset=p.fast_axis_offset,
-                fast_axis_amplitude=p.fast_axis_amplitude,
-                slow_axis_offset=p.slow_axis_offset,
-                slow_axis_amplitude=p.slow_axis_amplitude,
-            )
+        frame = acquire_daq_confocal(
+            device_name=p.device_name,
+            sample_rate_hz=p.sample_rate_hz,
+            fast_axis_ao=p.fast_axis_ao,
+            slow_axis_ao=p.slow_axis_ao,
+            active_ai_channels=active_ai_channels,
+            mask_contexts=self._mask_contexts,
+            x_pixels=p.x_pixels,
+            y_pixels=p.y_pixels,
+            extra_left=p.extra_left,
+            extra_right=p.extra_right,
+            dwell_time_us=p.dwell_time_us,
+            fast_axis_offset=p.fast_axis_offset,
+            fast_axis_amplitude=p.fast_axis_amplitude,
+            slow_axis_offset=p.slow_axis_offset,
+            slow_axis_amplitude=p.slow_axis_amplitude,
+        )
         self._frame_idx += 1
         on_data(AcquiredData(
             data=frame.astype(np.float32, copy=False),

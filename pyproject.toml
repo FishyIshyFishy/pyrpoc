@@ -11,17 +11,12 @@ authors = [
 ]
 
 dependencies = [
-  "cellpose", 
   "opencv-python",
-  "pillow",
-  "matplotlib",
-  "pyqt6",       
+  "pyqt6",
   "PyQt6Ads",
   "pyqtgraph",
   "pyqtdarktheme",
-  "superqt",    
-  "nidaqmx",   
-  "pyvisa",      
+  "nidaqmx",
   "tifffile"
 ]
 
@@ -45,7 +40,7 @@ dev = [
 [tool.pyright]
 include = ["pyrpoc"]
 exclude = [
-  "pyrpoc/instruments/swabian_demos",
+  "docs/swabian_demos",
   "rpoc_env",
   "dist",
   "build",

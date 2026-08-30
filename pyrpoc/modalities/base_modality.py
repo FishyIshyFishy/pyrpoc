@@ -73,7 +73,6 @@ class BaseModality(ABC):
     def __init__(self):
         self._running = False
         self._configured = False
-        self._warn_callback: Callable[[str], None] | None = None
         self.parameters: AcquisitionParameters | None = None
         # Storage state — shared across all DAQ modalities
         self._save_enabled = False
@@ -85,11 +84,6 @@ class BaseModality(ABC):
         self._run_id = 0
         self._run_started_at = ""
         self._run_frame_limit: int | None = 1
-
-    def emit_warning(self, message: str) -> None:
-        """Emit a non-fatal warning to the user via the service layer."""
-        if self._warn_callback is not None:
-            self._warn_callback(message)
 
     @classmethod
     def get_contract(cls) -> dict[str, Any]:

@@ -9,12 +9,10 @@ from pyrpoc.instruments.time_tagger import TimeTaggerInstrument
 from pyrpoc.optocontrols.mask import MaskOptoControl  # used by allowed_optocontrols
 
 from .acquisition_core import (
-    DaqUnavailableError,
     flim_scan,
     flim_intensity,
     read_flim_frame,
 )
-from ..helpers.toy_data import generate_toy_flim_frame
 from ..base_modality import BaseModality
 from ..mod_registry import modality_registry
 from . import storage
@@ -34,7 +32,7 @@ class FlimModality(BaseModality):
     optional_instruments = []
     allowed_optocontrols = [MaskOptoControl]
     emitted_kinds = [DataKind.INTENSITY_FRAME, DataKind.FLIM_RAW_FRAME]
-    allowed_displays = ["streamed_image", "flim_display", "tiled_2d", "multichan_overlay"]
+    allowed_displays = ["tiled_2d", "multichan_overlay"]
 
     def __init__(self):
         super().__init__()
@@ -107,49 +105,34 @@ class FlimModality(BaseModality):
         p = self.parameters
         self.setup_tagger()
         try:
-            try:
-                flim_scan(
-                    device_name=p.device_name,
-                    sample_rate_hz=p.sample_rate_hz,
-                    fast_axis_ao=p.fast_axis_ao,
-                    slow_axis_ao=p.slow_axis_ao,
-                    x_pixels=p.x_pixels,
-                    y_pixels=p.y_pixels,
-                    extra_left=p.extra_left,
-                    extra_right=p.extra_right,
-                    dwell_time_us=p.dwell_time_us,
-                    fast_axis_offset=p.fast_axis_offset,
-                    fast_axis_amplitude=p.fast_axis_amplitude,
-                    slow_axis_offset=p.slow_axis_offset,
-                    slow_axis_amplitude=p.slow_axis_amplitude,
-                    frame_trigger_pfi=p.frame_trigger_pfi_line,
-                    pixel_clock_ctr=p.pixel_clock_ctr,
-                    pixel_clock_pfi=p.pixel_clock_pfi_line,
-                )
-                time.sleep(frame_settle_s)
-                total_x = p.x_pixels + p.extra_left + p.extra_right
-                hist_frame = read_flim_frame(
-                    self._flim,
-                    n_bins=p.histogram_bins,
-                    y_pixels=p.y_pixels,
-                    total_x_pixels=total_x,
-                    extra_left=p.extra_left,
-                    x_pixels=p.x_pixels,
-                )
-            except DaqUnavailableError:
-                self.emit_warning("DAQ unavailable — displaying simulated FLIM data")
-                hist_frame = generate_toy_flim_frame(
-                    x_pixels=p.x_pixels,
-                    y_pixels=p.y_pixels,
-                    n_bins=p.histogram_bins,
-                    binwidth_ps=p.histogram_binwidth_ps,
-                    laser_period_ps=self.laser_period_ps(),
-                    frame_index=self._frame_idx,
-                    fast_axis_offset=p.fast_axis_offset,
-                    fast_axis_amplitude=p.fast_axis_amplitude,
-                    slow_axis_offset=p.slow_axis_offset,
-                    slow_axis_amplitude=p.slow_axis_amplitude,
-                )
+            flim_scan(
+                device_name=p.device_name,
+                sample_rate_hz=p.sample_rate_hz,
+                fast_axis_ao=p.fast_axis_ao,
+                slow_axis_ao=p.slow_axis_ao,
+                x_pixels=p.x_pixels,
+                y_pixels=p.y_pixels,
+                extra_left=p.extra_left,
+                extra_right=p.extra_right,
+                dwell_time_us=p.dwell_time_us,
+                fast_axis_offset=p.fast_axis_offset,
+                fast_axis_amplitude=p.fast_axis_amplitude,
+                slow_axis_offset=p.slow_axis_offset,
+                slow_axis_amplitude=p.slow_axis_amplitude,
+                frame_trigger_pfi=p.frame_trigger_pfi_line,
+                pixel_clock_ctr=p.pixel_clock_ctr,
+                pixel_clock_pfi=p.pixel_clock_pfi_line,
+            )
+            time.sleep(frame_settle_s)
+            total_x = p.x_pixels + p.extra_left + p.extra_right
+            hist_frame = read_flim_frame(
+                self._flim,
+                n_bins=p.histogram_bins,
+                y_pixels=p.y_pixels,
+                total_x_pixels=total_x,
+                extra_left=p.extra_left,
+                x_pixels=p.x_pixels,
+            )
 
             self._frame_idx += 1
             self.emit_flim_frame(on_data, hist_frame)

@@ -110,7 +110,7 @@ def make_state() -> SessionState:
             )
         ],
         displays=[
-            DisplaySessionState(type_key="streamed_image", instance_id="disp-1", dock_visible=False)
+            DisplaySessionState(type_key="tiled_2d", instance_id="disp-1", dock_visible=False)
         ],
         modality=ModalitySessionState(
             selected_key="confocal",

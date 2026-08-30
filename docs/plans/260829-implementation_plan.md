@@ -1,14 +1,13 @@
-# pyrpoc rebuild: implementation plan
+# pyrpoc v3.1 build: implementation plan
+Currently, the code is on v3.0.2. We are creating v3.1. To do so, we will first eliminate swill in the codebase. Then, we will refactor. Future versions will reinstate features (3.1.2, etc) that we eliminated. 
 
-Companion to `260827-refactor_plan.md`, which describes the destination. This one describes how to get there without breaking the working application along the way.
+This is a companion doc to `260827-refactor_plan.md`, which describes the destination. This one describes how to get there without breaking the working application along the way.
 
 ## The overall approach
 
 The new code is written next to the old code, not on top of it. Most of the new structure (`core/`, `devices/`, `operations/`, `data/`, `run/`, `programs/`) contains no user interface code at all, so it can be built and tested while the existing application keeps running untouched. Nothing imports the new folders until we deliberately connect them.
 
 That means there is exactly one dangerous moment in the whole migration: the point where the interface stops calling the old acquisition system and starts calling the new one. Everything before it carries no risk to the working program, because the working program does not know the new code exists. Everything after it is cleanup.
-
-The alternative — rewriting each folder in place — would leave the application broken or half-converted for weeks. The cost of building alongside is that some hardware code exists in two copies for a while. Since one person is doing this over a few weeks, that is a reasonable trade, but it does mean any bug fix during the migration has to be applied in both places until the old copy is deleted.
 
 ## How we check for regressions
 
@@ -42,16 +41,6 @@ Section 12 of the design document lists rules such as "`views/` imports nothing 
 Anything that only happens on the real instrument: whether the analog input actually stays aligned with the sample clock, whether the digital pulses arrive at the right pixel, whether the time tagger sees the frame trigger. No test on a laptop can confirm these. The plan therefore includes a manual comparison on the microscope, and it happens in the middle rather than at the end, so that if something is wrong we find out before building more on top of it.
 
 ## Phases
-
-### Phase 0 — Record what the current code does
-
-Before changing anything, write tests that call the functions listed above with fixed inputs and store the results. These tests import the old code and pass today; their purpose is to fail later if the new code computes something different.
-
-Also capture end-to-end output: run each of the three modalities with saving enabled and the DAQ absent, so the simulated path is used, and keep the resulting TIFF and npz files as reference.
-
-This phase changes no production code. It is the phase most likely to be skipped and the one that makes every later phase checkable, so it is worth the day it takes.
-
-Done when: the reference tests exist, pass, and are committed.
 
 ### Phase 1 — Vocabulary and hardware arithmetic
 
