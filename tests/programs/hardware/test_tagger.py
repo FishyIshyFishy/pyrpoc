@@ -6,7 +6,18 @@ import numpy as np
 import pytest
 
 from pyrpoc.core.errors import DaqError
+from pyrpoc.core.params import ScanGroup, TriggerGroup
+from pyrpoc.devices import DAQ, Galvo
 from pyrpoc.programs.hardware import tagger as acq
+
+
+def wired(*, device_name="Dev1", fast_ao=0, slow_ao=1):
+    """A DAQ and a galvo carrying the wiring flim_scan reads off them."""
+    daq, galvo = DAQ(), Galvo()
+    daq.config.device_name = device_name
+    galvo.config.fast_ao = fast_ao
+    galvo.config.slow_ao = slow_ao
+    return daq, galvo
 
 
 # --------------------------------------------------------------------------- #
@@ -182,23 +193,13 @@ def test_flim_scan_computes_geometry_and_clamps_pixel_samples(monkeypatch):
 
     monkeypatch.setattr(acq, "run_flim_scan", fake_run)
 
+    daq, galvo = wired()
     acq.flim_scan(
-        device_name="Dev1",
+        daq=daq,
+        galvo=galvo,
+        scan=ScanGroup(x_pixels=4, y_pixels=3, extra_left=1, extra_right=2, dwell_time_us=2.0),
         sample_rate_hz=1_000_000.0,
-        fast_ao=0,
-        slow_ao=1,
-        x_pixels=4,
-        y_pixels=3,
-        extra_left=1,
-        extra_right=2,
-        dwell_time_us=2.0,
-        fast_axis_offset=0.0,
-        fast_axis_amplitude=1.0,
-        slow_axis_offset=0.0,
-        slow_axis_amplitude=1.0,
-        frame_trigger_pfi=0,
-        pixel_clock_ctr=0,
-        pixel_clock_pfi=1,
+        triggers=TriggerGroup(frame_trigger_pfi=0, pixel_clock_ctr=0, pixel_clock_pfi=1),
     )
 
     total_x = 1 + 4 + 2
@@ -213,11 +214,12 @@ def test_flim_scan_floors_pixel_samples_at_two(monkeypatch):
     captured = {}
     monkeypatch.setattr(acq, "run_flim_scan", lambda **k: captured.update(k))
     # dwell*rate rounds below 2 -> must be clamped so the tick divider stays valid
+    daq, galvo = wired()
     acq.flim_scan(
-        device_name="Dev1", sample_rate_hz=100_000.0, fast_ao=0, slow_ao=1,
-        x_pixels=8, y_pixels=8, extra_left=0, extra_right=0, dwell_time_us=2.0,
-        fast_axis_offset=0.0, fast_axis_amplitude=1.0,
-        slow_axis_offset=0.0, slow_axis_amplitude=1.0,
-        frame_trigger_pfi=0, pixel_clock_ctr=0, pixel_clock_pfi=1,
+        daq=daq,
+        galvo=galvo,
+        scan=ScanGroup(x_pixels=8, y_pixels=8, extra_left=0, extra_right=0, dwell_time_us=2.0),
+        sample_rate_hz=100_000.0,
+        triggers=TriggerGroup(frame_trigger_pfi=0, pixel_clock_ctr=0, pixel_clock_pfi=1),
     )
     assert captured["pixel_samples"] == 2

@@ -116,10 +116,10 @@ def test_channel_labels_interleave_t0_and_t2(devices):
     assert channel_labels(daq) == ["ai2_t0", "ai2_t2", "ai5_t0", "ai5_t2"]
 
 
-def test_split_timing_reaches_the_operation(monkeypatch, devices):
+def test_split_timing_reaches_the_scan(monkeypatch, devices):
     _, calls = run_new(monkeypatch, new_params(), devices)
-    assert calls[0]["t0_samples"] == T0
-    assert calls[0]["t1_samples"] == T1
+    split = calls[0]["split"]
+    assert (split.t0_samples, split.t1_samples) == (T0, T1)
 
 
 # --- the raw stream --------------------------------------------------------

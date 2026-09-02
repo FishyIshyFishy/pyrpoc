@@ -13,7 +13,10 @@ from __future__ import annotations
 
 import numpy as np
 
-from .raster import generate_raster_waveform, pixel_samples, run_raster
+from pyrpoc.core.params import ScanGroup, SplitGroup
+from pyrpoc.devices import DAQ, Galvo
+
+from .raster import pixel_samples, run_raster, waveform_for_scan
 
 
 def reshape_to_split_frame(
@@ -56,50 +59,34 @@ def reshape_to_split_frame(
 
 def split_raster_scan(
     *,
-    x_pixels: int,
-    y_pixels: int,
-    extra_left: int,
-    extra_right: int,
-    fast_axis_offset: float,
-    fast_axis_amplitude: float,
-    slow_axis_offset: float,
-    slow_axis_amplitude: float,
-    dwell_time_us: float,
+    daq: DAQ,
+    galvo: Galvo,
+    scan: ScanGroup,
     sample_rate_hz: float,
-    device_name: str,
-    ai_channels: tuple[int, ...] | list[int],
-    fast_ao: int,
-    slow_ao: int,
-    t0_samples: int,
-    t1_samples: int,
-    ttl: dict[str, np.ndarray] | None = None,
+    split: SplitGroup,
+    ttl: dict[str, np.ndarray],
 ) -> tuple[np.ndarray, np.ndarray]:
-    """One split-confocal raster scan. Returns ``(split_frame, raw_frame)``."""
-    samples_per_pixel = pixel_samples(dwell_time_us, sample_rate_hz)
+    """One split-confocal raster scan. Returns ``(split_frame, raw_frame)``.
 
-    waveform = generate_raster_waveform(
-        x_pixels=x_pixels,
-        extra_left=extra_left,
-        extra_right=extra_right,
-        y_pixels=y_pixels,
-        pixel_samples=samples_per_pixel,
-        fast_axis_offset=fast_axis_offset,
-        fast_axis_amplitude=fast_axis_amplitude,
-        slow_axis_offset=slow_axis_offset,
-        slow_axis_amplitude=slow_axis_amplitude,
-    )
+    The same scan as ``raster_scan`` and the same arguments, plus the window
+    split. Only the reshaping at the end differs.
+    """
+    samples_per_pixel = pixel_samples(scan.dwell_time_us, sample_rate_hz)
+
     scan_data, total_y_out, x_out, px_out = run_raster(
-        device_name=device_name,
+        device_name=daq.config.device_name,
         sample_rate_hz=sample_rate_hz,
-        fast_ao=fast_ao,
-        slow_ao=slow_ao,
-        waveform=waveform,
-        ttl_signals=ttl or {},
-        x_pixels=x_pixels,
-        y_pixels=y_pixels,
-        extra_left=extra_left,
-        extra_right=extra_right,
-        dwell_time_us=dwell_time_us,
-        ai_channels=list(ai_channels),
+        fast_ao=galvo.config.fast_ao,
+        slow_ao=galvo.config.slow_ao,
+        waveform=waveform_for_scan(scan, samples_per_pixel),
+        ttl_signals=ttl,
+        x_pixels=scan.x_pixels,
+        y_pixels=scan.y_pixels,
+        extra_left=scan.extra_left,
+        extra_right=scan.extra_right,
+        dwell_time_us=scan.dwell_time_us,
+        ai_channels=list(daq.config.ai_channels),
     )
-    return reshape_to_split_frame(scan_data, total_y_out, x_out, px_out, t0_samples, t1_samples)
+    return reshape_to_split_frame(
+        scan_data, total_y_out, x_out, px_out, split.t0_samples, split.t1_samples
+    )

@@ -76,11 +76,11 @@ class FLIM(Program):
             for index in ctx.frames(p.num_frames):
                 ctx.status(f"frame {index + 1}{total}")
                 flim_scan(
-                    **p.scan,
-                    **p.daq,
-                    **p.triggers,
-                    **daq.config,
-                    **galvo.config,
+                    daq=daq,
+                    galvo=galvo,
+                    scan=p.scan,
+                    sample_rate_hz=p.daq.sample_rate_hz,
+                    triggers=p.triggers,
                 )
                 ctx.sleep(p.histogram.frame_settle_s)
                 cube = read_flim_frame(

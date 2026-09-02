@@ -108,16 +108,24 @@ def test_channel_labels_come_from_the_daq_device(devices):
     assert channel_labels(daq) == ["ai0", "ai3", "ai7"]
 
 
-def test_the_operation_receives_the_scan_the_devices_and_the_run_settings(monkeypatch, devices):
-    """v3.0 passed these as fast_axis_ao / slow_axis_ao / active_ai_channels."""
+def test_the_scan_receives_the_scan_group_the_devices_and_the_run_settings(monkeypatch, devices):
+    """v3.0 passed these as fast_axis_ao / slow_axis_ao / active_ai_channels.
+
+    The devices arrive whole rather than as four splatted config dicts, so the
+    assertion is on identity plus what the scan reads off them -- not on
+    fifteen primitives picked out of the captured keywords.
+    """
+    daq, galvo = devices
     _, calls = run_new(monkeypatch, new_params(), devices)
+    call = calls[0]
+
+    assert call["daq"] is daq and call["galvo"] is galvo
+    assert call["sample_rate_hz"] == 100_000.0
     for key, value in SCAN.items():
-        assert calls[0][key] == value
-    assert calls[0]["device_name"] == "Dev1"
-    assert calls[0]["sample_rate_hz"] == 100_000.0
-    assert calls[0]["fast_ao"] == 0
-    assert calls[0]["slow_ao"] == 1
-    assert tuple(calls[0]["ai_channels"]) == AI_CHANNELS
+        assert getattr(call["scan"], key) == value
+    assert daq.config.device_name == "Dev1"
+    assert (galvo.config.fast_ao, galvo.config.slow_ao) == (0, 1)
+    assert tuple(daq.config.ai_channels) == AI_CHANNELS
 
 
 # --- saving ----------------------------------------------------------------

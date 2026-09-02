@@ -10,6 +10,9 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
+from pyrpoc.core.params import ScanGroup
+from pyrpoc.devices import DAQ, Galvo
+from pyrpoc.programs.hardware import raster
 from pyrpoc.programs.hardware.raster import (
     extract_kept_samples,
     generate_raster_waveform,
@@ -90,3 +93,91 @@ def test_reshape_to_frame_averages_pixel_samples():
 # --------------------------------------------------------------------------- #
 # extract_mask_contexts
 # --------------------------------------------------------------------------- #
+
+
+# --------------------------------------------------------------------------- #
+# raster_scan: device config -> NI arguments
+# --------------------------------------------------------------------------- #
+
+def wired_devices():
+    daq, galvo = DAQ(), Galvo()
+    daq.config.device_name = "Dev7"
+    daq.config.ai_channels = (2, 5)
+    galvo.config.fast_ao = 3
+    galvo.config.slow_ao = 4
+    return daq, galvo
+
+
+def fake_run_raster(captured):
+    """Stands in for the one function here that needs a real NI card."""
+
+    def run(**kwargs):
+        captured.update(kwargs)
+        # what run_raster returns: (scan_data, total_y, x_pixels, pixel_samples)
+        return np.zeros((2, 3, 4 * 2), dtype=np.float32), 3, 4, 2
+
+    return run
+
+
+def test_raster_scan_reads_its_wiring_off_the_devices(monkeypatch):
+    """The translation this function exists to do, which otherwise only ever
+    runs on the instrument.
+
+    The wiring used to arrive as ``**daq.config, **galvo.config`` splatted into
+    a fifteen-wide signature, so a renamed field was a TypeError on the first
+    frame. Reading it off the device is what makes that a type error instead --
+    and this is the check that it is read off the *right* device.
+    """
+    captured: dict = {}
+    monkeypatch.setattr(raster, "run_raster", fake_run_raster(captured))
+    daq, galvo = wired_devices()
+    scan = ScanGroup(x_pixels=4, y_pixels=3, extra_left=1, extra_right=2, dwell_time_us=2.0)
+
+    frame = raster.raster_scan(
+        daq=daq, galvo=galvo, scan=scan, sample_rate_hz=100_000.0, ttl={}
+    )
+
+    assert captured["device_name"] == "Dev7"
+    assert captured["ai_channels"] == [2, 5]
+    assert (captured["fast_ao"], captured["slow_ao"]) == (3, 4)
+    assert (captured["x_pixels"], captured["y_pixels"]) == (4, 3)
+    assert (captured["extra_left"], captured["extra_right"]) == (1, 2)
+    assert captured["dwell_time_us"] == 2.0
+    assert captured["sample_rate_hz"] == 100_000.0
+    assert frame.shape == (2, 3, 4)
+
+
+def test_raster_scan_passes_an_empty_ttl_through_rather_than_none(monkeypatch):
+    """``ttl`` lost its ``None`` default: "no mask is bound" is now said, not omitted."""
+    captured: dict = {}
+    monkeypatch.setattr(raster, "run_raster", fake_run_raster(captured))
+    daq, galvo = wired_devices()
+
+    raster.raster_scan(
+        daq=daq,
+        galvo=galvo,
+        scan=ScanGroup(x_pixels=4, y_pixels=3, extra_left=1, extra_right=2, dwell_time_us=2.0),
+        sample_rate_hz=100_000.0,
+        ttl={},
+    )
+    assert captured["ttl_signals"] == {}
+
+
+def test_raster_scan_requires_a_ttl_argument():
+    daq, galvo = wired_devices()
+    with pytest.raises(TypeError):
+        raster.raster_scan(  # type: ignore[call-arg]
+            daq=daq, galvo=galvo, scan=ScanGroup(), sample_rate_hz=100_000.0
+        )
+
+
+def test_the_waveform_covers_every_ao_sample_of_the_scan(monkeypatch):
+    captured: dict = {}
+    monkeypatch.setattr(raster, "run_raster", fake_run_raster(captured))
+    daq, galvo = wired_devices()
+    scan = ScanGroup(x_pixels=4, y_pixels=3, extra_left=1, extra_right=2, dwell_time_us=2.0)
+
+    raster.raster_scan(daq=daq, galvo=galvo, scan=scan, sample_rate_hz=100_000.0, ttl={})
+
+    pixel_samples = raster.pixel_samples(scan.dwell_time_us, 100_000.0)
+    assert captured["waveform"].shape == (2, scan.total_x * scan.y_pixels * pixel_samples)

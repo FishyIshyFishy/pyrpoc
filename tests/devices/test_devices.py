@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from dataclasses import fields
+
 import pytest
 
 from pyrpoc.core.errors import TaggerError
@@ -51,10 +53,16 @@ def test_tagger_defaults_match_v3_0():
     assert config.laser_input_delay_ps == 0
 
 
-def test_device_config_unpacks_into_an_operation():
-    """raster_scan(**daq.config, **galvo.config) must supply exactly its wiring args."""
-    assert set(DAQ().config.keys()) == {"device_name", "ai_channels"}
-    assert set(Galvo().config.keys()) == {"fast_ao", "slow_ao"}
+def test_device_config_holds_exactly_the_wiring_the_scan_reads():
+    """``raster_scan`` reads these four fields off the two devices it is handed.
+
+    Asserted through ``dataclasses.fields`` rather than the old mapping
+    protocol: the config used to be splatted into the call as
+    ``raster_scan(**daq.config, **galvo.config)``, and this test was how a
+    renamed field got caught.
+    """
+    assert {f.name for f in fields(DAQ().config)} == {"device_name", "ai_channels"}
+    assert {f.name for f in fields(Galvo().config)} == {"fast_ao", "slow_ao"}
 
 
 # --- identity and claims ---------------------------------------------------

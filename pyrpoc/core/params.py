@@ -224,9 +224,10 @@ def group(cls: type, label: str):
 class Group:
     """Base for parameter groups.
 
-    ``keys`` and ``__getitem__`` are what make ``scan_function(**p.scan)`` work,
-    so the ``hardware/`` modules can stay on loose keyword arguments instead of
-    taking group objects.
+    ``keys`` and ``__getitem__`` make ``f(**p.some_group)`` work. The
+    ``hardware/`` modules no longer use it -- they take the group itself, so a
+    renamed field is a type error rather than a ``TypeError`` on the first
+    frame. ``programs/simulation.py`` is the last caller that splats.
     """
 
     def keys(self) -> list[str]:
