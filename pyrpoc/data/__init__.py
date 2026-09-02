@@ -6,7 +6,7 @@ program's job. May import core/ and nothing else.
 
 from .dataset import Dataset, Provenance
 from .library import DatasetLibrary
-from .io import RunSaver, read_metadata
+from .io import RunSaver, SaveTarget, read_metadata
 from .transforms import channel_levels, normalize_channels
 
 __all__ = [
@@ -14,6 +14,7 @@ __all__ = [
     "Provenance",
     "DatasetLibrary",
     "RunSaver",
+    "SaveTarget",
     "read_metadata",
     "normalize_channels",
     "channel_levels",

@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import threading
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Any, Callable
 from uuid import uuid4
 
@@ -31,6 +32,9 @@ class Provenance:
     devices: dict[str, Any] = field(default_factory=dict)
     started_at: str = ""
     run_id: int = 0
+    #: What the run was called -- the save filename, set whether or not the
+    #: run was saved. An unnamed run falls back to its program.
+    name: str = ""
 
 
 class Dataset:
