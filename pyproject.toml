@@ -1,6 +1,6 @@
 [project]
 name = "pyrpoc"
-version = "3.0.2"
+version = "3.1.0"
 description = "Real-time Precision Opto-Control Toolkit"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -15,7 +15,6 @@ dependencies = [
   "pyqt6",
   "PyQt6Ads",
   "pyqtgraph",
-  "pyqtdarktheme",
   "nidaqmx",
   "tifffile"
 ]
