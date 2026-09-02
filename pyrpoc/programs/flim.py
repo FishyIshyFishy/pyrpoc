@@ -19,7 +19,6 @@ import numpy as np
 from pyrpoc.core.params import (
     FlimDaqGroup,
     HistogramGroup,
-    SaveGroup,
     ScanGroup,
     TriggerGroup,
     group,
@@ -39,7 +38,6 @@ class FlimParams:
     daq: FlimDaqGroup = group(FlimDaqGroup, "DAQ")
     triggers: TriggerGroup = group(TriggerGroup, "Triggers")
     histogram: HistogramGroup = group(HistogramGroup, "Histogram")
-    save: SaveGroup = group(SaveGroup, "Save")
     num_frames: int = int_field(
         "Frames", 1, minimum=1, tooltip="Number of frames to capture"
     )

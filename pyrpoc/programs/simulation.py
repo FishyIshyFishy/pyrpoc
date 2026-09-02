@@ -19,7 +19,6 @@ from pyrpoc.core.modulation import load_mask
 from pyrpoc.core.params import (
     Group,
     ModulationGroup,
-    SaveGroup,
     choice_field,
     float_field,
     group,
@@ -78,7 +77,6 @@ class SimulationParams:
     frame: FrameGroup = group(FrameGroup, "Frame")
     signal: SignalGroup = group(SignalGroup, "Signal")
     modulation: ModulationGroup = group(ModulationGroup, "Modulation")
-    save: SaveGroup = group(SaveGroup, "Save")
     num_frames: int = int_field(
         "Frames", 10, minimum=1, tooltip="Number of frames to capture"
     )

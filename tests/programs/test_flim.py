@@ -14,6 +14,7 @@ import numpy as np
 import pytest
 
 from pyrpoc.core.streams import Cube3D, Image2D
+from pyrpoc.data.io import SaveTarget
 from pyrpoc.data.library import DatasetLibrary
 from pyrpoc.devices import DAQ, Galvo, TimeTagger
 from pyrpoc.programs.flim import FLIM, FlimParams
@@ -81,7 +82,12 @@ def devices():
     return daq, galvo, tagger
 
 
-def new_params(tmp_path=None, frames=3) -> FlimParams:
+def saving(tmp_path, name: str = "acq") -> SaveTarget:
+    """Saving on, into the test's own directory. Not a parameter any more."""
+    return SaveTarget(name=name, directory=str(tmp_path), enabled=True)
+
+
+def new_params(frames=3) -> FlimParams:
     params = FlimParams()
     for name, value in SCAN.items():
         setattr(params.scan, name, value)
@@ -89,13 +95,10 @@ def new_params(tmp_path=None, frames=3) -> FlimParams:
     params.histogram.histogram_bins = N_BINS
     params.histogram.frame_settle_s = 0.0
     params.num_frames = frames
-    if tmp_path is not None:
-        params.save.save_enabled = True
-        params.save.save_path = str(tmp_path / "acq")
     return params
 
 
-def run_new(monkeypatch, params, devices, *, continuous=False, fail_on=None):
+def run_new(monkeypatch, params, devices, *, continuous=False, fail_on=None, save=None):
     daq, galvo, tagger = devices
     sdk = FakeTaggerSdk().install(tagger)
     scans = []
@@ -115,7 +118,7 @@ def run_new(monkeypatch, params, devices, *, continuous=False, fail_on=None):
     failures = []
     handle = runner.start(
         FLIM(), params, [daq, galvo, tagger], continuous=continuous,
-        program_key="flim", on_failed=failures.append,
+        program_key="flim", save=save, on_failed=failures.append,
     )
     if continuous:
         for _ in range(500):
@@ -223,12 +226,12 @@ def test_a_failure_mid_run_keeps_the_frames_already_acquired(monkeypatch, device
 
 
 def test_the_intensity_tiff_is_written(monkeypatch, devices, tmp_path):
-    run_new(monkeypatch, new_params(tmp_path), devices)
+    run_new(monkeypatch, new_params(), devices, save=saving(tmp_path))
     assert (tmp_path / "acq_intensity.tiff").exists()
 
 
 def test_the_histogram_npz_holds_every_cube(monkeypatch, devices, tmp_path):
-    run_new(monkeypatch, new_params(tmp_path), devices)
+    run_new(monkeypatch, new_params(), devices, save=saving(tmp_path))
     with np.load(tmp_path / "acq_histogram.npz", allow_pickle=True) as npz:
         expected = np.stack([fake_cube(i) for i in range(3)], axis=0)
         np.testing.assert_array_equal(npz["frames"], expected)
@@ -236,7 +239,7 @@ def test_the_histogram_npz_holds_every_cube(monkeypatch, devices, tmp_path):
 
 
 def test_the_histogram_filename_and_key_changed_deliberately(monkeypatch, devices, tmp_path):
-    run_new(monkeypatch, new_params(tmp_path), devices)
+    run_new(monkeypatch, new_params(), devices, save=saving(tmp_path))
     assert (tmp_path / "acq_histogram.npz").exists()
     assert not (tmp_path / "acq_raw.npz").exists()
     with np.load(tmp_path / "acq_histogram.npz", allow_pickle=True) as data:
@@ -245,7 +248,7 @@ def test_the_histogram_filename_and_key_changed_deliberately(monkeypatch, device
 
 
 def test_metadata_records_both_streams(monkeypatch, devices, tmp_path):
-    run_new(monkeypatch, new_params(tmp_path), devices)
+    run_new(monkeypatch, new_params(), devices, save=saving(tmp_path))
     meta = json.loads((tmp_path / "acq_meta.json").read_text())
     assert sorted(meta["streams"]) == ["histogram", "intensity"]
     assert meta["frames_saved"] == 3

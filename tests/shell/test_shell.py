@@ -184,12 +184,6 @@ def test_every_field_type_round_trips_through_its_widget(qapp):
     form.on_field_changed()
     assert params.modulation.masks == (MaskBinding(Path("m.png"), 1, 2),)
 
-    form.fields["save.save_enabled"].set(True)
-    form.fields["save.save_path"].set("/tmp/run")
-    form.on_field_changed()
-    assert params.save.save_enabled is True
-    assert params.save.save_path == "/tmp/run"
-
 
 def test_the_channel_row_reads_back_as_a_tuple(qapp):
     from pyrpoc.devices import DAQ
@@ -262,6 +256,55 @@ def test_missing_devices_disable_play_and_say_what_is_needed(app):
     app.add_device("time_tagger")
     assert panel.start_btn.isEnabled() is True
     assert panel.status_label.text() == "Status: ready"
+
+
+def test_the_save_switch_and_name_are_not_in_the_generated_form(app):
+    """They are not parameters of the program, so no program declares them."""
+    panel = LauncherPanel(app)
+    assert not [path for path in panel.form.fields if path.startswith("save")]
+    assert panel.save_check is not None and panel.name_edit is not None
+
+
+def test_the_name_field_writes_into_the_save_target(app):
+    panel = LauncherPanel(app)
+    panel.name_edit.setText("cells")
+    panel.save_check.setChecked(True)
+    assert app.save.name == "cells"
+    assert app.save.enabled is True
+
+
+def test_the_save_target_survives_a_program_change(app):
+    """Per-program save groups lost the filename every time the program changed."""
+    panel = LauncherPanel(app)
+    panel.name_edit.setText("cells")
+    panel.program_combo.setCurrentIndex(panel.program_combo.findData("flim"))
+    assert app.save.name == "cells"
+
+
+def test_a_restored_save_target_reaches_the_widgets(app):
+    panel = LauncherPanel(app)
+    app.set_save(name="from_session", enabled=True)
+    assert panel.name_edit.text() == "from_session"
+    assert panel.save_check.isChecked() is True
+
+
+def test_saving_with_no_name_greys_play_and_says_why(app):
+    app.select_program("simulation")
+    panel = LauncherPanel(app)
+    app.set_save(name="", enabled=True)
+
+    assert panel.start_btn.isEnabled() is False
+    assert "a name to save under" in panel.status_label.text()
+
+    app.set_save(name="cells")
+    assert panel.start_btn.isEnabled() is True
+
+
+def test_an_empty_name_only_blocks_when_saving_is_on(app):
+    app.select_program("simulation")
+    panel = LauncherPanel(app)
+    app.set_save(name="", enabled=False)
+    assert panel.start_btn.isEnabled() is True
 
 
 def test_starting_with_no_devices_reports_instead_of_crashing(app, monkeypatch):
@@ -353,10 +396,8 @@ def test_a_saved_run_writes_the_expected_files(app, monkeypatch, tmp_path):
         lambda **kwargs: np.zeros((2, 8, 8), np.float32),
     )
     app.select_program("confocal")
-    params = app.current_params()
-    small_scan(params)
-    params.save.save_enabled = True
-    params.save.save_path = str(tmp_path / "acq")
+    small_scan(app.current_params())
+    app.set_save(name="acq", directory=str(tmp_path), enabled=True)
     app.devices[0].config.ai_channels = (0, 1)
 
     handle = app.start_run()
@@ -366,6 +407,7 @@ def test_a_saved_run_writes_the_expected_files(app, monkeypatch, tmp_path):
     meta = json.loads((tmp_path / "acq_meta.json").read_text())
     assert meta["program_key"] == "confocal"
     assert meta["frames_saved"] == 2
+    assert handle.datasets["intensity"].name == "acq"
 
 
 def test_continuous_runs_until_stopped(app, monkeypatch):

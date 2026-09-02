@@ -12,7 +12,7 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
-from .state import SCHEMA_VERSION, DeviceState, SessionState, ViewState
+from .state import SCHEMA_VERSION, DeviceState, SaveState, SessionState, ViewState
 
 
 def default_session_path() -> Path:
@@ -104,5 +104,18 @@ def decode(raw: dict[str, Any]) -> SessionState:
         views=views,
         selected_program=raw.get("selected_program"),
         params_by_program=params,
+        save=decode_save(raw.get("save")),
         ads_layout=layout if isinstance(layout, str) else None,
+    )
+
+
+def decode_save(raw: Any) -> SaveState:
+    """The save block, or defaults. Absent in every file written before it."""
+    if not isinstance(raw, dict):
+        return SaveState()
+    default = SaveState()
+    return SaveState(
+        name=str(raw.get("name", default.name)),
+        directory=str(raw.get("directory", default.directory)),
+        enabled=bool(raw.get("enabled", default.enabled)),
     )

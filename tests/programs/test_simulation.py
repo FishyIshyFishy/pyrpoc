@@ -18,13 +18,19 @@ import pytest
 from pyrpoc.core.modulation import MaskBinding, save_mask
 from pyrpoc.core.streams import Image2D
 from pyrpoc.data.io import load_frames
+from pyrpoc.data.io import SaveTarget
 from pyrpoc.data.library import DatasetLibrary
 from pyrpoc.operations.simulation import PATTERNS, combine_masks, synthetic_frame
 from pyrpoc.programs.simulation import Simulation, SimulationParams, build_mask
 from pyrpoc.run.runner import Runner
 
 
-def new_params(tmp_path=None, *, frames=3, masks=(), pattern="cells") -> SimulationParams:
+def saving(tmp_path, name: str = "acq") -> SaveTarget:
+    """Saving on, into the test's own directory. Not a parameter any more."""
+    return SaveTarget(name=name, directory=str(tmp_path), enabled=True)
+
+
+def new_params(*, frames=3, masks=(), pattern="cells") -> SimulationParams:
     params = SimulationParams()
     params.frame.x_pixels = 32
     params.frame.y_pixels = 24
@@ -33,15 +39,15 @@ def new_params(tmp_path=None, *, frames=3, masks=(), pattern="cells") -> Simulat
     params.num_frames = frames
     params.frame_interval_ms = 0
     params.modulation.masks = tuple(masks)
-    if tmp_path is not None:
-        params.save.save_enabled = True
-        params.save.save_path = str(tmp_path / "acq")
     return params
 
 
-def run_new(params, *, continuous=False):
+def run_new(params, *, continuous=False, save=None):
     runner = Runner(DatasetLibrary())
-    handle = runner.start(Simulation(), params, [], continuous=continuous, program_key="simulation")
+    handle = runner.start(
+        Simulation(), params, [], continuous=continuous,
+        program_key="simulation", save=save,
+    )
     if continuous:
         dataset = handle.datasets["intensity"]
         for _ in range(500):
@@ -191,7 +197,7 @@ def test_continuous_ignores_the_frame_count_without_overwriting_it():
 
 
 def test_saving_writes_one_tiff_per_channel_and_a_metadata_file(tmp_path):
-    run_new(new_params(tmp_path))
+    run_new(new_params(), save=saving(tmp_path))
 
     meta = json.loads((tmp_path / "acq_meta.json").read_text(encoding="utf-8"))
     assert meta["program_key"] == "simulation"

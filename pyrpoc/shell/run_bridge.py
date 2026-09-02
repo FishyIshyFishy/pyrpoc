@@ -18,6 +18,7 @@ from PyQt6.QtCore import QObject, pyqtSignal
 
 from pyrpoc.core.errors import MissingDevice, ParameterError
 from pyrpoc.data.dataset import Dataset
+from pyrpoc.data.io import SaveTarget
 from pyrpoc.data.library import DatasetLibrary
 from pyrpoc.devices.base import Device
 from pyrpoc.run.runner import Runner
@@ -49,6 +50,7 @@ class RunBridge(QObject):
         *,
         continuous: bool = False,
         program_key: str | None = None,
+        save: SaveTarget | None = None,
     ):
         """Start a run. Raises MissingDevice or ParameterError before anything begins."""
         try:
@@ -58,6 +60,7 @@ class RunBridge(QObject):
                 devices,
                 continuous=continuous,
                 program_key=program_key,
+                save=save,
                 on_status=self.run_status.emit,
                 on_dataset=self.on_dataset,
                 on_finished=self.run_finished.emit,

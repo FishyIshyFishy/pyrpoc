@@ -14,6 +14,7 @@ import pytest
 
 from pyrpoc.core.modulation import MaskBinding, save_mask
 from pyrpoc.core.streams import Image2D, Samples4D
+from pyrpoc.data.io import SaveTarget
 from pyrpoc.data.library import DatasetLibrary
 from pyrpoc.devices import DAQ, Galvo
 from pyrpoc.operations.raster import pixel_samples
@@ -56,7 +57,12 @@ def devices():
     return daq, galvo
 
 
-def new_params(tmp_path=None, frames=3, masks=()) -> SplitConfocalParams:
+def saving(tmp_path, name: str = "acq") -> SaveTarget:
+    """Saving on, into the test's own directory. Not a parameter any more."""
+    return SaveTarget(name=name, directory=str(tmp_path), enabled=True)
+
+
+def new_params(frames=3, masks=()) -> SplitConfocalParams:
     params = SplitConfocalParams()
     for name, value in SCAN.items():
         setattr(params.scan, name, value)
@@ -64,13 +70,10 @@ def new_params(tmp_path=None, frames=3, masks=()) -> SplitConfocalParams:
     params.split.t1_samples = T1
     params.num_frames = frames
     params.modulation.masks = tuple(masks)
-    if tmp_path is not None:
-        params.save.save_enabled = True
-        params.save.save_path = str(tmp_path / "acq")
     return params
 
 
-def run_new(monkeypatch, params, devices):
+def run_new(monkeypatch, params, devices, *, save=None):
     calls = []
 
     def fake(**kwargs):
@@ -80,7 +83,7 @@ def run_new(monkeypatch, params, devices):
     monkeypatch.setattr("pyrpoc.programs.split_confocal.split_raster_scan", fake)
     runner = Runner(DatasetLibrary())
     handle = runner.start(
-        SplitConfocal(), params, list(devices), program_key="split_confocal"
+        SplitConfocal(), params, list(devices), program_key="split_confocal", save=save,
     )
     handle.thread.join(timeout=10)
     return handle, calls
@@ -148,7 +151,7 @@ def test_the_raw_stream_is_in_the_library_and_can_be_bound(monkeypatch, devices)
 
 
 def test_the_raw_npz_keeps_its_v30_filename_and_keys(monkeypatch, devices, tmp_path):
-    run_new(monkeypatch, new_params(tmp_path), devices)
+    run_new(monkeypatch, new_params(), devices, save=saving(tmp_path))
     written = tmp_path / "acq_raw_pixel_stream.npz"
     assert written.exists(), "the v3.0 filename must be unchanged"
     with np.load(written, allow_pickle=True) as npz:
@@ -157,13 +160,13 @@ def test_the_raw_npz_keeps_its_v30_filename_and_keys(monkeypatch, devices, tmp_p
 
 
 def test_one_tiff_per_split_channel(monkeypatch, devices, tmp_path):
-    run_new(monkeypatch, new_params(tmp_path), devices)
+    run_new(monkeypatch, new_params(), devices, save=saving(tmp_path))
     for label in ("ai0_t0", "ai0_t2", "ai1_t0", "ai1_t2"):
         assert (tmp_path / f"acq_{label}.tiff").exists()
 
 
 def test_metadata_counts_frames_against_the_intensity_stream(monkeypatch, devices, tmp_path):
-    run_new(monkeypatch, new_params(tmp_path), devices)
+    run_new(monkeypatch, new_params(), devices, save=saving(tmp_path))
     meta = json.loads((tmp_path / "acq_meta.json").read_text())
     assert meta["frames_saved"] == 3
     assert sorted(meta["streams"]) == ["intensity", "raw_pixel_stream"]

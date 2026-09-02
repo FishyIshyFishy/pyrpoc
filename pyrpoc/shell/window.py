@@ -1,8 +1,12 @@
-"""The dock manager: four fixed panels plus one dock per open view.
+"""The dock manager: three fixed panels plus one dock per open view.
 
 Moved from gui/main_gui.py. The ADS handling is carried over as-is, including
 the object-name-before-add ordering that its save/restore lookup depends on and
 the guard that stops restoreState() reshuffling from mutating view inventory.
+
+Data and views used to be a panel each. They are one dock now, split, because
+choosing what a display shows means looking at what has been acquired -- and as
+tabs, only one of the two was ever on screen.
 """
 
 from __future__ import annotations
@@ -11,15 +15,15 @@ from dataclasses import dataclass
 from enum import Enum
 
 from PyQt6 import sip
-from PyQt6.QtCore import QByteArray, pyqtSignal
+from PyQt6.QtCore import QByteArray, Qt, pyqtSignal
 from PyQt6.QtGui import QAction, QCloseEvent
-from PyQt6.QtWidgets import QVBoxLayout, QWidget
+from PyQt6.QtWidgets import QLabel, QSplitter, QVBoxLayout, QWidget
 import PyQt6Ads as qtads
 
 from .app import Application
+from .data_panel import DataPanel
 from .devices_panel import DevicesPanel
 from .launcher import LauncherPanel
-from .library_panel import LibraryPanel
 from .menubar import MainMenuBar
 from .theme.manager import ThemeController
 from .views_panel import ViewsPanel
@@ -31,8 +35,7 @@ qtads.CDockManager.setConfigFlag(qtads.CDockManager.eConfigFlag.OpaqueSplitterRe
 class DockKey(str, Enum):
     ACQUISITION = "acquisition"
     DEVICES = "devices"
-    VIEWS = "views"
-    LIBRARY = "library"
+    DATA = "data"
 
 
 @dataclass(frozen=True)
@@ -45,9 +48,43 @@ class DockSpec:
 PANELS = [
     DockSpec(DockKey.ACQUISITION, "Acquisition", "dock.acquisition"),
     DockSpec(DockKey.DEVICES, "Devices", "dock.devices"),
-    DockSpec(DockKey.VIEWS, "Views", "dock.views"),
-    DockSpec(DockKey.LIBRARY, "Library", "dock.library"),
+    # The object name is the one the Views dock had. ADS restores by object
+    # name, so a session saved before the merge puts this dock where its Views
+    # tab was rather than dropping it; the vacated Library dock is skipped.
+    DockSpec(DockKey.DATA, "Data & Views", "dock.views"),
 ]
+
+
+def titled(title: str, widget: QWidget) -> QWidget:
+    """A panel under a heading, for the dock that holds more than one.
+
+    The dock tab used to name what was inside it. Two panels in one dock need
+    to say so themselves.
+    """
+    box = QWidget()
+    layout = QVBoxLayout(box)
+    layout.setContentsMargins(0, 6, 0, 0)
+    layout.setSpacing(0)
+    heading = QLabel(title, box)
+    heading.setStyleSheet("font-weight: 600; padding: 0 8px;")
+    layout.addWidget(heading)
+    layout.addWidget(widget, 1)
+    return box
+
+
+def stacked(*sections: tuple[str, QWidget]) -> QWidget:
+    """Several titled panels in one dock, the split between them draggable.
+
+    How much room a view list needs depends on how many views are open, so the
+    division is the user's to make rather than a fixed ratio.
+    """
+    splitter = QSplitter(Qt.Orientation.Vertical)
+    splitter.setChildrenCollapsible(False)
+    for title, widget in sections:
+        splitter.addWidget(titled(title, widget))
+    for index in range(splitter.count()):
+        splitter.setStretchFactor(index, 1)
+    return splitter
 
 
 class MainWindow(QWidget):
@@ -94,11 +131,12 @@ class MainWindow(QWidget):
     # -- panels -------------------------------------------------------------- #
 
     def build_panels(self) -> None:
+        self.data_panel = DataPanel(self.app)
+        self.views_panel = ViewsPanel(self.app)
         widgets = {
             DockKey.ACQUISITION: LauncherPanel(self.app),
             DockKey.DEVICES: DevicesPanel(self.app),
-            DockKey.VIEWS: ViewsPanel(self.app),
-            DockKey.LIBRARY: LibraryPanel(self.app),
+            DockKey.DATA: stacked(("Data", self.data_panel), ("Views", self.views_panel)),
         }
         first: qtads.CDockWidget | None = None
         for spec in PANELS:

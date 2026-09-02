@@ -14,7 +14,6 @@ from pyrpoc.core.modulation import load_mask
 from pyrpoc.core.params import (
     DaqGroup,
     ModulationGroup,
-    SaveGroup,
     ScanGroup,
     group,
     int_field,
@@ -34,7 +33,6 @@ class ConfocalParams:
     scan: ScanGroup = group(ScanGroup, "Scan")
     daq: DaqGroup = group(DaqGroup, "DAQ")
     modulation: ModulationGroup = group(ModulationGroup, "Modulation")
-    save: SaveGroup = group(SaveGroup, "Save")
     num_frames: int = int_field(
         "Frames", 1, minimum=1, tooltip="Number of frames to capture"
     )
