@@ -16,15 +16,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from pyrpoc.core.modulation import load_mask
-from pyrpoc.core.params import ModulationGroup, SaveGroup, group, int_field
+from pyrpoc.core.params import ModulationGroup, group, int_field
 from pyrpoc.core.streams import Image2D
-from .synthetic import (
-    PATTERNS,
-    FrameGroup,
-    SignalGroup,
-    combine_masks,
-    synthetic_frame,
-)
+from .synthetic import FrameGroup, SignalGroup, combine_masks, synthetic_frame
 from pyrpoc.run.program import Program
 
 from .registry import program_registry
