@@ -6,7 +6,7 @@ in the dataset library.
 
 This is the one place ``core/`` touches the filesystem. Mask files are an input
 format, not dataset output, so putting the loader in ``data/io.py`` would muddy
-that module; and ``operations/`` may not import ``data/`` at all.
+that module; and ``programs/hardware/`` may not import ``data/`` at all.
 """
 
 from __future__ import annotations

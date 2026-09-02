@@ -10,8 +10,8 @@ from __future__ import annotations
 
 import pytest
 
-from pyrpoc.operations.raster import pixel_samples as raster_pixel_samples
-from pyrpoc.operations.tagger import pixel_samples as flim_pixel_samples
+from pyrpoc.programs.hardware.raster import pixel_samples as raster_pixel_samples
+from pyrpoc.programs.hardware.tagger import pixel_samples as flim_pixel_samples
 
 
 @pytest.mark.parametrize(

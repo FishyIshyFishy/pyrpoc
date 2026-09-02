@@ -1,4 +1,4 @@
-"""The groups must unpack into the operations exactly.
+"""The groups must unpack into the hardware functions exactly.
 
 Programs call ``raster_scan(**p.scan, **p.daq, **daq.config, **galvo.config)``.
 If a field is renamed on either side, that call breaks at runtime with a
@@ -14,9 +14,9 @@ import pytest
 
 from pyrpoc.core.params import DaqGroup, FlimDaqGroup, ScanGroup, TriggerGroup
 from pyrpoc.devices import DAQ, Galvo
-from pyrpoc.operations.raster import raster_scan
-from pyrpoc.operations.split_raster import split_raster_scan
-from pyrpoc.operations.tagger import flim_scan
+from pyrpoc.programs.hardware.raster import raster_scan
+from pyrpoc.programs.hardware.split_raster import split_raster_scan
+from pyrpoc.programs.hardware.tagger import flim_scan
 from pyrpoc.core.params import SplitGroup
 
 
@@ -54,7 +54,7 @@ def test_flim_scan_signature_matches_its_groups():
 
 
 @pytest.mark.parametrize("func", [raster_scan, split_raster_scan, flim_scan])
-def test_operations_take_keyword_arguments_only(func):
+def test_hardware_functions_take_keyword_arguments_only(func):
     """Positional arguments across four unpacked groups would be unreadable."""
     positional = {
         name

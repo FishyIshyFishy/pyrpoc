@@ -21,7 +21,8 @@ def pixel_samples(dwell_time_us: float, sample_rate_hz: float) -> int:
 
     Rounds, floor 2 — the counter needs at least one high tick and one low tick.
     The raster path truncates and has a floor of 1; the two formulas differ and
-    ``tests/operations/test_pixel_samples.py`` pins both. Do not unify them.
+    ``tests/programs/hardware/test_pixel_samples.py`` pins both. Do not unify
+    them.
     """
     return max(2, int(round(dwell_time_us * 1e-6 * sample_rate_hz)))
 

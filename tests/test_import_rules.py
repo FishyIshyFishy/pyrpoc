@@ -21,14 +21,18 @@ SOURCE_ROOT = Path(__file__).resolve().parents[1] / "pyrpoc"
 ALLOWED: dict[str, set[str]] = {
     "core": set(),
     "devices": {"core"},
-    "operations": {"core", "devices"},
     "data": {"core"},
-    "run": {"core", "data", "operations", "devices"},
+    "run": {"core", "data", "devices"},
     "views": {"core", "data"},
-    "programs": {"core", "data", "operations", "devices", "run"},
+    "programs": {"core", "data", "devices", "run"},
     "session": {"core"},
-    "shell": {"core", "devices", "operations", "data", "run", "programs", "views", "session"},
+    "shell": {"core", "devices", "data", "run", "programs", "views", "session"},
 }
+
+# Modules that share code between programs but keep the arrays-out contract.
+# Checked by path, not by folder: they live under programs/, which may import
+# data/, so a folder check would pass vacuously and rule 3 would be gone.
+ARRAYS_ONLY = ("programs/hardware/", "programs/synthetic.py")
 
 # Phase 9 deleted the v3.0 tree, so nothing is exempt any more. Kept as an empty
 # set rather than removed, because it is the natural place for an exemption if
@@ -128,12 +132,23 @@ def test_nothing_imports_programs_except_shell_and_itself():
         assert "programs" not in _imported_pyrpoc_folders(path), f"{path} imports programs/"
 
 
-def test_operations_never_import_data():
-    """Rule 3: operations return arrays; writing them into a dataset is the program's job."""
-    for folder, path in _modules():
-        if folder != "operations":
+def test_hardware_modules_never_import_data():
+    """Rule 3: the shared hardware modules return arrays; turning an array into a
+    dataset write is the program's job.
+
+    The ``assert checked`` at the end is the point. When ``operations/`` moved
+    into ``programs/hardware/`` this rule went from checking five modules to
+    checking none, and still passed. A rule that cannot tell "nothing violates
+    it" from "nothing is looked at" is not a rule.
+    """
+    checked = 0
+    for _, path in _modules():
+        rel = path.relative_to(SOURCE_ROOT).as_posix()
+        if not rel.startswith(ARRAYS_ONLY):
             continue
+        checked += 1
         assert "data" not in _imported_pyrpoc_folders(path), f"{path} imports data/"
+    assert checked, f"no modules found under {ARRAYS_ONLY}"
 
 
 def test_qt_only_in_views_shell_and_device_panels():

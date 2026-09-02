@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 
 from pyrpoc.core.errors import DaqError
-from pyrpoc.operations import tagger as acq
+from pyrpoc.programs.hardware import tagger as acq
 
 
 # --------------------------------------------------------------------------- #

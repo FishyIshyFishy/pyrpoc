@@ -26,7 +26,7 @@ from pyrpoc.core.params import (
 )
 from pyrpoc.core.streams import Cube3D, Image2D
 from pyrpoc.devices import DAQ, Galvo, TimeTagger
-from pyrpoc.operations.tagger import flim_intensity, flim_scan, read_flim_frame
+from .hardware.tagger import flim_intensity, flim_scan, read_flim_frame
 from pyrpoc.run.program import Program
 
 from .registry import program_registry

@@ -20,7 +20,7 @@ from pyrpoc.core.streams import Image2D
 from pyrpoc.data.io import load_frames
 from pyrpoc.data.io import SaveTarget
 from pyrpoc.data.library import DatasetLibrary
-from pyrpoc.operations.simulation import PATTERNS, combine_masks, synthetic_frame
+from pyrpoc.programs.synthetic import PATTERNS, combine_masks, synthetic_frame
 from pyrpoc.programs.simulation import Simulation, SimulationParams, build_mask
 from pyrpoc.run.runner import Runner
 

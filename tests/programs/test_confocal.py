@@ -190,7 +190,7 @@ def test_the_ttl_matches_the_phase0_golden_array(devices, tmp_path):
     Uses the reference geometry, which is smaller than the schema minimum --
     build_ttl is arithmetic, so it does not validate, and that is the point.
     """
-    from pyrpoc.operations.raster import pixel_samples
+    from pyrpoc.programs.hardware.raster import pixel_samples
 
     golden = dict(np.load(reference_path))
     daq, _ = devices

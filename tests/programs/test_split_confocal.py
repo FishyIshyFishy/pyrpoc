@@ -17,7 +17,7 @@ from pyrpoc.core.streams import Image2D, Samples4D
 from pyrpoc.data.io import SaveTarget
 from pyrpoc.data.library import DatasetLibrary
 from pyrpoc.devices import DAQ, Galvo
-from pyrpoc.operations.raster import pixel_samples
+from pyrpoc.programs.hardware.raster import pixel_samples
 from pyrpoc.programs.split_confocal import (
     SplitConfocal,
     SplitConfocalParams,

@@ -1,10 +1,14 @@
-"""Synthetic frames: the one operation with no hardware behind it.
+"""Synthetic frames: what a scan would have returned, with no instrument.
 
-Every other operation drives a real clock domain. This one fabricates what a
-scan would have returned, so everything above it -- the runner, datasets,
-saving, views, the source picker -- can be exercised on a laptop with no
-instruments attached. The contract is the folder's usual one: arguments in,
-arrays out, no state and no knowledge of who is calling.
+Lives beside ``simulation.py`` rather than in ``hardware/`` because there is no
+hardware here to share -- ``programs/simulation.py`` is the only caller, and a
+module used by exactly one program is that program's business. Same reason its
+parameter groups are declared there instead of in ``core/params.py``.
+
+Fabricating the frames is what lets everything above them -- the runner,
+datasets, saving, views, the source picker -- be exercised on a laptop with
+nothing attached. The contract is ``hardware/``'s: arguments in, arrays out, no
+state and no knowledge of who is calling.
 
 Deterministic by construction: a pattern is a function of (seed, channel,
 frame_index), so the same parameters give the same frames on every run and a
@@ -17,7 +21,7 @@ from typing import Sequence
 
 import numpy as np
 
-from .modulation import resize_mask_nearest
+from .hardware.modulation import resize_mask_nearest
 
 #: Pattern names offered by the simulated program, in menu order.
 PATTERNS = ("cells", "rings", "gradient", "checkerboard", "flat")

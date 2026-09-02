@@ -224,9 +224,9 @@ def group(cls: type, label: str):
 class Group:
     """Base for parameter groups.
 
-    ``keys`` and ``__getitem__`` are what make ``operation(**p.scan)`` work, so
-    operations can stay on loose keyword arguments instead of taking group
-    objects.
+    ``keys`` and ``__getitem__`` are what make ``scan_function(**p.scan)`` work,
+    so the ``hardware/`` modules can stay on loose keyword arguments instead of
+    taking group objects.
     """
 
     def keys(self) -> list[str]:

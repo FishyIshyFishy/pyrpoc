@@ -8,7 +8,7 @@ what the row asks for.
 
 ``owns_connection`` means the device can verify it exists, not that it holds an
 open handle: an NI task *is* the clock domain, so tasks are created per scan
-inside the operations.
+inside ``programs/hardware/``.
 """
 
 from __future__ import annotations

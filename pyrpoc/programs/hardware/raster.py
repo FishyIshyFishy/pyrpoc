@@ -25,7 +25,8 @@ def pixel_samples(dwell_time_us: float, sample_rate_hz: float) -> int:
     """Samples per pixel for a raster scan.
 
     Truncating, floor 1. The FLIM path rounds and has a floor of 2; the two
-    formulas differ and ``tests/operations/test_pixel_samples.py`` pins both.
+    formulas differ and ``tests/programs/hardware/test_pixel_samples.py`` pins
+    both.
     """
     return max(1, int(dwell_time_us * 1e-6 * sample_rate_hz))
 

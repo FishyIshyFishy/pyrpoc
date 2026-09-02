@@ -18,7 +18,7 @@ PROBE = textwrap.dedent(
     """
     import importlib, sys
 
-    folders = ["core", "operations", "devices", "data", "run", "programs", "session"]
+    folders = ["core", "devices", "data", "run", "programs", "session"]
     imported = []
     for name in folders:
         try:
@@ -49,7 +49,7 @@ def test_headless_layers_do_not_import_qt():
     imported = [name for name in lines["IMPORTED"].split(",") if name]
     leaked = [name for name in lines["LEAKED"].split(",") if name]
 
-    assert "core" in imported and "operations" in imported, imported
+    assert "core" in imported and "programs" in imported, imported
     assert not leaked, (
         "importing the headless layers pulled in Qt: "
         + ", ".join(leaked)

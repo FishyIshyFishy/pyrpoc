@@ -10,7 +10,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from pyrpoc.operations.raster import (
+from pyrpoc.programs.hardware.raster import (
     extract_kept_samples,
     generate_raster_waveform,
     reshape_to_frame,

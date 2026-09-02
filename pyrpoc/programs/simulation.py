@@ -25,7 +25,7 @@ from pyrpoc.core.params import (
     int_field,
 )
 from pyrpoc.core.streams import Image2D
-from pyrpoc.operations.simulation import PATTERNS, combine_masks, synthetic_frame
+from .synthetic import PATTERNS, combine_masks, synthetic_frame
 from pyrpoc.run.program import Program
 
 from .registry import program_registry
@@ -96,7 +96,7 @@ def build_mask(params: SimulationParams):
     """Load the bound masks and flatten them onto the frame grid.
 
     Same shape as confocal's ``build_ttl``: once before the loop, and here
-    rather than in the operation because ``operations/`` may not read files.
+    rather than in ``synthetic.py``, which may not read files.
     """
     if not params.modulation.masks:
         return None
