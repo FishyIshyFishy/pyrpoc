@@ -224,19 +224,14 @@ def group(cls: type, label: str):
 class Group:
     """Base for parameter groups.
 
-    ``keys`` and ``__getitem__`` make ``f(**p.some_group)`` work. The
-    ``hardware/`` modules no longer use it -- they take the group itself, so a
-    renamed field is a type error rather than a ``TypeError`` on the first
-    frame. ``programs/simulation.py`` is the last caller that splats.
+    Deliberately empty. It used to carry ``keys`` and ``__getitem__``, which
+    existed for one purpose: to make ``f(**p.some_group)`` work. Every caller
+    now takes the group itself, so a renamed field is a type error instead of a
+    ``TypeError`` on the first frame, and the mapping protocol went with the
+    last splat. Leaving it in would be leaving the way back open.
+
+    The base class stays because ``group()`` and the form generator key off it.
     """
-
-    def keys(self) -> list[str]:
-        return [f.name for f in fields(self) if "param" in f.metadata]
-
-    def __getitem__(self, name: str) -> Any:
-        if name not in self.keys():
-            raise KeyError(name)
-        return getattr(self, name)
 
 
 # --------------------------------------------------------------------------- #

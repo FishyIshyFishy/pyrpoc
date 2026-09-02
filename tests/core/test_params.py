@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from dataclasses import fields
+
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -82,14 +84,18 @@ def test_masks_field_builds_bindings():
 # --- groups ----------------------------------------------------------------
 
 
-def test_group_unpacks_into_a_call():
-    """What makes raster_scan(**p.scan, **p.daq) work."""
+def test_a_group_is_not_a_mapping():
+    """``Group`` carried ``keys``/``__getitem__`` so that ``f(**p.scan)`` worked.
 
-    def op(*, x_pixels, y_pixels, extra_left, extra_right, fast_axis_offset,
-           fast_axis_amplitude, slow_axis_offset, slow_axis_amplitude, dwell_time_us):
-        return x_pixels, dwell_time_us
-
-    assert op(**P.ScanGroup(x_pixels=64, dwell_time_us=3.0)) == (64, 3.0)
+    Nothing splats a group any more -- callers take the group itself, so a
+    renamed field is a type error rather than a TypeError on the first frame.
+    The protocol was removed with the last splat; this is what stops it coming
+    back by accident.
+    """
+    scan = P.ScanGroup(x_pixels=64, dwell_time_us=3.0)
+    assert (scan.x_pixels, scan.dwell_time_us) == (64, 3.0)
+    with pytest.raises(TypeError):
+        dict(**scan)  # type: ignore[arg-type]
 
 
 def test_scan_group_total_x():
@@ -100,7 +106,7 @@ def test_scan_group_total_x():
 def test_flim_daq_group_overrides_only_the_default():
     assert P.DaqGroup().sample_rate_hz == 100_000.0
     assert P.FlimDaqGroup().sample_rate_hz == 1_000_000.0
-    assert list(P.FlimDaqGroup().keys()) == ["sample_rate_hz"]
+    assert [f.name for f in fields(P.FlimDaqGroup())] == ["sample_rate_hz"]
 
 
 def test_histogram_group_laser_period():

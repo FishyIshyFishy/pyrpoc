@@ -17,9 +17,12 @@ test can assert on pixels.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Sequence
 
 import numpy as np
+
+from pyrpoc.core.params import Group, choice_field, float_field, int_field
 
 from .hardware.modulation import resize_mask_nearest
 
@@ -28,6 +31,47 @@ PATTERNS = ("cells", "rings", "gradient", "checkerboard", "flat")
 
 #: Blobs per channel in the "cells" pattern.
 BLOB_COUNT = 14
+
+
+@dataclass
+class FrameGroup(Group):
+    """The shape of a simulated frame -- what ScanGroup decides on a real rig."""
+
+    x_pixels: int = int_field("X Pixels", 256, minimum=8, tooltip="Frame width in pixels")
+    y_pixels: int = int_field("Y Pixels", 256, minimum=8, tooltip="Frame height in pixels")
+    channels: int = int_field(
+        "Channels", 2, minimum=1, maximum=16, tooltip="How many detector channels to fake"
+    )
+
+
+@dataclass
+class SignalGroup(Group):
+    """What the fake detector sees."""
+
+    pattern: str = choice_field(
+        "Pattern",
+        "cells",
+        choices=PATTERNS,
+        tooltip="cells drift like a sample, the rest are test targets",
+    )
+    signal_level: float = float_field(
+        "Signal Level", 1.0, minimum=0.0, tooltip="Peak brightness before noise"
+    )
+    noise_level: float = float_field(
+        "Noise Level", 0.03, minimum=0.0, step=0.01, tooltip="Gaussian noise added per pixel"
+    )
+    drift_pixels_per_frame: float = float_field(
+        "Drift (px/frame)", 1.5, minimum=0.0, tooltip="How far the pattern moves each frame"
+    )
+    mask_gain: float = float_field(
+        "Mask Gain",
+        0.5,
+        minimum=0.0,
+        tooltip="Extra brightness inside bound masks, standing in for stimulation",
+    )
+    seed: int = int_field(
+        "Seed", 1234, minimum=0, tooltip="Same seed and frame index give the same pixels"
+    )
 
 
 def _rng(*parts: int) -> np.random.Generator:
@@ -157,25 +201,30 @@ def combine_masks(
 
 def synthetic_frame(
     *,
-    x_pixels: int,
-    y_pixels: int,
-    channels: int,
-    pattern: str,
-    signal_level: float,
-    noise_level: float,
-    drift_pixels_per_frame: float,
-    mask_gain: float,
-    seed: int,
+    frame_shape: FrameGroup,
+    signal: SignalGroup,
     frame_index: int,
-    mask: np.ndarray | None = None,
+    mask: np.ndarray | None,
 ) -> np.ndarray:
     """One ``(C, H, W)`` float32 frame, as a real scan would have returned it.
 
-    Masked pixels are brightened by ``mask_gain``, standing in for the
+    Masked pixels are brightened by ``signal.mask_gain``, standing in for the
     photostimulation the TTL lines would have driven. Noise is added after the
     mask and the result is clipped at zero, because a detector cannot read
     negative.
+
+    ``mask`` has no default for the same reason nothing in ``hardware/`` does:
+    the caller says "no mask is bound" by passing ``None`` rather than by
+    leaving the argument off.
     """
+    x_pixels, y_pixels, channels = frame_shape.x_pixels, frame_shape.y_pixels, frame_shape.channels
+    pattern = signal.pattern
+    signal_level = signal.signal_level
+    noise_level = signal.noise_level
+    drift_pixels_per_frame = signal.drift_pixels_per_frame
+    mask_gain = signal.mask_gain
+    seed = signal.seed
+
     if channels <= 0:
         raise ValueError("channels must be at least 1")
     if pattern not in PLANES:

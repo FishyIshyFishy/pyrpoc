@@ -16,60 +16,18 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from pyrpoc.core.modulation import load_mask
-from pyrpoc.core.params import (
-    Group,
-    ModulationGroup,
-    choice_field,
-    float_field,
-    group,
-    int_field,
-)
+from pyrpoc.core.params import ModulationGroup, SaveGroup, group, int_field
 from pyrpoc.core.streams import Image2D
-from .synthetic import PATTERNS, combine_masks, synthetic_frame
+from .synthetic import (
+    PATTERNS,
+    FrameGroup,
+    SignalGroup,
+    combine_masks,
+    synthetic_frame,
+)
 from pyrpoc.run.program import Program
 
 from .registry import program_registry
-
-
-@dataclass
-class FrameGroup(Group):
-    """The shape of a simulated frame -- what ScanGroup decides on a real rig."""
-
-    x_pixels: int = int_field("X Pixels", 256, minimum=8, tooltip="Frame width in pixels")
-    y_pixels: int = int_field("Y Pixels", 256, minimum=8, tooltip="Frame height in pixels")
-    channels: int = int_field(
-        "Channels", 2, minimum=1, maximum=16, tooltip="How many detector channels to fake"
-    )
-
-
-@dataclass
-class SignalGroup(Group):
-    """What the fake detector sees."""
-
-    pattern: str = choice_field(
-        "Pattern",
-        "cells",
-        choices=PATTERNS,
-        tooltip="cells drift like a sample, the rest are test targets",
-    )
-    signal_level: float = float_field(
-        "Signal Level", 1.0, minimum=0.0, tooltip="Peak brightness before noise"
-    )
-    noise_level: float = float_field(
-        "Noise Level", 0.03, minimum=0.0, step=0.01, tooltip="Gaussian noise added per pixel"
-    )
-    drift_pixels_per_frame: float = float_field(
-        "Drift (px/frame)", 1.5, minimum=0.0, tooltip="How far the pattern moves each frame"
-    )
-    mask_gain: float = float_field(
-        "Mask Gain",
-        0.5,
-        minimum=0.0,
-        tooltip="Extra brightness inside bound masks, standing in for stimulation",
-    )
-    seed: int = int_field(
-        "Seed", 1234, minimum=0, tooltip="Same seed and frame index give the same pixels"
-    )
 
 
 @dataclass
@@ -122,8 +80,8 @@ class Simulation(Program):
         for index in ctx.frames(p.num_frames):
             ctx.status(f"frame {index + 1}{total}")
             frame = synthetic_frame(
-                **p.frame,
-                **p.signal,
+                frame_shape=p.frame,
+                signal=p.signal,
                 frame_index=index,
                 mask=mask,
             )
