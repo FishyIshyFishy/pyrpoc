@@ -47,6 +47,9 @@ class DataPanel(QWidget):
         self.empty_label = QLabel("No acquisitions yet. Data appears here as it arrives.", self)
         self.empty_label.setStyleSheet("color: palette(mid); font-style: italic;")
         self.empty_label.setWordWrap(True)
+        # Nothing in this layout expands once the table is hidden, so the label
+        # would otherwise be handed the panel's whole height and centre itself.
+        self.empty_label.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
         root.addWidget(self.empty_label)
 
         self.table = QTableWidget(0, len(COLUMNS), self)
@@ -147,4 +150,6 @@ class DataPanel(QWidget):
             self.app.bridge.release(dataset)
 
     def refresh_actions(self) -> None:
+        """An empty panel is the hint and nothing else -- no button to grey out."""
+        self.close_btn.setVisible(bool(self.rows))
         self.close_btn.setEnabled(self.selected_dataset() is not None)

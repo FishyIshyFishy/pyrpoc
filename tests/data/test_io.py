@@ -320,3 +320,8 @@ def test_a_blank_name_is_an_error_only_when_a_root_is_asked_for():
     assert SaveTarget(name="   ").filename == ""
     with pytest.raises(ParameterError, match="Name is required"):
         _ = SaveTarget(name="   ", enabled=True).root
+
+
+def test_the_folder_is_separate_from_the_root_so_the_ui_can_name_it():
+    assert SaveTarget(directory="/data", name="run1").folder == Path("/data")
+    assert SaveTarget(name="run1").folder == Path.cwd()

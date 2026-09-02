@@ -13,8 +13,6 @@ they belong next to the button that starts the run.
 
 from __future__ import annotations
 
-from pathlib import Path
-
 from PyQt6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -187,7 +185,7 @@ class LauncherPanel(QWidget):
     # -- saving --------------------------------------------------------------- #
 
     def choose_directory(self) -> None:
-        start = self.app.save.directory.strip() or str(Path.cwd())
+        start = str(self.app.save.folder)
         chosen = QFileDialog.getExistingDirectory(self, "Save acquisitions to", start)
         if chosen:
             self.app.set_save(directory=chosen)
@@ -204,15 +202,28 @@ class LauncherPanel(QWidget):
         if self.save_check.isChecked() != self.app.save.enabled:
             self.save_check.setChecked(self.app.save.enabled)
         self.dir_btn.setToolTip(self.describe_destination())
+        self.dir_btn.setText(self.folder_name())
         self.refresh_readiness()
 
     def describe_destination(self) -> str:
         if not self.app.save.enabled:
-            return "Choose where acquisitions are saved"
+            return f"Choose where acquisitions are saved. Currently {self.app.save.folder}"
         try:
             return f"Saving to {self.app.save.root}_*"
         except ParameterError as exc:
             return str(exc)
+
+    def folder_name(self) -> str:
+        """The destination folder's own name, on the button.
+
+        The full path is the tooltip, but which folder has to be readable
+        without hovering: no directory chosen means the process's working
+        directory, and a run that lands in whatever that happened to be is a
+        surprise found later, in the wrong place.
+        """
+        folder = self.app.save.folder
+        name = folder.name or str(folder)
+        return name if len(name) <= 16 else name[:15] + "\u2026"
 
     # -- running -------------------------------------------------------------- #
 

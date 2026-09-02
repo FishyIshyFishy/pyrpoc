@@ -16,6 +16,10 @@ The auxiliary-payload machinery this replaces -- ``_pending_auxiliary``,
 ``append_auxiliary_payload``, ``flush_auxiliary_payloads`` -- existed only
 because split confocal produced a second output and there was no way to declare
 one. Streams are declared in ``emits`` now, so they all travel the same path.
+
+``<root>`` comes from a ``SaveTarget``, which is also where the acquisition's
+name comes from. It is here rather than in the parameter model because saving
+is a property of a run and not of the program that fills it.
 """
 
 from __future__ import annotations
@@ -72,13 +76,18 @@ class SaveTarget:
         return stem
 
     @property
+    def folder(self) -> Path:
+        """Where files go. No directory means the working directory."""
+        text = (self.directory or "").strip()
+        return Path(text).expanduser() if text else Path.cwd()
+
+    @property
     def root(self) -> Path:
         """The base path the writers hang their suffixes off."""
         stem = self.filename
         if not stem:
             raise ParameterError("Name is required when saving is enabled")
-        folder = (self.directory or "").strip()
-        return (Path(folder).expanduser() if folder else Path.cwd()) / stem
+        return self.folder / stem
 
 
 class StreamWriter:

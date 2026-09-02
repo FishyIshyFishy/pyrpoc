@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import threading
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -279,6 +280,24 @@ def test_the_save_target_survives_a_program_change(app):
     panel.name_edit.setText("cells")
     panel.program_combo.setCurrentIndex(panel.program_combo.findData("flim"))
     assert app.save.name == "cells"
+
+
+def test_the_destination_folder_is_named_on_the_button(app, tmp_path):
+    """Where files land must be readable without hovering."""
+    panel = LauncherPanel(app)
+    assert panel.dir_btn.text() == Path.cwd().name, "an unset folder is the working directory"
+
+    folder = tmp_path / "runs"
+    app.set_save(directory=str(folder), enabled=True)
+    assert panel.dir_btn.text() == "runs"
+    assert str(folder) in panel.dir_btn.toolTip()
+
+
+def test_a_long_folder_name_is_elided_rather_than_widening_the_panel(app, tmp_path):
+    folder = tmp_path / "a_very_long_experiment_folder"
+    panel = LauncherPanel(app)
+    app.set_save(directory=str(folder))
+    assert panel.dir_btn.text() == "a_very_long_exp…"
 
 
 def test_a_restored_save_target_reaches_the_widgets(app):

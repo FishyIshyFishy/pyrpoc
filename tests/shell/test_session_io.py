@@ -194,3 +194,51 @@ def test_a_failed_save_never_interrupts_an_experiment(app, theme, tmp_path):
             raise OSError("disk full")
 
     Autosave(app, None, theme, Exploding(tmp_path / "session.json")).save_now()
+
+
+# --- the save target --------------------------------------------------------
+
+
+def test_capture_records_the_save_target(app):
+    app.set_save(name="cells", directory="/data", enabled=True)
+    state = capture(app)
+    assert (state.save.name, state.save.directory, state.save.enabled) == (
+        "cells",
+        "/data",
+        True,
+    )
+
+
+def test_apply_restores_the_save_target(app):
+    app.set_save(name="cells", directory="/data", enabled=True)
+    state = capture(app)
+
+    restored = Application()
+    apply(state, restored)
+    assert restored.save.name == "cells"
+    assert restored.save.directory == "/data"
+    assert restored.save.enabled is True
+
+
+def test_apply_tolerates_a_session_saved_before_saving_moved_out(app):
+    """The save group used to sit inside each program's parameters.
+
+    A v7 file still carries one there. It is no longer a field, so it is
+    dropped rather than blocking the restore -- which is why the schema was
+    not bumped over this.
+    """
+    state = capture(app)
+    state.params_by_program["confocal"]["save"] = {"save_enabled": True, "save_path": "/old"}
+    state.params_by_program["confocal"]["scan"]["x_pixels"] = 64
+
+    restored = Application()
+    apply(state, restored)
+    assert restored.params_for("confocal").scan.x_pixels == 64
+    assert not hasattr(restored.params_for("confocal"), "save")
+    assert restored.save.enabled is False
+
+
+def test_reset_clears_the_save_target_too(app, theme, tmp_path):
+    app.set_save(name="cells", directory="/data", enabled=True)
+    Autosave(app, None, theme, SessionStore(tmp_path / "session.json")).reset()
+    assert (app.save.name, app.save.directory, app.save.enabled) == ("acquisition", "", False)
