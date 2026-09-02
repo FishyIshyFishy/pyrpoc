@@ -18,9 +18,10 @@ import numpy as np
 import pytest
 import tifffile
 
+from pyrpoc.core.errors import ParameterError
 from pyrpoc.core.streams import Cube3D, Image2D, Samples4D
 from pyrpoc.data.dataset import Dataset, Provenance
-from pyrpoc.data.io import RunSaver, load_frames
+from pyrpoc.data.io import RunSaver, SaveTarget, load_frames
 
 from tests.reference.generate_storage_reference import reference_path
 
@@ -284,3 +285,43 @@ def test_a_plain_imread_returns_only_the_first_frame(tmp_path):
 
     np.testing.assert_array_equal(tifffile.imread(str(path)), data[0][0])
     assert load_frames(path).shape == (3, 3, 4)
+
+
+# --- the save target --------------------------------------------------------
+
+
+def test_the_root_is_the_directory_and_the_name():
+    target = SaveTarget(name="run1", directory="/data", enabled=True)
+    assert target.root == Path("/data/run1")
+
+
+def test_a_name_is_a_filename_not_a_path():
+    """The field is labelled Name and the folder is picked separately."""
+    assert SaveTarget(name="/elsewhere/run1", directory="/data").root == Path("/data/run1")
+
+
+def test_a_tiff_suffix_is_stripped():
+    """The writers append ``_<channel>.tiff``; a typed one would land inside it."""
+    assert SaveTarget(name="run1.tiff", directory="/data").root == Path("/data/run1")
+    assert SaveTarget(name="run1.TIF", directory="/data").filename == "run1"
+
+
+def test_no_directory_means_the_working_directory():
+    assert SaveTarget(name="run1").root == Path.cwd() / "run1"
+
+
+def test_a_home_relative_directory_is_expanded():
+    target = SaveTarget(name="run1", directory="~/data")
+    assert target.root == Path.home() / "data" / "run1"
+
+
+def test_a_blank_name_is_an_error_only_when_a_root_is_asked_for():
+    """Saving off with no name is a normal state -- most of a session is that."""
+    assert SaveTarget(name="   ").filename == ""
+    with pytest.raises(ParameterError, match="Name is required"):
+        _ = SaveTarget(name="   ", enabled=True).root
+
+
+def test_the_folder_is_separate_from_the_root_so_the_ui_can_name_it():
+    assert SaveTarget(directory="/data", name="run1").folder == Path("/data")
+    assert SaveTarget(name="run1").folder == Path.cwd()

@@ -19,7 +19,7 @@ from typing import Any, Callable
 from pyrpoc.core import params as P
 from pyrpoc.core.errors import Cancelled
 from pyrpoc.data.dataset import Dataset, Provenance
-from pyrpoc.data.io import RunSaver, utc_now
+from pyrpoc.data.io import RunSaver, SaveTarget, utc_now
 from pyrpoc.data.library import DatasetLibrary
 from pyrpoc.devices.base import Device
 
@@ -70,11 +70,19 @@ class Runner:
         *,
         continuous: bool = False,
         program_key: str | None = None,
+        save: SaveTarget | None = None,
         on_status: Callable[[str], None] | None = None,
         on_dataset: Callable[[Dataset], None] | None = None,
         on_finished: Callable[[int], None] | None = None,
         on_failed: Callable[[str], None] | None = None,
     ) -> RunHandle:
+        """Execute one program on a worker thread.
+
+        ``save`` says what the run is called and whether it is written to
+        disk. It arrives as its own argument rather than being read off the
+        parameter model, because where data lands is not something one program
+        does differently from another.
+        """
         with self._lock:
             if self.is_running:
                 raise RuntimeError("a run is already in progress")
@@ -89,8 +97,8 @@ class Runner:
             self._cancel = threading.Event()
 
             saver = self.build_saver(
-                program, params, devices, key, run_id=run_id, started_at=started_at,
-                continuous=continuous,
+                program, params, devices, key, save=save, run_id=run_id,
+                started_at=started_at, continuous=continuous,
             )
             provenance = Provenance(
                 program_key=key,
@@ -98,6 +106,7 @@ class Runner:
                 devices=self.device_state(devices),
                 started_at=started_at,
                 run_id=run_id,
+                name=save.filename if save is not None else "",
             )
             datasets = self.build_datasets(program, provenance, saver)
 
@@ -126,14 +135,19 @@ class Runner:
             return RunHandle(run_id, datasets, thread)
 
     def build_saver(
-        self, program, params, devices, program_key, *, run_id, started_at, continuous
+        self, program, params, devices, program_key, *, save, run_id, started_at, continuous
     ) -> RunSaver | None:
-        save = getattr(params, "save", None)
-        if save is None or not getattr(save, "save_enabled", False):
+        """The saver for this run, or None when saving is off.
+
+        v3.1 dug this out of ``params.save``, which meant every parameter
+        model had to declare a group it never read and the runner had to guess
+        whether the one in front of it had.
+        """
+        if save is None or not save.enabled:
             return None
         num_frames = getattr(params, "num_frames", None)
         saver = RunSaver(
-            root=P.resolved_save_root(save),
+            root=save.root,
             program_key=program_key,
             parameters=P.to_dict(params),
             devices=self.device_state(devices),

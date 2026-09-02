@@ -15,7 +15,7 @@ from PyQt6.QtCore import QObject, QTimer
 
 from pyrpoc.devices.registry import device_registry
 from pyrpoc.views.registry import view_registry
-from pyrpoc.session.state import DeviceState, SessionState, ViewState
+from pyrpoc.session.state import DeviceState, SaveState, SessionState, ViewState
 from pyrpoc.session.store import SessionStore
 
 from . import catalog
@@ -48,6 +48,11 @@ def capture(app: Application, window=None, theme_mode: str = "system") -> Sessio
         views=views,
         selected_program=app.selected_program,
         params_by_program=app.params_state(),
+        save=SaveState(
+            name=app.save.name,
+            directory=app.save.directory,
+            enabled=app.save.enabled,
+        ),
         ads_layout=window.save_dock_layout() if window is not None else None,
     )
 
@@ -82,6 +87,11 @@ def apply(state: SessionState, app: Application, window=None) -> None:
             continue
 
     app.load_params_state(state.params_by_program)
+    app.set_save(
+        name=state.save.name,
+        directory=state.save.directory,
+        enabled=state.save.enabled,
+    )
 
     key = state.selected_program
     if key not in catalog.keys():
@@ -158,6 +168,7 @@ class Autosave(QObject):
             self.app.clear_views()
             self.app.clear_devices()
             self.app.params_by_program.clear()
+            self.app.set_save(name=SaveState().name, directory="", enabled=False)
             seed_defaults(self.app)
             if catalog.CATALOG:
                 self.app.select_program(catalog.CATALOG[0].key)

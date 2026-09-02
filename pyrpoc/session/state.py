@@ -17,6 +17,12 @@ from typing import Any
 #: program rather than a flat list keyed by widget label -- and instruments have
 #: become devices, so a v6 file has nothing to map onto. There is no converter:
 #: a v6 session loads as defaults, once.
+#:
+#: The save block arrived without a bump. It is additive, and everything else
+#: in a v7 file still means what it meant -- the per-program save group it
+#: replaces sits inside ``params_by_program`` and is simply not read back. A
+#: bump would have thrown away a rig's tuned scan parameters to deliver a
+#: default filename.
 SCHEMA_VERSION = 7
 
 
@@ -38,6 +44,18 @@ class ViewState:
 
 
 @dataclass
+class SaveState:
+    """What acquisitions are called and where they are written.
+
+    One block, not one per program: saving is not something a program decides.
+    """
+
+    name: str = "acquisition"
+    directory: str = ""
+    enabled: bool = False
+
+
+@dataclass
 class SessionState:
     schema_version: int = SCHEMA_VERSION
     theme_mode: str = "system"
@@ -45,6 +63,7 @@ class SessionState:
     views: list[ViewState] = field(default_factory=list)
     selected_program: str | None = None
     params_by_program: dict[str, dict[str, Any]] = field(default_factory=dict)
+    save: SaveState = field(default_factory=SaveState)
     ads_layout: str | None = None
 
     def is_empty(self) -> bool:

@@ -18,6 +18,7 @@ from typing import Any
 from PyQt6.QtCore import QObject, pyqtSignal
 
 from pyrpoc.core import params as P
+from pyrpoc.data.io import SaveTarget
 from pyrpoc.data.library import DatasetLibrary
 from pyrpoc.devices.base import Device
 from pyrpoc.devices.registry import device_registry
@@ -34,6 +35,7 @@ class Application(QObject):
     views_changed = pyqtSignal()
     program_selected = pyqtSignal(str)
     params_changed = pyqtSignal()
+    save_changed = pyqtSignal()
     state_changed = pyqtSignal()          # anything worth autosaving
 
     def __init__(self, parent: QObject | None = None):
@@ -45,6 +47,9 @@ class Application(QObject):
 
         self.selected_program: str | None = None
         self.params_by_program: dict[str, Any] = {}
+        #: One save target for the session, not one per program: what a run is
+        #: called and where it goes has nothing to do with which program runs.
+        self.save = SaveTarget()
 
         self.bridge.run_started.connect(lambda: self.state_changed.emit())
         self.bridge.dataset_changed.connect(self.on_dataset_changed)
@@ -77,6 +82,29 @@ class Application(QObject):
     def missing_devices(self, key: str) -> list[str]:
         entry = catalog.entry_for(key)
         return [cls.display_name for cls in claims.missing(list(entry.program.uses), self.devices)]
+
+    # -- saving ------------------------------------------------------------- #
+
+    def set_save(
+        self,
+        *,
+        name: str | None = None,
+        directory: str | None = None,
+        enabled: bool | None = None,
+    ) -> None:
+        """Change part of the save target, leaving the rest alone.
+
+        Only the fields given move, so the launcher's three widgets can each
+        write their own without reading the other two back.
+        """
+        if name is not None:
+            self.save.name = str(name)
+        if directory is not None:
+            self.save.directory = str(directory)
+        if enabled is not None:
+            self.save.enabled = bool(enabled)
+        self.save_changed.emit()
+        self.state_changed.emit()
 
     # -- devices ------------------------------------------------------------ #
 
@@ -149,6 +177,7 @@ class Application(QObject):
             self.devices,
             continuous=continuous,
             program_key=entry.key,
+            save=self.save,
         )
 
     def stop_run(self) -> None:

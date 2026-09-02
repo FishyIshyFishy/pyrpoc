@@ -14,8 +14,9 @@ import numpy as np
 import pytest
 
 from pyrpoc.core.errors import MissingDevice, ParameterError
-from pyrpoc.core.params import SaveGroup, ScanGroup, group, int_field
+from pyrpoc.core.params import ScanGroup, group, int_field
 from pyrpoc.core.streams import Cube3D, Image2D
+from pyrpoc.data.io import SaveTarget
 from pyrpoc.data.library import DatasetLibrary
 from pyrpoc.devices import DAQ, Galvo
 from pyrpoc.run.program import Program
@@ -25,8 +26,11 @@ from pyrpoc.run.runner import Runner, default_program_key
 @dataclass
 class FakeParams:
     scan: ScanGroup = group(ScanGroup, "Scan")
-    save: SaveGroup = group(SaveGroup, "Save")
     num_frames: int = int_field("Frames", 3, minimum=1)
+
+
+def saving(tmp_path, name: str = "acq") -> SaveTarget:
+    return SaveTarget(name=name, directory=str(tmp_path), enabled=True)
 
 
 class Emitter(Program):
@@ -261,10 +265,7 @@ def test_a_failing_program_reports_and_still_finishes(runner):
 
 
 def test_a_failure_is_recorded_in_the_saved_metadata(runner, tmp_path):
-    params = FakeParams()
-    params.save.save_enabled = True
-    params.save.save_path = str(tmp_path / "acq")
-    run_to_completion(runner, Exploder(), params)
+    run_to_completion(runner, Exploder(), FakeParams(), save=saving(tmp_path))
 
     meta = json.loads((tmp_path / "acq_meta.json").read_text())
     assert "NI-DAQ acquisition failed" in meta["last_error"]
@@ -280,11 +281,8 @@ def test_the_runner_frees_itself_after_a_failure(runner):
 # --- saving ----------------------------------------------------------------
 
 
-def test_saving_is_wired_from_the_save_group(runner, inventory, tmp_path):
-    params = FakeParams()
-    params.save.save_enabled = True
-    params.save.save_path = str(tmp_path / "acq")
-    run_to_completion(runner, Emitter(), params, inventory)
+def test_saving_is_wired_from_the_save_target(runner, inventory, tmp_path):
+    run_to_completion(runner, Emitter(), FakeParams(), inventory, save=saving(tmp_path))
 
     assert (tmp_path / "acq_a.tiff").exists()
     assert (tmp_path / "acq_b.tiff").exists()
@@ -295,18 +293,30 @@ def test_saving_is_wired_from_the_save_group(runner, inventory, tmp_path):
 
 
 def test_saving_off_writes_nothing(runner, inventory, tmp_path):
-    params = FakeParams()
-    params.save.save_path = str(tmp_path / "acq")
-    run_to_completion(runner, Emitter(), params, inventory)
+    target = saving(tmp_path)
+    target.enabled = False
+    run_to_completion(runner, Emitter(), FakeParams(), inventory, save=target)
     assert list(tmp_path.iterdir()) == []
+
+
+def test_no_save_target_at_all_writes_nothing(runner, inventory, tmp_path):
+    """The runner is usable without one, which is how run/ tests call it."""
+    run_to_completion(runner, Emitter(), FakeParams(), inventory)
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_an_enabled_target_with_no_name_is_rejected_before_the_run(runner, inventory):
+    from pyrpoc.core.errors import ParameterError
+
+    with pytest.raises(ParameterError, match="Name is required"):
+        runner.start(Emitter(), FakeParams(), list(inventory), save=SaveTarget(name="", enabled=True))
+    assert runner.is_running is False
 
 
 def test_continuous_records_no_frame_limit(runner, tmp_path):
     program = TeardownRecorder()
     params = FakeParams()
-    params.save.save_enabled = True
-    params.save.save_path = str(tmp_path / "acq")
-    handle = runner.start(program, params, [], continuous=True)
+    handle = runner.start(program, params, [], continuous=True, save=saving(tmp_path))
     program.started.wait(timeout=5)
     runner.stop()
     handle.thread.join(timeout=10)
@@ -317,14 +327,37 @@ def test_continuous_records_no_frame_limit(runner, tmp_path):
 
 def test_program_key_can_be_supplied_by_the_caller(runner, inventory, tmp_path):
     """The shell passes the registry key; run/ may not import programs/."""
-    params = FakeParams()
-    params.save.save_enabled = True
-    params.save.save_path = str(tmp_path / "acq")
-    run_to_completion(runner, Emitter(), params, inventory, program_key="confocal")
+    run_to_completion(
+        runner, Emitter(), FakeParams(), inventory,
+        program_key="confocal", save=saving(tmp_path),
+    )
 
     meta = json.loads((tmp_path / "acq_meta.json").read_text())
     assert meta["program_key"] == "confocal"
     assert meta["modality_key"] == "confocal"
+
+
+# --- naming the run ---------------------------------------------------------
+
+
+def test_the_name_reaches_provenance(runner, inventory, tmp_path):
+    handle, _ = run_to_completion(
+        runner, Emitter(), FakeParams(), inventory, save=saving(tmp_path, "cells")
+    )
+    assert handle.datasets["intensity"].provenance.name == "cells"
+    assert handle.datasets["intensity"].name == "cells"
+
+
+def test_a_run_is_named_even_with_saving_off(runner, inventory):
+    """The name is what the data panel calls it, which does not need a file."""
+    target = SaveTarget(name="cells", enabled=False)
+    handle, _ = run_to_completion(runner, Emitter(), FakeParams(), inventory, save=target)
+    assert handle.datasets["intensity"].name == "cells"
+
+
+def test_an_unnamed_run_falls_back_to_its_program(runner, inventory):
+    handle, _ = run_to_completion(runner, Emitter(), FakeParams(), inventory)
+    assert handle.datasets["intensity"].name == "emitter"
 
 
 @pytest.mark.parametrize(

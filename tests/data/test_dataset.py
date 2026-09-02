@@ -158,9 +158,37 @@ def test_ids_are_unique_and_carry_the_stream_name():
     assert a.id.startswith("intensity-")
 
 
-def test_label_names_the_program_run_and_stream():
-    label = make().label
-    assert "confocal" in label and "#1" in label and "intensity" in label
+def test_name_is_what_the_run_was_called():
+    named = make(provenance=Provenance("confocal", run_id=1, name="cells"))
+    assert named.name == "cells"
+
+
+def test_an_unnamed_run_is_named_after_its_program():
+    assert make().name == "confocal"
+
+
+def test_started_time_is_a_time_of_day_with_no_date():
+    from datetime import datetime, timezone
+
+    started = datetime(2026, 9, 2, 14, 32, 7, tzinfo=timezone.utc)
+    dataset = make(provenance=Provenance("confocal", started_at=started.isoformat()))
+    assert dataset.started_time == started.astimezone().strftime("%H:%M:%S")
+
+
+def test_started_time_is_empty_when_there_is_nothing_to_show():
+    assert make().started_time == ""
+    assert make(provenance=Provenance("confocal", started_at="not a time")).started_time == ""
+
+
+def test_label_carries_the_time_the_name_and_the_stream():
+    dataset = make(
+        provenance=Provenance("confocal", started_at="2026-09-02T14:32:07+00:00", name="cells")
+    )
+    assert dataset.label == f"{dataset.started_time} · cells · intensity"
+
+
+def test_label_drops_the_parts_it_does_not_have():
+    assert make().label == "confocal · intensity"
 
 
 def test_run_id_comes_from_provenance():

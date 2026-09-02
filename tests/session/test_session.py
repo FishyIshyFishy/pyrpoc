@@ -3,10 +3,17 @@
 from __future__ import annotations
 
 import json
+from dataclasses import asdict
 
 import pytest
 
-from pyrpoc.session.state import SCHEMA_VERSION, DeviceState, SessionState, ViewState
+from pyrpoc.session.state import (
+    SCHEMA_VERSION,
+    DeviceState,
+    SaveState,
+    SessionState,
+    ViewState,
+)
 from pyrpoc.session.store import SessionStore, decode, default_session_path
 
 
@@ -25,6 +32,7 @@ def sample() -> SessionState:
         views=[ViewState("image_2d", "view-1", "Channels", True, {"channels": []})],
         selected_program="flim",
         params_by_program={"confocal": {"scan": {"x_pixels": 64}}},
+        save=SaveState(name="cells", directory="/data", enabled=True),
         ads_layout="Zm9v",
     )
 
@@ -142,3 +150,30 @@ def test_the_default_path_is_under_a_config_directory():
 def test_session_state_knows_when_it_is_empty():
     assert SessionState().is_empty() is True
     assert sample().is_empty() is False
+
+
+# --- the save block ---------------------------------------------------------
+
+
+def test_the_save_block_round_trips(store):
+    store.save(sample())
+    assert store.load().save == SaveState(name="cells", directory="/data", enabled=True)
+
+
+def test_a_v7_file_written_before_the_save_block_loads_with_defaults(store):
+    """It was a parameter group then, so there is nothing else to read it from."""
+    raw = json.loads(json.dumps(asdict(sample())))
+    del raw["save"]
+    store.path.write_text(json.dumps(raw), encoding="utf-8")
+
+    loaded = store.load()
+    assert loaded.save == SaveState()
+    assert loaded.params_by_program == sample().params_by_program, "the rest still loads"
+    assert store.last_load_error is None
+
+
+def test_a_junk_save_block_does_not_block_the_launch(store):
+    raw = json.loads(json.dumps(asdict(sample())))
+    raw["save"] = "not a block"
+    store.path.write_text(json.dumps(raw), encoding="utf-8")
+    assert store.load().save == SaveState()

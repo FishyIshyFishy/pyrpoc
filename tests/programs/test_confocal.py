@@ -20,6 +20,7 @@ import pytest
 
 from pyrpoc.core.modulation import MaskBinding, save_mask
 from pyrpoc.data.io import load_frames
+from pyrpoc.data.io import SaveTarget
 from pyrpoc.data.library import DatasetLibrary
 from pyrpoc.devices import DAQ, Galvo
 from pyrpoc.programs.confocal import Confocal, ConfocalParams, build_ttl, channel_labels
@@ -46,19 +47,21 @@ def devices():
     return daq, galvo
 
 
-def new_params(tmp_path=None, frames=3, masks=()) -> ConfocalParams:
+def saving(tmp_path, name: str = "acq") -> SaveTarget:
+    """Saving on, into the test's own directory. Not a parameter any more."""
+    return SaveTarget(name=name, directory=str(tmp_path), enabled=True)
+
+
+def new_params(frames=3, masks=()) -> ConfocalParams:
     params = ConfocalParams()
     for name, value in SCAN.items():
         setattr(params.scan, name, value)
     params.num_frames = frames
     params.modulation.masks = tuple(masks)
-    if tmp_path is not None:
-        params.save.save_enabled = True
-        params.save.save_path = str(tmp_path / "acq")
     return params
 
 
-def run_new(monkeypatch, params, devices, *, continuous=False, capture=None):
+def run_new(monkeypatch, params, devices, *, continuous=False, capture=None, save=None):
     calls = []
 
     def fake_raster_scan(**kwargs):
@@ -68,7 +71,8 @@ def run_new(monkeypatch, params, devices, *, continuous=False, capture=None):
     monkeypatch.setattr("pyrpoc.programs.confocal.raster_scan", fake_raster_scan)
     runner = Runner(DatasetLibrary())
     handle = runner.start(
-        Confocal(), params, list(devices), continuous=continuous, program_key="confocal"
+        Confocal(), params, list(devices), continuous=continuous,
+        program_key="confocal", save=save,
     )
     if continuous:
         for _ in range(500):
@@ -120,13 +124,13 @@ def test_the_operation_receives_the_scan_the_devices_and_the_run_settings(monkey
 
 
 def test_saving_writes_one_tiff_per_channel(monkeypatch, devices, tmp_path):
-    run_new(monkeypatch, new_params(tmp_path), devices)
+    run_new(monkeypatch, new_params(), devices, save=saving(tmp_path))
     for label in ("ai0", "ai1"):
         assert (tmp_path / f"acq_{label}.tiff").exists()
 
 
 def test_saved_metadata_keeps_the_v30_shape(monkeypatch, devices, tmp_path):
-    run_new(monkeypatch, new_params(tmp_path), devices)
+    run_new(monkeypatch, new_params(), devices, save=saving(tmp_path))
     meta = json.loads((tmp_path / "acq_meta.json").read_text())
     assert meta["modality_key"] == "confocal"   # v3.0 alias, kept for lab scripts
     assert meta["frames_saved"] == 3
@@ -136,7 +140,7 @@ def test_saved_metadata_keeps_the_v30_shape(monkeypatch, devices, tmp_path):
 
 
 def test_saved_frames_read_back_in_order(monkeypatch, devices, tmp_path):
-    run_new(monkeypatch, new_params(tmp_path), devices)
+    run_new(monkeypatch, new_params(), devices, save=saving(tmp_path))
     pages = load_frames(tmp_path / "acq_ai0.tiff")
     assert pages.shape == (3, SCAN["y_pixels"], SCAN["x_pixels"])
     np.testing.assert_array_equal(pages[:, 0, 0], [0.0, 1.0, 2.0])
@@ -144,7 +148,7 @@ def test_saved_frames_read_back_in_order(monkeypatch, devices, tmp_path):
 
 def test_the_run_parameters_are_recorded_in_the_metadata(monkeypatch, devices, tmp_path):
     """A run's saved parameters now fully describe what happened."""
-    run_new(monkeypatch, new_params(tmp_path), devices)
+    run_new(monkeypatch, new_params(), devices, save=saving(tmp_path))
     meta = json.loads((tmp_path / "acq_meta.json").read_text())
     assert meta["parameters"]["scan"]["x_pixels"] == SCAN["x_pixels"]
     assert meta["parameters"]["num_frames"] == 3

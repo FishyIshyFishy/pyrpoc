@@ -11,7 +11,6 @@ one declaration serves the value, the default, the form and the validation.
 from __future__ import annotations
 
 from dataclasses import dataclass, field as dc_field, fields, is_dataclass
-from pathlib import Path
 from typing import Any, Iterable
 
 from .errors import ParameterError
@@ -298,18 +297,6 @@ class FlimDaqGroup(DaqGroup):
 
 
 @dataclass
-class SaveGroup(Group):
-    save_enabled: bool = bool_field(
-        "Save", False, tooltip="Enable saving frames and acquisition metadata"
-    )
-    save_path: str = path_field(
-        "Save Path",
-        "acquisition",
-        tooltip="Base name/path for saved files (e.g. /dir/acquisition)",
-    )
-
-
-@dataclass
 class ModulationGroup(Group):
     masks: tuple[MaskBinding, ...] = masks_field(
         "Masks", tooltip="Mask files driving digital output lines during the scan"
@@ -472,14 +459,3 @@ def validate(obj: Any) -> None:
     for section in sections(obj):
         for path, spec in section.entries:
             spec.coerce(get_path(obj, path))
-
-
-def resolved_save_root(save: SaveGroup) -> Path:
-    """The save path with ``~`` expanded and any TIFF suffix stripped."""
-    text = (save.save_path or "").strip()
-    if not text:
-        raise ParameterError("Save Path is required when saving is enabled")
-    path = Path(text).expanduser()
-    if path.suffix.lower() in {".tif", ".tiff"}:
-        path = path.with_suffix("")
-    return path

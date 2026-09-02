@@ -16,11 +16,16 @@ The auxiliary-payload machinery this replaces -- ``_pending_auxiliary``,
 ``append_auxiliary_payload``, ``flush_auxiliary_payloads`` -- existed only
 because split confocal produced a second output and there was no way to declare
 one. Streams are declared in ``emits`` now, so they all travel the same path.
+
+``<root>`` comes from a ``SaveTarget``, which is also where the acquisition's
+name comes from. It is here rather than in the parameter model because saving
+is a property of a run and not of the program that fills it.
 """
 
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -28,6 +33,7 @@ from typing import Any
 import numpy as np
 import tifffile
 
+from pyrpoc.core.errors import ParameterError
 from pyrpoc.core.streams import Image2D, Stream
 
 from .dataset import Dataset
@@ -35,6 +41,53 @@ from .dataset import Dataset
 
 def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+@dataclass
+class SaveTarget:
+    """What an acquisition is called, where it goes, and whether it goes.
+
+    Not a parameter group. Every program declared an identical ``SaveGroup``
+    and the runner reached past the parameter model to find it, which made
+    saving look like a decision a program makes. It is not: nothing about
+    where bytes land depends on what produced them, so this travels as its own
+    argument to the runner and lives once per session rather than once per
+    program.
+
+    ``name`` is a bare filename and means something with saving off -- it is
+    what the acquisition is called in the data panel, where a full path would
+    be both misleading (nothing was written) and too wide to read.
+    """
+
+    name: str = "acquisition"
+    directory: str = ""
+    enabled: bool = False
+
+    @property
+    def filename(self) -> str:
+        """``name`` as a bare filename: no directory, no TIFF suffix.
+
+        The writers append their own ``_<channel>.tiff``, so a typed ".tiff"
+        would land in the middle of the real filename.
+        """
+        stem = Path((self.name or "").strip()).name
+        if stem.lower().endswith((".tif", ".tiff")):
+            stem = stem.rsplit(".", 1)[0]
+        return stem
+
+    @property
+    def folder(self) -> Path:
+        """Where files go. No directory means the working directory."""
+        text = (self.directory or "").strip()
+        return Path(text).expanduser() if text else Path.cwd()
+
+    @property
+    def root(self) -> Path:
+        """The base path the writers hang their suffixes off."""
+        stem = self.filename
+        if not stem:
+            raise ParameterError("Name is required when saving is enabled")
+        return self.folder / stem
 
 
 class StreamWriter:

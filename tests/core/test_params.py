@@ -17,7 +17,6 @@ class SampleParams:
     scan: P.ScanGroup = P.group(P.ScanGroup, "Scan")
     daq: P.DaqGroup = P.group(P.DaqGroup, "DAQ")
     modulation: P.ModulationGroup = P.group(P.ModulationGroup, "Modulation")
-    save: P.SaveGroup = P.group(P.SaveGroup, "Save")
     num_frames: int = P.int_field("Frames", 1, minimum=1)
 
 
@@ -55,15 +54,15 @@ def test_bool_field_accepts_the_strings_the_old_model_accepted():
 
 
 def test_path_field_rejects_a_bare_directory():
-    spec = P.PathField("Save Path")
+    spec = P.PathField("Mask File")
     assert spec.coerce("/data/run1") == "/data/run1"
     with pytest.raises(ParameterError, match="filename"):
         spec.coerce("/data/")
 
 
-def test_path_field_allows_empty_so_saving_can_be_off():
-    """v3.0 raised here even when save_enabled was false. SavePolicy checks instead."""
-    assert P.PathField("Save Path").coerce("") == ""
+def test_path_field_allows_empty_so_a_path_can_be_unset():
+    """An unset path is a normal state; whoever needs one checks at use time."""
+    assert P.PathField("Mask File").coerce("") == ""
 
 
 def test_channels_field_sorts_and_deduplicates():
@@ -113,7 +112,7 @@ def test_histogram_group_laser_period():
 
 def test_sections_are_groups_in_order_then_root_scalars():
     labels = [section.label for section in P.sections(SampleParams)]
-    assert labels == ["Scan", "DAQ", "Modulation", "Save", "Acquisition"]
+    assert labels == ["Scan", "DAQ", "Modulation", "Acquisition"]
 
 
 def test_section_entries_are_dotted_paths():
@@ -141,8 +140,6 @@ def test_round_trip_preserves_values():
     params = SampleParams()
     params.scan.x_pixels = 64
     params.daq.sample_rate_hz = 250_000.0
-    params.save.save_enabled = True
-    params.save.save_path = "/tmp/run"
     params.modulation.masks = (MaskBinding(Path("m.png"), 0, 3),)
     params.num_frames = 5
 
@@ -151,7 +148,6 @@ def test_round_trip_preserves_values():
 
     assert restored.scan.x_pixels == 64
     assert restored.daq.sample_rate_hz == 250_000.0
-    assert restored.save.save_enabled is True
     assert restored.modulation.masks == (MaskBinding(Path("m.png"), 0, 3),)
     assert restored.num_frames == 5
     assert P.to_dict(restored) == raw
@@ -188,14 +184,3 @@ def test_validate_walks_current_values():
     params.scan.x_pixels = 2
     with pytest.raises(ParameterError):
         P.validate(params)
-
-
-def test_resolved_save_root_strips_tiff_suffix():
-    save = P.SaveGroup(save_enabled=True, save_path="/data/run.tiff")
-    assert P.resolved_save_root(save) == Path("/data/run")
-    assert P.resolved_save_root(P.SaveGroup(save_path="/data/run")) == Path("/data/run")
-
-
-def test_resolved_save_root_requires_a_path():
-    with pytest.raises(ParameterError):
-        P.resolved_save_root(P.SaveGroup(save_enabled=True, save_path=""))

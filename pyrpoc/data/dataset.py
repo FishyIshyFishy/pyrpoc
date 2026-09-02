@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import threading
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Any, Callable
 from uuid import uuid4
 
@@ -31,6 +32,9 @@ class Provenance:
     devices: dict[str, Any] = field(default_factory=dict)
     started_at: str = ""
     run_id: int = 0
+    #: What the run was called -- the save filename, set whether or not the
+    #: run was saved. An unnamed run falls back to its program.
+    name: str = ""
 
 
 class Dataset:
@@ -66,8 +70,36 @@ class Dataset:
         return self.provenance.run_id
 
     @property
+    def name(self) -> str:
+        return self.provenance.name or self.provenance.program_key
+
+    @property
+    def started_time(self) -> str:
+        """Local time of day the run started, or "" if that is not known.
+
+        No date. A session lasts a day, so a date column would repeat the same
+        ten characters on every row and push the useful part off the edge.
+        """
+        raw = self.provenance.started_at
+        if not raw:
+            return ""
+        try:
+            moment = datetime.fromisoformat(raw)
+        except ValueError:
+            return ""
+        if moment.tzinfo is not None:
+            moment = moment.astimezone()
+        return moment.strftime("%H:%M:%S")
+
+    @property
     def label(self) -> str:
-        return f"{self.provenance.program_key} #{self.run_id} · {self.stream}"
+        """One line naming this dataset, for pickers that have no columns.
+
+        The run id used to stand in for identity here. The time is what a user
+        actually recognises a run by, and the name is what they chose.
+        """
+        parts = (self.started_time, self.name, self.stream)
+        return " · ".join(part for part in parts if part)
 
     def resolved_channel_labels(self, count: int) -> list[str]:
         if self.channel_labels and len(self.channel_labels) == count:
