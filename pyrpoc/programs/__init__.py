@@ -10,6 +10,7 @@ from .registry import program_registry
 from .confocal import Confocal, ConfocalParams
 from .split_confocal import SplitConfocal, SplitConfocalParams
 from .flim import FLIM, FlimParams
+from .simulation import Simulation, SimulationParams
 
 __all__ = [
     "program_registry",
@@ -19,4 +20,6 @@ __all__ = [
     "SplitConfocalParams",
     "FLIM",
     "FlimParams",
+    "Simulation",
+    "SimulationParams",
 ]

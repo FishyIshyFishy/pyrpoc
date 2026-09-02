@@ -50,13 +50,29 @@ def small_scan(params) -> None:
 # --- catalog ---------------------------------------------------------------
 
 
-def test_the_catalog_offers_the_three_programs():
-    assert catalog.keys() == ["confocal", "split_confocal", "flim"]
+def test_the_catalog_offers_every_program():
+    assert catalog.keys() == ["confocal", "split_confocal", "flim", "simulation"]
 
 
 def test_the_catalog_carries_labels_not_registry_keys():
     """v3.0's dropdown showed `split_confocal`."""
-    assert [e.label for e in catalog.CATALOG] == ["Confocal", "Split Confocal", "FLIM"]
+    assert [e.label for e in catalog.CATALOG] == [
+        "Confocal",
+        "Split Confocal",
+        "FLIM",
+        "Simulation",
+    ]
+
+
+def test_the_simulated_program_is_the_only_one_needing_no_devices():
+    """The point of it: play is enabled on a machine with nothing attached."""
+    needs = {e.key: bool(e.program.uses) for e in catalog.CATALOG}
+    assert needs == {
+        "confocal": True,
+        "split_confocal": True,
+        "flim": True,
+        "simulation": False,
+    }
 
 
 def test_an_unknown_key_is_an_error():
@@ -226,6 +242,7 @@ def test_the_launcher_lists_programs_by_label(app):
         "Confocal",
         "Split Confocal",
         "FLIM",
+        "Simulation",
     ]
 
 
