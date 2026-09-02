@@ -14,7 +14,7 @@ import pytest
 
 from pyrpoc.core.modulation import MaskBinding
 from pyrpoc.core.params import ScanGroup
-from pyrpoc.operations.modulation import (
+from pyrpoc.programs.hardware.modulation import (
     mask_ttl,
     preprocess_mask_to_scan_grid,
     resize_mask_nearest,

@@ -9,23 +9,52 @@ how it was launched -- a program should not know it is in a dropdown.
 from __future__ import annotations
 
 import threading
-from typing import TYPE_CHECKING, Any, Callable, Iterator
+from collections.abc import Mapping
+from typing import TYPE_CHECKING, Any, Callable, Iterator, TypeVar
 
 import numpy as np
 
 from pyrpoc.core.errors import Cancelled
 from pyrpoc.core.streams import Stream
+from pyrpoc.devices.base import Device
 
 if TYPE_CHECKING:  # pragma: no cover
     from pyrpoc.data.dataset import Dataset
-    from pyrpoc.devices.base import Device
+
+D = TypeVar("D", bound=Device)
+
+
+class DeviceMap(Mapping[type[Device], Device]):
+    """The devices resolved for one run, keyed by class.
+
+    A plain ``dict[type[Device], Device]`` makes ``ctx.devices[DAQ]`` a
+    ``Device``, so every program's ``daq: DAQ = ctx.devices[DAQ]`` was an
+    assertion the type checker took on trust -- and ``daq.config.device_name``
+    was checked against nothing. Keying the return to the class asked for is
+    what makes the hardware layer's ``daq: DAQ`` parameter mean something.
+    """
+
+    def __init__(self, devices: Mapping[type[Device], Device] | None = None):
+        self._devices: dict[type[Device], Device] = dict(devices or {})
+
+    def __getitem__(self, key: type[D]) -> D:
+        return self._devices[key]  # type: ignore[return-value]
+
+    def __iter__(self) -> Iterator[type[Device]]:
+        return iter(self._devices)
+
+    def __len__(self) -> int:
+        return len(self._devices)
+
+    def __repr__(self) -> str:  # pragma: no cover - debugging aid
+        return f"DeviceMap({self._devices!r})"
 
 
 class Program:
     """Subclasses define exactly ``uses``, ``params``, ``emits`` and ``run``."""
 
     #: Device classes to claim. Claims propagate along ``backed_by``.
-    uses: list[type["Device"]] = []
+    uses: list[type[Device]] = []
 
     #: The parameter dataclass this program is configured with.
     params: type | None = None
@@ -49,14 +78,14 @@ class RunContext:
         self,
         *,
         params: Any,
-        devices: dict[type["Device"], "Device"],
+        devices: Mapping[type[Device], Device],
         datasets: dict[str, "Dataset"],
         cancel: threading.Event,
         continuous: bool = False,
         on_status: Callable[[str], None] | None = None,
     ):
         self.params = params
-        self.devices = devices
+        self.devices = DeviceMap(devices)
         self.datasets = datasets
         self.continuous = continuous
         self._cancel = cancel

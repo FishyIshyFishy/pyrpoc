@@ -36,7 +36,7 @@ pytestmark = pytest.mark.skipif(
 )
 
 from pyrpoc.devices.time_tagger.device import TimeTagger as TimeTaggerDevice
-from pyrpoc.operations.tagger import flim_intensity, reshape_flim_frame
+from pyrpoc.programs.hardware.tagger import flim_intensity, reshape_flim_frame
 
 
 laser_period_ps = 12_500  # 80 MHz

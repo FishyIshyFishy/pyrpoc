@@ -12,8 +12,10 @@ import nidaqmx as nx
 from nidaqmx.constants import AcquisitionType, Signal
 
 from pyrpoc.core.errors import DaqError
+from pyrpoc.core.params import ScanGroup, TriggerGroup
+from pyrpoc.devices import DAQ, Galvo
 
-from .raster import generate_raster_waveform
+from .raster import waveform_for_scan
 
 
 def pixel_samples(dwell_time_us: float, sample_rate_hz: float) -> int:
@@ -21,7 +23,8 @@ def pixel_samples(dwell_time_us: float, sample_rate_hz: float) -> int:
 
     Rounds, floor 2 — the counter needs at least one high tick and one low tick.
     The raster path truncates and has a floor of 1; the two formulas differ and
-    ``tests/operations/test_pixel_samples.py`` pins both. Do not unify them.
+    ``tests/programs/hardware/test_pixel_samples.py`` pins both. Do not unify
+    them.
     """
     return max(2, int(round(dwell_time_us * 1e-6 * sample_rate_hz)))
 
@@ -86,56 +89,34 @@ def run_flim_scan(
 
 def flim_scan(
     *,
-    x_pixels: int,
-    y_pixels: int,
-    extra_left: int,
-    extra_right: int,
-    fast_axis_offset: float,
-    fast_axis_amplitude: float,
-    slow_axis_offset: float,
-    slow_axis_amplitude: float,
-    dwell_time_us: float,
+    daq: DAQ,
+    galvo: Galvo,
+    scan: ScanGroup,
     sample_rate_hz: float,
-    device_name: str,
-    fast_ao: int,
-    slow_ao: int,
-    frame_trigger_pfi: int,
-    pixel_clock_ctr: int,
-    pixel_clock_pfi: int,
-    ai_channels: tuple[int, ...] | list[int] = (),
+    triggers: TriggerGroup,
 ) -> None:
     """Build the raster waveform and run one FLIM scan.
 
-    ``ai_channels`` is accepted and ignored: FLIM reads no analog input, but the
-    DAQ device's configuration unpacks into this call alongside the galvo's.
+    Takes the DAQ for its device name only. It used to accept ``ai_channels``
+    and immediately ``del`` it, documented as "accepted and ignored", because
+    the whole of ``daq.config`` was splatted into this call and the parameter
+    had to exist for that not to raise. FLIM reads no analog input, so now it
+    simply does not ask for any.
     """
-    del ai_channels
-    samples_per_pixel = pixel_samples(dwell_time_us, sample_rate_hz)
-    total_x = x_pixels + extra_left + extra_right
-    n_pixels = total_x * y_pixels
+    samples_per_pixel = pixel_samples(scan.dwell_time_us, sample_rate_hz)
+    n_pixels = scan.total_x * scan.y_pixels
 
-    raster_waveform = generate_raster_waveform(
-        x_pixels=x_pixels,
-        extra_left=extra_left,
-        extra_right=extra_right,
-        y_pixels=y_pixels,
-        pixel_samples=samples_per_pixel,
-        fast_axis_offset=fast_axis_offset,
-        fast_axis_amplitude=fast_axis_amplitude,
-        slow_axis_offset=slow_axis_offset,
-        slow_axis_amplitude=slow_axis_amplitude,
-    )
     run_flim_scan(
-        device_name=device_name,
+        device_name=daq.config.device_name,
         sample_rate_hz=sample_rate_hz,
-        fast_ao=fast_ao,
-        slow_ao=slow_ao,
-        raster_waveform=raster_waveform,
+        fast_ao=galvo.config.fast_ao,
+        slow_ao=galvo.config.slow_ao,
+        raster_waveform=waveform_for_scan(scan, samples_per_pixel),
         n_pixels=n_pixels,
         pixel_samples=samples_per_pixel,
-        frame_trigger_pfi=frame_trigger_pfi,
-        pixel_clock_ctr=pixel_clock_ctr,
-        pixel_clock_pfi=pixel_clock_pfi,
+        frame_trigger_pfi=triggers.frame_trigger_pfi,
+        pixel_clock_ctr=triggers.pixel_clock_ctr,
+        pixel_clock_pfi=triggers.pixel_clock_pfi,
     )
 
 

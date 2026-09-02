@@ -193,10 +193,14 @@ def test_histogram_metadata_is_what_v30_attached_to_every_frame(monkeypatch, dev
 
 
 def test_the_scan_receives_the_trigger_wiring(monkeypatch, devices):
+    daq, galvo, tagger = devices
     _, _, scans, _ = run_new(monkeypatch, new_params(), devices)
-    assert scans[0]["frame_trigger_pfi"] == 0
-    assert scans[0]["pixel_clock_ctr"] == 0
-    assert scans[0]["pixel_clock_pfi"] == 1
+    triggers = scans[0]["triggers"]
+
+    assert (triggers.frame_trigger_pfi, triggers.pixel_clock_ctr) == (0, 0)
+    assert triggers.pixel_clock_pfi == 1
+    assert scans[0]["daq"] is daq and scans[0]["galvo"] is galvo
+    assert "ai_channels" not in scans[0], "FLIM reads no analog input"
 
 
 # --- teardown --------------------------------------------------------------

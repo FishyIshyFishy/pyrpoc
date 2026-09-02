@@ -2,7 +2,7 @@
 
 The ``run()`` body duplicates confocal's shape, and that is correct. Ten lines
 of duplicated orchestration is cheaper than a template method with a mode flag,
-which is the trap ``BaseModality`` fell into. Sharing happens in ``operations/``,
+which is the trap ``BaseModality`` fell into. Sharing happens in ``hardware/``,
 where the code is genuinely identical.
 
 The raw pixel stream is a declared output. In v3.0 it travelled as
@@ -27,9 +27,9 @@ from pyrpoc.core.params import (
 )
 from pyrpoc.core.streams import Image2D, Samples4D
 from pyrpoc.devices import DAQ, Galvo
-from pyrpoc.operations.modulation import split_mask_ttl
-from pyrpoc.operations.raster import pixel_samples
-from pyrpoc.operations.split_raster import split_raster_scan
+from .hardware.modulation import split_mask_ttl
+from .hardware.raster import pixel_samples
+from .hardware.split_raster import split_raster_scan
 from pyrpoc.run.program import Program
 
 from .registry import program_registry
@@ -87,11 +87,11 @@ class SplitConfocal(Program):
         for index in ctx.frames(p.num_frames):
             ctx.status(f"frame {index + 1}{total}")
             split, raw = split_raster_scan(
-                **p.scan,
-                **p.daq,
-                **p.split,
-                **daq.config,
-                **galvo.config,
+                daq=daq,
+                galvo=galvo,
+                scan=p.scan,
+                sample_rate_hz=p.daq.sample_rate_hz,
+                split=p.split,
                 ttl=ttl,
             )
             ctx.publish("intensity", split, channels=labels)

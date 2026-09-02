@@ -21,8 +21,8 @@ from pyrpoc.core.params import (
 from pyrpoc.core.streams import Image2D
 from pyrpoc.data.dataset import Dataset  # noqa: F401  (documents what publish writes into)
 from pyrpoc.devices import DAQ, Galvo
-from pyrpoc.operations.modulation import mask_ttl
-from pyrpoc.operations.raster import pixel_samples, raster_scan
+from .hardware.modulation import mask_ttl
+from .hardware.raster import pixel_samples, raster_scan
 from pyrpoc.run.program import Program
 
 from .registry import program_registry
@@ -46,7 +46,7 @@ def build_ttl(params: ConfocalParams, daq: DAQ) -> dict:
     """Load the bound masks and turn them into per-pixel TTL waveforms.
 
     Done once before the loop rather than once per frame, and here rather than
-    inside the operation because operations/ may not read files.
+    inside the scan because hardware/ may not read files.
     """
     if not params.modulation.masks:
         return {}
@@ -77,10 +77,10 @@ class Confocal(Program):
         for index in ctx.frames(p.num_frames):
             ctx.status(f"frame {index + 1}{total}")
             frame = raster_scan(
-                **p.scan,
-                **p.daq,
-                **daq.config,
-                **galvo.config,
+                daq=daq,
+                galvo=galvo,
+                scan=p.scan,
+                sample_rate_hz=p.daq.sample_rate_hz,
                 ttl=ttl,
             )
             ctx.publish("intensity", frame, channels=labels)

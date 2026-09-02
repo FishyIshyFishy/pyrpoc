@@ -1,8 +1,8 @@
 """Pin the hardware arithmetic to the phase 0 golden arrays.
 
-Every function here is moved into ``operations/`` during phase 1. These tests
-are the check that the move did not change what is computed -- point them at
-the new functions once they exist and they must still pass unchanged.
+Every function here now lives in ``programs/hardware/``. These tests are the
+check that moving it never changed what is computed -- they must pass unchanged
+after any relocation, which is what makes a relocation safe to do.
 
 If one of these fails, the arithmetic that reaches the instrument changed.
 Fix the implementation, do not regenerate the references.

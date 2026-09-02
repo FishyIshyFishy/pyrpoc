@@ -1,7 +1,7 @@
 """Generate the phase 0 golden reference arrays.
 
 Records what the v3.0.2 hardware arithmetic computes, so the functions moved
-into ``operations/`` during phase 1 can be checked against it. See
+into ``programs/hardware/`` can be checked against it. See
 ``docs/plans/260829-implementation_plan.md``.
 
 Only pure functions are captured: numbers in, numbers out, no hardware.
@@ -11,8 +11,9 @@ implementation and is the thing the tests compare against; regenerating it on a
 changed implementation silently rebases the comparison. This module is imported
 by ``test_phase0_references.py`` to compute the *current* values only.
 
-As of phase 1 the imports point at ``operations/``. The arrays must be
-unchanged.
+The imports point at ``programs/hardware/``. They pointed at ``operations/``
+before that folder was demoted into ``programs/``, and at the v3.0 modalities
+before that. The arrays must be unchanged across every one of those moves.
 """
 
 from __future__ import annotations
@@ -23,10 +24,10 @@ import numpy as np
 
 from pyrpoc.core.modulation import MaskBinding
 from pyrpoc.core.params import ScanGroup
-from pyrpoc.operations import modulation as ops_modulation
-from pyrpoc.operations import raster as ops_raster
-from pyrpoc.operations import split_raster as ops_split
-from pyrpoc.operations import tagger as ops_tagger
+from pyrpoc.programs.hardware import modulation as ops_modulation
+from pyrpoc.programs.hardware import raster as ops_raster
+from pyrpoc.programs.hardware import split_raster as ops_split
+from pyrpoc.programs.hardware import tagger as ops_tagger
 
 reference_path = Path(__file__).parent / "phase0_references.npz"
 

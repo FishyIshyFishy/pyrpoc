@@ -11,6 +11,13 @@ from typing import Any, Callable, Generic, TypeVar
 
 T = TypeVar("T")
 
+#: The decorated class itself, so ``@registry.register(...)`` returns the class
+#: it was given rather than a bare ``type``. Without this every registered
+#: device, view and program is ``Unknown`` downstream: ``daq.config.device_name``
+#: type-checks against nothing, which is most of the value of handing whole
+#: devices to the hardware layer instead of splatting their config.
+C = TypeVar("C", bound=type)
+
 
 class Registry(Generic[T]):
     def __init__(self, name: str, base_class: type, *, stamp: bool = True):
@@ -21,8 +28,8 @@ class Registry(Generic[T]):
         self.stamp = stamp
         self.entries: dict[str, type[T]] = {}
 
-    def register(self, key: str) -> Callable[[type], type]:
-        def decorator(cls: type) -> type:
+    def register(self, key: str) -> Callable[[C], C]:
+        def decorator(cls: C) -> C:
             if not issubclass(cls, self.base_class):
                 raise TypeError(f"{cls.__name__} must inherit from {self.base_class.__name__}")
             if key in self.entries:

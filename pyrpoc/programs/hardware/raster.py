@@ -19,13 +19,16 @@ import nidaqmx as nx
 from nidaqmx.constants import AcquisitionType
 
 from pyrpoc.core.errors import DaqError
+from pyrpoc.core.params import ScanGroup
+from pyrpoc.devices import DAQ, Galvo
 
 
 def pixel_samples(dwell_time_us: float, sample_rate_hz: float) -> int:
     """Samples per pixel for a raster scan.
 
     Truncating, floor 1. The FLIM path rounds and has a floor of 2; the two
-    formulas differ and ``tests/operations/test_pixel_samples.py`` pins both.
+    formulas differ and ``tests/programs/hardware/test_pixel_samples.py`` pins
+    both.
     """
     return max(1, int(dwell_time_us * 1e-6 * sample_rate_hz))
 
@@ -61,6 +64,28 @@ def generate_raster_waveform(
     fast_raster = np.tile(np.repeat(fast_axis, pixel_samples), y_pixels)
     slow_raster = np.repeat(slow_axis, total_x * pixel_samples)
     return np.vstack((fast_raster, slow_raster)).astype(np.float64)
+
+
+def waveform_for_scan(scan: ScanGroup, pixel_samples: int) -> np.ndarray:
+    """``generate_raster_waveform`` driven from a ``ScanGroup``.
+
+    The nine geometry arguments were spelled out at three call sites --
+    ``raster_scan``, ``split_raster_scan`` and ``flim_scan`` -- which is three
+    places to update when a field is added and three chances to transpose the
+    fast and slow axes. ``generate_raster_waveform`` keeps its explicit
+    signature because ``tests/reference/`` pins it; this is the caller's side.
+    """
+    return generate_raster_waveform(
+        x_pixels=scan.x_pixels,
+        extra_left=scan.extra_left,
+        extra_right=scan.extra_right,
+        y_pixels=scan.y_pixels,
+        pixel_samples=pixel_samples,
+        fast_axis_offset=scan.fast_axis_offset,
+        fast_axis_amplitude=scan.fast_axis_amplitude,
+        slow_axis_offset=scan.slow_axis_offset,
+        slow_axis_amplitude=scan.slow_axis_amplitude,
+    )
 
 
 def extract_kept_samples(
@@ -215,48 +240,33 @@ def run_raster(
 
 def raster_scan(
     *,
-    x_pixels: int,
-    y_pixels: int,
-    extra_left: int,
-    extra_right: int,
-    fast_axis_offset: float,
-    fast_axis_amplitude: float,
-    slow_axis_offset: float,
-    slow_axis_amplitude: float,
-    dwell_time_us: float,
+    daq: DAQ,
+    galvo: Galvo,
+    scan: ScanGroup,
     sample_rate_hz: float,
-    device_name: str,
-    ai_channels: tuple[int, ...] | list[int],
-    fast_ao: int,
-    slow_ao: int,
-    ttl: dict[str, np.ndarray] | None = None,
+    ttl: dict[str, np.ndarray],
 ) -> np.ndarray:
-    """Perform one confocal raster scan and return a ``(C, H, W)`` float32 frame."""
-    samples_per_pixel = pixel_samples(dwell_time_us, sample_rate_hz)
+    """Perform one confocal raster scan and return a ``(C, H, W)`` float32 frame.
 
-    waveform = generate_raster_waveform(
-        x_pixels=x_pixels,
-        extra_left=extra_left,
-        extra_right=extra_right,
-        y_pixels=y_pixels,
-        pixel_samples=samples_per_pixel,
-        fast_axis_offset=fast_axis_offset,
-        fast_axis_amplitude=fast_axis_amplitude,
-        slow_axis_offset=slow_axis_offset,
-        slow_axis_amplitude=slow_axis_amplitude,
-    )
+    The devices supply their own wiring; the caller supplies the run's geometry.
+    ``ttl`` has no default: an empty dict means "no mask drives a digital line",
+    and the caller has to say so rather than leaving it off and finding out on
+    the instrument which of the two it meant.
+    """
+    samples_per_pixel = pixel_samples(scan.dwell_time_us, sample_rate_hz)
+
     scan_data, total_y_out, x_out, px_out = run_raster(
-        device_name=device_name,
+        device_name=daq.config.device_name,
         sample_rate_hz=sample_rate_hz,
-        fast_ao=fast_ao,
-        slow_ao=slow_ao,
-        waveform=waveform,
-        ttl_signals=ttl or {},
-        x_pixels=x_pixels,
-        y_pixels=y_pixels,
-        extra_left=extra_left,
-        extra_right=extra_right,
-        dwell_time_us=dwell_time_us,
-        ai_channels=list(ai_channels),
+        fast_ao=galvo.config.fast_ao,
+        slow_ao=galvo.config.slow_ao,
+        waveform=waveform_for_scan(scan, samples_per_pixel),
+        ttl_signals=ttl,
+        x_pixels=scan.x_pixels,
+        y_pixels=scan.y_pixels,
+        extra_left=scan.extra_left,
+        extra_right=scan.extra_right,
+        dwell_time_us=scan.dwell_time_us,
+        ai_channels=list(daq.config.ai_channels),
     )
     return reshape_to_frame(scan_data, total_y_out, x_out, px_out)

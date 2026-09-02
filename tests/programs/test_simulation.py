@@ -20,7 +20,13 @@ from pyrpoc.core.streams import Image2D
 from pyrpoc.data.io import load_frames
 from pyrpoc.data.io import SaveTarget
 from pyrpoc.data.library import DatasetLibrary
-from pyrpoc.operations.simulation import PATTERNS, combine_masks, synthetic_frame
+from pyrpoc.programs.synthetic import (
+    PATTERNS,
+    FrameGroup,
+    SignalGroup,
+    combine_masks,
+    synthetic_frame,
+)
 from pyrpoc.programs.simulation import Simulation, SimulationParams, build_mask
 from pyrpoc.run.runner import Runner
 
@@ -112,16 +118,13 @@ def test_a_different_seed_gives_different_pixels():
 @pytest.mark.parametrize("pattern", PATTERNS)
 def test_every_pattern_produces_a_usable_frame(pattern):
     frame = synthetic_frame(
-        x_pixels=16,
-        y_pixels=12,
-        channels=2,
-        pattern=pattern,
-        signal_level=1.0,
-        noise_level=0.0,
-        drift_pixels_per_frame=1.0,
-        mask_gain=0.0,
-        seed=7,
+        frame_shape=FrameGroup(x_pixels=16, y_pixels=12, channels=2),
+        signal=SignalGroup(
+            pattern=pattern, signal_level=1.0, noise_level=0.0,
+            drift_pixels_per_frame=1.0, mask_gain=0.0, seed=7,
+        ),
         frame_index=0,
+        mask=None,
     )
     assert frame.shape == (2, 12, 16)
     assert np.isfinite(frame).all()
@@ -132,19 +135,30 @@ def test_every_pattern_produces_a_usable_frame(pattern):
 def test_an_unknown_pattern_is_an_error():
     with pytest.raises(ValueError):
         synthetic_frame(
-            x_pixels=8, y_pixels=8, channels=1, pattern="spiral", signal_level=1.0,
-            noise_level=0.0, drift_pixels_per_frame=0.0, mask_gain=0.0, seed=0, frame_index=0,
+            frame_shape=FrameGroup(x_pixels=8, y_pixels=8, channels=1),
+            signal=SignalGroup(pattern="spiral", noise_level=0.0, mask_gain=0.0),
+            frame_index=0,
+            mask=None,
         )
 
 
 def test_noise_is_the_only_source_of_frame_to_frame_change_when_nothing_drifts():
-    common = dict(
-        x_pixels=16, y_pixels=16, channels=1, pattern="cells", signal_level=1.0,
-        drift_pixels_per_frame=0.0, mask_gain=0.0, seed=3,
-    )
-    quiet_a = synthetic_frame(**common, noise_level=0.0, frame_index=0)
-    quiet_b = synthetic_frame(**common, noise_level=0.0, frame_index=5)
-    noisy = synthetic_frame(**common, noise_level=0.2, frame_index=0)
+    shape = FrameGroup(x_pixels=16, y_pixels=16, channels=1)
+
+    def signal(noise_level: float) -> SignalGroup:
+        return SignalGroup(
+            pattern="cells", signal_level=1.0, noise_level=noise_level,
+            drift_pixels_per_frame=0.0, mask_gain=0.0, seed=3,
+        )
+
+    def frame_at(index: int, noise_level: float):
+        return synthetic_frame(
+            frame_shape=shape, signal=signal(noise_level), frame_index=index, mask=None
+        )
+
+    quiet_a = frame_at(0, 0.0)
+    quiet_b = frame_at(5, 0.0)
+    noisy = frame_at(0, 0.2)
     assert np.array_equal(quiet_a, quiet_b)
     assert not np.allclose(quiet_a, noisy)
 
