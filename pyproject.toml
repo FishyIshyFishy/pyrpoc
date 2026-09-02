@@ -7,7 +7,7 @@ requires-python = ">=3.10"
 license = "MIT"
 
 authors = [
-  { name = "Ishaan Singh", email = "sing1125@purdue.com" }
+  { name = "Ishaan Singh", email = "sing1125@purdue.edu" }
 ]
 
 dependencies = [
