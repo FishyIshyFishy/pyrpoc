@@ -45,7 +45,7 @@ class RunBridge(QObject):
     def start(
         self,
         program: Any,
-        params: Any,
+        blocks: Any,
         devices: list[Device],
         *,
         continuous: bool = False,
@@ -56,7 +56,7 @@ class RunBridge(QObject):
         try:
             handle = self.runner.start(
                 program,
-                params,
+                blocks,
                 devices,
                 continuous=continuous,
                 program_key=program_key,

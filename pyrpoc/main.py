@@ -72,7 +72,7 @@ def build(
     theme_controller: ThemeController,
     session_path=None,
 ) -> tuple[Application, MainWindow, Autosave]:
-    """Build the application, its window and its autosave. Shared with the tests."""
+    """Build the application, its window and its autosave."""
     app = Application()
     window = MainWindow(app, theme_controller)
     autosave = Autosave(

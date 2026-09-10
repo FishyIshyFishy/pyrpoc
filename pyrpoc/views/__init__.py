@@ -1,7 +1,7 @@
 """Renders datasets. Must not import run/ or programs/.
 
 That rule is the display/acquisition separation, enforced by the import graph
-rather than by discipline, and tests/test_import_rules.py checks it.
+rather than by discipline: views/ may import core/ and data/, nothing else.
 """
 
 from .base import View

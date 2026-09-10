@@ -83,9 +83,9 @@ class Device:
         """Device-specific controls, beneath the form generated from ``config``.
 
         Returns None when the generated form is the whole panel. Subclasses
-        import their widget *inside* this method: a module-scope Qt import would
-        make ``pyrpoc.devices`` unimportable headless and fail
-        ``tests/test_headless.py``.
+        import their widget *inside* this method: a module-scope Qt import
+        would make ``pyrpoc.devices`` unimportable on a machine with no display,
+        which every layer below the shell has to stay.
         """
         del parent, on_change
         return None

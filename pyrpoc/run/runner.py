@@ -1,8 +1,7 @@
 """Executing a program: the worker thread, cancellation, and dataset setup.
 
-Pure Python, no Qt, so a runner test needs no QApplication -- which is section
-12's "the test suite runs headless with no Qt application". The thread
-marshalling that the GUI needs lives in ``shell/run_bridge.py``.
+Pure Python, no Qt, so a run can be driven with no QApplication at all. The
+thread marshalling the GUI needs lives in ``shell/run_bridge.py``.
 
 The runner never knows what any program does; it only knows how to execute one.
 What it does own is everything section 8.1 lists as absent from the program:
@@ -65,7 +64,7 @@ class Runner:
     def start(
         self,
         program: Program,
-        params: Any,
+        blocks: P.BlockStore,
         inventory: list[Device],
         *,
         continuous: bool = False,
@@ -78,17 +77,19 @@ class Runner:
     ) -> RunHandle:
         """Execute one program on a worker thread.
 
-        ``save`` says what the run is called and whether it is written to
-        disk. It arrives as its own argument rather than being read off the
-        parameter model, because where data lands is not something one program
-        does differently from another.
+        ``blocks`` is every parameter block that exists; the program gets the
+        ones it declared and no others. ``save`` says what the run is called
+        and whether it is written to disk. Both arrive as their own arguments
+        rather than being read off a parameter model, because neither is
+        something one program does differently from another.
         """
         with self._lock:
             if self.is_running:
                 raise RuntimeError("a run is already in progress")
 
             devices = claims.resolve(list(program.uses), inventory)
-            P.validate(params)
+            declared = list(program.params)
+            blocks.validate(declared)
             key = program_key or default_program_key(program)
 
             self._run_id += 1
@@ -96,13 +97,16 @@ class Runner:
             started_at = utc_now()
             self._cancel = threading.Event()
 
+            #: One encoding, shared by the run metadata and the session file.
+            encoded = blocks.to_dict(declared)
+
             saver = self.build_saver(
-                program, params, devices, key, save=save, run_id=run_id,
-                started_at=started_at, continuous=continuous,
+                program, encoded, devices, key, save=save, run_id=run_id,
+                started_at=started_at,
             )
             provenance = Provenance(
                 program_key=key,
-                parameters=P.to_dict(params),
+                parameters=encoded,
                 devices=self.device_state(devices),
                 started_at=started_at,
                 run_id=run_id,
@@ -116,13 +120,15 @@ class Runner:
                     on_dataset(dataset)
 
             ctx = RunContext(
-                params=params,
+                params=blocks.for_program(declared),
                 devices=devices,
                 datasets=datasets,
                 cancel=self._cancel,
                 continuous=continuous,
                 on_status=on_status,
             )
+            if saver is not None:
+                saver.track_frame_limit(lambda: ctx.frame_limit)
 
             thread = threading.Thread(
                 target=self.worker,
@@ -135,25 +141,24 @@ class Runner:
             return RunHandle(run_id, datasets, thread)
 
     def build_saver(
-        self, program, params, devices, program_key, *, save, run_id, started_at, continuous
+        self, program, parameters, devices, program_key, *, save, run_id, started_at
     ) -> RunSaver | None:
         """The saver for this run, or None when saving is off.
 
         v3.1 dug this out of ``params.save``, which meant every parameter
         model had to declare a group it never read and the runner had to guess
-        whether the one in front of it had.
+        whether the one in front of it had. The frame limit was the last
+        survivor of that reach-through; the running program now reports it.
         """
         if save is None or not save.enabled:
             return None
-        num_frames = getattr(params, "num_frames", None)
         saver = RunSaver(
             root=save.root,
             program_key=program_key,
-            parameters=P.to_dict(params),
+            parameters=parameters,
             devices=self.device_state(devices),
             run_id=run_id,
             started_at=started_at,
-            frame_limit=None if continuous else num_frames,
         )
         saver.prepare(dict(program.emits))
         return saver

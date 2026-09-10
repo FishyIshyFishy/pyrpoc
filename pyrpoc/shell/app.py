@@ -22,6 +22,7 @@ from pyrpoc.data.io import SaveTarget
 from pyrpoc.data.library import DatasetLibrary
 from pyrpoc.devices.base import Device
 from pyrpoc.devices.registry import device_registry
+from pyrpoc.programs.components import BLOCKS
 from pyrpoc.run import claims
 
 from . import catalog
@@ -46,7 +47,10 @@ class Application(QObject):
         self.bridge = RunBridge(self.library, self)
 
         self.selected_program: str | None = None
-        self.params_by_program: dict[str, Any] = {}
+        #: Every parameter block that exists, one instance per class. Two
+        #: programs declaring ScanGroup are handed the same object, which is
+        #: what makes switching modality keep the geometry you set.
+        self.blocks = P.BlockStore()
         #: One save target for the session, not one per program: what a run is
         #: called and where it goes has nothing to do with which program runs.
         self.save = SaveTarget()
@@ -61,20 +65,21 @@ class Application(QObject):
             self.bridge.stop()
         catalog.entry_for(key)  # raises on an unknown key
         self.selected_program = key
-        self.params_for(key)    # ensure a model exists
+        self.params_for(key)    # ensure its blocks exist
         self.program_selected.emit(key)
         self.state_changed.emit()
 
-    def params_for(self, key: str) -> Any:
-        """The parameter model for one program, created on first use.
+    def params_for(self, key: str) -> list:
+        """The blocks one program declares, in the order it declared them.
 
-        Kept per program, so switching programs preserves each one's settings.
+        Created at defaults on first request and shared from then on: a block
+        two programs both declare is one object, so a value set under one
+        modality is already set under the other.
         """
-        if key not in self.params_by_program:
-            self.params_by_program[key] = catalog.entry_for(key).program.params()
-        return self.params_by_program[key]
+        declared = catalog.entry_for(key).program.params
+        return [self.blocks.get(cls) for cls in declared]
 
-    def current_params(self) -> Any | None:
+    def current_params(self) -> list | None:
         if self.selected_program is None:
             return None
         return self.params_for(self.selected_program)
@@ -170,10 +175,10 @@ class Application(QObject):
         if self.selected_program is None:
             raise RuntimeError("no program selected")
         entry = catalog.entry_for(self.selected_program)
-        params = self.params_for(entry.key)
+        self.params_for(entry.key)  # ensure every declared block exists
         return self.bridge.start(
             entry.program(),
-            params,
+            self.blocks,
             self.devices,
             continuous=continuous,
             program_key=entry.key,
@@ -186,15 +191,8 @@ class Application(QObject):
     # -- persistence -------------------------------------------------------- #
 
     def params_state(self) -> dict[str, dict]:
-        return {key: P.to_dict(model) for key, model in self.params_by_program.items()}
+        """The block store as a flat state dict, keyed by block class name."""
+        return self.blocks.to_dict()
 
     def load_params_state(self, raw: dict[str, dict]) -> None:
-        for key, values in (raw or {}).items():
-            try:
-                entry = catalog.entry_for(key)
-            except KeyError:
-                continue
-            try:
-                self.params_by_program[key] = P.from_dict(entry.program.params, values)
-            except Exception:
-                self.params_by_program[key] = entry.program.params()
+        self.blocks.load_dict(raw, BLOCKS)
