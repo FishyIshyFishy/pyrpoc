@@ -31,8 +31,6 @@ build-backend = "setuptools.build_meta"
 
 [dependency-groups]
 dev = [
-  "pytest",
-  "pytest-cov",
   "pyright",
 ]
 
@@ -50,7 +48,3 @@ venvPath = "."
 venv = ".venv"
 pythonVersion = "3.13"
 typeCheckingMode = "basic"
-
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-addopts = "-q"

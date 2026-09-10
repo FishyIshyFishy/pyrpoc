@@ -1,15 +1,17 @@
-"""A form generated from a parameter model, writing back into it.
+"""A form generated from parameter blocks, writing back into them.
 
 The Qt half of v3.0's ``backend_utils/parameter_utils.py``. What that module did
 in one class per field -- definition, coercion, widget, get, set, connect -- is
 split: ``core/params.py`` holds the definition and coercion, this holds the
 widget.
 
-The model is authoritative. Every widget change writes straight back into it, so
-nothing has to scrape the form at play time and anything other than the form can
-parameterise a run. That is settled statement 3.
+The blocks are authoritative. Every widget change writes straight back into the
+block instance, so nothing has to scrape the form at play time and anything
+other than the form can parameterise a run. Because a block instance is shared
+by every modality that declares it, that write is also how the value reaches
+the other modalities.
 
-One generator serves both the acquisition form and the device panels, so adding
+One generator serves the acquisition form and the device panels both, so adding
 a field to a device config adds its row with no panel edit.
 """
 
@@ -17,7 +19,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Sequence
 
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import (
@@ -40,7 +42,7 @@ from PyQt6.QtWidgets import (
 
 from pyrpoc.core import params as P
 from pyrpoc.core.errors import ParameterError
-from pyrpoc.core.modulation import MaskBinding
+from pyrpoc.programs.components import Mask, MasksField
 
 from .cards import BaseCardWidget
 
@@ -67,6 +69,9 @@ class FieldWidget:
     set: Callable[[Any], None]
     connect: Callable[[Callable[[], None]], None]
     summary: Callable[[], str]
+    #: The spec this widget was built from. Carried rather than looked up:
+    #: resolving it per path per keystroke was quadratic in field count.
+    spec: P.Field | None = None
 
 
 # --------------------------------------------------------------------------- #
@@ -117,7 +122,7 @@ class MaskTable(QWidget):
 
     # -- rows -------------------------------------------------------------- #
 
-    def add_row(self, binding: MaskBinding) -> None:
+    def add_row(self, binding: Mask) -> None:
         row = self.table.rowCount()
         self.table.blockSignals(True)
         self.table.insertRow(row)
@@ -137,7 +142,7 @@ class MaskTable(QWidget):
         )
         if not path:
             return
-        self.add_row(MaskBinding(Path(path)))
+        self.add_row(Mask(Path(path)))
         self.changed.emit()
 
     def on_remove_clicked(self) -> None:
@@ -149,8 +154,8 @@ class MaskTable(QWidget):
 
     # -- value ------------------------------------------------------------- #
 
-    def value(self) -> tuple[MaskBinding, ...]:
-        out: list[MaskBinding] = []
+    def value(self) -> tuple[Mask, ...]:
+        out: list[Mask] = []
         for row in range(self.table.rowCount()):
             item = self.table.item(row, 0)
             text = (item.text() if item is not None else "").strip()
@@ -159,7 +164,7 @@ class MaskTable(QWidget):
             port = self.table.cellWidget(row, 1)
             line = self.table.cellWidget(row, 2)
             out.append(
-                MaskBinding(
+                Mask(
                     Path(text),
                     port.value() if isinstance(port, QSpinBox) else 0,
                     line.value() if isinstance(line, QSpinBox) else 0,
@@ -316,7 +321,7 @@ def build_channels(spec: P.ChannelsField, parent) -> FieldWidget:
     )
 
 
-def build_masks(spec: P.MasksField, parent) -> FieldWidget:
+def build_masks(spec: MasksField, parent) -> FieldWidget:
     table = MaskTable(parent)
     return FieldWidget(
         table,
@@ -335,7 +340,7 @@ BUILDERS: dict[type, Callable[[Any, QWidget], FieldWidget]] = {
     P.BoolField: build_bool,
     P.ChoiceField: build_choice,
     P.ChannelsField: build_channels,
-    P.MasksField: build_masks,
+    MasksField: build_masks,
 }
 
 
@@ -344,6 +349,7 @@ def build_field(spec: P.Field, parent: QWidget) -> FieldWidget:
     if builder is None:
         raise TypeError(f"no widget for {type(spec).__name__}")
     field = builder(spec, parent)
+    field.spec = spec
     if spec.tooltip:
         field.widget.setToolTip(spec.tooltip)
     return field
@@ -355,14 +361,32 @@ def build_field(spec: P.Field, parent: QWidget) -> FieldWidget:
 
 
 class ParamForm(QWidget):
-    """Sections as collapsible cards, generated from a parameter model."""
+    """One collapsible card per parameter block, generated from the blocks.
+
+    The blocks are authoritative and shared: every widget change writes
+    straight back into the instance it came from, and that instance is the one
+    every other modality declaring the same block is also holding. So switching
+    programs does not need the form to hand anything over, and nothing has to
+    scrape widgets at play time.
+
+    Takes a sequence, so a device configuration is simply a one-block form.
+    """
 
     changed = pyqtSignal()
     invalid = pyqtSignal(str)
 
-    def __init__(self, model: Any, parent: QWidget | None = None, *, cards: bool = True):
+    def __init__(
+        self,
+        blocks: Sequence[P.Group] | P.Group,
+        parent: QWidget | None = None,
+        *,
+        cards: bool = True,
+    ):
         super().__init__(parent)
-        self.model = model
+        if isinstance(blocks, P.Group):
+            blocks = [blocks]
+        self.blocks: list[P.Group] = list(blocks)
+        self.index: dict[str, P.Group] = P.index(self.blocks)
         self.last_error: str | None = None
         self.fields: dict[str, FieldWidget] = {}
         self._cards: list[tuple[BaseCardWidget, list[str]]] = []
@@ -372,7 +396,7 @@ class ParamForm(QWidget):
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(8)
 
-        for section in P.sections(model):
+        for section in P.sections(self.blocks):
             body = QWidget(self)
             form = QFormLayout(body)
             form.setContentsMargins(4, 4, 4, 4)
@@ -398,28 +422,36 @@ class ParamForm(QWidget):
                 root.addWidget(body)
 
         root.addStretch(1)
-        self.write_from(model)
+        self.reload()
 
-    # -- model <-> form ----------------------------------------------------- #
+    # -- blocks <-> form ---------------------------------------------------- #
 
-    def write_from(self, model: Any) -> None:
-        """Model -> form."""
-        self.model = model
+    def reload(self) -> None:
+        """Blocks -> form. Call after something else has written the blocks."""
         self._loading = True
         try:
             for path, field in self.fields.items():
-                field.set(P.get_path(model, path))
+                field.set(P.get_path(self.index, path))
         finally:
             self._loading = False
         self.refresh_summaries()
 
-    def read_into(self, model: Any | None = None) -> Any:
-        """Form -> model, coercing each value through its field spec."""
-        target = model if model is not None else self.model
-        for path, field in self.fields.items():
-            spec = P.spec_at(target, path)
-            P.set_path(target, path, spec.coerce(field.get()))
-        return target
+    def read_into(self, target: Any | None = None) -> Any:
+        """Form -> blocks, coercing each value through its field spec.
+
+        Coerces everything before writing anything, so a value that fails its
+        bounds leaves every block untouched rather than half-updated.
+        """
+        lookup = self.index if target is None else P.index(
+            [target] if isinstance(target, P.Group) else list(target)
+        )
+        coerced = {
+            path: (field.spec or P.spec_at(lookup, path)).coerce(field.get())
+            for path, field in self.fields.items()
+        }
+        for path, value in coerced.items():
+            P.set_path(lookup, path, value)
+        return self.blocks if target is None else target
 
     def on_field_changed(self) -> None:
         """Runs inside a Qt slot, so nothing may escape from here.
@@ -445,6 +477,7 @@ class ParamForm(QWidget):
         for card, paths in self._cards:
             parts = []
             for path in paths:
-                spec = P.spec_at(self.model, path)
-                parts.append(f"{spec.label}: {self.fields[path].summary()}")
+                field = self.fields[path]
+                spec = field.spec or P.spec_at(self.index, path)
+                parts.append(f"{spec.label}: {field.summary()}")
             card.set_description("  |  ".join(parts))

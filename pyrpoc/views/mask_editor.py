@@ -46,12 +46,29 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from pyrpoc.core.modulation import save_mask
 from pyrpoc.core.streams import Image2D
 from pyrpoc.data.transforms import normalize_channels
 
 from .base import View
 from .registry import view_registry
+
+
+def write_mask(path: Path | str, mask: np.ndarray) -> Path:
+    """Write a 2-D mask to disk. Returns the path written.
+
+    Lives here rather than in a shared module because this editor is the only
+    thing in the application that authors a mask file. Programs read masks
+    through ``Mask.load()``, which is a parameter's business; writing one is
+    this view's.
+    """
+    array = np.asarray(mask, dtype=np.uint8)
+    if array.ndim != 2:
+        raise ValueError(f"mask must be 2D, got shape={array.shape}")
+    resolved = Path(str(path)).expanduser()
+    resolved.parent.mkdir(parents=True, exist_ok=True)
+    if not cv2.imwrite(str(resolved), array):
+        raise OSError(f"failed to write a mask to '{resolved}'")
+    return resolved
 
 
 @dataclass
@@ -564,7 +581,7 @@ class MaskEditorView(View):
         if not path:
             return
         try:
-            written = save_mask(path, mask)
+            written = write_mask(path, mask)
         except Exception as exc:
             QMessageBox.critical(self, "Save Failed", f"Failed to save mask to {path}: {exc}")
             return

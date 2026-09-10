@@ -47,7 +47,7 @@ def capture(app: Application, window=None, theme_mode: str = "system") -> Sessio
         devices=devices,
         views=views,
         selected_program=app.selected_program,
-        params_by_program=app.params_state(),
+        param_blocks=app.params_state(),
         save=SaveState(
             name=app.save.name,
             directory=app.save.directory,
@@ -86,7 +86,7 @@ def apply(state: SessionState, app: Application, window=None) -> None:
         except Exception:
             continue
 
-    app.load_params_state(state.params_by_program)
+    app.load_params_state(state.param_blocks)
     app.set_save(
         name=state.save.name,
         directory=state.save.directory,
@@ -167,7 +167,7 @@ class Autosave(QObject):
         try:
             self.app.clear_views()
             self.app.clear_devices()
-            self.app.params_by_program.clear()
+            self.app.blocks.clear()
             self.app.set_save(name=SaveState().name, directory="", enabled=False)
             seed_defaults(self.app)
             if catalog.CATALOG:

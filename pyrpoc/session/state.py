@@ -13,17 +13,13 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-#: Bumped from 6. Parameters are stored differently -- nested groups keyed by
-#: program rather than a flat list keyed by widget label -- and instruments have
-#: become devices, so a v6 file has nothing to map onto. There is no converter:
-#: a v6 session loads as defaults, once.
-#:
-#: The save block arrived without a bump. It is additive, and everything else
-#: in a v7 file still means what it meant -- the per-program save group it
-#: replaces sits inside ``params_by_program`` and is simply not read back. A
-#: bump would have thrown away a rig's tuned scan parameters to deliver a
-#: default filename.
-SCHEMA_VERSION = 7
+#: Bumped from 7. Parameters are no longer stored per program: a block is
+#: shared by every modality that declares it, so there is one flat state dict
+#: keyed by block class name instead of a nested dict keyed by program. A v7
+#: file's ``params_by_program`` has no single answer to map onto -- three
+#: programs could each hold a different ScanGroup -- so there is no converter
+#: and a v7 session loads as defaults, once.
+SCHEMA_VERSION = 8
 
 
 @dataclass
@@ -62,9 +58,11 @@ class SessionState:
     devices: list[DeviceState] = field(default_factory=list)
     views: list[ViewState] = field(default_factory=list)
     selected_program: str | None = None
-    params_by_program: dict[str, dict[str, Any]] = field(default_factory=dict)
+    #: Every parameter block, keyed by class name. The state dict: one entry
+    #: per block, not one per program, because a block is shared.
+    param_blocks: dict[str, dict[str, Any]] = field(default_factory=dict)
     save: SaveState = field(default_factory=SaveState)
     ads_layout: str | None = None
 
     def is_empty(self) -> bool:
-        return not self.devices and not self.views and not self.params_by_program
+        return not self.devices and not self.views and not self.param_blocks

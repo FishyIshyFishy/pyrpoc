@@ -28,7 +28,7 @@ import json
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 import numpy as np
 import tifffile
@@ -190,12 +190,28 @@ class RunSaver:
         self.devices = dict(devices or {})
         self.run_id = run_id
         self.started_at = started_at or utc_now()
-        self.frame_limit = frame_limit
+        self._frame_limit_source: Callable[[], int | None] = lambda: frame_limit
 
         self.json_path = self.root.with_name(f"{self.root.name}_meta.json")
         self.writers: dict[str, StreamWriter] = {}
         self.primary_stream: str | None = None
         self.frames_saved = 0
+
+    @property
+    def frame_limit(self) -> int | None:
+        """How many frames the run intends to write, or None if open-ended."""
+        return self._frame_limit_source()
+
+    def track_frame_limit(self, source: Callable[[], int | None]) -> None:
+        """Read the limit from the running program rather than a fixed number.
+
+        The program is the only thing that knows how many frames it will take,
+        and it says so by entering ``ctx.frames(n)``. Pulling the value at
+        write time is what lets a program with no frame concept exist at all:
+        it never calls ``frames()``, this stays None, and nothing had to pass a
+        count it does not have.
+        """
+        self._frame_limit_source = source
 
     def prepare(self, streams: dict[str, type[Stream]]) -> None:
         """Create the output directory and write the metadata stub."""

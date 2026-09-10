@@ -1,20 +1,22 @@
-"""The parameter model: field definitions, shared groups, coercion.
+"""The parameter model: field definitions, blocks, coercion.
 
-No Qt. The widget half of the old ``backend_utils/parameter_utils.py`` lives in
-``shell/param_form.py``; what stays here is label, tooltip, bounds and how a
-raw value becomes a real one.
+No Qt, no hardware, no instrument vocabulary. The widget half lives in
+``shell/param_form.py``; the blocks themselves live with the code that declares
+them. What stays here is label, tooltip, bounds, how a raw value becomes a real
+one, and how a set of blocks is held, addressed and serialised.
 
-Values live in dataclasses whose fields carry their spec in ``metadata``, so
-one declaration serves the value, the default, the form and the validation.
+A **block** is a dataclass whose fields carry their spec in ``metadata``, so one
+declaration serves the value, the default, the form and the validation. A
+program declares which block classes it wants; the block class is the identity
+everywhere -- declaration key, form key, session key, metadata key.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field as dc_field, fields, is_dataclass
-from typing import Any, Iterable
+from typing import Any, ClassVar, Iterable, Iterator, Mapping, Sequence, TypeVar
 
 from .errors import ParameterError
-from .modulation import MaskBinding
 
 
 # --------------------------------------------------------------------------- #
@@ -152,208 +154,181 @@ class ChannelsField(Field):
         return list(value or ())
 
 
-@dataclass(frozen=True)
-class MasksField(Field):
-    """The Modulation table: mask file, port, line — one row per binding."""
-
-    def coerce(self, value: Any) -> tuple[MaskBinding, ...]:
-        if value is None:
-            return ()
-        if isinstance(value, (str, bytes)) or not isinstance(value, Iterable):
-            raise ParameterError(f"{self.label}: expected a list of mask bindings")
-        return tuple(MaskBinding.from_dict(row) for row in value)
-
-    def encode(self, value: Any) -> Any:
-        return [binding.to_dict() for binding in (value or ())]
-
-
 # --------------------------------------------------------------------------- #
 # Field constructors — each returns a dataclasses.field carrying its spec      #
 # --------------------------------------------------------------------------- #
 
 
-def _spec_field(default: Any, spec: Field, *, factory=None):
+def spec_field(default: Any, spec: Field, *, factory=None):
+    """A dataclass field carrying its parameter spec. Public so blocks declared
+    outside this module can define their own field types."""
     if factory is not None:
         return dc_field(default_factory=factory, metadata={"param": spec})
     return dc_field(default=default, metadata={"param": spec})
 
 
 def int_field(label, default, *, minimum=None, maximum=None, step=1, tooltip=""):
-    return _spec_field(default, IntField(label, tooltip, minimum, maximum, step))
+    return spec_field(default, IntField(label, tooltip, minimum, maximum, step))
 
 
 def float_field(label, default, *, minimum=None, maximum=None, step=0.1, decimals=6, tooltip=""):
-    return _spec_field(default, FloatField(label, tooltip, minimum, maximum, step, decimals))
+    return spec_field(default, FloatField(label, tooltip, minimum, maximum, step, decimals))
 
 
 def text_field(label, default="", *, tooltip=""):
-    return _spec_field(default, TextField(label, tooltip))
+    return spec_field(default, TextField(label, tooltip))
 
 
 def path_field(label, default="", *, dialog_filter="All Files (*)", tooltip=""):
-    return _spec_field(default, PathField(label, tooltip, dialog_filter))
+    return spec_field(default, PathField(label, tooltip, dialog_filter))
 
 
 def bool_field(label, default=False, *, tooltip=""):
-    return _spec_field(default, BoolField(label, tooltip))
+    return spec_field(default, BoolField(label, tooltip))
 
 
 def choice_field(label, default, *, choices, tooltip=""):
-    return _spec_field(default, ChoiceField(label, tooltip, tuple(choices)))
+    return spec_field(default, ChoiceField(label, tooltip, tuple(choices)))
 
 
 def channels_field(label, *, num_channels=9, default=None, tooltip=""):
     resolved = tuple(range(num_channels)) if default is None else tuple(default)
-    return _spec_field(None, ChannelsField(label, tooltip, num_channels), factory=lambda: resolved)
-
-
-def masks_field(label="Masks", *, tooltip=""):
-    return _spec_field(None, MasksField(label, tooltip), factory=tuple)
-
-
-def group(cls: type, label: str):
-    """A nested parameter group, rendered as its own form section."""
-    return dc_field(default_factory=cls, metadata={"group": label, "group_cls": cls})
+    return spec_field(None, ChannelsField(label, tooltip, num_channels), factory=lambda: resolved)
 
 
 # --------------------------------------------------------------------------- #
-# Group base                                                                   #
+# Block base                                                                   #
 # --------------------------------------------------------------------------- #
 
 
 class Group:
-    """Base for parameter groups.
+    """Base for parameter blocks.
 
-    Deliberately empty. It used to carry ``keys`` and ``__getitem__``, which
-    existed for one purpose: to make ``f(**p.some_group)`` work. Every caller
-    now takes the group itself, so a renamed field is a type error instead of a
-    ``TypeError`` on the first frame, and the mapping protocol went with the
-    last splat. Leaving it in would be leaving the way back open.
+    Two jobs, both real. ``label`` is the section heading the form draws, which
+    is why it lives on the class rather than at each declaration site: one block
+    is one section wherever it appears.
 
-    The base class stays because ``group()`` and the form generator key off it.
+    It is deliberately not a mapping. It used to carry ``keys`` and
+    ``__getitem__`` so ``f(**p.some_group)`` would work; every caller now takes
+    the block itself, so a renamed field is a type error instead of a
+    ``TypeError`` on the first frame.
     """
 
-
-# --------------------------------------------------------------------------- #
-# Shared groups                                                                #
-# --------------------------------------------------------------------------- #
+    label: ClassVar[str] = ""
 
 
-@dataclass
-class ScanGroup(Group):
-    x_pixels: int = int_field("X Pixels", 512, minimum=8, tooltip="Number of pixels in X")
-    y_pixels: int = int_field("Y Pixels", 512, minimum=8, tooltip="Number of pixels in Y")
-    extra_left: int = int_field(
-        "Extra Steps Left", 300, minimum=0, tooltip="Extra scan steps at the left edge"
-    )
-    extra_right: int = int_field(
-        "Extra Steps Right", 20, minimum=0, tooltip="Extra scan steps at the right edge"
-    )
-    fast_axis_offset: float = float_field("Fast Axis Offset", 0.0, tooltip="Fast-axis offset")
-    fast_axis_amplitude: float = float_field(
-        "Fast Axis Amplitude", 1.0, minimum=1e-6, tooltip="Fast-axis amplitude"
-    )
-    slow_axis_offset: float = float_field("Slow Axis Offset", 0.0, tooltip="Slow-axis offset")
-    slow_axis_amplitude: float = float_field(
-        "Slow Axis Amplitude", 1.0, minimum=1e-6, tooltip="Slow-axis amplitude"
-    )
-    dwell_time_us: float = float_field(
-        "Dwell Time (us)", 2.0, minimum=0.1, tooltip="Pixel dwell time"
-    )
-
-    @property
-    def total_x(self) -> int:
-        return self.x_pixels + self.extra_left + self.extra_right
+B = TypeVar("B", bound=Group)
 
 
-@dataclass
-class DaqGroup(Group):
-    sample_rate_hz: float = float_field(
-        "Sample Rate (Hz)",
-        100_000.0,
-        minimum=1.0,
-        maximum=5_000_000.0,
-        step=1_000.0,
-        tooltip="DAQ sample rate in Hz",
-    )
+def block_fields(block_or_cls: Any) -> list[tuple[str, Field]]:
+    """``(name, spec)`` for every parameter field on a block."""
+    cls = block_or_cls if isinstance(block_or_cls, type) else type(block_or_cls)
+    if not is_dataclass(cls):
+        raise TypeError(f"{cls!r} is not a parameter block")
+    return [(f.name, f.metadata["param"]) for f in fields(cls) if "param" in f.metadata]
 
 
-@dataclass
-class FlimDaqGroup(DaqGroup):
-    """Same field, different default: the FLIM pixel clock divides down from it."""
-
-    sample_rate_hz: float = float_field(
-        "Sample Rate (Hz)",
-        1_000_000.0,
-        minimum=1.0,
-        maximum=5_000_000.0,
-        step=1_000.0,
-        tooltip="DAQ AO sample rate in Hz; the pixel clock is divided down from it",
-    )
-
-
-@dataclass
-class ModulationGroup(Group):
-    masks: tuple[MaskBinding, ...] = masks_field(
-        "Masks", tooltip="Mask files driving digital output lines during the scan"
-    )
-
-
-@dataclass
-class SplitGroup(Group):
-    t0_samples: int = int_field(
-        "t0 Samples", 1, minimum=1, tooltip="Number of samples in the first subpixel window"
-    )
-    t1_samples: int = int_field(
-        "t1 Samples", 0, minimum=0, tooltip="Number of samples to discard between t0 and t2"
-    )
-
-
-@dataclass
-class TriggerGroup(Group):
-    frame_trigger_pfi: int = int_field(
-        "Frame Trigger PFI Line",
-        0,
-        minimum=0,
-        tooltip="PFI line that exports the AO start trigger (frame marker)",
-    )
-    pixel_clock_ctr: int = int_field(
-        "Pixel Clock Counter", 0, minimum=0, tooltip="Counter used to generate the pixel clock"
-    )
-    pixel_clock_pfi: int = int_field(
-        "Pixel Clock PFI Line", 1, minimum=0, tooltip="PFI line that outputs the pixel clock"
-    )
-
-
-@dataclass
-class HistogramGroup(Group):
-    laser_frequency_mhz: float = float_field(
-        "Laser Frequency MHz", 80.0, minimum=0.001, tooltip="Laser repetition rate in MHz"
-    )
-    histogram_bins: int = int_field(
-        "Histogram Bins", 125, minimum=2, tooltip="Number of decay-histogram bins per pixel"
-    )
-    histogram_binwidth_ps: int = int_field(
-        "Histogram Bin Width (ps)",
-        100,
-        minimum=1,
-        tooltip="Bin width in ps (bins x width should span one laser period)",
-    )
-    frame_settle_s: float = float_field(
-        "Frame Settle (s)",
-        5e-3,
-        minimum=0.0,
-        step=1e-3,
-        tooltip="Wait after the scan so the last photons reach the measurement",
-    )
-
-    @property
-    def laser_period_ps(self) -> int:
-        return int(round(1e6 / self.laser_frequency_mhz))
+def block_name(block_or_cls: Any) -> str:
+    """The serialisation and addressing key for a block: its class name."""
+    cls = block_or_cls if isinstance(block_or_cls, type) else type(block_or_cls)
+    return cls.__name__
 
 
 # --------------------------------------------------------------------------- #
-# Introspection: form sections, dotted paths, serialisation                    #
+# Holding blocks: the store and the run-time map                               #
+# --------------------------------------------------------------------------- #
+
+
+class BlockStore:
+    """Every parameter block that exists, one instance per class.
+
+    This is what makes a block shared: two programs declaring ``ScanGroup`` are
+    handed the same object, so editing it in one modality's form is editing it
+    in the other's. The session file is this store, encoded.
+    """
+
+    def __init__(self) -> None:
+        self._blocks: dict[type, Group] = {}
+
+    def get(self, cls: type[B]) -> B:
+        """The instance for ``cls``, created at defaults on first request."""
+        block = self._blocks.get(cls)
+        if block is None:
+            block = cls()
+            self._blocks[cls] = block
+        return block  # type: ignore[return-value]
+
+    def has(self, cls: type) -> bool:
+        return cls in self._blocks
+
+    def for_program(self, declared: Sequence[type[Group]]) -> "BlockMap":
+        return BlockMap({cls: self.get(cls) for cls in declared})
+
+    # -- serialisation ------------------------------------------------------ #
+
+    def to_dict(self, only: Sequence[type[Group]] | None = None) -> dict[str, Any]:
+        classes = list(only) if only is not None else list(self._blocks)
+        return {block_name(cls): encode_block(self.get(cls)) for cls in classes}
+
+    def load_dict(self, raw: Mapping[str, Any] | None, registry: Mapping[str, type]) -> None:
+        """Fill the store from a saved state dict.
+
+        A name with no class in ``registry`` is skipped rather than fatal: a
+        block can be deleted from the source without stranding a session file.
+        A block whose values fail coercion falls back to its defaults, so one
+        bad number cannot cost the whole rig its settings.
+        """
+        for name, values in (raw or {}).items():
+            cls = registry.get(str(name))
+            if cls is None or not isinstance(values, dict):
+                continue
+            try:
+                self._blocks[cls] = decode_block(cls, values)
+            except Exception:
+                self._blocks[cls] = cls()
+
+    def validate(self, only: Sequence[type[Group]] | None = None) -> None:
+        classes = list(only) if only is not None else list(self._blocks)
+        for cls in classes:
+            validate_block(self.get(cls))
+
+    def clear(self) -> None:
+        self._blocks.clear()
+
+
+class BlockMap(Mapping):
+    """The blocks one run was given, keyed by class.
+
+    The parameter twin of ``DeviceMap``: ``ctx.params[ScanGroup]`` is typed as a
+    ``ScanGroup`` for the same reason ``ctx.devices[DAQ]`` is typed as a ``DAQ``.
+    A block the program did not declare is absent, which is the containment
+    ``uses`` already gives devices.
+    """
+
+    def __init__(self, blocks: Mapping[type, Group] | None = None):
+        self._blocks: dict[type, Group] = dict(blocks or {})
+
+    def __getitem__(self, key: type[B]) -> B:
+        try:
+            return self._blocks[key]  # type: ignore[return-value]
+        except KeyError:
+            raise KeyError(
+                f"{getattr(key, '__name__', key)!r} is not in this program's params; "
+                f"it declares {sorted(block_name(c) for c in self._blocks)}"
+            ) from None
+
+    def __iter__(self) -> Iterator[type]:
+        return iter(self._blocks)
+
+    def __len__(self) -> int:
+        return len(self._blocks)
+
+    def __repr__(self) -> str:  # pragma: no cover - debugging aid
+        return f"BlockMap({sorted(block_name(c) for c in self._blocks)})"
+
+
+# --------------------------------------------------------------------------- #
+# Form description and dotted addressing                                       #
 # --------------------------------------------------------------------------- #
 
 
@@ -363,95 +338,94 @@ class Section:
     entries: tuple[tuple[str, Field], ...]
 
 
-def sections(obj_or_cls: Any) -> list[Section]:
-    """Ordered form description: nested groups first, then root-level scalars."""
-    cls = obj_or_cls if isinstance(obj_or_cls, type) else type(obj_or_cls)
-    if not is_dataclass(cls):
-        raise TypeError(f"{cls!r} is not a parameter dataclass")
-
+def sections(blocks: Sequence[Group]) -> list[Section]:
+    """One section per block, in the order the program declared them."""
     out: list[Section] = []
-    root: list[tuple[str, Field]] = []
-    for entry in fields(cls):
-        if "group" in entry.metadata:
-            group_cls = entry.metadata["group_cls"]
-            nested = tuple(
-                (f"{entry.name}.{inner.name}", inner.metadata["param"])
-                for inner in fields(group_cls)
-                if "param" in inner.metadata
-            )
-            out.append(Section(entry.metadata["group"], nested))
-        elif "param" in entry.metadata:
-            root.append((entry.name, entry.metadata["param"]))
-    if root:
-        out.append(Section("Acquisition", tuple(root)))
+    for block in blocks:
+        entries = tuple(
+            (f"{block_name(block)}.{name}", spec) for name, spec in block_fields(block)
+        )
+        out.append(Section(type(block).label or block_name(block), entries))
     return out
 
 
-def spec_at(obj_or_cls: Any, path: str) -> Field:
-    for section in sections(obj_or_cls):
-        for name, spec in section.entries:
-            if name == path:
-                return spec
+def index(blocks: Sequence[Group]) -> dict[str, Group]:
+    """``{"ScanGroup": <instance>}`` -- what a dotted path resolves against."""
+    return {block_name(block): block for block in blocks}
+
+
+def split_path(path: str) -> tuple[str, str]:
+    name, _, attr = path.partition(".")
+    if not attr:
+        raise KeyError(f"{path!r} is not a <Block>.<field> path")
+    return name, attr
+
+
+def get_path(blocks: Sequence[Group] | Mapping[str, Group], path: str) -> Any:
+    lookup = blocks if isinstance(blocks, Mapping) else index(blocks)
+    name, attr = split_path(path)
+    return getattr(lookup[name], attr)
+
+
+def set_path(blocks: Sequence[Group] | Mapping[str, Group], path: str, value: Any) -> None:
+    lookup = blocks if isinstance(blocks, Mapping) else index(blocks)
+    name, attr = split_path(path)
+    setattr(lookup[name], attr, value)
+
+
+def spec_at(blocks: Sequence[Group] | Mapping[str, Group], path: str) -> Field:
+    lookup = blocks if isinstance(blocks, Mapping) else index(blocks)
+    name, attr = split_path(path)
+    for field_name, spec in block_fields(lookup[name]):
+        if field_name == attr:
+            return spec
     raise KeyError(path)
 
 
-def get_path(obj: Any, path: str) -> Any:
-    target = obj
-    for part in path.split("."):
-        target = getattr(target, part)
-    return target
+# --------------------------------------------------------------------------- #
+# One block in and out of plain data                                           #
+# --------------------------------------------------------------------------- #
 
 
-def set_path(obj: Any, path: str, value: Any) -> None:
-    parts = path.split(".")
-    target = obj
-    for part in parts[:-1]:
-        target = getattr(target, part)
-    setattr(target, parts[-1], value)
+def encode_block(block: Any) -> dict[str, Any]:
+    return {name: spec.encode(getattr(block, name)) for name, spec in block_fields(block)}
 
 
-def to_dict(obj: Any) -> dict[str, Any]:
-    out: dict[str, Any] = {}
-    for entry in fields(obj):
-        value = getattr(obj, entry.name)
-        if "group" in entry.metadata:
-            out[entry.name] = to_dict(value)
-        elif "param" in entry.metadata:
-            out[entry.name] = entry.metadata["param"].encode(value)
-    return out
-
-
-def from_dict(cls: type, raw: dict[str, Any] | None, *, strict: bool = False) -> Any:
-    """Build an instance from a nested plain dict, coercing every value."""
+def decode_block(cls: type, raw: Mapping[str, Any] | None, *, strict: bool = False) -> Any:
+    """Build a block from a plain dict, coercing every value."""
     values = raw or {}
-    if not isinstance(values, dict):
+    if not isinstance(values, Mapping):
         raise ParameterError("parameters must be an object")
 
-    known = {entry.name for entry in fields(cls)}
+    known = {name for name, _ in block_fields(cls)}
     if strict:
         unknown = sorted(set(values) - known)
         if unknown:
             raise ParameterError("unknown parameters: " + ", ".join(unknown))
 
-    kwargs: dict[str, Any] = {}
-    for entry in fields(cls):
-        if entry.name not in values:
-            continue
-        given = values[entry.name]
-        if "group" in entry.metadata:
-            kwargs[entry.name] = from_dict(entry.metadata["group_cls"], given, strict=strict)
-        elif "param" in entry.metadata:
-            kwargs[entry.name] = entry.metadata["param"].decode(given)
+    kwargs = {
+        name: spec.decode(values[name])
+        for name, spec in block_fields(cls)
+        if name in values
+    }
     return cls(**kwargs)
 
 
-def coerce(cls: type, raw: dict[str, Any] | None) -> Any:
-    """Strict ``from_dict``: unknown keys are an error."""
-    return from_dict(cls, raw, strict=True)
-
-
-def validate(obj: Any) -> None:
+def validate_block(block: Any) -> None:
     """Re-run every field's coercion against the values currently held."""
-    for section in sections(obj):
-        for path, spec in section.entries:
-            spec.coerce(get_path(obj, path))
+    for name, spec in block_fields(block):
+        spec.coerce(getattr(block, name))
+
+
+#: Device configurations are blocks too -- same fields, same form, same
+#: encoding -- but they are per-instance rather than per-class and persist with
+#: their device, so they never enter the BlockStore. These aliases are what
+#: ``devices/base.py`` calls.
+to_dict = encode_block
+from_dict = decode_block
+validate = validate_block
+
+
+def coerce(cls: type, raw: Mapping[str, Any] | None) -> Any:
+    """Strict ``decode_block``: unknown keys are an error."""
+    return decode_block(cls, raw, strict=True)

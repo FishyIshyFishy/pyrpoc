@@ -56,8 +56,10 @@ class Program:
     #: Device classes to claim. Claims propagate along ``backed_by``.
     uses: list[type[Device]] = []
 
-    #: The parameter dataclass this program is configured with.
-    params: type | None = None
+    #: The parameter blocks this program is configured with, in form order.
+    #: Declaring a block is what shares it: two programs naming ``ScanGroup``
+    #: are handed the same instance.
+    params: list[type] = []
 
     #: Named output streams and their shape contracts.
     emits: dict[str, type[Stream]] = {}
@@ -88,6 +90,11 @@ class RunContext:
         self.devices = DeviceMap(devices)
         self.datasets = datasets
         self.continuous = continuous
+        #: How many frames the program said it would take, set the moment it
+        #: enters ``frames()``. Metadata only -- nothing branches on it. A
+        #: program with no frame concept never calls ``frames()`` and this
+        #: stays None, which is why no caller has to supply a dummy count.
+        self.frame_limit: int | None = None
         self._cancel = cancel
         self._on_status = on_status
 
@@ -139,10 +146,15 @@ class RunContext:
 
         ``count`` is ignored when the run was started in continuous mode, which
         is how the Continuous button survives without the program's body
-        changing and without overwriting the user's stored ``num_frames``.
+        changing and without overwriting the user's stored frame count.
+
+        Recording the limit here is what lets the saver write it into the
+        metadata without the runner reaching into a parameter block it is not
+        allowed to know about.
         """
         index = 0
         limit = None if self.continuous else count
+        self.frame_limit = limit
         while limit is None or index < limit:
             self.check_cancel()
             yield index

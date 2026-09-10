@@ -34,9 +34,9 @@ class SessionStore:
     def load(self) -> SessionState:
         """Return the saved session, or defaults if there is not a usable one.
 
-        A version mismatch is not an error to report at the user: v3.1 changed
-        how parameters are stored, so a v6 file simply resets. Anything else
-        that goes wrong is recorded in ``last_load_error``.
+        A version mismatch is not an error to report at the user: parameter
+        storage has changed shape twice and an old file simply resets.
+        Anything else that goes wrong is recorded in ``last_load_error``.
         """
         self.last_load_error = None
         if not self.path.exists():
@@ -91,9 +91,9 @@ def decode(raw: dict[str, Any]) -> SessionState:
         for row in raw.get("views", [])
         if isinstance(row, dict) and row.get("key")
     ]
-    params = {
+    blocks = {
         str(key): dict(value)
-        for key, value in (raw.get("params_by_program") or {}).items()
+        for key, value in (raw.get("param_blocks") or {}).items()
         if isinstance(value, dict)
     }
     layout = raw.get("ads_layout")
@@ -103,7 +103,7 @@ def decode(raw: dict[str, Any]) -> SessionState:
         devices=devices,
         views=views,
         selected_program=raw.get("selected_program"),
-        params_by_program=params,
+        param_blocks=blocks,
         save=decode_save(raw.get("save")),
         ads_layout=layout if isinstance(layout, str) else None,
     )
