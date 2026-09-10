@@ -127,8 +127,6 @@ class Runner:
                 continuous=continuous,
                 on_status=on_status,
             )
-            if saver is not None:
-                saver.track_frame_limit(lambda: ctx.frame_limit)
 
             thread = threading.Thread(
                 target=self.worker,
@@ -147,8 +145,11 @@ class Runner:
 
         v3.1 dug this out of ``params.save``, which meant every parameter
         model had to declare a group it never read and the runner had to guess
-        whether the one in front of it had. The frame limit was the last
-        survivor of that reach-through; the running program now reports it.
+        whether the one in front of it had. The frame count was the last
+        survivor of that reach-through and is gone the same way: it is an
+        imaging parameter now, so it reaches the metadata inside ``parameters``
+        with the geometry, and nothing has to pull it back out of a running
+        program.
         """
         if save is None or not save.enabled:
             return None

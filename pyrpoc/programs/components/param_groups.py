@@ -139,26 +139,21 @@ def masks_field(label="Masks", *, tooltip=""):
 
 @block
 @dataclass
-class FramesGroup(Group):
-    """How many frames a run captures.
+class ScanGroup(Group):
+    """How the beam is scanned, and how many times.
 
-    Its own block, not a loose scalar, because a program that has no frame
-    concept -- acquire a spectrum at one clicked point, say -- simply does not
-    declare it, and then nothing anywhere has to supply a dummy count.
+    ``num_frames`` lives here rather than in a block of its own because it
+    decides how the imaging is done, the same as the geometry and the dwell
+    time. Nothing outside a program reads it: a program with no frame concept
+    declares a different block, and then nothing anywhere has to supply a count
+    it does not have.
     """
 
-    label: ClassVar[str] = "Acquisition"
+    label: ClassVar[str] = "Scan"
 
     num_frames: int = int_field(
         "Frames", 1, minimum=1, tooltip="Number of frames to capture"
     )
-
-
-@block
-@dataclass
-class ScanGroup(Group):
-    label: ClassVar[str] = "Scan"
-
     x_pixels: int = int_field("X Pixels", 512, minimum=8, tooltip="Number of pixels in X")
     y_pixels: int = int_field("Y Pixels", 512, minimum=8, tooltip="Number of pixels in Y")
     extra_left: int = int_field(
@@ -291,6 +286,9 @@ class FrameGroup(Group):
 
     label: ClassVar[str] = "Frame"
 
+    num_frames: int = int_field(
+        "Frames", 1, minimum=1, tooltip="Number of frames to capture"
+    )
     x_pixels: int = int_field("X Pixels", 256, minimum=8, tooltip="Frame width in pixels")
     y_pixels: int = int_field("Y Pixels", 256, minimum=8, tooltip="Frame height in pixels")
     channels: int = int_field(

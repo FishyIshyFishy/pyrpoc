@@ -28,7 +28,6 @@ from pyrpoc.run.program import Program
 
 from .components import (
     DaqGroup,
-    FramesGroup,
     HistogramGroup,
     ScanGroup,
     TriggerGroup,
@@ -234,7 +233,7 @@ def read_flim_frame(
 @program_registry.register("flim")
 class FLIM(Program):
     uses = [Galvo, DAQ, TimeTagger]
-    params = [ScanGroup, DaqGroup, TriggerGroup, HistogramGroup, FramesGroup]
+    params = [ScanGroup, DaqGroup, TriggerGroup, HistogramGroup]
     emits = {"intensity": Image2D, "histogram": Cube3D}
 
     def run(self, ctx) -> None:
@@ -242,7 +241,7 @@ class FLIM(Program):
         daq_params = ctx.params[DaqGroup]
         triggers = ctx.params[TriggerGroup]
         histogram = ctx.params[HistogramGroup]
-        num_frames = ctx.params[FramesGroup].num_frames
+        num_frames = scan.num_frames
 
         daq: DAQ = ctx.devices[DAQ]
         galvo: Galvo = ctx.devices[Galvo]
