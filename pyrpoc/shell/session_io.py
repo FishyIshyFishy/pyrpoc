@@ -22,7 +22,7 @@ from . import catalog
 from .app import Application
 
 
-def capture(app: Application, window=None, theme_mode: str = "system") -> SessionState:
+def capture(app: Application, window=None) -> SessionState:
     devices = [
         DeviceState(
             key=device_registry.key_for(type(device)),
@@ -43,7 +43,6 @@ def capture(app: Application, window=None, theme_mode: str = "system") -> Sessio
         for view in app.views
     ]
     return SessionState(
-        theme_mode=theme_mode,
         devices=devices,
         views=views,
         selected_program=app.selected_program,
@@ -120,12 +119,11 @@ def seed_defaults(app: Application) -> None:
 class Autosave(QObject):
     """Debounced save on any state change, plus explicit save/reset actions."""
 
-    def __init__(self, app: Application, window, theme_controller,
+    def __init__(self, app: Application, window,
                  store: SessionStore | None = None, parent: QObject | None = None):
         super().__init__(parent)
         self.app = app
         self.window = window
-        self.theme_controller = theme_controller
         self.store = store if store is not None else SessionStore()
         self.suspended = False
 
@@ -147,9 +145,7 @@ class Autosave(QObject):
         if self.suspended:
             return
         try:
-            self.store.save(
-                capture(self.app, self.window, self.theme_controller.get_saved_mode())
-            )
+            self.store.save(capture(self.app, self.window))
         except Exception:
             pass  # a failed autosave must never interrupt an experiment
 

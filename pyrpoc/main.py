@@ -78,7 +78,6 @@ def build(
     autosave = Autosave(
         app,
         window,
-        theme_controller,
         SessionStore(session_path if session_path is not None else default_session_path()),
         parent=app,
     )

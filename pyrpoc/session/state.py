@@ -54,7 +54,6 @@ class SaveState:
 @dataclass
 class SessionState:
     schema_version: int = SCHEMA_VERSION
-    theme_mode: str = "system"
     devices: list[DeviceState] = field(default_factory=list)
     views: list[ViewState] = field(default_factory=list)
     selected_program: str | None = None

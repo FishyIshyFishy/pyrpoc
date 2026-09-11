@@ -120,12 +120,8 @@ class MainWindow(QWidget):
         self.menubar.style_selected.connect(self.set_style)
 
     def bind_session(self, autosave) -> None:
-        """Connect the File menu and the close event to session persistence."""
+        """Connect the close event to session persistence."""
         self.autosave = autosave
-        self.menubar.new_requested.connect(autosave.reset)
-        self.menubar.open_requested.connect(autosave.restore)
-        self.menubar.save_requested.connect(autosave.save_now)
-        self.menubar.save_as_requested.connect(autosave.save_now)
         self.closing.connect(autosave.save_now)
 
     # -- panels -------------------------------------------------------------- #
