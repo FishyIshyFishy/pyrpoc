@@ -424,7 +424,7 @@ def build_ttl(
     """Mask TTL gated to the first ``t0_samples`` of every pixel."""
     if not modulation.masks:
         return {}
-    loaded = [(mask, mask.load()) for mask in modulation.masks]
+    loaded = [(mask, mask.array) for mask in modulation.masks if mask.array is not None]
     return split_mask_ttl(
         loaded,
         scan=scan,

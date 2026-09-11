@@ -134,6 +134,16 @@ class View(QWidget):
     def dataset(self) -> "Dataset | None":
         return self._dataset
 
+    def library(self) -> "DatasetLibrary | None":
+        """The open datasets, for a view that publishes as well as renders.
+
+        The read counterpart of ``attach_library``. A view that authors data --
+        the mask editor draws one -- files it here rather than handing it to
+        whatever will consume it, which is what keeps it from knowing what that
+        is.
+        """
+        return self._library
+
     def renders_dataset(self, dataset: "Dataset") -> bool:
         return dataset.spec in self.renders
 

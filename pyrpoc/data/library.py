@@ -1,13 +1,18 @@
-"""The datasets currently open in the application, like a list of open documents.
+"""The arrays currently open in the application, like a list of open documents.
 
-Not persisted. Datasets are run outputs; on-disk dataset backing is section 13's
-out-of-scope list, so the library starts empty each launch -- the same state the
-old displays started in.
+Not persisted. The library starts empty each launch -- the same state the old
+displays started in.
 
-Presets are deliberately not here. A mask is authored, not acquired: it has no
-provenance and no run that produced it, so it is a file referenced by a path
-parameter. Filing both in one place would mean a few masks hidden among hundreds
-of acquisition results.
+Authored data is filed here too, not only run outputs. A mask drawn in the mask
+editor is added as a ``Mask2D`` entry, which is what lets the Modulation
+parameter select one without the editor and that parameter knowing about each
+other: the editor files a dataset, the parameter asks ``matching(Mask2D)``, and
+neither names the other. The alternative was a path parameter and a save-then-
+reload round trip through the filesystem.
+
+Authored entries are distinguished two ways, both already here: by ``spec``,
+which is what filters every picker, and by ``run_id == 0``, since no run
+produced them.
 """
 
 from __future__ import annotations

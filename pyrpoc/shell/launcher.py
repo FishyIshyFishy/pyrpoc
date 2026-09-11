@@ -156,7 +156,7 @@ class LauncherPanel(QWidget):
         if params is None:
             return
         self.app.set_pick_armed(False)
-        self.form = ParamForm(params, self)
+        self.form = ParamForm(params, self, library=self.app.library)
         self.form.changed.connect(self.app.params_changed.emit)
         self.form.changed.connect(self.app.state_changed.emit)
         self.form.invalid.connect(lambda text: self.status_label.setText(f"Status: {text}"))
