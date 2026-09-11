@@ -250,13 +250,17 @@ def channel_labels(frame_shape: FrameGroup) -> list[str]:
 
 
 def build_mask(frame_shape: FrameGroup, modulation: ModulationGroup):
-    """Load the bound masks and flatten them onto the frame grid.
+    """Flatten the bound masks onto the frame grid.
 
-    Same shape as confocal's ``build_ttl``: once before the loop.
+    Same shape as confocal's ``build_ttl``: once before the loop. The pixels
+    come with the parameter -- a mask was resolved against the open data when it
+    was chosen -- so there is nothing to load here.
     """
     if not modulation.masks:
         return None
-    loaded = [mask.load() for mask in modulation.masks]
+    loaded = [mask.array for mask in modulation.masks if mask.array is not None]
+    if not loaded:
+        return None
     return combine_masks(
         loaded, y_pixels=frame_shape.y_pixels, x_pixels=frame_shape.x_pixels
     )

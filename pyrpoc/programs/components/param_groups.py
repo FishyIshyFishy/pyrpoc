@@ -12,11 +12,9 @@ the content.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from pathlib import Path
+from dataclasses import dataclass, field as dc_field
 from typing import Any, ClassVar, Iterable, Sequence, TypeVar
 
-import cv2
 import numpy as np
 
 from pyrpoc.core.errors import ParameterError
@@ -57,57 +55,81 @@ def block(cls: B) -> B:
 
 
 # --------------------------------------------------------------------------- #
-# Masks: a file plus the digital line it drives                                #
+# Masks: an authored region plus the digital line it drives                    #
 # --------------------------------------------------------------------------- #
 
 
 @dataclass(frozen=True)
 class Mask:
-    """One mask file wired to one digital output line.
+    """One authored mask wired to one digital output line.
 
-    A mask is authored, not acquired -- you draw it once, save it, and load it
-    into runs for months. So it is a plain file referenced by a parameter, not
-    an entry in the dataset library, and loading it is something the parameter
-    does rather than a free function in a folder that cannot know about
-    parameters.
+    The same two halves as ``Point``, for the same reason. ``array`` is what the
+    hardware does, so a run needs nothing but its parameters to proceed;
+    ``source_id`` and ``source_label`` are provenance on top of that, saying
+    which library entry this came from. The label is stored rather than resolved
+    because a dataset id means nothing to anyone reading the metadata six months
+    later, and the entry it named may not be open any more.
+
+    The array is carried rather than a reference to the library because a
+    program has no library: ``RunContext`` hands out this run's own parameters
+    and datasets and nothing else, and widening that to every open dataset in
+    order to fetch a mask would be a much larger hole than this feature is
+    worth. So it is resolved once, when the user picks it -- which is exactly
+    when ``Point`` resolves a clicked pixel into volts.
+
+    ``array`` is ``compare=False`` because this is a frozen dataclass: the
+    generated ``__eq__`` would compare two arrays elementwise and then call
+    ``bool()`` on the result, which raises.
     """
 
-    path: Path
+    source_id: str = ""
+    source_label: str = ""
+    array: np.ndarray | None = dc_field(default=None, compare=False)
     port: int = 0
     line: int = 0
 
     def __post_init__(self) -> None:
-        if not isinstance(self.path, Path):
-            object.__setattr__(self, "path", Path(str(self.path)))
+        object.__setattr__(self, "source_id", str(self.source_id))
+        object.__setattr__(self, "source_label", str(self.source_label))
         object.__setattr__(self, "port", int(self.port))
         object.__setattr__(self, "line", int(self.line))
+        if self.array is not None:
+            array = np.asarray(self.array)
+            if array.ndim != 2:
+                raise ParameterError(f"a mask must be 2D, got shape={array.shape}")
+            object.__setattr__(self, "array", array)
+
+    @property
+    def resolved(self) -> bool:
+        """Whether this mask still carries the pixels it names."""
+        return self.array is not None
+
+    def describe(self) -> str:
+        """Which library entry this is, for a row that has lost it."""
+        return self.source_label or self.source_id or "no mask"
 
     def channel(self, device_name: str) -> str:
         """The NI-DAQ channel string this mask drives."""
         return f"{device_name}/port{self.port}/line{self.line}"
 
-    def load(self) -> np.ndarray:
-        """Read this mask as a 2-D uint8 array."""
-        resolved = Path(str(self.path)).expanduser()
-        image = cv2.imread(str(resolved), cv2.IMREAD_GRAYSCALE)
-        if image is None:
-            raise FileNotFoundError(f"could not read a mask from '{resolved}'")
-        array = np.asarray(image)
-        if array.ndim != 2:
-            raise ValueError(f"mask must be 2D, got shape={array.shape}")
-        return array.astype(np.uint8, copy=True)
-
     def to_dict(self) -> dict[str, Any]:
-        return {"path": str(self.path), "port": self.port, "line": self.line}
+        """Provenance only. The array is data, and this is a parameter."""
+        return {
+            "source_id": self.source_id,
+            "source_label": self.source_label,
+            "port": self.port,
+            "line": self.line,
+        }
 
     @classmethod
     def from_dict(cls, raw: Any) -> "Mask":
         if isinstance(raw, Mask):
             return raw
         if not isinstance(raw, dict):
-            raise ParameterError("a mask must be an object with path/port/line")
+            raise ParameterError("a mask must be an object with source_id/port/line")
         return cls(
-            path=Path(str(raw.get("path", ""))),
+            source_id=str(raw.get("source_id", "")),
+            source_label=str(raw.get("source_label", "")),
             port=int(raw.get("port", 0)),
             line=int(raw.get("line", 0)),
         )
@@ -115,7 +137,7 @@ class Mask:
 
 @dataclass(frozen=True)
 class MasksField(Field):
-    """The Modulation table: mask file, port, line — one row per mask."""
+    """The Modulation table: library entry, port, line — one row per mask."""
 
     def coerce(self, value: Any) -> tuple[Mask, ...]:
         if value is None:
@@ -126,6 +148,24 @@ class MasksField(Field):
 
     def encode(self, value: Any) -> Any:
         return [mask.to_dict() for mask in (value or ())]
+
+    def decode(self, raw: Any) -> tuple[Mask, ...]:
+        """Nothing. Masks do not survive a relaunch.
+
+        The only field in the application that overrides ``decode``, because it
+        is the only one whose value is not self-contained. ``encode`` is shared
+        by the run metadata and the session file, and the two want different
+        things from it: a run must record exactly which masks drove which lines,
+        while a session reload cannot honour that record at all -- the library
+        is empty at launch, so every id in it is dangling.
+
+        Returning the rows without their arrays would put the modality one
+        silent step from acquiring with a mask that is not there. Returning
+        nothing is the honest answer until the library itself persists, at which
+        point this override is what should go away.
+        """
+        del raw
+        return ()
 
 
 def masks_field(label="Masks", *, tooltip=""):
@@ -330,7 +370,9 @@ class ModulationGroup(Group):
     label: ClassVar[str] = "Modulation"
 
     masks: tuple[Mask, ...] = masks_field(
-        "Masks", tooltip="Mask files driving digital output lines during the scan"
+        "Masks",
+        tooltip="Masks driving digital output lines during the scan. "
+        "Draw one in the Mask Editor to add it here",
     )
 
 

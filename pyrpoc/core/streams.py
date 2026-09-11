@@ -84,9 +84,29 @@ class Spectrum1D(Stream):
     axes = ("channel", "wavelength")
 
 
+class Mask2D(Stream):
+    """``(H, W)`` uint8 -- an authored region, 0 outside and non-zero inside.
+
+    Its own contract rather than a one-channel ``Image2D``, and that is what
+    makes the Modulation picker work: a mask is chosen with
+    ``DatasetLibrary.matching(Mask2D)``, so a contract shared with acquired
+    images would offer every run as a mask. The spec *is* the filter.
+
+    uint8 rather than float32 because a mask is a decision per pixel, not a
+    measurement. Nothing downstream minds -- the writers and
+    ``normalize_channels`` cast for themselves.
+    """
+
+    name = "Mask2D"
+    ndim = 2
+    axes = ("y", "x")
+    dtype = np.uint8
+
+
 CONTRACTS: dict[str, type[Stream]] = {
     Image2D.name: Image2D,
     Cube3D.name: Cube3D,
     Samples4D.name: Samples4D,
     Spectrum1D.name: Spectrum1D,
+    Mask2D.name: Mask2D,
 }

@@ -1,13 +1,18 @@
-"""Authoring a mask preset from an acquired dataset.
+"""Authoring a mask from an acquired dataset.
 
-Was ``gui/main_widgets/opto_control_mgr/mask_editor.py``. It is a view now, with
-a save action -- section 11's answer to what the mask editor is.
+Was ``gui/main_widgets/opto_control_mgr/mask_editor.py``. It is a view now: it
+reads a bound dataset rather than reaching into a display widget's
+``_data_chw``.
 
-Two things went away with the optocontrols. It reads a bound dataset rather than
-reaching into a display widget's ``_data_chw``; and Save writing a file is the
-only exit, because a mask is a preset referenced by a path parameter rather than
-something pushed into a live control object. The temp-file dance behind
-``create_mask_requested`` is gone with it.
+A finished mask leaves by being added to the dataset library as a ``Mask2D``
+entry, which is the whole of how it reaches a modality. This view does not know
+what a modality is, and the Modulation parameter that consumes masks does not
+know this view exists -- it asks the library for entries matching ``Mask2D`` the
+same way every view asks for its own sources. The alternative, and the reason
+this is worth stating, was for one of the two to name the other.
+
+``Save mask...`` stays, and is now only what it says: writing a PNG for
+something outside this application to read. It is not how a mask gets used.
 
 The threshold and polygon-ROI machinery is unchanged.
 """
@@ -35,6 +40,7 @@ from PyQt6.QtWidgets import (
     QGraphicsView,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QMessageBox,
     QMenu,
     QPushButton,
@@ -46,7 +52,9 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from pyrpoc.core.streams import Image2D
+from pyrpoc.core.streams import Image2D, Mask2D
+from pyrpoc.data.dataset import Dataset, Provenance
+from pyrpoc.data.io import utc_now
 from pyrpoc.data.transforms import normalize_channels
 
 from .base import View
@@ -56,10 +64,9 @@ from .registry import view_registry
 def write_mask(path: Path | str, mask: np.ndarray) -> Path:
     """Write a 2-D mask to disk. Returns the path written.
 
-    Lives here rather than in a shared module because this editor is the only
-    thing in the application that authors a mask file. Programs read masks
-    through ``Mask.load()``, which is a parameter's business; writing one is
-    this view's.
+    An export, not a step in using a mask -- nothing in this application reads
+    the file back. It lives here because this editor is the only thing that
+    authors a mask at all.
     """
     array = np.asarray(mask, dtype=np.uint8)
     if array.ndim != 2:
@@ -194,12 +201,11 @@ class MaskImageView(QGraphicsView):
 
 @view_registry.register("mask_editor")
 class MaskEditorView(View):
-    """Draw thresholded polygon ROIs over an acquired image and save a mask."""
+    """Draw thresholded polygon ROIs over an acquired image and file the mask."""
 
     display_name = "Mask Editor"
     renders = [Image2D]
 
-    mask_saved = pyqtSignal(object, object)
     dirty_state_changed = pyqtSignal(bool)
 
     def __init__(self, parent: QWidget | None = None):
@@ -274,9 +280,25 @@ class MaskEditorView(View):
         self.image_view.setMinimumSize(480, 320)
         left.addWidget(self.image_view, 1)
 
+        name_row = QHBoxLayout()
+        name_row.addWidget(QLabel("Name:", self))
+        self.name_edit = QLineEdit(self)
+        self.name_edit.setPlaceholderText("what this mask is of")
+        self.name_edit.returnPressed.connect(self.add_to_library)
+        name_row.addWidget(self.name_edit, 1)
+        add_btn = QPushButton("Add to library", self)
+        add_btn.setToolTip(
+            "File this mask as data. It then appears in the Modulation table's "
+            "mask list, and in the data panel."
+        )
+        add_btn.clicked.connect(self.add_to_library)
+        name_row.addWidget(add_btn)
+        left.addLayout(name_row)
+
         button_row = QHBoxLayout()
         preview_btn = QPushButton("Preview", self)
         save_btn = QPushButton("Save mask...", self)
+        save_btn.setToolTip("Export a PNG. Not needed to use the mask here.")
         delete_btn = QPushButton("Delete Selected ROI", self)
         preview_btn.clicked.connect(self.preview_mask)
         save_btn.clicked.connect(self.save_mask)
@@ -567,6 +589,43 @@ class MaskEditorView(View):
         dlg.resize(max(320, self._w), max(240, self._h))
         dlg.exec()
 
+    def add_to_library(self) -> None:
+        """File the drawn mask as a ``Mask2D`` dataset. The way a mask is used.
+
+        A dataset with no run behind it: ``Provenance`` needs only a
+        ``program_key``, and the ``run_id`` of 0 it defaults to is what says
+        nothing acquired this. One ``append`` and it is done -- a mask is drawn
+        once, not streamed.
+        """
+        library = self.library()
+        if library is None:
+            QMessageBox.warning(
+                self, "No Library", "This view is not attached to the open data yet."
+            )
+            return
+        mask = self.generate_mask()
+        if mask is None:
+            QMessageBox.warning(self, "No ROI", "Draw at least one ROI before adding.")
+            return
+
+        dataset = Dataset(
+            stream="mask",
+            spec=Mask2D,
+            provenance=Provenance(
+                program_key="mask_editor",
+                started_at=utc_now(),
+                name=self.name_edit.text().strip(),
+            ),
+        )
+        try:
+            dataset.append(mask)
+        except Exception as exc:  # noqa: BLE001 - reported, not raised: Qt slot
+            QMessageBox.critical(self, "Add Failed", f"Could not file that mask: {exc}")
+            return
+        library.add(dataset)
+        self.set_dirty(False)
+        self.name_edit.clear()
+
     def save_mask(self) -> None:
         mask = self.generate_mask()
         if mask is None:
@@ -586,6 +645,6 @@ class MaskEditorView(View):
             QMessageBox.critical(self, "Save Failed", f"Failed to save mask to {path}: {exc}")
             return
         self.set_dirty(False)
-        self.mask_saved.emit(str(written), mask.astype(np.uint8))
+        QMessageBox.information(self, "Mask Saved", f"Wrote a mask to {written}.")
 
 

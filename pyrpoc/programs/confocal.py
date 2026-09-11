@@ -391,13 +391,15 @@ def channel_labels(daq: DAQ) -> list[str]:
 def build_ttl(
     scan: ScanGroup, modulation: ModulationGroup, daq_params: DaqGroup, daq: DAQ
 ) -> dict:
-    """Load the bound masks and turn them into per-pixel TTL waveforms.
+    """Turn the bound masks into per-pixel TTL waveforms.
 
-    Done once before the loop rather than once per frame.
+    Done once before the loop rather than once per frame. The pixels arrive with
+    the parameter, resolved against the open data when the mask was chosen, so
+    this reads nothing.
     """
     if not modulation.masks:
         return {}
-    loaded = [(mask, mask.load()) for mask in modulation.masks]
+    loaded = [(mask, mask.array) for mask in modulation.masks if mask.array is not None]
     return mask_ttl(
         loaded,
         scan=scan,
