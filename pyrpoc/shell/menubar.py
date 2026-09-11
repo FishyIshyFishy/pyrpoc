@@ -8,42 +8,12 @@ from PyQt6 import sip
 
 class MainMenuBar(QMenuBar):
     style_selected = pyqtSignal(str)
-    new_requested = pyqtSignal()
-    open_requested = pyqtSignal()
-    save_requested = pyqtSignal()
-    save_as_requested = pyqtSignal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
 
-        self.file_menu = QMenu("&File", self)
-        self.new_action = QAction("New", self)
-        self.new_action.triggered.connect(self.new_requested.emit)
-        self.file_menu.addAction(self.new_action)
-
-        self.open_action = QAction("Open...", self)
-        self.open_action.triggered.connect(self.open_requested.emit)
-        self.file_menu.addAction(self.open_action)
-
-        self.save_action = QAction("Save", self)
-        self.save_action.triggered.connect(self.save_requested.emit)
-        self.file_menu.addAction(self.save_action)
-
-        self.save_as_action = QAction("Save As...", self)
-        self.save_as_action.triggered.connect(self.save_as_requested.emit)
-        self.file_menu.addAction(self.save_as_action)
-
-        self.file_menu.addSeparator()
-        self.file_menu.addAction(QAction("Exit", self))
-        self.addMenu(self.file_menu)
-
         self.view_menu = QMenu("View", self)
         self.addMenu(self.view_menu)
-
-        self.prefs_menu = QMenu("&Preferences", self)
-        self.prefs_menu.addAction(QAction("Application Settings", self))
-        self.prefs_menu.addAction(QAction("Keyboard Shortcuts", self))
-        self.addMenu(self.prefs_menu)
 
         self.style_menu = QMenu("&Style", self)
         self.addMenu(self.style_menu)
