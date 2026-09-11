@@ -19,7 +19,7 @@ The threshold and polygon-ROI machinery is unchanged.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, cast
 import random
@@ -31,6 +31,7 @@ from PyQt6.QtGui import QColor, QImage, QPainter, QPainterPath, QPen, QPixmap
 from PyQt6.QtWidgets import (
     QCheckBox,
     QDialog,
+    QDialogButtonBox,
     QFileDialog,
     QGraphicsPathItem,
     QGraphicsPixmapItem,
@@ -43,6 +44,7 @@ from PyQt6.QtWidgets import (
     QMessageBox,
     QMenu,
     QPushButton,
+    QSizePolicy,
     QSpinBox,
     QTableWidget,
     QTableWidgetItem,
@@ -79,7 +81,13 @@ def write_mask(path: Path | str, mask: np.ndarray) -> Path:
 
 @dataclass
 class MaskRoi:
-    roi_id: int
+    """One drawn region. Its number is its position in the editor's list.
+
+    There is no stored id: a stable id and a displayed row number are two
+    numberings of the same thing, and deleting an ROI made them disagree --
+    the table renumbered, the labels drawn on the image did not.
+    """
+
     points: list[tuple[float, float]]
     threshold_low: float
     threshold_high: float
@@ -100,8 +108,8 @@ class MaskImageView(QGraphicsView):
         self._live_path_item: QGraphicsPathItem | None = None
         self._path_pen = QPen(QColor(255, 80, 80), 2, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap)
 
-        self._roi_items: dict[int, QGraphicsPathItem] = {}
-        self._roi_labels: dict[int, QGraphicsTextItem] = {}
+        self._roi_items: list[QGraphicsPathItem] = []
+        self._roi_labels: list[QGraphicsTextItem] = []
         self._zoom_level = 0
 
     def wheelEvent(self, event) -> None:
@@ -157,23 +165,29 @@ class MaskImageView(QGraphicsView):
             self._live_path_item = None
 
     def clear_rois(self) -> None:
-        for roi_id in list(self._roi_items.keys()):
-            self.remove_roi(roi_id)
-
-    def remove_roi(self, roi_id: int) -> None:
-        item = self._roi_items.pop(roi_id, None)
-        if item is not None:
+        for item in self._roi_items:
             self.gscene.removeItem(item)
-        label = self._roi_labels.pop(roi_id, None)
-        if label is not None:
+        for label in self._roi_labels:
             self.gscene.removeItem(label)
+        self._roi_items = []
+        self._roi_labels = []
 
-    def add_roi(self, roi: MaskRoi) -> None:
-        self.remove_roi(roi.roi_id)
+    def set_rois(self, rois: list[MaskRoi]) -> None:
+        """Redraw every ROI. The only way the drawn numbers change.
+
+        Redrawing all of them on any edit is what keeps the labels honest:
+        deleting one shifts the number of every ROI after it, so there is no
+        such thing as removing one drawing and leaving the rest alone.
+        """
+        self.clear_rois()
+        for index, roi in enumerate(rois):
+            self.draw_roi(index, roi)
+
+    def draw_roi(self, index: int, roi: MaskRoi) -> None:
         if len(roi.points) < 3:
             return
 
-        color = self.color_for_roi(roi.roi_id)
+        color = self.color_for_index(index)
         path = QPainterPath(QPointF(roi.points[0][0], roi.points[0][1]))
         for x, y in roi.points[1:]:
             path.lineTo(QPointF(x, y))
@@ -181,9 +195,9 @@ class MaskImageView(QGraphicsView):
 
         outline = cast(QGraphicsPathItem, self.gscene.addPath(path, QPen(color, 2)))
         outline.setBrush(QColor(color.red(), color.green(), color.blue(), 80))
-        self._roi_items[roi.roi_id] = outline
+        self._roi_items.append(outline)
 
-        label = QGraphicsTextItem(str(roi.roi_id))
+        label = QGraphicsTextItem(str(index + 1))
         label.setDefaultTextColor(Qt.GlobalColor.white)
         bounds = label.boundingRect()
         cx = sum(p[0] for p in roi.points) / len(roi.points)
@@ -191,11 +205,158 @@ class MaskImageView(QGraphicsView):
         label.setPos(cx - bounds.width() / 2, cy - bounds.height() / 2)
         label.setZValue(10_000)
         self.gscene.addItem(label)
-        self._roi_labels[roi.roi_id] = label
+        self._roi_labels.append(label)
 
-    def color_for_roi(self, roi_id: int) -> QColor:
-        rng = random.Random(roi_id * 17 + 11)
+    def color_for_index(self, index: int) -> QColor:
+        rng = random.Random(index * 17 + 11)
         return QColor(rng.randint(60, 255), rng.randint(60, 255), rng.randint(60, 255))
+
+
+class MaskPreviewLabel(QLabel):
+    """Shows a mask scaled to fit, and keeps fitting it as it is resized.
+
+    Scaling once when the mask changes is not enough: the label is stretched
+    by its layout after that, and a pixmap sized to the old geometry is
+    silently clipped rather than re-fitted.
+    """
+
+    def __init__(self, parent: QWidget | None = None):
+        super().__init__(parent)
+        self._source: QPixmap | None = None
+        self.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.setMinimumSize(240, 240)
+        self.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Ignored)
+
+    def set_source(self, pixmap: QPixmap | None) -> None:
+        self._source = pixmap
+        self.rescale()
+
+    def rescale(self) -> None:
+        if self._source is None or self._source.isNull():
+            return
+        # Nearest-neighbour: a mask is two values, and smoothing invents
+        # greys that no pixel of it has.
+        super().setPixmap(
+            self._source.scaled(
+                self.contentsRect().size(),
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.FastTransformation,
+            )
+        )
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        self.rescale()
+
+
+class RoiThresholdDialog(QDialog):
+    """Re-threshold one ROI against a live preview of the resulting mask.
+
+    The preview is the same array ``Preview`` shows -- the whole mask, every
+    ROI -- recomputed on each change. Showing only the edited ROI's own pixels
+    would answer a question nobody asked: a threshold is chosen for how the
+    finished mask looks, and the other ROIs are the context that decision is
+    made in.
+
+    The editor's stored ROI is untouched until the dialog is accepted, so the
+    preview runs against a substituted copy and Cancel needs no undo.
+    """
+
+    def __init__(self, editor: "MaskEditorView", index: int):
+        super().__init__(editor)
+        self.editor = editor
+        self.index = index
+        roi = editor.rois()[index]
+        self.setWindowTitle(f"ROI {index + 1} thresholds")
+
+        int_min = int(np.floor(editor.data_min()))
+        int_max = int(np.ceil(editor.data_max()))
+        low = max(int_min, min(int_max, int(round(roi.threshold_low))))
+        high = max(low, min(int_max, int(round(roi.threshold_high))))
+
+        layout = QVBoxLayout(self)
+
+        self.preview_label = MaskPreviewLabel(self)
+        layout.addWidget(self.preview_label, 1)
+
+        threshold_row = QHBoxLayout()
+        self.low_spin = QSpinBox(self)
+        self.high_spin = QSpinBox(self)
+        for spin in (self.low_spin, self.high_spin):
+            spin.setRange(int_min, int_max)
+            spin.setFixedWidth(74)
+            spin.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.low_spin.setValue(low)
+        self.high_spin.setValue(high)
+        self.low_spin.valueChanged.connect(self.on_spin_changed)
+        self.high_spin.valueChanged.connect(self.on_spin_changed)
+
+        self.slider = RangeSlider(self)
+        self.slider.setRange(int_min, int_max)
+        self.slider.setValues(low, high)
+        self.slider.values_changed.connect(self.on_slider_changed)
+
+        threshold_row.addWidget(self.low_spin)
+        threshold_row.addWidget(self.slider, 1)
+        threshold_row.addWidget(self.high_spin)
+        layout.addLayout(threshold_row)
+
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel,
+            parent=self,
+        )
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+        self.resize(420, 520)
+        self.update_preview()
+
+    def values(self) -> tuple[int, int]:
+        low = int(self.low_spin.value())
+        high = int(self.high_spin.value())
+        if high < low:
+            low, high = high, low
+        return low, high
+
+    def write_values(self, low: int, high: int) -> None:
+        controls = (self.low_spin, self.high_spin, self.slider)
+        for control in controls:
+            control.blockSignals(True)
+        self.low_spin.setValue(low)
+        self.high_spin.setValue(high)
+        self.slider.setValues(low, high)
+        for control in controls:
+            control.blockSignals(False)
+
+    def on_spin_changed(self, _value: int) -> None:
+        low, high = self.values()
+        self.write_values(low, high)
+        self.update_preview()
+
+    def on_slider_changed(self, low: int, high: int) -> None:
+        self.write_values(low, high)
+        self.update_preview()
+
+    def previewed_rois(self) -> list[MaskRoi]:
+        low, high = self.values()
+        rois = list(self.editor.rois())
+        if 0 <= self.index < len(rois):
+            rois[self.index] = replace(
+                rois[self.index], threshold_low=float(low), threshold_high=float(high)
+            )
+        return rois
+
+    def update_preview(self) -> None:
+        mask = self.editor.generate_mask(self.previewed_rois())
+        if mask is None:
+            self.preview_label.setText("No ROI to preview.")
+            return
+        height, width = mask.shape
+        qimg = QImage(
+            mask.tobytes(), width, height, width, QImage.Format.Format_Grayscale8
+        ).copy()
+        self.preview_label.set_source(QPixmap.fromImage(qimg))
 
 
 @view_registry.register("mask_editor")
@@ -215,7 +376,6 @@ class MaskEditorView(View):
             "#maskEditorRoot QGraphicsView, #maskEditorRoot QTableWidget { background: transparent; }"
         )
         self._rois: list[MaskRoi] = []
-        self._next_roi_id = 1
         self._dirty = False
         self._display_qimage: QImage | None = None
 
@@ -299,23 +459,24 @@ class MaskEditorView(View):
         preview_btn = QPushButton("Preview", self)
         save_btn = QPushButton("Save mask...", self)
         save_btn.setToolTip("Export a PNG. Not needed to use the mask here.")
-        delete_btn = QPushButton("Delete Selected ROI", self)
         preview_btn.clicked.connect(self.preview_mask)
         save_btn.clicked.connect(self.save_mask)
-        delete_btn.clicked.connect(self.delete_selected_roi)
         button_row.addWidget(preview_btn)
         button_row.addWidget(save_btn)
-        button_row.addWidget(delete_btn)
         button_row.addStretch(1)
         left.addLayout(button_row)
 
         root.addLayout(left, 3)
 
         right = QVBoxLayout()
-        self.roi_table = QTableWidget(0, 4, self)
-        self.roi_table.setHorizontalHeaderLabels(["ROI", "Low", "High", "Channels"])
+        self.roi_table = QTableWidget(0, 3, self)
+        self.roi_table.setHorizontalHeaderLabels(["Low", "High", "Channels"])
         self.roi_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.roi_table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
+        # Editing an ROI is done on the row that names it, rather than through
+        # a button elsewhere that acts on whatever happens to be selected.
+        self.roi_table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.roi_table.customContextMenuRequested.connect(self.show_roi_menu)
         right.addWidget(self.roi_table)
         root.addLayout(right, 2)
 
@@ -387,9 +548,7 @@ class MaskEditorView(View):
     def set_image_data(self, image_data: np.ndarray | None) -> None:
         self.apply_new_data(image_data)
         self._rois.clear()
-        self._next_roi_id = 1
-        self.roi_table.setRowCount(0)
-        self.image_view.clear_rois()
+        self.sync_rois()
         self.rebuild_channel_boxes()
         self.reset_threshold_controls()
         self.set_dirty(False)
@@ -496,44 +655,81 @@ class MaskEditorView(View):
         if len(points) < 3:
             return
         low, high = self.coerced_thresholds()
-        roi = MaskRoi(
-            roi_id=self._next_roi_id,
-            points=[(float(x), float(y)) for x, y in points],
-            threshold_low=float(low),
-            threshold_high=float(high),
-            active_channels=self._channel_visibility.copy(),
+        self._rois.append(
+            MaskRoi(
+                points=[(float(x), float(y)) for x, y in points],
+                threshold_low=float(low),
+                threshold_high=float(high),
+                active_channels=self._channel_visibility.copy(),
+            )
         )
-        self._next_roi_id += 1
-        self._rois.append(roi)
-        self.image_view.add_roi(roi)
-        self.upsert_roi_row(roi)
+        self.sync_rois()
         self.set_dirty(True)
 
-    def upsert_roi_row(self, roi: MaskRoi) -> None:
-        row = self.roi_table.rowCount()
-        self.roi_table.insertRow(row)
-        id_item = QTableWidgetItem(f"ROI {roi.roi_id}")
-        id_item.setData(Qt.ItemDataRole.UserRole, roi.roi_id)
-        self.roi_table.setItem(row, 0, id_item)
-        self.roi_table.setItem(row, 1, QTableWidgetItem(f"{roi.threshold_low:.1f}"))
-        self.roi_table.setItem(row, 2, QTableWidgetItem(f"{roi.threshold_high:.1f}"))
-        channels_text = ",".join(str(i + 1) for i, active in enumerate(roi.active_channels) if active)
-        self.roi_table.setItem(row, 3, QTableWidgetItem(channels_text if channels_text else "-"))
+    def sync_rois(self) -> None:
+        """Rebuild the table and the drawn outlines from ``self._rois``.
 
-    def delete_selected_roi(self) -> None:
-        row = self.roi_table.currentRow()
-        if row < 0:
+        Both are numbered by position, so both are rebuilt together rather
+        than edited in place: a table row is numbered by Qt's vertical header,
+        which is the row index, and the label on the image is that same index.
+        """
+        self.roi_table.setRowCount(len(self._rois))
+        for row, roi in enumerate(self._rois):
+            channels = ",".join(
+                str(i + 1) for i, active in enumerate(roi.active_channels) if active
+            )
+            self.roi_table.setItem(row, 0, QTableWidgetItem(f"{roi.threshold_low:.1f}"))
+            self.roi_table.setItem(row, 1, QTableWidgetItem(f"{roi.threshold_high:.1f}"))
+            self.roi_table.setItem(row, 2, QTableWidgetItem(channels if channels else "-"))
+        self.image_view.set_rois(self._rois)
+
+    def show_roi_menu(self, pos) -> None:
+        row = self.roi_table.rowAt(pos.y())
+        if row < 0 or row >= len(self._rois):
             return
-        item = self.roi_table.item(row, 0)
-        if item is None:
+        self.roi_table.selectRow(row)
+        menu = QMenu(self.roi_table)
+        # Connected rather than compared against exec()'s return value: Qt
+        # hides the menu before it emits triggered, so the dialog opens with
+        # the menu already gone.
+        menu.addAction("Change thresholds...").triggered.connect(
+            lambda _checked=False, r=row: self.change_roi_thresholds(r)
+        )
+        menu.addAction("Delete").triggered.connect(
+            lambda _checked=False, r=row: self.delete_roi(r)
+        )
+        menu.exec(self.roi_table.viewport().mapToGlobal(pos))
+
+    def change_roi_thresholds(self, row: int) -> None:
+        if row < 0 or row >= len(self._rois):
             return
-        roi_id = item.data(Qt.ItemDataRole.UserRole)
-        if not isinstance(roi_id, int):
+        dialog = RoiThresholdDialog(self, row)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
             return
-        self.roi_table.removeRow(row)
-        self._rois = [roi for roi in self._rois if roi.roi_id != roi_id]
-        self.image_view.remove_roi(roi_id)
+        if row >= len(self._rois):
+            return
+        low, high = dialog.values()
+        self._rois[row] = replace(
+            self._rois[row], threshold_low=float(low), threshold_high=float(high)
+        )
+        self.sync_rois()
         self.set_dirty(True)
+
+    def delete_roi(self, row: int) -> None:
+        if row < 0 or row >= len(self._rois):
+            return
+        del self._rois[row]
+        self.sync_rois()
+        self.set_dirty(True)
+
+    def rois(self) -> list[MaskRoi]:
+        return self._rois
+
+    def data_min(self) -> float:
+        return self._data_min
+
+    def data_max(self) -> float:
+        return self._data_max
 
     def has_rois(self) -> bool:
         return len(self._rois) > 0
@@ -547,11 +743,17 @@ class MaskEditorView(View):
         self._dirty = dirty
         self.dirty_state_changed.emit(dirty)
 
-    def generate_mask(self) -> np.ndarray | None:
-        if not self._rois:
+    def generate_mask(self, rois: list[MaskRoi] | None = None) -> np.ndarray | None:
+        """The mask *rois* would produce, defaulting to the drawn ones.
+
+        Taking the list is what lets the threshold dialog preview an edit
+        without writing it first: it passes a copy with one ROI substituted.
+        """
+        rois = self._rois if rois is None else rois
+        if not rois:
             return None
         final_mask = np.zeros((self._h, self._w), dtype=np.uint8)
-        for roi in self._rois:
+        for roi in rois:
             if len(roi.points) < 3:
                 continue
             polygon = np.array([[int(round(x)), int(round(y))] for x, y in roi.points], dtype=np.int32).reshape(-1, 1, 2)
