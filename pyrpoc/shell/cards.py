@@ -186,7 +186,6 @@ class BaseCardWidget(QFrame):
 
     def set_description(self, text: str) -> None:
         self._description_label.setText(text)
-        self._description_label.setStyleSheet("color: white;")
         self._description_label.setVisible(bool(text) and not self._expanded)
 
     def set_marker_text(self, text: str) -> None:  # noqa: ARG002
