@@ -5,6 +5,8 @@ from PyQt6.QtGui import QAction, QActionGroup
 from PyQt6.QtWidgets import QMenu, QMenuBar
 from PyQt6 import sip
 
+from .theme.manager import available_breeze_themes
+
 
 class MainMenuBar(QMenuBar):
     style_selected = pyqtSignal(str)
@@ -38,18 +40,14 @@ class MainMenuBar(QMenuBar):
     def populate_style_menu(self, selected_mode: str) -> None:
         self.style_menu.clear()
         self._style_actions.clear()
-        mode_items = [
-            ("system", "Follow System"),
-            ("dark", "Dark"),
-            ("light", "Light"),
-        ]
-        for mode, label in mode_items:
+        for theme in available_breeze_themes:
+            label = theme.replace('-', ' ').title()
             action = QAction(label, self.style_menu)
             action.setCheckable(True)
-            action.triggered.connect(lambda checked, m=mode: self.style_selected.emit(m))
+            action.triggered.connect(lambda checked, m=theme: self.style_selected.emit(m))
             self._style_group.addAction(action)
             self.style_menu.addAction(action)
-            self._style_actions[mode] = action
+            self._style_actions[theme] = action
         self.set_active_style(selected_mode)
 
     def set_active_style(self, selected_mode: str) -> None:

@@ -99,7 +99,6 @@ def decode(raw: dict[str, Any]) -> SessionState:
     layout = raw.get("ads_layout")
     return SessionState(
         schema_version=SCHEMA_VERSION,
-        theme_mode=str(raw.get("theme_mode", "system")),
         devices=devices,
         views=views,
         selected_program=raw.get("selected_program"),

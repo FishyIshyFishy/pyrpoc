@@ -1,17 +1,14 @@
 from __future__ import annotations
 
-from typing import Literal
-
 from PyQt6.QtCore import QFile, QSettings, QTextStream
 from PyQt6.QtWidgets import QApplication
 
 from . import breeze_all
 
-ThemeMode = Literal['dark', 'light']
-
 _SETTINGS_ORG = 'pyrpoc'
 _SETTINGS_APP = 'pyrpoc'
 _SETTINGS_KEY_THEME_MODE = 'ui/theme_mode'
+DEFAULT_THEME = 'dark-pink'
 available_breeze_themes = [
     'dark-blue', 
     'dark-blue-alt', 
@@ -42,27 +39,22 @@ available_breeze_themes = [
 
 
 class ThemeController:
-    available_modes: tuple[ThemeMode, ...] = ('dark', 'light')
-
     def __init__(self, app: QApplication):
         self.app = app
         self.settings = QSettings(_SETTINGS_ORG, _SETTINGS_APP)
 
-    def get_available_modes(self) -> list[ThemeMode]:
-        return list(self.available_modes)
+    def get_saved_mode(self) -> str:
+        raw = self.settings.value(_SETTINGS_KEY_THEME_MODE, DEFAULT_THEME)
+        theme = str(raw).strip().lower()
+        if theme in available_breeze_themes:
+            return theme
+        return DEFAULT_THEME
 
-    def get_saved_mode(self) -> ThemeMode:
-        raw = self.settings.value(_SETTINGS_KEY_THEME_MODE, 'dark')
-        mode = str(raw).strip().lower()
-        if mode in self.available_modes:
-            return mode
-        return 'dark'
-
-    def apply_saved_or_default(self) -> ThemeMode:
+    def apply_saved_or_default(self) -> str:
         return self.apply(self.get_saved_mode(), persist=False)
 
-    def load_breeze_stylesheet(self, mode: ThemeMode) -> str:
-        qss_path = ':/dark-pink/stylesheet.qss'
+    def load_breeze_stylesheet(self, theme: str) -> str:
+        qss_path = f':/{theme}/stylesheet.qss'
 
         file = QFile(qss_path)
         ok = file.open(QFile.OpenModeFlag.ReadOnly | QFile.OpenModeFlag.Text)
@@ -72,15 +64,15 @@ class ThemeController:
         stream = QTextStream(file)
         return stream.readAll()
 
-    def apply(self, mode: str, persist: bool = True) -> ThemeMode:
-        normalized = mode.strip().lower()
-        if normalized not in self.available_modes:
-            normalized = 'dark'
-        selected_mode: ThemeMode = normalized
+    def apply(self, theme: str, persist: bool = True) -> str:
+        normalized = theme.strip().lower()
+        if normalized not in available_breeze_themes:
+            normalized = DEFAULT_THEME
+        selected_theme = normalized
 
         if persist:
-            self.settings.setValue(_SETTINGS_KEY_THEME_MODE, selected_mode)
+            self.settings.setValue(_SETTINGS_KEY_THEME_MODE, selected_theme)
 
-        base_qss = self.load_breeze_stylesheet(selected_mode)
+        base_qss = self.load_breeze_stylesheet(selected_theme)
         self.app.setStyleSheet(base_qss)
-        return selected_mode
+        return selected_theme
