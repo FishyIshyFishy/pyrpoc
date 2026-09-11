@@ -39,6 +39,7 @@ from PyQt6.QtWidgets import (
     QGraphicsTextItem,
     QGraphicsView,
     QHBoxLayout,
+    QHeaderView,
     QLabel,
     QLineEdit,
     QMessageBox,
@@ -393,13 +394,15 @@ class MaskEditorView(View):
         self.update_view_image()
 
     def build_ui(self) -> None:
-        root = QHBoxLayout(self.body)
-
-        left = QVBoxLayout()
+        # A single column. The ROI table used to be a second column beside the
+        # image, which sized it to the tallest thing in the view rather than to
+        # the handful of rows it holds -- mostly empty, and it took width the
+        # image wanted.
+        column = QVBoxLayout(self.body)
         self.channels_row = QHBoxLayout()
         self.channels_row.addWidget(QLabel("Channels:", self))
         self.channel_boxes: list[QCheckBox] = []
-        left.addLayout(self.channels_row)
+        column.addLayout(self.channels_row)
 
         # One span, read left to right: the number at each end is the handle
         # beside it, and the accented groove between them is what is kept. No
@@ -431,14 +434,17 @@ class MaskEditorView(View):
         threshold_row.addWidget(self.low_spin)
         threshold_row.addWidget(self.threshold_slider, 1)
         threshold_row.addWidget(self.high_spin)
-        left.addLayout(threshold_row)
+        column.addLayout(threshold_row)
 
         self.scene = QGraphicsScene(self)
         self.image_item = QGraphicsPixmapItem()
         self.scene.addItem(self.image_item)
         self.image_view = MaskImageView(self.scene, self)
         self.image_view.setMinimumSize(480, 320)
-        left.addWidget(self.image_view, 1)
+        column.addWidget(self.image_view, 1)
+
+        self.roi_table = self.build_roi_table()
+        column.addWidget(self.roi_table)
 
         name_row = QHBoxLayout()
         name_row.addWidget(QLabel("Name:", self))
@@ -453,7 +459,7 @@ class MaskEditorView(View):
         )
         add_btn.clicked.connect(self.add_to_library)
         name_row.addWidget(add_btn)
-        left.addLayout(name_row)
+        column.addLayout(name_row)
 
         button_row = QHBoxLayout()
         preview_btn = QPushButton("Preview", self)
@@ -464,21 +470,43 @@ class MaskEditorView(View):
         button_row.addWidget(preview_btn)
         button_row.addWidget(save_btn)
         button_row.addStretch(1)
-        left.addLayout(button_row)
+        column.addLayout(button_row)
 
-        root.addLayout(left, 3)
+    def build_roi_table(self) -> QTableWidget:
+        """The ROI table: something to read, not something to type into.
 
-        right = QVBoxLayout()
-        self.roi_table = QTableWidget(0, 3, self)
-        self.roi_table.setHorizontalHeaderLabels(["Low", "High", "Channels"])
-        self.roi_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
-        self.roi_table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
+        Nothing here is editable in place. A cell that accepts a caret is
+        promising an edit that was never wired up -- typing a new Low into the
+        table did nothing, because the thresholds live on the ROI and are
+        changed through the row's context menu.
+        """
+        table = QTableWidget(0, 3, self)
+        table.setHorizontalHeaderLabels(["Low", "High", "Channels"])
+        table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        table.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
+        table.setCornerButtonEnabled(False)
+        table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        table.horizontalHeader().setHighlightSections(False)
+        table.verticalHeader().setHighlightSections(False)
+        table.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
         # Editing an ROI is done on the row that names it, rather than through
         # a button elsewhere that acts on whatever happens to be selected.
-        self.roi_table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
-        self.roi_table.customContextMenuRequested.connect(self.show_roi_menu)
-        right.addWidget(self.roi_table)
-        root.addLayout(right, 2)
+        table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        table.customContextMenuRequested.connect(self.show_roi_menu)
+        return table
+
+    def fit_roi_table_height(self) -> None:
+        """Height the table to its rows, up to a few, then let it scroll.
+
+        A table that keeps its own height is what stops it from either
+        swallowing the image or leaving an empty slab under it.
+        """
+        header = self.roi_table.horizontalHeader().height()
+        row_height = self.roi_table.verticalHeader().defaultSectionSize()
+        rows = min(max(self.roi_table.rowCount(), 1), 5)
+        self.roi_table.setFixedHeight(header + rows * row_height + 4)
 
     def apply_new_data(self, image_data: np.ndarray | None) -> None:
         self._data = self.coerce_input_data(image_data)
@@ -678,9 +706,17 @@ class MaskEditorView(View):
             channels = ",".join(
                 str(i + 1) for i, active in enumerate(roi.active_channels) if active
             )
-            self.roi_table.setItem(row, 0, QTableWidgetItem(f"{roi.threshold_low:.1f}"))
-            self.roi_table.setItem(row, 1, QTableWidgetItem(f"{roi.threshold_high:.1f}"))
-            self.roi_table.setItem(row, 2, QTableWidgetItem(channels if channels else "-"))
+            for col, text in enumerate(
+                (
+                    f"{roi.threshold_low:.1f}",
+                    f"{roi.threshold_high:.1f}",
+                    channels if channels else "-",
+                )
+            ):
+                item = QTableWidgetItem(text)
+                item.setFlags(Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsEnabled)
+                self.roi_table.setItem(row, col, item)
+        self.fit_roi_table_height()
         self.image_view.set_rois(self._rois)
 
     def show_roi_menu(self, pos) -> None:
