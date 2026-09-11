@@ -32,7 +32,6 @@ from PyQt6.QtWidgets import (
     QCheckBox,
     QDialog,
     QFileDialog,
-    QFormLayout,
     QGraphicsPathItem,
     QGraphicsPixmapItem,
     QGraphicsScene,
@@ -44,7 +43,6 @@ from PyQt6.QtWidgets import (
     QMessageBox,
     QMenu,
     QPushButton,
-    QSlider,
     QSpinBox,
     QTableWidget,
     QTableWidgetItem,
@@ -58,6 +56,7 @@ from pyrpoc.data.io import utc_now
 from pyrpoc.data.transforms import normalize_channels
 
 from .base import View
+from .range_slider import RangeSlider
 from .registry import view_registry
 
 
@@ -242,36 +241,37 @@ class MaskEditorView(View):
         self.channel_boxes: list[QCheckBox] = []
         left.addLayout(self.channels_row)
 
-        threshold_form = QFormLayout()
-        self.low_spin = QSpinBox(self)
-        self.high_spin = QSpinBox(self)
+        # One span, read left to right: the number at each end is the handle
+        # beside it, and the accented groove between them is what is kept. No
+        # "Low"/"High" labels, because the arrangement already says it.
+        threshold_row = QHBoxLayout()
         int_min = int(np.floor(self._data_min))
         int_max = int(np.ceil(self._data_max))
-        self.low_spin.setRange(int_min, int_max)
-        self.high_spin.setRange(int_min, int_max)
-        low_default = int(round(self._data_min + 0.2 * (self._data_max - self._data_min)))
-        high_default = int(round(self._data_min + 0.8 * (self._data_max - self._data_min)))
-        if high_default < low_default:
-            high_default = low_default
+        low_default, high_default = self.default_thresholds()
+
+        self.low_spin = QSpinBox(self)
+        self.high_spin = QSpinBox(self)
+        for spin in (self.low_spin, self.high_spin):
+            spin.setRange(int_min, int_max)
+            spin.setFixedWidth(74)
+            spin.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.low_spin.setValue(low_default)
         self.high_spin.setValue(high_default)
         self.low_spin.valueChanged.connect(self.on_threshold_changed)
         self.high_spin.valueChanged.connect(self.on_threshold_changed)
 
-        self.low_slider = QSlider(Qt.Orientation.Horizontal, self)
-        self.high_slider = QSlider(Qt.Orientation.Horizontal, self)
-        self.low_slider.setRange(int_min, int_max)
-        self.high_slider.setRange(int_min, int_max)
-        self.low_slider.setValue(low_default)
-        self.high_slider.setValue(high_default)
-        self.low_slider.valueChanged.connect(self.on_low_slider_changed)
-        self.high_slider.valueChanged.connect(self.on_high_slider_changed)
+        self.threshold_slider = RangeSlider(self)
+        self.threshold_slider.setRange(int_min, int_max)
+        self.threshold_slider.setValues(low_default, high_default)
+        self.threshold_slider.setToolTip(
+            "Pixels inside the accented span count toward the mask."
+        )
+        self.threshold_slider.values_changed.connect(self.on_slider_changed)
 
-        threshold_form.addRow("Low", self.low_spin)
-        threshold_form.addRow("High", self.high_spin)
-        threshold_form.addRow("Low Slider", self.low_slider)
-        threshold_form.addRow("High Slider", self.high_slider)
-        left.addLayout(threshold_form)
+        threshold_row.addWidget(self.low_spin)
+        threshold_row.addWidget(self.threshold_slider, 1)
+        threshold_row.addWidget(self.high_spin)
+        left.addLayout(threshold_row)
 
         self.scene = QGraphicsScene(self)
         self.image_item = QGraphicsPixmapItem()
@@ -346,29 +346,19 @@ class MaskEditorView(View):
             self.channels_row.addWidget(cb)
         self.channels_row.addStretch(1)
 
+    def default_thresholds(self) -> tuple[int, int]:
+        low = int(round(self._data_min + 0.2 * (self._data_max - self._data_min)))
+        high = int(round(self._data_min + 0.8 * (self._data_max - self._data_min)))
+        return low, max(high, low)
+
     def reset_threshold_controls(self) -> None:
         int_min = int(np.floor(self._data_min))
         int_max = int(np.ceil(self._data_max))
-        low_default = int(round(self._data_min + 0.2 * (self._data_max - self._data_min)))
-        high_default = int(round(self._data_min + 0.8 * (self._data_max - self._data_min)))
-        if high_default < low_default:
-            high_default = low_default
-        self.low_spin.blockSignals(True)
-        self.high_spin.blockSignals(True)
-        self.low_slider.blockSignals(True)
-        self.high_slider.blockSignals(True)
+        low_default, high_default = self.default_thresholds()
         self.low_spin.setRange(int_min, int_max)
         self.high_spin.setRange(int_min, int_max)
-        self.low_slider.setRange(int_min, int_max)
-        self.high_slider.setRange(int_min, int_max)
-        self.low_spin.setValue(low_default)
-        self.high_spin.setValue(high_default)
-        self.low_slider.setValue(low_default)
-        self.high_slider.setValue(high_default)
-        self.low_spin.blockSignals(False)
-        self.high_spin.blockSignals(False)
-        self.low_slider.blockSignals(False)
-        self.high_slider.blockSignals(False)
+        self.threshold_slider.setRange(int_min, int_max)
+        self.write_thresholds(low_default, high_default)
 
     def refresh(self) -> None:
         """Re-read the bound dataset.
@@ -437,27 +427,30 @@ class MaskEditorView(View):
         self._channel_visibility[idx] = bool(checked)
         self.update_view_image()
 
-    def on_threshold_changed(self, _value: int) -> None:
-        low, high = self.coerced_thresholds()
-        self.low_spin.blockSignals(True)
-        self.high_spin.blockSignals(True)
-        self.low_slider.blockSignals(True)
-        self.high_slider.blockSignals(True)
+    def write_thresholds(self, low: int, high: int) -> None:
+        """Push one pair of values into every threshold control at once.
+
+        Each control would otherwise echo the change back to the one that
+        caused it, so they are all written with their signals blocked and the
+        redraw is done once, here.
+        """
+        controls = (self.low_spin, self.high_spin, self.threshold_slider)
+        for control in controls:
+            control.blockSignals(True)
         self.low_spin.setValue(low)
         self.high_spin.setValue(high)
-        self.low_slider.setValue(low)
-        self.high_slider.setValue(high)
-        self.low_spin.blockSignals(False)
-        self.high_spin.blockSignals(False)
-        self.low_slider.blockSignals(False)
-        self.high_slider.blockSignals(False)
+        self.threshold_slider.setValues(low, high)
+        for control in controls:
+            control.blockSignals(False)
+
+    def on_threshold_changed(self, _value: int) -> None:
+        low, high = self.coerced_thresholds()
+        self.write_thresholds(low, high)
         self.update_view_image()
 
-    def on_low_slider_changed(self, value: int) -> None:
-        self.low_spin.setValue(value)
-
-    def on_high_slider_changed(self, value: int) -> None:
-        self.high_spin.setValue(value)
+    def on_slider_changed(self, low: int, high: int) -> None:
+        self.write_thresholds(low, high)
+        self.update_view_image()
 
     def coerced_thresholds(self) -> tuple[int, int]:
         low = int(self.low_spin.value())
