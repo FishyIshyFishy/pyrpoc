@@ -297,10 +297,10 @@ class LauncherPanel(QWidget):
         self.status_label.setText("Status: acquiring")
         self.set_running_ui(True)
 
-    def on_run_finished(self, frame_count: int) -> None:
+    def on_run_finished(self) -> None:
         self.set_running_ui(False)
         self.refresh_readiness(announce=False)
-        self.status_label.setText(f"Status: stopped ({frame_count} frames)")
+        self.status_label.setText("Status: stopped")
 
     def on_run_failed(self, message: str) -> None:
         self.status_label.setText(f"Status: error - {message}")

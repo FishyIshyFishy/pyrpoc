@@ -95,7 +95,7 @@ class RunContext:
 
     # -- output ------------------------------------------------------------ #
 
-    def publish(self, stream: str, data: np.ndarray, *, channels=None, **coords: Any) -> int:
+    def publish(self, stream: str, data: np.ndarray, *, channels=None) -> None:
         """Write one array into one of this run's datasets.
 
         The stream name is declared in ``emits``, so a view binding exists
@@ -109,7 +109,7 @@ class RunContext:
             )
         if channels and not dataset.channel_labels:
             dataset.channel_labels = list(channels)
-        return dataset.append(data, **coords)
+        dataset.append(data)
 
     def describe(self, stream: str, **metadata: Any) -> None:
         """Record metadata on one of this run's datasets.

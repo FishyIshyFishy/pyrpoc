@@ -210,14 +210,15 @@ class Application(QObject):
 
     # -- views -------------------------------------------------------------- #
 
-    def on_dataset_changed(self, dataset, index: int) -> None:
+    def on_dataset_changed(self, dataset) -> None:
         """Refresh the views showing this dataset.
 
-        A hidden view is skipped and catches up when it is shown again -- in
-        v3.0 it missed those frames permanently, because the interpreter skipped
-        anything not currently visible and there was nothing to catch up from.
+        A hidden view is skipped rather than redrawn into a widget nobody can
+        see. It picks the data up on its next refresh -- the next publish it is
+        visible for, or the next time its binding changes. Nothing refreshes a
+        view on being shown, so one unhidden after a run ended keeps whatever
+        it last drew until the next run starts.
         """
-        del index
         for view in list(self.views):
             if view.dataset() is not dataset:
                 continue
