@@ -7,6 +7,14 @@ from PyQt6 import sip
 
 from .theme.manager import available_breeze_themes
 
+_STYLE_COLOR_GROUPS = ["blue", "red", "green", "purple", "cyan", "pink"]
+_STYLE_VARIANTS = [
+    ("light-{c}", "Light"),
+    ("light-{c}-alt", "Light Alt"),
+    ("dark-{c}", "Dark"),
+    ("dark-{c}-alt", "Dark Alt"),
+]
+
 
 class MainMenuBar(QMenuBar):
     style_selected = pyqtSignal(str)
@@ -40,14 +48,19 @@ class MainMenuBar(QMenuBar):
     def populate_style_menu(self, selected_mode: str) -> None:
         self.style_menu.clear()
         self._style_actions.clear()
-        for theme in available_breeze_themes:
-            label = theme.replace('-', ' ').title()
-            action = QAction(label, self.style_menu)
-            action.setCheckable(True)
-            action.triggered.connect(lambda checked, m=theme: self.style_selected.emit(m))
-            self._style_group.addAction(action)
-            self.style_menu.addAction(action)
-            self._style_actions[theme] = action
+        for color in _STYLE_COLOR_GROUPS:
+            color_menu = QMenu(color.title(), self.style_menu)
+            self.style_menu.addMenu(color_menu)
+            for pattern, label in _STYLE_VARIANTS:
+                theme = pattern.format(c=color)
+                if theme not in available_breeze_themes:
+                    continue
+                action = QAction(label, color_menu)
+                action.setCheckable(True)
+                action.triggered.connect(lambda checked, m=theme: self.style_selected.emit(m))
+                self._style_group.addAction(action)
+                color_menu.addAction(action)
+                self._style_actions[theme] = action
         self.set_active_style(selected_mode)
 
     def set_active_style(self, selected_mode: str) -> None:
