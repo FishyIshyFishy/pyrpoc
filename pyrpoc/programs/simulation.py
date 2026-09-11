@@ -22,7 +22,6 @@ from pyrpoc.run.program import Program
 
 from .components import (
     FrameGroup,
-    FramesGroup,
     ModulationGroup,
     PacingGroup,
     SignalGroup,
@@ -266,14 +265,14 @@ def build_mask(frame_shape: FrameGroup, modulation: ModulationGroup):
 @program_registry.register("simulation")
 class Simulation(Program):
     uses = []
-    params = [FrameGroup, SignalGroup, ModulationGroup, FramesGroup, PacingGroup]
+    params = [FrameGroup, SignalGroup, ModulationGroup, PacingGroup]
     emits = {"intensity": Image2D}
 
     def run(self, ctx) -> None:
         frame_shape = ctx.params[FrameGroup]
         signal = ctx.params[SignalGroup]
         modulation = ctx.params[ModulationGroup]
-        num_frames = ctx.params[FramesGroup].num_frames
+        num_frames = frame_shape.num_frames
         interval_ms = ctx.params[PacingGroup].frame_interval_ms
 
         mask = build_mask(frame_shape, modulation)

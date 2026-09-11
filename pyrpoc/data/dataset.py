@@ -1,13 +1,14 @@
 """Where acquired arrays live.
 
-A dataset is a run output: frames appended as they arrive, a shape contract, the
+A dataset is a run output: arrays appended as they arrive, a shape contract, the
 parameters that produced it, and optionally a writer putting it on disk. Views
 render datasets and never own arrays -- which is the fix for ``self._data_chw``
 in the old displays, where the array *was* the data, closing a display destroyed
 it, and two displays over one run held two drifting copies.
 
-A multi-frame run is one dataset that grows, so frame counting leaves the
-program entirely.
+A run that acquires repeatedly is one dataset that grows. Appending is the whole
+event: nothing outside a program is told which array this was or how many are
+expected, because only the program that set the count knows.
 """
 
 from __future__ import annotations
@@ -59,8 +60,8 @@ class Dataset:
         self.writer = writer
 
         self._frames: list[np.ndarray] = []
-        self._coords: list[dict[str, Any]] = []
-        self._subscribers: list[Callable[["Dataset", int], None]] = []
+        self._nbytes = 0
+        self._subscribers: list[Callable[["Dataset"], None]] = []
         self._lock = threading.RLock()
 
     # -- identity ---------------------------------------------------------- #
@@ -108,8 +109,8 @@ class Dataset:
 
     # -- writing ----------------------------------------------------------- #
 
-    def append(self, array: np.ndarray, **coords: Any) -> int:
-        """Validate, store, save, then notify. Returns the frame index.
+    def append(self, array: np.ndarray) -> None:
+        """Validate, store, save, then notify.
 
         Runs on the worker thread, so subscriber callbacks do too. Nothing that
         touches Qt subscribes directly -- ``shell/run_bridge.py`` is the only
@@ -118,17 +119,15 @@ class Dataset:
         """
         frame = self.spec.coerce(array)
         with self._lock:
-            index = len(self._frames)
             self._frames.append(frame)
-            self._coords.append(dict(coords))
+            self._nbytes += frame.nbytes
             if not self.channel_labels and self.spec.axes and self.spec.axes[0] == "channel":
                 self.channel_labels = self.resolved_channel_labels(frame.shape[0])
 
         if self.writer is not None:
-            self.writer.write(self, frame, index)
+            self.writer.write(self, frame)
 
-        self.notify(index)
-        return index
+        self.notify()
 
     # -- reading ----------------------------------------------------------- #
 
@@ -136,9 +135,20 @@ class Dataset:
         with self._lock:
             return len(self._frames)
 
-    def frame(self, index: int) -> np.ndarray:
+    @property
+    def nbytes(self) -> int:
+        """How much memory everything appended so far is holding.
+
+        A dataset keeps every array it was given, so a long continuous run is
+        the one thing here that can exhaust a machine. The data panel reports
+        this so that is visible while it happens rather than afterwards.
+
+        Accumulated in ``append`` rather than summed on demand: the panel asks
+        again on every append, and summing a list that grows by one each time
+        would make displaying the number quadratic in the length of the run.
+        """
         with self._lock:
-            return self._frames[index]
+            return self._nbytes
 
     def latest(self) -> np.ndarray | None:
         with self._lock:
@@ -151,33 +161,29 @@ class Dataset:
                 return None
             return np.stack(self._frames, axis=0)
 
-    def coords(self, index: int) -> dict[str, Any]:
-        with self._lock:
-            return dict(self._coords[index])
-
     # -- change notification ------------------------------------------------ #
 
-    def subscribe(self, callback: Callable[["Dataset", int], None]) -> None:
+    def subscribe(self, callback: Callable[["Dataset"], None]) -> None:
         with self._lock:
             if callback not in self._subscribers:
                 self._subscribers.append(callback)
 
-    def unsubscribe(self, callback: Callable[["Dataset", int], None]) -> None:
+    def unsubscribe(self, callback: Callable[["Dataset"], None]) -> None:
         with self._lock:
             if callback in self._subscribers:
                 self._subscribers.remove(callback)
 
-    def notify(self, index: int) -> None:
+    def notify(self) -> None:
         with self._lock:
             listeners = list(self._subscribers)
         for callback in listeners:
-            callback(self, index)
+            callback(self)
 
     # -- lifecycle ---------------------------------------------------------- #
 
-    def finalize(self, frame_count: int, error: Exception | None) -> None:
+    def finalize(self, error: Exception | None) -> None:
         if self.writer is not None:
-            self.writer.finalize(self, frame_count, error)
+            self.writer.finalize(self, error)
 
     def __repr__(self) -> str:  # pragma: no cover - debugging aid
         return f"<Dataset {self.stream} frames={len(self)}>"

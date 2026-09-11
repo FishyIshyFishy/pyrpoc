@@ -22,6 +22,8 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from PyQt6.QtCore import Qt
+
 from pyrpoc.core.streams import Image2D
 
 from .base import View
@@ -50,6 +52,9 @@ class Image2DView(View):
         self._tiles: list[ChannelTile] = []
         self._pending_channel_state: list[dict[str, Any]] = []
         self._suspend_lut_signal = False
+        #: Whether a click reports a position. Held here rather than per tile
+        #: because tiles come and go with the channel count.
+        self._picking = False
         self._lut = pg.ColorMap(
             pos=np.array([0.0, 0.999, 1.0], dtype=float),
             color=np.array(
@@ -168,7 +173,68 @@ class Image2DView(View):
         )
         autoscale_box.toggled.connect(lambda checked, i=index: self.on_autoscale_toggled(i))
         hist_widget.item.sigLevelsChanged.connect(lambda _item, i=index: self.on_lut_levels_changed(i))
+
+        # Wired and cursored at build time, not when picking is switched on:
+        # sync_channel_tiles creates and destroys these as the channel count
+        # changes, so a tile appearing after arming has to arrive ready.
+        # pyqtgraph's GraphicsScene carries sigMouseClicked; the Qt stub for
+        # scene() only promises a QGraphicsScene, which does not.
+        scene = cast(Any, plot.scene())
+        if scene is not None:
+            scene.sigMouseClicked.connect(
+                lambda event, item=image_item: self.on_scene_clicked(event, item)
+            )
+        self.apply_pick_cursor(tile)
         return tile
+
+    # -- picking ---------------------------------------------------------------- #
+
+    def set_picking(self, active: bool) -> None:
+        self._picking = bool(active)
+        for tile in self._tiles:
+            self.apply_pick_cursor(tile)
+
+    def apply_pick_cursor(self, tile: ChannelTile) -> None:
+        """Crosshair over the image itself, not the whole view.
+
+        The cursor is set on the plot rather than on this widget so the source
+        picker and the tile name fields keep a normal pointer -- the crosshair
+        means "clicking here moves hardware", so it must not appear anywhere a
+        click does nothing.
+        """
+        plot = tile.image_item.getViewWidget()
+        if plot is None:
+            return
+        if self._picking:
+            plot.setCursor(Qt.CursorShape.CrossCursor)
+        else:
+            plot.unsetCursor()
+
+    def on_scene_clicked(self, event, image_item: pg.ImageItem) -> None:
+        """Report the pixel under a left click, in this dataset's own terms.
+
+        Bounds are checked against the frame rather than the image item: a
+        click just outside the pixels still lands inside the view box, and
+        publishing a negative or overlarge index would park the galvos outside
+        the field that was scanned.
+        """
+        if not self._picking:
+            return
+        if event.button() != Qt.MouseButton.LeftButton:
+            return
+        dataset = self.dataset()
+        frame = dataset.latest() if dataset is not None else None
+        if dataset is None or frame is None:
+            return
+
+        point = image_item.mapFromScene(event.scenePos())
+        x, y = int(np.floor(point.x())), int(np.floor(point.y()))
+        height, width = frame.shape[1], frame.shape[2]
+        if not (0 <= x < width and 0 <= y < height):
+            return
+
+        event.accept()
+        self.point_picked.emit(dataset.id, x, y)
 
     def current_channel(self, index: int) -> np.ndarray | None:
         dataset = self.dataset()

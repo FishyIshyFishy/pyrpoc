@@ -112,6 +112,9 @@ class LauncherPanel(QWidget):
         self.app.program_selected.connect(self.on_program_selected)
         self.app.devices_changed.connect(self.refresh_readiness)
         self.app.save_changed.connect(self.on_save_changed)
+        self.app.pick_armed_changed.connect(self.on_pick_armed_changed)
+        self.app.point_acquired.connect(self.on_point_acquired)
+        self.app.pick_failed.connect(self.on_pick_failed)
         self.app.bridge.run_started.connect(self.on_run_started)
         self.app.bridge.run_status.connect(lambda text: self.status_label.setText(f"Status: {text}"))
         self.app.bridge.run_finished.connect(self.on_run_finished)
@@ -143,13 +146,21 @@ class LauncherPanel(QWidget):
         self.refresh_readiness()
 
     def rebuild_form(self) -> None:
+        """Build the form for the selected program, disarming as we go.
+
+        The widget holding the arm button is about to be destroyed, so the
+        application's flag has to come down with it -- otherwise switching
+        modality would leave every display armed with no button to un-press.
+        """
         params = self.app.current_params()
         if params is None:
             return
+        self.app.set_pick_armed(False)
         self.form = ParamForm(params, self)
         self.form.changed.connect(self.app.params_changed.emit)
         self.form.changed.connect(self.app.state_changed.emit)
         self.form.invalid.connect(lambda text: self.status_label.setText(f"Status: {text}"))
+        self.form.pick_armed.connect(self.on_pick_armed_requested)
         self.scroll.setWidget(self.form)
 
     def refresh_readiness(self, *, announce: bool = True) -> None:
@@ -162,6 +173,8 @@ class LauncherPanel(QWidget):
             return
         missing = self.blockers()
         running = self.app.bridge.is_running
+        if missing and self.app.pick_armed:
+            self.app.set_pick_armed(False)
         self.start_btn.setEnabled(not missing and not running)
         self.continuous_btn.setEnabled(not missing and not running)
         if missing:
@@ -181,6 +194,52 @@ class LauncherPanel(QWidget):
         if self.app.save.enabled and not self.app.save.filename:
             missing = missing + ["a name to save under"]
         return missing
+
+    # -- picking -------------------------------------------------------------- #
+
+    def on_pick_armed_requested(self, active: bool) -> None:
+        """A field asked to be filled from a display. Allow it, or say why not.
+
+        Arming is refused for anything that would stop play working, because
+        the click acquires: a crosshair promising a run that cannot start is a
+        worse lie than a greyed button.
+        """
+        missing = self.blockers() if active else []
+        if missing:
+            self.status_label.setText("Status: needs " + ", ".join(missing))
+            if self.form is not None:
+                self.form.show_pick_armed(False)
+            return
+        if active and self.app.bridge.is_running:
+            self.status_label.setText("Status: already acquiring")
+            if self.form is not None:
+                self.form.show_pick_armed(False)
+            return
+        self.app.set_pick_armed(active)
+
+    def on_pick_armed_changed(self, active: bool) -> None:
+        """Reflect the application's arming state in the form and the status."""
+        if self.form is not None:
+            self.form.show_pick_armed(active)
+        if active:
+            self.status_label.setText("Status: click a point on an image")
+        elif not self.app.bridge.is_running:
+            self.refresh_readiness()
+
+    def on_point_acquired(self) -> None:
+        """A pixel became a point. Show the volts, then run.
+
+        Goes through ``start`` rather than ``app.start_run`` so the one place
+        that reports a failed launch keeps reporting it. That matters more here
+        than on the play button: this path begins in a view's mouse handler, and
+        an exception escaping a Qt slot aborts the process instead of unwinding.
+        """
+        if self.form is not None:
+            self.form.reload()
+        self.start(continuous=False)
+
+    def on_pick_failed(self, message: str) -> None:
+        self.status_label.setText(f"Status: {message}")
 
     # -- saving --------------------------------------------------------------- #
 
@@ -238,10 +297,10 @@ class LauncherPanel(QWidget):
         self.status_label.setText("Status: acquiring")
         self.set_running_ui(True)
 
-    def on_run_finished(self, frame_count: int) -> None:
+    def on_run_finished(self) -> None:
         self.set_running_ui(False)
         self.refresh_readiness(announce=False)
-        self.status_label.setText(f"Status: stopped ({frame_count} frames)")
+        self.status_label.setText("Status: stopped")
 
     def on_run_failed(self, message: str) -> None:
         self.status_label.setText(f"Status: error - {message}")
@@ -249,6 +308,8 @@ class LauncherPanel(QWidget):
         QMessageBox.critical(self, "Acquisition Error", message)
 
     def set_running_ui(self, running: bool) -> None:
+        if running:
+            self.app.set_pick_armed(False)
         self.start_btn.setEnabled(not running)
         self.continuous_btn.setEnabled(not running)
         self.stop_btn.setEnabled(running)

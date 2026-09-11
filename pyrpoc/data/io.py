@@ -1,16 +1,17 @@
 """Saving: one copy of what modalities/*/storage.py did three times.
 
-The on-disk layout is preserved so existing analysis scripts keep working:
+The on-disk layout:
 
-    <root>_<channel>.tiff   appended float32, one page per frame (Image2D)
-    <root>_<stream>.npz     frames / parameters / frame_indices (Cube3D, Samples4D)
-    <root>_meta.json        rewritten after every frame, so run progress stays
-                            readable from disk mid-run
+    <root>_<channel>.tiff   appended float32, one page per published array
+    <root>_<stream>.npz     data / parameters
+    <root>_meta.json        written once when the run starts, once when it ends
 
-Two deliberate differences, both recorded in the plan: FLIM's histogram file was
-``<root>_raw.npz`` with ``frames`` as ``dtype=object`` and an
-``acquisition_parameters`` key; it is now ``<root>_histogram.npz`` with a real
-float32 array and a ``parameters`` key. Split confocal's raw file is unchanged.
+Nothing here counts. How much a run produced is recoverable from the data
+itself -- the page count of a TIFF, the leading axis of an npz -- and how much
+was asked for rides in ``parameters`` with the rest of the acquisition
+settings. A saver that tracked a total had to nominate one stream of a
+multi-stream run as the one worth counting, which is a hierarchy none of these
+files needs.
 
 The auxiliary-payload machinery this replaces -- ``_pending_auxiliary``,
 ``append_auxiliary_payload``, ``flush_auxiliary_payloads`` -- existed only
@@ -28,7 +29,7 @@ import json
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 import numpy as np
 import tifffile
@@ -91,24 +92,24 @@ class SaveTarget:
 
 
 class StreamWriter:
-    """Base: puts one stream's frames on disk."""
+    """Base: puts one stream's arrays on disk."""
 
     def __init__(self, saver: "RunSaver", stream: str):
         self.saver = saver
         self.stream = stream
         self.paths: dict[str, Path] = {}
 
-    def write(self, dataset: Dataset, array: np.ndarray, frame_index: int) -> None:
+    def write(self, dataset: Dataset, array: np.ndarray) -> None:
         raise NotImplementedError
 
-    def finalize(self, dataset: Dataset, frame_count: int, error: Exception | None) -> None:
+    def finalize(self, dataset: Dataset, error: Exception | None) -> None:
         pass
 
 
 class TiffStreamWriter(StreamWriter):
-    """``Image2D``: one appended TIFF per channel, exactly as v3.0 wrote them."""
+    """``Image2D``: one appended TIFF per channel, one page per publish."""
 
-    def write(self, dataset: Dataset, array: np.ndarray, frame_index: int) -> None:
+    def write(self, dataset: Dataset, array: np.ndarray) -> None:
         channels = [array[index] for index in range(array.shape[0])]
 
         if not self.paths:
@@ -122,40 +123,36 @@ class TiffStreamWriter(StreamWriter):
                     path.unlink()
 
         if len(channels) != len(self.paths):
-            raise ValueError("frame channel count does not match the configured save layout")
+            raise ValueError("channel count does not match the configured save layout")
 
-        for path, channel_frame in zip(self.paths.values(), channels):
+        for path, channel_plane in zip(self.paths.values(), channels):
             with tifffile.TiffWriter(str(path), append=True) as writer:
-                writer.write(np.asarray(channel_frame, dtype=np.float32))
-
-        self.saver.on_frame_written(self.stream, frame_index)
+                writer.write(np.asarray(channel_plane, dtype=np.float32))
 
 
 class NpzStreamWriter(StreamWriter):
-    """``Cube3D`` / ``Samples4D``: buffered, written once at finalize."""
+    """Everything that is not ``Image2D``: buffered, written once at finalize."""
 
     def __init__(self, saver: "RunSaver", stream: str):
         super().__init__(saver, stream)
         self._buffer: list[np.ndarray] = []
 
-    def write(self, dataset: Dataset, array: np.ndarray, frame_index: int) -> None:
+    def write(self, dataset: Dataset, array: np.ndarray) -> None:
         self._buffer.append(np.asarray(array, dtype=np.float32))
-        self.saver.on_frame_written(self.stream, frame_index)
 
-    def finalize(self, dataset: Dataset, frame_count: int, error: Exception | None) -> None:
+    def finalize(self, dataset: Dataset, error: Exception | None) -> None:
         if not self._buffer:
             return
         root = self.saver.root
         path = root.with_name(f"{root.name}_{self.stream}.npz")
+        #: Leading axis is one entry per published array, in publish order.
         payload = np.stack(self._buffer, axis=0)
         np.savez_compressed(
             str(path),
-            frames=payload,
+            data=payload,
             parameters=np.asarray(self.saver.parameters, dtype=object),
-            frame_indices=np.arange(payload.shape[0], dtype=np.int32),
         )
         self.paths = {self.stream: path}
-        self.saver.write_metadata(str(error) if error is not None else None)
 
 
 def writer_for_spec(saver: "RunSaver", stream: str, spec: type[Stream]) -> StreamWriter:
@@ -170,7 +167,9 @@ class RunSaver:
     """Owns one run's output: the per-stream writers and the metadata file.
 
     One metadata file per run rather than per stream, so a multi-stream run
-    still produces the single ``_meta.json`` v3.0 produced.
+    still describes itself in one place. It is written twice -- once from
+    ``prepare`` so the run is on disk before any data is, and once from
+    ``finalize`` once the writers know their paths.
     """
 
     def __init__(
@@ -182,7 +181,6 @@ class RunSaver:
         devices: dict[str, Any] | None = None,
         run_id: int = 1,
         started_at: str | None = None,
-        frame_limit: int | None = None,
     ):
         self.root = Path(root)
         self.program_key = program_key
@@ -190,54 +188,27 @@ class RunSaver:
         self.devices = dict(devices or {})
         self.run_id = run_id
         self.started_at = started_at or utc_now()
-        self._frame_limit_source: Callable[[], int | None] = lambda: frame_limit
 
         self.json_path = self.root.with_name(f"{self.root.name}_meta.json")
         self.writers: dict[str, StreamWriter] = {}
-        self.primary_stream: str | None = None
-        self.frames_saved = 0
-
-    @property
-    def frame_limit(self) -> int | None:
-        """How many frames the run intends to write, or None if open-ended."""
-        return self._frame_limit_source()
-
-    def track_frame_limit(self, source: Callable[[], int | None]) -> None:
-        """Read the limit from the running program rather than a fixed number.
-
-        The program is the only thing that knows how many frames it will take,
-        and it says so by entering ``ctx.frames(n)``. Pulling the value at
-        write time is what lets a program with no frame concept exist at all:
-        it never calls ``frames()``, this stays None, and nothing had to pass a
-        count it does not have.
-        """
-        self._frame_limit_source = source
 
     def prepare(self, streams: dict[str, type[Stream]]) -> None:
         """Create the output directory and write the metadata stub."""
         self.root.parent.mkdir(parents=True, exist_ok=True)
         for stream, spec in streams.items():
             self.writers[stream] = writer_for_spec(self, stream, spec)
-            if self.primary_stream is None:
-                self.primary_stream = stream
         self.write_metadata(None)
 
     def writer_for(self, stream: str) -> StreamWriter | None:
         return self.writers.get(stream)
 
-    def on_frame_written(self, stream: str, frame_index: int) -> None:
-        """Bump the saved-frame count and rewrite the metadata.
+    def finalize(self, error: Exception | None) -> None:
+        """Rewrite the metadata now that every writer knows its paths.
 
-        Counted against the first declared stream, which is ``intensity`` for
-        all three programs, so ``frames_saved`` means what it meant in v3.0.
+        ``Runner.worker`` finalizes every dataset before it finalizes the
+        saver, so ``tiff_paths`` and ``auxiliary_paths`` are both complete by
+        the time this runs.
         """
-        if stream != self.primary_stream:
-            return
-        self.frames_saved = frame_index + 1
-        self.write_metadata(None)
-
-    def finalize(self, frame_count: int, error: Exception | None) -> None:
-        self.frames_saved = frame_count
         self.write_metadata(str(error) if error is not None else None)
 
     # -- metadata ---------------------------------------------------------- #
@@ -261,15 +232,11 @@ class RunSaver:
             "run_id": self.run_id,
             "started": self.started_at,
             "program_key": self.program_key,
-            # v3.0 alias, so lab scripts reading it keep working. Remove in 3.2.
-            "modality_key": self.program_key,
             "save_root_path": str(self.root),
             "save_json_path": str(self.json_path),
             "streams": sorted(self.writers),
             "tiff_paths": self.tiff_paths(),
             "auxiliary_paths": self.auxiliary_paths(),
-            "frames_saved": self.frames_saved,
-            "frame_limit": self.frame_limit,
             "parameters": self.parameters,
             "devices": self.devices,
             "last_error": last_error,
@@ -281,14 +248,3 @@ class RunSaver:
 
 def read_metadata(path: Path) -> dict[str, Any]:
     return json.loads(Path(path).read_text(encoding="utf-8"))
-
-
-def load_frames(path: Path) -> np.ndarray:
-    """Read back an appended per-channel TIFF as ``(F, H, W)``.
-
-    Appending one page at a time -- which is how v3.0 wrote these and how they
-    are still written -- puts each frame in its own TIFF *series*, so a plain
-    ``tifffile.imread(path)`` returns only the first frame. ``key=slice(None)``
-    reads every page. Worth knowing before writing an analysis script.
-    """
-    return np.asarray(tifffile.imread(str(path), key=slice(None)))

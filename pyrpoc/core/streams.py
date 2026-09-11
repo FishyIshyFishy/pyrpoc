@@ -65,8 +65,28 @@ class Samples4D(Stream):
     axes = ("channel", "y", "x", "sample")
 
 
+class Spectrum1D(Stream):
+    """``(C, W)`` float32 — one spectrum per channel.
+
+    Channel-first like ``Image2D`` rather than a bare ``(W,)``, for two
+    reasons: ``axes[0] == "channel"`` is what makes ``Dataset.append`` fill in
+    channel labels, and a spectrometer with more than one detector needs no new
+    contract. A single-detector run is one channel, not a different shape.
+
+    The spectral axis carries no units. What a bin means is the spectrometer's
+    calibration, which is a device property rather than a shape contract -- so
+    it belongs in dataset metadata when there is a real instrument to read it
+    from.
+    """
+
+    name = "Spectrum1D"
+    ndim = 2
+    axes = ("channel", "wavelength")
+
+
 CONTRACTS: dict[str, type[Stream]] = {
     Image2D.name: Image2D,
     Cube3D.name: Cube3D,
     Samples4D.name: Samples4D,
+    Spectrum1D.name: Spectrum1D,
 }

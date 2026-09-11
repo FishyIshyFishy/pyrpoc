@@ -4,9 +4,10 @@ Pure Python, no Qt, so a run can be driven with no QApplication at all. The
 thread marshalling the GUI needs lives in ``shell/run_bridge.py``.
 
 The runner never knows what any program does; it only knows how to execute one.
-What it does own is everything section 8.1 lists as absent from the program:
-creating a dataset per declared stream, attaching a save policy, and counting
-frames.
+What it does own is what a program deliberately does not: creating a dataset per
+declared stream, and attaching a save policy. It counts nothing -- how much data
+a run produces is the program's business, and no layer above one has a reason to
+total it up.
 """
 
 from __future__ import annotations
@@ -31,7 +32,7 @@ def default_program_key(program: Program) -> str:
 
     run/ may not import programs/, so the runner cannot look a key up in the
     program registry. The shell passes the registry key explicitly; this is the
-    fallback, and it reproduces the v3.0 modality keys that saved metadata uses.
+    fallback for a program started without one.
     """
     name = type(program).__name__
     return re.sub(r"(?<=[a-z0-9])(?=[A-Z])", "_", name).lower()
@@ -72,7 +73,7 @@ class Runner:
         save: SaveTarget | None = None,
         on_status: Callable[[str], None] | None = None,
         on_dataset: Callable[[Dataset], None] | None = None,
-        on_finished: Callable[[int], None] | None = None,
+        on_finished: Callable[[], None] | None = None,
         on_failed: Callable[[str], None] | None = None,
     ) -> RunHandle:
         """Execute one program on a worker thread.
@@ -127,8 +128,6 @@ class Runner:
                 continuous=continuous,
                 on_status=on_status,
             )
-            if saver is not None:
-                saver.track_frame_limit(lambda: ctx.frame_limit)
 
             thread = threading.Thread(
                 target=self.worker,
@@ -145,10 +144,13 @@ class Runner:
     ) -> RunSaver | None:
         """The saver for this run, or None when saving is off.
 
-        v3.1 dug this out of ``params.save``, which meant every parameter
-        model had to declare a group it never read and the runner had to guess
-        whether the one in front of it had. The frame limit was the last
-        survivor of that reach-through; the running program now reports it.
+        Saving arrives as its own argument rather than being dug out of the
+        parameter model. Reaching through the model meant every one of them had
+        to declare a group it never read, and the runner had to guess whether
+        the one in front of it had. How much to acquire left by the same door:
+        it is an imaging parameter, so it reaches the metadata inside
+        ``parameters`` with the geometry, and nothing has to pull it back out
+        of a running program.
         """
         if save is None or not save.enabled:
             return None
@@ -194,33 +196,31 @@ class Runner:
             if on_failed is not None:
                 on_failed(str(exc))
         finally:
-            count = max((len(dataset) for dataset in datasets.values()), default=0)
             for dataset in datasets.values():
                 try:
-                    dataset.finalize(count, error)
+                    dataset.finalize(error)
                 except Exception as finalize_exc:  # noqa: BLE001
                     if on_failed is not None:
                         on_failed(str(finalize_exc))
             if saver is not None:
                 try:
-                    saver.finalize(count, error)
+                    saver.finalize(error)
                 except Exception as finalize_exc:  # noqa: BLE001
                     if on_failed is not None:
                         on_failed(str(finalize_exc))
             with self._lock:
                 self._thread = None
             if on_finished is not None:
-                on_finished(count)
+                on_finished()
 
     # -- stopping ----------------------------------------------------------- #
 
     def stop(self) -> None:
         """Ask the running program to stop at its next cancellation point.
 
-        A stop during a blocking scan is not observed until that frame
-        completes, because the NI read is one blocking call for a whole frame.
-        v3.0 behaved the same way; making it interruptible needs the incremental
-        read that section 4 describes and section 11 defers.
+        A stop during a blocking scan is not observed until that scan
+        completes, because the NI read is one blocking call for the whole thing.
+        Making it interruptible would need an incremental read.
         """
         self._cancel.set()
 

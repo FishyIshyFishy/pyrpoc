@@ -15,6 +15,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
+from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtWidgets import QComboBox, QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
 from pyrpoc.core.streams import Stream
@@ -32,6 +33,15 @@ def make_instance_id(prefix: str) -> str:
 
 class View(QWidget):
     """Renders one or more streams from datasets. Never references a program."""
+
+    #: The user picked a position in the data: dataset id, then pixel x and y.
+    #: Pixel coordinates and an id are the whole payload, because they are the
+    #: only things a view actually knows -- what a pixel means in volts depends
+    #: on the scan geometry, which belongs to the dataset, not to the renderer.
+    #: Emitted unconditionally by views that have a spatial meaning, the same
+    #: way the source combo emits on a change; a view holds no armed state and
+    #: does not know whether anything is listening.
+    point_picked = pyqtSignal(str, int, int)
 
     display_name: str = "View"
     registry_key: str = "view"
@@ -138,6 +148,19 @@ class View(QWidget):
 
     def configure(self, params: dict[str, Any]) -> None:
         del params
+
+    # -- picking -------------------------------------------------------------- #
+
+    def set_picking(self, active: bool) -> None:
+        """Offer to pick a position in the data, or stop offering.
+
+        A no-op default rather than a capability flag the shell branches on, so
+        a view with no spatial meaning implements nothing and its author never
+        learns this exists. The same shape as ``configure`` and the persistence
+        hooks above: optional behaviour is an overridable no-op here, not a
+        negotiation.
+        """
+        del active
 
     # -- persistence ---------------------------------------------------------- #
 

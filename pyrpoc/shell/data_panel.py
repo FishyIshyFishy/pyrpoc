@@ -5,9 +5,14 @@ what is drawing it are two halves of one question -- take an image, take three
 more, decide which one a display is showing -- and behind separate tabs you
 could only ever see one half at a time.
 
-A table, not the row of concatenated text it replaces. Acquisitions differ in
-four small ways, and four narrow columns let one be picked out at a glance
-where "simulation #3 · intensity  -  10 frames  -  2D Image" had to be read.
+A table, not the row of concatenated text it replaces. Four narrow columns let
+one acquisition be picked out at a glance where
+"simulation #3 · intensity  -  2D Image" had to be read.
+
+Size is here because a dataset keeps every array it was handed, so a long
+continuous run is the one thing in the application that can exhaust a machine.
+This is not a safeguard -- nothing in this panel stops a run -- but it turns
+"the software got slow" into a number that can be watched while it happens.
 """
 
 from __future__ import annotations
@@ -29,8 +34,31 @@ from pyrpoc.data.dataset import Dataset
 
 from .app import Application
 
-TIME, NAME, STREAM, FRAMES = range(4)
-COLUMNS = ["Time", "Name", "Stream", "Frames"]
+TIME, NAME, STREAM, SIZE = range(4)
+COLUMNS = ["Time", "Name", "Stream", "Size"]
+
+#: 1024-based, because the number a user compares this against is the one their
+#: task manager shows.
+UNITS = ("B", "KB", "MB", "GB", "TB")
+
+
+def format_size(nbytes: int) -> str:
+    """Bytes as a short string, for a narrow right-aligned cell.
+
+    Three significant figures at most: the question this answers is "is this
+    run about to fill memory", and a byte-exact figure is both wider than the
+    column and less legible than "1.4 GB".
+    """
+    if nbytes <= 0:
+        return "-"
+    size = float(nbytes)
+    unit = 0
+    while size >= 1024.0 and unit < len(UNITS) - 1:
+        size /= 1024.0
+        unit += 1
+    if unit == 0:
+        return f"{int(size)} B"
+    return f"{size:.1f} {UNITS[unit]}" if size < 10.0 else f"{size:.0f} {UNITS[unit]}"
 
 
 class DataPanel(QWidget):
@@ -67,13 +95,17 @@ class DataPanel(QWidget):
         self.table.verticalHeader().setVisible(False)
         header = self.table.horizontalHeader()
         header.setHighlightSections(False)
-        for column in (TIME, STREAM, FRAMES):
+        for column in (TIME, STREAM, SIZE):
             header.setSectionResizeMode(column, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(NAME, QHeaderView.ResizeMode.Stretch)
         root.addWidget(self.table, 1)
 
         actions = QHBoxLayout()
         actions.setContentsMargins(0, 0, 0, 0)
+        self.total_label = QLabel("", self)
+        self.total_label.setToolTip("Memory held by every open acquisition together.")
+        self.total_label.setStyleSheet("color: palette(mid);")
+        actions.addWidget(self.total_label)
         actions.addStretch(1)
         self.close_btn = QPushButton("Close", self)
         self.close_btn.setToolTip(
@@ -104,7 +136,7 @@ class DataPanel(QWidget):
             self.set_cell(row, TIME, dataset.started_time or "-")
             self.set_cell(row, NAME, dataset.name)
             self.set_cell(row, STREAM, dataset.stream)
-            self.set_cell(row, FRAMES, str(len(dataset)), right=True)
+            self.set_cell(row, SIZE, format_size(dataset.nbytes), right=True)
             self.table.item(row, NAME).setToolTip(f"{dataset.name} · {dataset.spec.name}")
 
         self.table.setVisible(bool(self.rows))
@@ -113,18 +145,23 @@ class DataPanel(QWidget):
             self.table.selectRow(self.rows.index(chosen))
         self.refresh_actions()
 
-    def on_dataset_changed(self, dataset: Dataset, index: int) -> None:
-        """One cell, not the whole table.
+    def on_dataset_changed(self, dataset: Dataset) -> None:
+        """One cell and the total, not the whole table.
 
-        A continuous run appends several frames a second, and rebuilding on
-        each of them would drop the selection out from under whoever is
-        clicking.
+        A continuous run appends several times a second, and rebuilding on each
+        of them would drop the selection out from under whoever is clicking.
+        The total sums over open datasets, not over what they hold, so it stays
+        cheap however long the run goes on.
         """
-        del index
         for row, existing in enumerate(self.rows):
             if existing is dataset:
-                self.set_cell(row, FRAMES, str(len(dataset)), right=True)
+                self.set_cell(row, SIZE, format_size(dataset.nbytes), right=True)
+                self.refresh_total()
                 return
+
+    def refresh_total(self) -> None:
+        total = sum(dataset.nbytes for dataset in self.rows)
+        self.total_label.setText(f"{format_size(total)} in memory" if total else "")
 
     def set_cell(self, row: int, column: int, text: str, *, right: bool = False) -> None:
         item = self.table.item(row, column)
@@ -151,5 +188,7 @@ class DataPanel(QWidget):
 
     def refresh_actions(self) -> None:
         """An empty panel is the hint and nothing else -- no button to grey out."""
+        self.refresh_total()
+        self.total_label.setVisible(bool(self.rows))
         self.close_btn.setVisible(bool(self.rows))
         self.close_btn.setEnabled(self.selected_dataset() is not None)

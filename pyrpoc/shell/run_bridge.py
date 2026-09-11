@@ -28,8 +28,8 @@ class RunBridge(QObject):
     run_started = pyqtSignal()
     run_status = pyqtSignal(str)
     dataset_opened = pyqtSignal(object)
-    dataset_changed = pyqtSignal(object, int)
-    run_finished = pyqtSignal(int)
+    dataset_changed = pyqtSignal(object)
+    run_finished = pyqtSignal()
     run_failed = pyqtSignal(str)
 
     def __init__(self, library: DatasetLibrary | None = None, parent: QObject | None = None):
@@ -80,9 +80,9 @@ class RunBridge(QObject):
         self._subscribed.append(dataset)
         self.dataset_opened.emit(dataset)
 
-    def on_dataset_changed(self, dataset: Dataset, index: int) -> None:
+    def on_dataset_changed(self, dataset: Dataset) -> None:
         """Called on the worker thread. The signal hops to the GUI thread."""
-        self.dataset_changed.emit(dataset, index)
+        self.dataset_changed.emit(dataset)
 
     def release(self, dataset: Dataset) -> None:
         dataset.unsubscribe(self.on_dataset_changed)

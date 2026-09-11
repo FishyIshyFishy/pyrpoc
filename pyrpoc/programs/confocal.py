@@ -33,7 +33,6 @@ from pyrpoc.run.program import Program
 
 from .components import (
     DaqGroup,
-    FramesGroup,
     Mask,
     ModulationGroup,
     ScanGroup,
@@ -410,14 +409,14 @@ def build_ttl(
 @program_registry.register("confocal")
 class Confocal(Program):
     uses = [Galvo, DAQ]
-    params = [ScanGroup, DaqGroup, ModulationGroup, FramesGroup]
+    params = [ScanGroup, DaqGroup, ModulationGroup]
     emits = {"intensity": Image2D}
 
     def run(self, ctx) -> None:
         scan = ctx.params[ScanGroup]
         daq_params = ctx.params[DaqGroup]
         modulation = ctx.params[ModulationGroup]
-        num_frames = ctx.params[FramesGroup].num_frames
+        num_frames = scan.num_frames
 
         daq: DAQ = ctx.devices[DAQ]
         galvo: Galvo = ctx.devices[Galvo]

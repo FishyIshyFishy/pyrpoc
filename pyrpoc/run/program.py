@@ -90,17 +90,12 @@ class RunContext:
         self.devices = DeviceMap(devices)
         self.datasets = datasets
         self.continuous = continuous
-        #: How many frames the program said it would take, set the moment it
-        #: enters ``frames()``. Metadata only -- nothing branches on it. A
-        #: program with no frame concept never calls ``frames()`` and this
-        #: stays None, which is why no caller has to supply a dummy count.
-        self.frame_limit: int | None = None
         self._cancel = cancel
         self._on_status = on_status
 
     # -- output ------------------------------------------------------------ #
 
-    def publish(self, stream: str, data: np.ndarray, *, channels=None, **coords: Any) -> int:
+    def publish(self, stream: str, data: np.ndarray, *, channels=None) -> None:
         """Write one array into one of this run's datasets.
 
         The stream name is declared in ``emits``, so a view binding exists
@@ -114,7 +109,7 @@ class RunContext:
             )
         if channels and not dataset.channel_labels:
             dataset.channel_labels = list(channels)
-        return dataset.append(data, **coords)
+        dataset.append(data)
 
     def describe(self, stream: str, **metadata: Any) -> None:
         """Record metadata on one of this run's datasets.
@@ -144,17 +139,18 @@ class RunContext:
     def frames(self, count: int | None = None) -> Iterator[int]:
         """Iterate frame indices, checking for cancellation before each one.
 
+        How many frames is an imaging parameter, so ``count`` comes out of
+        whichever block describes the imaging -- ``ScanGroup`` on a real rig,
+        ``FrameGroup`` under simulation. This is a loop with a cancellation
+        check in it and nothing else: the number passes through and is not
+        recorded, so no layer above a program has a frame concept.
+
         ``count`` is ignored when the run was started in continuous mode, which
         is how the Continuous button survives without the program's body
         changing and without overwriting the user's stored frame count.
-
-        Recording the limit here is what lets the saver write it into the
-        metadata without the runner reaching into a parameter block it is not
-        allowed to know about.
         """
         index = 0
         limit = None if self.continuous else count
-        self.frame_limit = limit
         while limit is None or index < limit:
             self.check_cancel()
             yield index
