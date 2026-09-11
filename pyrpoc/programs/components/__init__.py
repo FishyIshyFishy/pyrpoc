@@ -17,12 +17,17 @@ from .param_groups import (
     ModulationGroup,
     PacingGroup,
     PATTERNS,
+    Point,
+    PointField,
+    PointGroup,
     ScanGroup,
     SignalGroup,
+    SpectrumGroup,
     SplitGroup,
     TriggerGroup,
     block,
     masks_field,
+    point_field,
 )
 
 __all__ = [
@@ -35,10 +40,15 @@ __all__ = [
     "ModulationGroup",
     "PacingGroup",
     "PATTERNS",
+    "Point",
+    "PointField",
+    "PointGroup",
     "ScanGroup",
     "SignalGroup",
+    "SpectrumGroup",
     "SplitGroup",
     "TriggerGroup",
     "block",
     "masks_field",
+    "point_field",
 ]
