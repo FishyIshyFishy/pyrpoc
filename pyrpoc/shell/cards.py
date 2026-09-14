@@ -7,9 +7,9 @@ BaseCardWidget
     collapsible body area, and a muted description line shown while collapsed.
 
 RemovableCardWidget(BaseCardWidget)
-    Adds a pink "X" remove button to the header row.  Used by instrument,
-    opto-control, and display managers.  Acquisition parameter-group cards use
-    BaseCardWidget directly because they are never individually removable.
+    Adds a pink "X" remove button to the header row.  Used by the devices and
+    views panels.  Acquisition parameter-group cards use BaseCardWidget
+    directly because they are never individually removable.
 """
 
 from __future__ import annotations
@@ -188,12 +188,6 @@ class BaseCardWidget(QFrame):
         self._description_label.setText(text)
         self._description_label.setVisible(bool(text) and not self._expanded)
 
-    def set_marker_text(self, text: str) -> None:  # noqa: ARG002
-        """No-op kept for call-site compatibility.  Override if needed."""
-
-    def set_local_status(self, text: str) -> None:
-        self.setToolTip(text)
-
     def set_body_widget(self, body: QWidget | None) -> None:
         while (item := self.body_layout.takeAt(0)) is not None:
             child = item.widget()
@@ -202,16 +196,6 @@ class BaseCardWidget(QFrame):
                 child.deleteLater()
         if body is not None:
             self.body_layout.addWidget(body)
-
-    # ------------------------------------------------------------------
-    # Backward-compat aliases (used by existing opto/instrument callers)
-    # ------------------------------------------------------------------
-
-    def set_enable_checked(self, checked: bool, guarded: bool = True) -> None:
-        self.set_toggle_checked(checked, guarded)
-
-    def set_enable_visible(self, visible: bool) -> None:
-        self.set_toggle_visible(visible)
 
     # ------------------------------------------------------------------
     # Visuals
@@ -290,7 +274,7 @@ class BaseCardWidget(QFrame):
 class RemovableCardWidget(BaseCardWidget):
     """BaseCardWidget with a pink "X" remove button in the header.
 
-    Used by instrument, opto-control, and display managers.
+    Used by the devices and views panels.
 
     Additional signal
     -----------------
