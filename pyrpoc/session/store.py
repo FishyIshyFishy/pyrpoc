@@ -85,7 +85,6 @@ def decode(raw: dict[str, Any]) -> SessionState:
             key=str(row["key"]),
             instance_id=str(row.get("instance_id", "")),
             user_label=row.get("user_label"),
-            visible=bool(row.get("visible", True)),
             state=dict(row.get("state") or {}),
         )
         for row in raw.get("views", [])

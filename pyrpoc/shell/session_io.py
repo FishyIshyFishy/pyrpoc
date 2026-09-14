@@ -37,7 +37,6 @@ def capture(app: Application, window=None) -> SessionState:
             key=view.type_key,
             instance_id=str(getattr(view, "instance_id", "")),
             user_label=getattr(view, "user_label", None),
-            visible=bool(getattr(view, "docked_visible", True)),
             state=view.export_persistence_state(),
         )
         for view in app.views
@@ -79,7 +78,6 @@ def apply(state: SessionState, app: Application, window=None) -> None:
             if row.instance_id:
                 view.instance_id = row.instance_id
             view.user_label = row.user_label
-            view.docked_visible = row.visible
             view.import_persistence_state(row.state)
             app.add_view(view)
         except Exception:
