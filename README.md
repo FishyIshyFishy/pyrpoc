@@ -66,13 +66,4 @@ uv tool upgrade pyrpoc
    uv run pyrpoc
    ```
 
-   `uv run` automatically uses the project's `.venv`, so you never need to activate it manually. If you prefer to activate it anyway:
-
-   ```
-   .venv\Scripts\Activate.ps1
-   pyrpoc
-   ```
-
-   To type check, use `uv run pyright`. 
-
-4. When dependencies change, adjust `pyproject.toml` and rerun `uv sync`. To add packages, use `uv add <package-name>`. To add a dev only package, use `uv add -dev <package-name>`.
+4. To type check, use `uv run pyright`. When dependencies change, adjust `pyproject.toml` and rerun `uv sync`. To add packages, use `uv add <package-name>`. To add a dev only package, use `uv add -dev <package-name>`.
