@@ -28,39 +28,29 @@ Now that `uv` is installed, you can install the pyrpoc software itself.
    ```
 
 3. Wait until the text stops scrolling. This step downloads the correct version of Python and every component the software needs, so the first install can take several minutes.
+
+
 ## Running the software
 
-Any time you want to open pyrpoc:
-
-1. Open PowerShell 
-2. Type the command below
-
-   ```
-   pyrpoc
-   ```
-That's all.
-
-## Updating to a newer version
-
-When a new version is released, open PowerShell and run:
+Any time you want to open pyrpoc, open the command line and type the command `pyrpoc`. To update, also in the command line run:
 
 ```
 uv tool upgrade pyrpoc
 ```
-## Developer installation (editable mode)
+
+## Developer installation
 
 1. Navigate to the desired project directory and clone the repository:
    ```
    git clone https://github.com/FishyIshyFishy/pyrpoc.git
    cd pyrpoc
    ```
-
-
+   
 2. Create the virtual environment and install the project in editable mode along with the development dependencies
    ```
    uv sync
    ```
-
+   
 3. Run the software from the clone:
    ```
    uv run pyrpoc
