@@ -54,7 +54,6 @@ class View(QWidget):
         super().__init__(parent)
         self.instance_id = make_instance_id(self.registry_key)
         self.user_label: str | None = None
-        self.docked_visible: bool = True
         self.last_error: str | None = None
 
         self._dataset: "Dataset | None" = None

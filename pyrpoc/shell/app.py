@@ -211,18 +211,14 @@ class Application(QObject):
     # -- views -------------------------------------------------------------- #
 
     def on_dataset_changed(self, dataset) -> None:
-        """Refresh the views showing this dataset.
+        """Refresh every view showing this dataset.
 
-        A hidden view is skipped rather than redrawn into a widget nobody can
-        see. It picks the data up on its next refresh -- the next publish it is
-        visible for, or the next time its binding changes. Nothing refreshes a
-        view on being shown, so one unhidden after a run ended keeps whatever
-        it last drew until the next run starts.
+        Unconditionally, because a view exists exactly as long as its dock
+        does: closing one deletes it, so there is no open-but-unseen view to
+        skip redrawing.
         """
         for view in list(self.views):
             if view.dataset() is not dataset:
-                continue
-            if not getattr(view, "docked_visible", True):
                 continue
             try:
                 view.refresh()

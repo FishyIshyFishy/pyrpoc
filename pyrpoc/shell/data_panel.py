@@ -1,9 +1,9 @@
 """The data panel: every acquisition this session has open.
 
-Shares the Views dock rather than holding one of its own. What data exists and
-what is drawing it are two halves of one question -- take an image, take three
-more, decide which one a display is showing -- and behind separate tabs you
-could only ever see one half at a time.
+The Data Library dock holds this and nothing else. The list of open displays
+shared it for a while, on the grounds that what exists and what is drawing it
+are two halves of one question; that list is the Panels menu now, which answers
+the same half without spending a dock on it.
 
 A table, not the row of concatenated text it replaces. Four narrow columns let
 one acquisition be picked out at a glance where

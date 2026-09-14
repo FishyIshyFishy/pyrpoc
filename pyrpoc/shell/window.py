@@ -1,12 +1,15 @@
-"""The dock manager: three fixed panels plus one dock per open view.
+"""The dock manager: three fixed panels plus one dock per added panel.
 
 Moved from gui/main_gui.py. The ADS handling is carried over as-is, including
 the object-name-before-add ordering that its save/restore lookup depends on and
 the guard that stops restoreState() reshuffling from mutating view inventory.
 
-Data and views used to be a panel each. They are one dock now, split, because
-choosing what a display shows means looking at what has been acquired -- and as
-tabs, only one of the two was ever on screen.
+Panels are chosen from the menu bar rather than from inside a panel. The three
+fixed ones are toggled there -- unchecking hides the dock, the panel is still
+there -- and the rest are added under Add and destroyed by unchecking. That
+split is why a view has no hidden state any more: a view exists exactly as long
+as its dock does, whether it goes away by its tab's close button or by its menu
+entry.
 """
 
 from __future__ import annotations
@@ -15,10 +18,12 @@ from dataclasses import dataclass
 from enum import Enum
 
 from PyQt6 import sip
-from PyQt6.QtCore import QByteArray, Qt, pyqtSignal
+from PyQt6.QtCore import QByteArray, QTimer, pyqtSignal
 from PyQt6.QtGui import QAction, QCloseEvent
-from PyQt6.QtWidgets import QLabel, QSplitter, QVBoxLayout, QWidget
+from PyQt6.QtWidgets import QVBoxLayout, QWidget
 import PyQt6Ads as qtads
+
+from pyrpoc.views.registry import view_registry
 
 from .app import Application
 from .data_panel import DataPanel
@@ -26,7 +31,6 @@ from .devices_panel import DevicesPanel
 from .launcher import LauncherPanel
 from .menubar import MainMenuBar
 from .theme.manager import ThemeController
-from .views_panel import ViewsPanel
 
 qtads.CDockManager.setConfigFlag(qtads.CDockManager.eConfigFlag.DisableTabTextEliding, True)
 qtads.CDockManager.setConfigFlag(qtads.CDockManager.eConfigFlag.OpaqueSplitterResize, False)
@@ -48,43 +52,11 @@ class DockSpec:
 PANELS = [
     DockSpec(DockKey.ACQUISITION, "Acquisition", "dock.acquisition"),
     DockSpec(DockKey.DEVICES, "Devices", "dock.devices"),
-    # The object name is the one the Views dock had. ADS restores by object
-    # name, so a session saved before the merge puts this dock where its Views
-    # tab was rather than dropping it; the vacated Library dock is skipped.
-    DockSpec(DockKey.DATA, "Data & Views", "dock.views"),
+    # "dock.views" is a historical name, kept because ADS restores by object
+    # name: rename it and every saved layout stops placing this dock, which
+    # reads as the panel having vanished. The title is what the user sees.
+    DockSpec(DockKey.DATA, "Data Library", "dock.views"),
 ]
-
-
-def titled(title: str, widget: QWidget) -> QWidget:
-    """A panel under a heading, for the dock that holds more than one.
-
-    The dock tab used to name what was inside it. Two panels in one dock need
-    to say so themselves.
-    """
-    box = QWidget()
-    layout = QVBoxLayout(box)
-    layout.setContentsMargins(0, 6, 0, 0)
-    layout.setSpacing(0)
-    heading = QLabel(title, box)
-    heading.setStyleSheet("font-weight: 600; padding: 0 8px;")
-    layout.addWidget(heading)
-    layout.addWidget(widget, 1)
-    return box
-
-
-def stacked(*sections: tuple[str, QWidget]) -> QWidget:
-    """Several titled panels in one dock, the split between them draggable.
-
-    How much room a view list needs depends on how many views are open, so the
-    division is the user's to make rather than a fixed ratio.
-    """
-    splitter = QSplitter(Qt.Orientation.Vertical)
-    splitter.setChildrenCollapsible(False)
-    for title, widget in sections:
-        splitter.addWidget(titled(title, widget))
-    for index in range(splitter.count()):
-        splitter.setStretchFactor(index, 1)
-    return splitter
 
 
 class MainWindow(QWidget):
@@ -101,11 +73,24 @@ class MainWindow(QWidget):
         # Guards the dock close/toggle handlers while restoreState() reshuffles
         # docks, so ADS visibility changes during restore don't mutate inventory.
         self.restoring_layout = False
+        # The same guard for teardown: ADS closes every dock on the way out,
+        # and closing a view's dock now deletes the view. Without this the
+        # session would be saved and then emptied.
+        self.shutting_down = False
         self.dock_by_key: dict[DockKey, qtads.CDockWidget] = {}
         self.view_docks: dict[QWidget, qtads.CDockWidget] = {}
         self.view_actions: dict[QWidget, QAction] = {}
+        #: Which instance of its type each view is, so two of the same kind can
+        #: be told apart. Held here rather than on the view: what a panel is
+        #: called among its siblings is the window's business, not the
+        #: renderer's.
+        self.view_ordinals: dict[QWidget, int] = {}
 
         self.menubar = MainMenuBar(self)
+        self.menubar.populate_add_menu(
+            [(key, view_registry.get(key).display_name) for key in view_registry.keys()]
+        )
+        self.menubar.panel_requested.connect(self.add_panel_of_type)
         self.build_panels()
 
         self.app.views_changed.connect(self.sync_view_docks)
@@ -115,7 +100,7 @@ class MainWindow(QWidget):
         layout.addWidget(self.dock_manager)
 
         self.autosave = None
-        self.refresh_view_menu()
+        self.refresh_panels_menu()
         self.menubar.populate_style_menu(self.theme_controller.get_saved_mode())
         self.menubar.style_selected.connect(self.set_style)
 
@@ -128,11 +113,10 @@ class MainWindow(QWidget):
 
     def build_panels(self) -> None:
         self.data_panel = DataPanel(self.app)
-        self.views_panel = ViewsPanel(self.app)
         widgets = {
             DockKey.ACQUISITION: LauncherPanel(self.app),
             DockKey.DEVICES: DevicesPanel(self.app),
-            DockKey.DATA: stacked(("Data", self.data_panel), ("Views", self.views_panel)),
+            DockKey.DATA: self.data_panel,
         }
         first: qtads.CDockWidget | None = None
         for spec in PANELS:
@@ -161,6 +145,14 @@ class MainWindow(QWidget):
             self.dock_manager.addDockWidgetTab(area, dock)
         return dock
 
+    def add_panel_of_type(self, key: str) -> None:
+        """Add one, from the menu. The dock follows from views_changed."""
+        try:
+            view = view_registry.get(key)()
+        except Exception:
+            return
+        self.app.add_view(view)
+
     # -- view docks ---------------------------------------------------------- #
 
     def sync_view_docks(self) -> None:
@@ -170,10 +162,35 @@ class MainWindow(QWidget):
         for view in self.app.views:
             if view not in self.view_docks:
                 self.add_view_dock(view)
-        self.refresh_view_menu()
+        self.refresh_panels_menu()
+
+    def assign_ordinal(self, view: QWidget) -> int:
+        """The lowest number this type has free.
+
+        Lowest free rather than a running count, so the numbers stay short
+        after panels have been opened and closed a few times. Assigned once and
+        kept: a dock that renumbered itself because an earlier one was closed
+        would be renaming the panel someone is working in.
+        """
+        type_key = getattr(view, "type_key", "")
+        taken = {
+            number
+            for other, number in self.view_ordinals.items()
+            if getattr(other, "type_key", "") == type_key
+        }
+        number = 1
+        while number in taken:
+            number += 1
+        self.view_ordinals[view] = number
+        return number
 
     def view_title(self, view: QWidget) -> str:
-        return getattr(view, "user_label", None) or getattr(view, "display_name", "View")
+        label = getattr(view, "user_label", None)
+        if label:
+            return label
+        name = getattr(view, "display_name", "View")
+        number = self.view_ordinals.get(view, 1)
+        return name if number == 1 else f"{name} {number}"
 
     def view_object_name(self, view: QWidget) -> str:
         raw = str(getattr(view, "instance_id", "") or id(view))
@@ -181,12 +198,14 @@ class MainWindow(QWidget):
         return f"dock.view.{safe}"
 
     def add_view_dock(self, view: QWidget) -> None:
+        self.assign_ordinal(view)
         dock = qtads.CDockWidget(self.view_title(view))
         dock.setObjectName(self.view_object_name(view))
         dock.setWidget(view)
         try:
             self.dock_manager.addDockWidget(qtads.DockWidgetArea.RightDockWidgetArea, dock)
         except Exception:
+            self.view_ordinals.pop(view, None)
             dock.deleteLater()
             return
         self.view_docks[view] = dock
@@ -203,6 +222,7 @@ class MainWindow(QWidget):
     def remove_view_dock(self, view: QWidget) -> None:
         dock = self.view_docks.pop(view, None)
         action = self.view_actions.pop(view, None)
+        self.view_ordinals.pop(view, None)
 
         if action is not None and not sip.isdeleted(action):
             try:
@@ -210,7 +230,7 @@ class MainWindow(QWidget):
             except Exception:
                 pass
             try:
-                self.menubar.view_menu.removeAction(action)
+                self.menubar.panels_menu.removeAction(action)
             except Exception:
                 pass
             action.setParent(None)
@@ -229,29 +249,38 @@ class MainWindow(QWidget):
                 pass
             dock.deleteLater()
 
-    def on_view_toggled(self, view: QWidget, visible: bool) -> None:
-        if self.restoring_layout:
+    def discard_view(self, view: QWidget) -> None:
+        """Drop an added panel, from whichever gesture asked for it.
+
+        Deferred, because both callers are inside a signal from the thing this
+        is about to delete -- the dock's own close, or its menu action being
+        unchecked. Idempotent, because a close button press unchecks nothing
+        and an uncheck closes nothing: whichever arrives second finds the view
+        already gone.
+        """
+        if self.restoring_layout or self.shutting_down:
             return
-        dock = self.view_docks.get(view)
-        if dock is not None and not sip.isdeleted(dock):
-            dock.toggleView(visible)
-        if hasattr(view, "docked_visible"):
-            view.docked_visible = visible
+        if view not in self.app.views:
+            return
+        QTimer.singleShot(0, lambda v=view: self.app.remove_view(v))
+
+    def on_view_toggled(self, view: QWidget, visible: bool) -> None:
+        """Unchecking an added panel deletes it. There is nothing to re-check.
+
+        The fixed three hide instead, and that difference is the whole reason
+        the menu draws a rule between them.
+        """
+        if visible:
+            return
+        self.discard_view(view)
 
     def on_view_dock_closed(self, view: QWidget) -> None:
-        """Closing a view's dock no longer destroys its data.
+        """The tab's close button means what unchecking it means.
 
-        The dataset stays in the library; reopening the view rebinds to it.
+        The data it was showing is untouched: that lives in the library, and
+        adding the panel back binds to it again.
         """
-        if self.restoring_layout:
-            return
-        if hasattr(view, "docked_visible"):
-            view.docked_visible = False
-        action = self.view_actions.get(view)
-        if action is not None and not sip.isdeleted(action) and action.isChecked():
-            action.blockSignals(True)
-            action.setChecked(False)
-            action.blockSignals(False)
+        self.discard_view(view)
 
     # -- layout, menu, theme -------------------------------------------------- #
 
@@ -277,14 +306,14 @@ class MainWindow(QWidget):
             pass
         finally:
             self.restoring_layout = False
-        self.refresh_view_menu()
+        self.refresh_panels_menu()
 
-    def refresh_view_menu(self) -> None:
+    def refresh_panels_menu(self) -> None:
         for view in list(self.view_actions):
             action = self.view_actions.get(view)
             if action is None or sip.isdeleted(action):
                 self.view_actions.pop(view, None)
-        self.menubar.populate_view_menu(
+        self.menubar.populate_panels_menu(
             list(self.dock_by_key.values()), list(self.view_actions.values())
         )
 
@@ -292,5 +321,6 @@ class MainWindow(QWidget):
         self.menubar.set_active_style(self.theme_controller.apply(theme_mode))
 
     def closeEvent(self, event: QCloseEvent) -> None:
+        self.shutting_down = True
         self.closing.emit()
         super().closeEvent(event)

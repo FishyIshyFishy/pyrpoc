@@ -35,7 +35,6 @@ class ViewState:
     key: str
     instance_id: str = ""
     user_label: str | None = None
-    visible: bool = True
     state: dict[str, Any] = field(default_factory=dict)
 
 
