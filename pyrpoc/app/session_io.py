@@ -1,4 +1,4 @@
-"""Capturing and applying a session: the wiring, which belongs to the shell.
+"""Capturing and applying a session: the wiring, which belongs to app/.
 
 ``session/`` knows the file format. It does not know what a device or a view is,
 and it must not import Qt. Turning live objects into a SessionState and back is
@@ -14,12 +14,12 @@ from pathlib import Path
 from PyQt6.QtCore import QObject, QTimer
 
 from pyrpoc.devices.registry import device_registry
-from pyrpoc.views.registry import view_registry
+from pyrpoc.panels.registry import view_registry
 from pyrpoc.session.state import DeviceState, SaveState, SessionState, ViewState
 from pyrpoc.session.store import SessionStore
 
 from . import catalog
-from .app import Application
+from .application import Application
 
 
 def capture(app: Application, window=None) -> SessionState:

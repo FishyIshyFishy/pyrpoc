@@ -17,12 +17,11 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from pyrpoc.app import Application
 from pyrpoc.devices.base import Device
 from pyrpoc.devices.registry import device_registry
-
-from .app import Application
-from .cards import RemovableCardWidget
-from .param_form import ParamForm
+from pyrpoc.qt_widgets.cards import RemovableCardWidget
+from pyrpoc.qt_widgets.param_form import ParamForm
 
 
 class DevicesPanel(QWidget):

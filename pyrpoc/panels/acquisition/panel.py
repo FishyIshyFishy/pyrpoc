@@ -29,11 +29,9 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from pyrpoc.app import Application, catalog
 from pyrpoc.core.errors import ParameterError
-
-from . import catalog
-from .app import Application
-from .param_form import ParamForm
+from pyrpoc.qt_widgets.param_form import ParamForm
 
 
 class LauncherPanel(QWidget):

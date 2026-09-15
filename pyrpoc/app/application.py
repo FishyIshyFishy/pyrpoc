@@ -3,8 +3,10 @@
 Ignorant parts still have to be connected, and the only choice is whether the
 connecting code lives in one identifiable place or smeared across the parts
 meant to stay ignorant. This is that place. When it gets fat, that is a signal
-to examine, not something to hide by pushing wiring back into views/ or
-programs/.
+to examine, not something to hide by pushing wiring back into panels/ or
+programs/ -- picking below is what that examination looks like: a complete
+feature that only needed a library and a block store got its own object once
+that became obvious, leaving this one CRUD surface plus run orchestration.
 
 It replaces AppState plus the five services: instrument -> devices here,
 display -> views here, modality -> run/runner, interpreter -> the dataset
@@ -22,10 +24,11 @@ from pyrpoc.data.io import SaveTarget
 from pyrpoc.data.library import DatasetLibrary
 from pyrpoc.devices.base import Device
 from pyrpoc.devices.registry import device_registry
-from pyrpoc.programs.components import BLOCKS, Point, PointGroup, ScanGroup
+from pyrpoc.programs.components import BLOCKS
 from pyrpoc.run import claims
 
 from . import catalog
+from .picking import PickingController
 from .run_bridge import RunBridge
 
 
@@ -58,13 +61,20 @@ class Application(QObject):
         #: One save target for the session, not one per program: what a run is
         #: called and where it goes has nothing to do with which program runs.
         self.save = SaveTarget()
-        #: Whether a click on a display reports a position. Interaction state,
-        #: not configuration: it is in ``save``'s category of "a control near
-        #: play that is not a parameter of the program", but unlike ``save`` it
-        #: has ``library``'s lifetime and is deliberately absent from the
-        #: session file. A relaunch that came back armed would be pointing a
-        #: hardware trigger at the next stray click.
-        self.pick_armed = False
+        #: Whether a click on a display reports a position, and what a picked
+        #: pixel does. Interaction state, not configuration: it is in
+        #: ``save``'s category of "a control near play that is not a parameter
+        #: of the program", but unlike ``save`` it has ``library``'s lifetime
+        #: and is deliberately absent from the session file. A relaunch that
+        #: came back armed would be pointing a hardware trigger at the next
+        #: stray click -- which is why ``picking.armed`` is never read back
+        #: from a saved session and this connects to ``state_changed`` (the
+        #: autosave signal) only through ``point_acquired``, never through
+        #: ``armed_changed``.
+        self.picking = PickingController(self.library, self.blocks, self)
+        self.picking.armed_changed.connect(self._on_picking_armed_changed)
+        self.picking.point_acquired.connect(self._on_point_acquired)
+        self.picking.pick_failed.connect(self.pick_failed.emit)
 
         self.bridge.run_started.connect(lambda: self.state_changed.emit())
         self.bridge.dataset_changed.connect(self.on_dataset_changed)
@@ -124,7 +134,17 @@ class Application(QObject):
 
     # -- picking ------------------------------------------------------------ #
 
+    @property
+    def pick_armed(self) -> bool:
+        return self.picking.armed
+
     def set_pick_armed(self, active: bool) -> None:
+        self.picking.set_armed(active)
+
+    def on_point_picked(self, dataset_id: str, x: int, y: int) -> None:
+        self.picking.on_point_picked(dataset_id, x, y)
+
+    def _on_picking_armed_changed(self, active: bool) -> None:
         """Turn point picking on or off across every view.
 
         Told to all of them unconditionally rather than to a filtered set:
@@ -136,10 +156,6 @@ class Application(QObject):
         Never emits ``state_changed``. That signal drives the autosave, and this
         is the one piece of state that must not survive a relaunch.
         """
-        active = bool(active)
-        if active == self.pick_armed:
-            return
-        self.pick_armed = active
         for view in list(self.views):
             try:
                 view.set_picking(active)
@@ -147,44 +163,7 @@ class Application(QObject):
                 view.last_error = str(exc)
         self.pick_armed_changed.emit(active)
 
-    def on_point_picked(self, dataset_id: str, x: int, y: int) -> None:
-        """A display reported a pixel. Turn it into volts and acquire there.
-
-        Disarming happens first, before anything that can fail, so no path out
-        of here leaves a live cursor behind.
-
-        The geometry comes from the dataset's provenance rather than the live
-        ``ScanGroup``. Blocks are shared and mutable: change the amplitude after
-        taking an image and the live block no longer describes the picture being
-        clicked, so the volts would point somewhere it never looked.
-        """
-        if not self.pick_armed:
-            return
-        self.set_pick_armed(False)
-
-        dataset = self.library.by_id(dataset_id)
-        if dataset is None:
-            self.pick_failed.emit("that data is no longer open")
-            return
-
-        raw = dataset.provenance.parameters.get(P.block_name(ScanGroup))
-        if not isinstance(raw, dict):
-            self.pick_failed.emit(
-                f"{dataset.label} was not acquired with a scan geometry, "
-                "so a pixel does not name a position"
-            )
-            return
-
-        try:
-            scan = P.decode_block(ScanGroup, raw)
-            fast_v, slow_v = scan.voltage_at(x, y)
-        except Exception as exc:  # noqa: BLE001 - reported, not raised: Qt slot
-            self.pick_failed.emit(f"could not place that pixel: {exc}")
-            return
-
-        self.blocks.get(PointGroup).target = Point(
-            fast_v, slow_v, dataset_id, dataset.label, x, y
-        )
+    def _on_point_acquired(self) -> None:
         self.state_changed.emit()
         self.point_acquired.emit()
 

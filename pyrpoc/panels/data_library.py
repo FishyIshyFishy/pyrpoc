@@ -30,9 +30,8 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from pyrpoc.app import Application
 from pyrpoc.data.dataset import Dataset
-
-from .app import Application
 
 TIME, NAME, STREAM, SIZE = range(4)
 COLUMNS = ["Time", "Name", "Stream", "Size"]

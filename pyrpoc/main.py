@@ -7,9 +7,8 @@ import sys
 from PyQt6.QtGui import QGuiApplication
 from PyQt6.QtWidgets import QApplication, QWidget
 
+from pyrpoc.app import Application, Autosave
 from pyrpoc.session.store import SessionStore, default_session_path
-from pyrpoc.shell.app import Application
-from pyrpoc.shell.session_io import Autosave
 from pyrpoc.shell.theme.manager import ThemeController
 from pyrpoc.shell.window import MainWindow
 

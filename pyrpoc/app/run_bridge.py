@@ -1,7 +1,7 @@
 """Qt in front of the runner.
 
 ``run/`` is pure Python so it can be tested with no QApplication. That leaves
-one job for the shell: getting worker-thread events onto the GUI thread. This
+one job for this Qt layer: getting worker-thread events onto the GUI thread. This
 does it by subscribing to each dataset the runner creates and re-emitting as Qt
 signals -- emitting from any thread is safe, and Qt queues delivery to receivers
 living in the GUI thread. Same guarantee v3.0's ``data_emitted`` pyqtSignal gave.

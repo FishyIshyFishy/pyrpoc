@@ -1,8 +1,8 @@
-"""Application chrome: the only module that may know everything.
+"""The window frame: arranging panels on screen, the menu, the theme.
 
-Naming the promiscuous module explicitly is the trick -- it makes it obvious
-when it grows too big, which a smeared version never does.
-
-It is separate from views/ despite both being Qt because they have different
-import permissions: views/ may not touch run/, shell/ must.
+Everything that used to live here and was not about the frame itself --
+``Application``, the run bridge, session persistence, the program catalog --
+moved to ``pyrpoc.app``. What is left is ``MainWindow`` (dock manager and
+per-view dock lifecycle), ``MainMenuBar``, and ``theme/``. This module may
+import ``pyrpoc.app`` and ``pyrpoc.panels`` freely; neither imports it back.
 """

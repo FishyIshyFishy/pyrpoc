@@ -59,7 +59,7 @@ from pyrpoc.data.io import utc_now
 from pyrpoc.data.transforms import normalize_channels
 
 from .base import View
-from .range_slider import RangeSlider
+from pyrpoc.qt_widgets.range_slider import RangeSlider
 from .registry import view_registry
 
 

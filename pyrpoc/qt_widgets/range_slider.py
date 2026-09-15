@@ -5,7 +5,9 @@ named; one slider with two handles says what they *do* -- everything outside
 the span is excluded, and that is legible without reading a label, because the
 groove is only accented between the handles.
 
-It lives in views/ rather than shell/ because views/ may not import shell/.
+It lives in qt_widgets/ rather than next to whatever draws with it: a slider
+has no idea what it is slicing, and used to be stuck in views/ anyway because
+views/ could not import shell/, where a sibling widget like this once lived.
 """
 
 from __future__ import annotations
