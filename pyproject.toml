@@ -16,7 +16,8 @@ dependencies = [
   "PyQt6Ads",
   "pyqtgraph",
   "nidaqmx",
-  "tifffile"
+  "tifffile",
+  "zwoasi"
 ]
 
 [project.scripts]
@@ -24,6 +25,9 @@ pyrpoc = "pyrpoc.main:main"
 
 [tool.setuptools.packages.find]
 include = ["pyrpoc*"]
+
+[tool.setuptools.package-data]
+"pyrpoc.devices.ZWO_Cameras" = ["ASICamera2.dll"]
 
 [build-system]
 requires = ["setuptools>=61.0"]
