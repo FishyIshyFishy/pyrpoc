@@ -570,3 +570,50 @@ class PacingGroup(Group):
         minimum=0,
         tooltip="Pause between frames, standing in for acquisition time",
     )
+
+
+# --------------------------------------------------------------------------- #
+# Widefield                                                                    #
+# --------------------------------------------------------------------------- #
+
+
+@block
+@dataclass
+class WidefieldGroup(Group):
+    """Frame geometry, bit depth, exposure and gain for one widefield capture.
+
+    Camera identity and the cooling setpoint are calibration and live on
+    ``ZWOCameraConfig``; everything that changes run to run -- what to crop,
+    how long to expose, how hard to amplify -- lives here, the same split
+    ``ScanGroup`` draws against the DAQ's wiring.
+    """
+
+    label: ClassVar[str] = "Widefield"
+
+    num_frames: int = int_field(
+        "Frames", 1, minimum=1, tooltip="Number of frames to capture"
+    )
+    width: int = int_field(
+        "Width (px)", 2048, minimum=8, tooltip="ROI width, cropped and centered on the sensor"
+    )
+    height: int = int_field(
+        "Height (px)", 2048, minimum=8, tooltip="ROI height, cropped and centered on the sensor"
+    )
+    binning: str = choice_field(
+        "Binning", "1", choices=("1", "2", "4"), tooltip="Hardware pixel binning"
+    )
+    bit_depth: str = choice_field(
+        "Bit Depth", "8", choices=("8", "16"), tooltip="8-bit for speed, 16-bit for dynamic range"
+    )
+    exposure_s: float = float_field(
+        "Exposure (s)", 0.0005, minimum=1e-6, tooltip="Exposure time"
+    )
+    gain: int = int_field(
+        "Gain", 120, minimum=0, maximum=400, tooltip="Manual sensor gain; ignored when auto-gain is on"
+    )
+    auto_gain: bool = bool_field(
+        "Auto Gain", False, tooltip="Nudge gain toward mid-brightness every frame"
+    )
+    interval_s: float = float_field(
+        "Frame Interval (s)", 0.1, minimum=0.0, tooltip="Pause between frames; should exceed exposure"
+    )

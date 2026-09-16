@@ -42,3 +42,7 @@ class DaqError(DeviceError):
 
 class TaggerError(DeviceError):
     """A TimeTagger operation failed."""
+
+
+class ZWOCameraError(DeviceError):
+    """A ZWO ASI camera operation failed."""

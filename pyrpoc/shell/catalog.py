@@ -18,6 +18,7 @@ from pyrpoc.programs.flim import FLIM
 from pyrpoc.programs.pinpoint_raman import PinpointRaman
 from pyrpoc.programs.simulation import Simulation
 from pyrpoc.programs.split_confocal import SplitConfocal
+from pyrpoc.programs.widefield import Widefield
 from pyrpoc.run.program import Program
 
 
@@ -33,6 +34,7 @@ CATALOG: list[Entry] = [
     Entry(Confocal, "confocal", "Confocal"),
     Entry(SplitConfocal, "split_confocal", "Split Confocal"),
     Entry(FLIM, "flim", "FLIM"),
+    Entry(Widefield, "widefield", "Widefield"),
     Entry(PinpointRaman, "pinpoint_raman", "Pinpoint Raman", group="Spectroscopy"),
     Entry(Simulation, "simulation", "Simulation", group="Testing"),
 ]
