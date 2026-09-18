@@ -182,8 +182,19 @@ class Application(QObject):
             self.pick_failed.emit(f"could not place that pixel: {exc}")
             return
 
+        #: ``raw`` is the geometry this pixel was resolved against, carried
+        #: with the point rather than looked up later. The image is very often
+        #: a preview that was never saved, so there would be nothing to look
+        #: up: saving is off by default.
         self.blocks.get(PointGroup).target = Point(
-            fast_v, slow_v, dataset_id, dataset.label, x, y
+            fast_v,
+            slow_v,
+            dataset_id,
+            dataset.label,
+            x,
+            y,
+            dataset.provenance.started_at,
+            raw,
         )
         self.state_changed.emit()
         self.point_acquired.emit()
@@ -200,13 +211,39 @@ class Application(QObject):
     def remove_device(self, device: Device) -> None:
         if device not in self.devices:
             return
+        self.release(device)
         self.devices.remove(device)
         self.devices_changed.emit()
         self.state_changed.emit()
 
     def clear_devices(self) -> None:
+        for device in list(self.devices):
+            self.release(device)
         self.devices.clear()
         self.devices_changed.emit()
+
+    def close_devices(self) -> None:
+        """Let go of every device handle, without forgetting the devices.
+
+        Connected to the window closing. A device that holds a driver handle
+        has to give it back before the process ends -- an Andor camera left
+        initialised is not available to the next launch, or to Solis.
+        """
+        for device in list(self.devices):
+            self.release(device)
+
+    @staticmethod
+    def release(device: Device) -> None:
+        """Ask one device to let go, recording rather than raising on failure.
+
+        Swallows for the same reason ``set_pick_armed`` does: one device that
+        cannot close must not stop the others from closing, and this runs on
+        paths -- session restore, application exit -- with nowhere to report to.
+        """
+        try:
+            device.close()
+        except Exception as exc:  # noqa: BLE001 - recorded, not raised
+            device.last_error = str(exc)
 
     # -- views -------------------------------------------------------------- #
 

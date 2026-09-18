@@ -105,9 +105,12 @@ class MainWindow(QWidget):
         self.menubar.style_selected.connect(self.set_style)
 
     def bind_session(self, autosave) -> None:
-        """Connect the close event to session persistence."""
+        """Connect the close event to session persistence and device release."""
         self.autosave = autosave
         self.closing.connect(autosave.save_now)
+        #: After the save, so a device that fails to close cannot cost the
+        #: session file. Devices that hold no handle do nothing here.
+        self.closing.connect(self.app.close_devices)
 
     # -- panels -------------------------------------------------------------- #
 

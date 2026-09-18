@@ -425,6 +425,8 @@ class PointPicker(QWidget):
             self._point.source_label,
             self._point.pixel_x,
             self._point.pixel_y,
+            self._point.source_started_at,
+            self._point.source_scan,
         )
 
     def set_value(self, value: Any) -> None:

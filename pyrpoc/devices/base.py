@@ -77,6 +77,20 @@ class Device:
         """Subclass hook: raise or return False when the device is not there."""
         return True
 
+    def close(self) -> None:
+        """Release whatever handle this device holds. Default: nothing to release.
+
+        Most devices have nothing to close -- the galvo holds no resource, and an
+        NI task is created and destroyed inside a scan. It exists for a device
+        whose handle outlives a single run, which is the case when opening one
+        is slow or has a physical cost: the Andor head takes seconds to
+        initialise and minutes to cool, so holding it across runs is the only
+        way consecutive spectra are comparable.
+
+        Must be safe to call twice, and safe on a device that was never opened.
+        Callers swallow: one device failing to let go must not stop the rest.
+        """
+
     # -- panel ------------------------------------------------------------- #
 
     def panel(self, parent: "QWidget | None" = None, on_change=None) -> "QWidget | None":

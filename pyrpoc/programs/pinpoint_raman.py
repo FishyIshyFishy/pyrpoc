@@ -6,112 +6,174 @@ nothing about the program: it declares ``PointGroup`` the way confocal declares
 the point -- a click is a way of filling in a parameter, so the acquisition side
 needed no new concept to gain one.
 
-The spectrometer is synthetic for now and the parking is a documented stub, so
-this runs on a laptop with no card in it. What is real is everything above the
-hardware boundary: claims over the galvo, the runner's thread, dataset creation
-from ``emits``, publishing, the save policy and the spectrum view.
+Three things happen in order and each undoes itself on the way out: the camera
+opens, the mirrors park, spectra are read. A stop at any point unwinds all
+three, because cancellation is an exception raised out through ``run()``.
 
-Deterministic by construction, like ``simulation.py``: a spectrum is a function
-of (seed, point, frame index), so clicking the same pixel twice gives the same
-trace and two different pixels visibly differ. That is what makes the fake data
-worth looking at -- a picker that returned noise would not show you whether the
-point actually changed.
+The readout loop is a copy of the one in ``spectrum.py`` rather than an import,
+the way ``split_confocal.py`` copies confocal's waveform arithmetic. The two are
+meant to stay identical.
+
+What is genuinely this program's, and lives nowhere else, is ``park_galvos`` and
+``release_galvos``: an un-clocked AO task held open for the duration of the
+measurement. Everything else about driving this rig writes a waveform and lets
+a sample clock walk through it; this is the one place that asserts two voltages
+and leaves them there.
 """
 
 from __future__ import annotations
 
+import nidaqmx as nx
 import numpy as np
 
+from pyrpoc.core.errors import CcdError, DaqError
 from pyrpoc.core.streams import Spectrum1D
-from pyrpoc.devices.daq.device import DAQ
-from pyrpoc.devices.galvo.device import Galvo
+from pyrpoc.devices import CCD, DAQ, Galvo
 from pyrpoc.run.program import Program
 
-from .components import Point, PointGroup, SpectrumGroup
+from .components import Point, PointGroup, ReadoutGroup
 from .registry import program_registry
 
-#: Keeps the noise generator off the band generator's stream, so changing the
-#: frame index cannot shift a band centre.
-NOISE_STREAM = 0x5EED
+#: Where the mirrors are left when the measurement ends. Zero on both axes is
+#: the centre of the field for a scan with no offset, and it is a definite
+#: position rather than wherever the last spectrum happened to be.
+REST_VOLTS = (0.0, 0.0)
 
 
-def park_galvos(daq: DAQ, galvo: Galvo, point: Point) -> None:
-    """Hold the galvos at one position. Not implemented yet.
+def park_galvos(daq: DAQ, galvo: Galvo, point: Point) -> nx.Task:
+    """Hold the mirrors at one position, and return the task holding them there.
 
-    When the DAQ logic lands this writes two AO samples -- ``point.fast_v`` on
-    ``galvo.config.fast_ao`` and ``point.slow_v`` on ``galvo.config.slow_ao`` --
-    on an un-clocked task and leaves them asserted for the duration of the
-    spectrum, then returns the mirrors to their resting position.
+    An un-clocked task: no ``cfg_samp_clk_timing``, so this is a software-timed
+    on-demand write of *one sample per channel*, which is why the payload is
+    two numbers and not two lists. A clocked multi-sample write takes the
+    nested form, and confusing the two is how this fails on the instrument
+    rather than here.
 
-    It is a real function with its real signature rather than an inline comment
-    because the seam is the interesting part: it is the only place in this file
-    that will ever touch hardware, and the synthetic detector below does not
-    care whether it did. Both devices are bound even though ``uses`` names only
-    the galvo, since claims propagate along ``backed_by`` and the mirrors are
-    voltages on the card's AO channels.
+    The task is returned still open, because closing it is what ends the park.
+    An X-series card holds its last written voltage after the task closes, so
+    the mirrors stay where they were put until something says otherwise --
+    ``release_galvos`` is that something.
+
+    No clamp on the voltage. ``GalvoConfig`` carries no per-axis limits, so
+    there is nothing to clamp against, and inventing a range here would be a
+    limit that looks authoritative and came from nowhere.
     """
-    del daq, galvo, point
+    device_name = daq.config.device_name
+    task = nx.Task()
+    try:
+        task.ao_channels.add_ao_voltage_chan(f"{device_name}/ao{int(galvo.config.fast_ao)}")
+        task.ao_channels.add_ao_voltage_chan(f"{device_name}/ao{int(galvo.config.slow_ao)}")
+        task.write([float(point.fast_v), float(point.slow_v)], auto_start=True)  # pyright:ignore
+    except Exception as exc:
+        task.close()
+        raise DaqError(f"could not park the galvos: {exc}") from exc
+    return task
 
 
-def synthetic_spectrum(
-    spec: SpectrumGroup, point: Point, *, frame_index: int
-) -> np.ndarray:
-    """A ``(1, n_points)`` spectrum of gaussian bands, keyed to the position.
+def release_galvos(task: nx.Task) -> None:
+    """Return the mirrors to rest and hand the AO channels back.
 
-    The position enters the seed quantised to 0.1 mV, so that a re-click on the
-    same pixel reproduces the trace exactly while a click one pixel over does
-    not. Band centres, widths and heights are drawn once from that seed; only
-    the noise varies per frame, which is what makes a continuous run at one spot
-    look like a detector integrating rather than a new sample each time.
+    Closing the task is what releases the channels, so a confocal scan started
+    straight afterwards can claim them. The write comes first because the card
+    holds its last value: closing without it would leave the beam parked on the
+    sample indefinitely.
+
+    The write is allowed to fail without stopping the close. A task that cannot
+    be written is a task that must still be closed, or the channels stay
+    claimed for the life of the process.
     """
-    n_points = int(spec.n_points)
-    bands = np.random.default_rng(
-        [
-            int(spec.seed) % (2**32),
-            int(round(point.fast_v * 1e4)) % (2**32),
-            int(round(point.slow_v * 1e4)) % (2**32),
-        ]
-    )
-    xs = np.arange(n_points, dtype=np.float32)
+    try:
+        task.write([REST_VOLTS[0], REST_VOLTS[1]], auto_start=True)  # pyright:ignore
+    except Exception:
+        pass
+    finally:
+        task.close()
 
-    spectrum = np.zeros(n_points, dtype=np.float32)
-    peaks = int(spec.n_peaks)
-    if peaks > 0:
-        centres = bands.uniform(0.05, 0.95, peaks) * n_points
-        widths = bands.uniform(0.004, 0.02, peaks) * n_points
-        heights = bands.uniform(0.2, 1.0, peaks)
-        for centre, width, height in zip(centres, widths, heights):
-            spectrum += height * np.exp(-((xs - centre) ** 2) / (2.0 * width**2))
 
-    # A broad fluorescence background, so the bands sit on something.
-    spectrum += 0.12 * np.exp(-xs / (0.6 * n_points))
+def point_metadata(point: Point) -> dict:
+    """Which image, which pixel, which volts.
 
-    noise = np.random.default_rng(
-        [int(spec.seed) % (2**32), int(frame_index) % (2**32), NOISE_STREAM]
-    )
-    spectrum = spectrum + noise.normal(0.0, max(float(spec.noise_level), 0.0), n_points)
-    return np.clip(spectrum, 0.0, None).astype(np.float32)[np.newaxis]
+    Provenance by reference. The volts are what the hardware was told and are
+    reproducible from this alone; the rest says where the instruction came
+    from. ``source_scan`` is the geometry of the image that was clicked,
+    snapshotted when the pixel was resolved into volts -- carried rather than
+    looked up because the image is very often a preview that was never saved,
+    and a reference to a file that does not exist is not provenance.
+
+    A point typed by hand has no source, and the empty fields say so rather
+    than leaving the question open.
+    """
+    return {
+        "park_fast_v": point.fast_v,
+        "park_slow_v": point.slow_v,
+        "source_picked": point.picked,
+        "source_dataset_id": point.source_id,
+        "source_label": point.source_label,
+        "source_pixel": [point.pixel_x, point.pixel_y],
+        "source_started_at": point.source_started_at,
+        "source_scan": dict(point.source_scan),
+    }
 
 
 @program_registry.register("pinpoint_raman")
 class PinpointRaman(Program):
-    uses = [Galvo]
-    params = [PointGroup, SpectrumGroup]
+    uses = [Galvo, DAQ, CCD]
+    params = [PointGroup, ReadoutGroup]
     emits = {"spectrum": Spectrum1D}
 
     def run(self, ctx) -> None:
         point = ctx.params[PointGroup].target
-        spec = ctx.params[SpectrumGroup]
+        readout = ctx.params[ReadoutGroup]
 
         daq: DAQ = ctx.devices[DAQ]
         galvo: Galvo = ctx.devices[Galvo]
+        ccd: CCD = ctx.devices[CCD]
 
-        ctx.status(f"parking at {point.fast_v:.3f} / {point.slow_v:.3f} V")
-        park_galvos(daq, galvo, point)
+        ctx.status("opening the camera")
+        ccd.open()
+        try:
+            ccd.configure_for_spectrum(exposure_s=readout.exposure_s)
+            ccd.temperature()
+            ctx.describe(
+                "spectrum", **ccd.instrument_metadata(), **point_metadata(point)
+            )
 
-        total = "" if ctx.continuous else f"/{spec.num_frames}"
-        for index in ctx.frames(spec.num_frames):
-            ctx.status(f"spectrum {index + 1}{total}")
-            ctx.sleep(spec.integration_ms / 1000.0)
-            spectrum = synthetic_spectrum(spec, point, frame_index=index)
-            ctx.publish("spectrum", spectrum, channels=["raman"])
+            ctx.status(f"parking at {point.fast_v:.3f} / {point.slow_v:.3f} V")
+            task = park_galvos(daq, galvo, point)
+            try:
+                for _ in ctx.frames(1):
+                    spectrum = read_averaged(ctx, ccd, readout.num_acquisitions)
+                    ctx.publish("spectrum", spectrum, channels=["raman"])
+            finally:
+                release_galvos(task)
+        finally:
+            # Idle, not closed. The handle outlives the run on purpose.
+            ccd.abort()
+
+
+def read_averaged(ctx, ccd: CCD, num_acquisitions: int) -> np.ndarray:
+    """Read ``num_acquisitions`` spectra off the camera and average them.
+
+    A copy of the loop in ``spectrum.py`` rather than an import, the way
+    ``split_confocal.py`` copies confocal's waveform arithmetic. The two are
+    meant to stay identical.
+    """
+    total = max(int(num_acquisitions), 1)
+    accumulated: np.ndarray | None = None
+    for shot in range(total):
+        if total > 1:
+            ctx.status(f"acquisition {shot + 1}/{total}")
+        else:
+            ctx.status("spectrum")
+
+        spectrum = ccd.read_spectrum(should_stop=ctx.cancelled)
+        if spectrum is None:
+            ctx.check_cancel()
+            raise CcdError("the camera returned no data and was not stopped")
+
+        if ccd.saturated:
+            ctx.status(f"acquisition {shot + 1}/{total} - saturated at {ccd.last_max_counts} counts")
+        accumulated = spectrum if accumulated is None else accumulated + spectrum
+
+    assert accumulated is not None
+    return (accumulated / total).astype(np.float32, copy=False)

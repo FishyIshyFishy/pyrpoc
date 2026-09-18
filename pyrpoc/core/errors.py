@@ -42,3 +42,7 @@ class DaqError(DeviceError):
 
 class TaggerError(DeviceError):
     """A TimeTagger operation failed."""
+
+
+class CcdError(DeviceError):
+    """An Andor SDK2 call failed, or the camera was used out of order."""

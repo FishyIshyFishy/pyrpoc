@@ -179,22 +179,30 @@ def masks_field(label="Masks", *, tooltip=""):
 
 @dataclass(frozen=True)
 class Point:
-    """One parked galvo position.
+    """One parked galvo position, and where the instruction came from.
 
     ``fast_v``/``slow_v`` are what the hardware does, so a run reproduces from
-    its saved parameters alone with no reference to the image it came from.
-    ``source_id`` and the pixel are provenance on top of that: they say this
-    spectrum is pixel (37, 204) of a particular run, which is worth the fields.
-    A point typed by hand has no source, which is what the defaults mean.
-
-    ``source_label`` is the human half of that identity, and it is stored rather
-    than resolved for the same reason ``Provenance.name`` is: a dataset id means
-    nothing to anyone reading the metadata six months later, and the dataset it
-    named may not be open any more.
+    its saved parameters alone. Everything else is provenance on top of that:
+    this spectrum is pixel (37, 204) of a particular image, taken at a
+    particular time, under a particular scan geometry.
 
     Voltages rather than pixels are the parameter because a pixel is only
     meaningful against a scan geometry, and that geometry belongs to the image
     -- not to the program being configured.
+
+    ``source_label`` and ``source_started_at`` are stored rather than resolved
+    because a dataset id means nothing to anyone reading the metadata six
+    months later, and the dataset it named may not be open any more.
+
+    ``source_scan`` is the geometry of the image that was clicked, copied at
+    the moment the pixel became volts. Copied rather than referenced for a
+    blunt reason: saving is off by default, so the usual case is a preview
+    image that was never written to disk, and a pointer to a file that does not
+    exist is not provenance. It is a small self-contained dict, which is why it
+    survives a session reload while a mask array deliberately does not.
+
+    None of it is read by hardware. A point typed by hand carries no source,
+    which is what the defaults mean.
     """
 
     fast_v: float = 0.0
@@ -203,6 +211,12 @@ class Point:
     source_label: str = ""
     pixel_x: int = -1
     pixel_y: int = -1
+    source_started_at: str = ""
+    #: ``compare=False`` for the same reason ``Mask.array`` is: this is a
+    #: frozen dataclass, and a generated ``__eq__`` over a dict of floats is
+    #: fine, but the field is provenance and two points at the same volts from
+    #: the same pixel are the same point regardless.
+    source_scan: dict[str, Any] = dc_field(default_factory=dict, compare=False)
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "fast_v", float(self.fast_v))
@@ -211,6 +225,9 @@ class Point:
         object.__setattr__(self, "source_label", str(self.source_label))
         object.__setattr__(self, "pixel_x", int(self.pixel_x))
         object.__setattr__(self, "pixel_y", int(self.pixel_y))
+        object.__setattr__(self, "source_started_at", str(self.source_started_at))
+        scan = self.source_scan
+        object.__setattr__(self, "source_scan", dict(scan) if isinstance(scan, dict) else {})
 
     @property
     def picked(self) -> bool:
@@ -231,6 +248,8 @@ class Point:
             "source_label": self.source_label,
             "pixel_x": self.pixel_x,
             "pixel_y": self.pixel_y,
+            "source_started_at": self.source_started_at,
+            "source_scan": dict(self.source_scan),
         }
 
     @classmethod
@@ -241,6 +260,7 @@ class Point:
             return cls()
         if not isinstance(raw, dict):
             raise ParameterError("a point must be an object with fast_v/slow_v")
+        scan = raw.get("source_scan")
         return cls(
             fast_v=float(raw.get("fast_v", 0.0)),
             slow_v=float(raw.get("slow_v", 0.0)),
@@ -248,6 +268,8 @@ class Point:
             source_label=str(raw.get("source_label", "")),
             pixel_x=int(raw.get("pixel_x", -1)),
             pixel_y=int(raw.get("pixel_y", -1)),
+            source_started_at=str(raw.get("source_started_at", "")),
+            source_scan=scan if isinstance(scan, dict) else {},
         )
 
 
@@ -402,38 +424,43 @@ class PointGroup(Group):
 
 @block
 @dataclass
-class SpectrumGroup(Group):
-    """A stand-in spectrometer, until there is a real one to configure.
+class ReadoutGroup(Group):
+    """One CCD readout: how long, how many acquisitions to average together.
 
-    Deterministic in the same way ``SignalGroup`` is: the spectrum is a function
-    of (seed, point, frame index), so the same spot gives the same trace on
-    every run and two different spots visibly differ. ``num_frames`` is here
-    rather than in a block of its own for the same reason it is in
-    ``ScanGroup`` -- it decides how the acquisition is done.
+    The split against ``CcdConfig`` is the one ``TaggerConfig`` draws against
+    ``HistogramGroup``. Which camera, which output amplifier, what readout rate
+    it was characterised at and where the cooler is held describe how the head
+    is fitted, and they are on the device. Exposure is the one thing that
+    changes from sample to sample, and it is here.
+
+    Deliberately minimal for now: EM gain, shutter mode, the post-park settle
+    and the inter-shot interval all had fields here and were cut so the rig can
+    be brought up and tested with the smallest surface that works. Each is a
+    real control worth having back once there is a reason to reach for it, at
+    which point it returns as its own field rather than a repurposed one.
+
+    ``num_acquisitions`` replaces the old ``num_frames``: rather than
+    publishing every raw exposure, the run reads this many spectra off the
+    camera and publishes their average as one spectrum. 1 is a single raw
+    readout with nothing averaged out of it.
     """
 
-    label: ClassVar[str] = "Spectrum"
+    label: ClassVar[str] = "Readout"
 
-    num_frames: int = int_field(
-        "Frames", 1, minimum=1, tooltip="Number of spectra to capture"
+    exposure_s: float = float_field(
+        "Exposure (s)",
+        0.5,
+        minimum=1e-5,
+        step=0.1,
+        tooltip="Integration time per acquisition. The camera rounds this to "
+        "what its clock can express, and the accepted value is recorded",
     )
-    integration_ms: int = int_field(
-        "Integration (ms)",
-        500,
-        minimum=0,
-        tooltip="Dwell per spectrum, standing in for detector integration time",
-    )
-    n_points: int = int_field(
-        "Points", 1024, minimum=16, maximum=65536, tooltip="Samples along the spectral axis"
-    )
-    n_peaks: int = int_field(
-        "Peaks", 5, minimum=0, maximum=64, tooltip="How many bands to synthesise"
-    )
-    noise_level: float = float_field(
-        "Noise Level", 0.03, minimum=0.0, step=0.01, tooltip="Gaussian noise added per point"
-    )
-    seed: int = int_field(
-        "Seed", 1234, minimum=0, tooltip="Same seed and point give the same spectrum"
+    num_acquisitions: int = int_field(
+        "Acquisitions to Average",
+        1,
+        minimum=1,
+        tooltip="How many exposures to average into each published spectrum. "
+        "1 publishes the raw readout with no averaging",
     )
 
 

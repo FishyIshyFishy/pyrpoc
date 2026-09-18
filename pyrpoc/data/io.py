@@ -98,12 +98,28 @@ class StreamWriter:
         self.saver = saver
         self.stream = stream
         self.paths: dict[str, Path] = {}
+        #: Copied off the dataset at finalize, so ``RunSaver`` can report them
+        #: without holding a reference to data it does not own.
+        self.dataset_id = ""
+        self.metadata: dict[str, Any] = {}
 
     def write(self, dataset: Dataset, array: np.ndarray) -> None:
         raise NotImplementedError
 
     def finalize(self, dataset: Dataset, error: Exception | None) -> None:
-        pass
+        """Take the dataset's identity and metadata across to the saver.
+
+        Subclasses that override this must call it. Two things were invisible
+        on disk before it existed: whatever a program recorded with
+        ``ctx.describe`` -- the only account of what the instrument actually
+        did -- and the dataset id, which is what lets one run's metadata name
+        another run's output. A point picked off an image records the id of the
+        image it came from, and until both ends wrote it down there was nothing
+        to match it against.
+        """
+        del error
+        self.dataset_id = dataset.id
+        self.metadata = dict(dataset.metadata)
 
 
 class TiffStreamWriter(StreamWriter):
@@ -141,6 +157,7 @@ class NpzStreamWriter(StreamWriter):
         self._buffer.append(np.asarray(array, dtype=np.float32))
 
     def finalize(self, dataset: Dataset, error: Exception | None) -> None:
+        super().finalize(dataset, error)
         if not self._buffer:
             return
         root = self.saver.root
@@ -151,6 +168,10 @@ class NpzStreamWriter(StreamWriter):
             str(path),
             data=payload,
             parameters=np.asarray(self.saver.parameters, dtype=object),
+            #: In the file as well as the JSON, so a spectrum can be read
+            #: without its sidecar -- the exposure and the gain are the
+            #: difference between counts and a measurement.
+            metadata=np.asarray(self.metadata, dtype=object),
         )
         self.paths = {self.stream: path}
 
@@ -220,6 +241,27 @@ class RunSaver:
                 out.update({label: str(path) for label, path in writer.paths.items()})
         return out
 
+    def dataset_ids(self) -> dict[str, str]:
+        """Which in-memory dataset each stream came from.
+
+        Recorded so a run can be named by another run. Nothing else on disk
+        carries a ``Dataset.id``, which is why a point picked off an image
+        could point at an image with no way to find it again.
+        """
+        return {
+            stream: writer.dataset_id
+            for stream, writer in self.writers.items()
+            if writer.dataset_id
+        }
+
+    def stream_metadata(self) -> dict[str, Any]:
+        """Whatever each program recorded with ``ctx.describe``."""
+        return {
+            stream: writer.metadata
+            for stream, writer in self.writers.items()
+            if writer.metadata
+        }
+
     def auxiliary_paths(self) -> dict[str, str]:
         out: dict[str, str] = {}
         for writer in self.writers.values():
@@ -237,6 +279,8 @@ class RunSaver:
             "streams": sorted(self.writers),
             "tiff_paths": self.tiff_paths(),
             "auxiliary_paths": self.auxiliary_paths(),
+            "dataset_ids": self.dataset_ids(),
+            "stream_metadata": self.stream_metadata(),
             "parameters": self.parameters,
             "devices": self.devices,
             "last_error": last_error,

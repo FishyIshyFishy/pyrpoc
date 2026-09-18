@@ -13,5 +13,13 @@ from .registry import device_registry
 from .daq.device import DAQ
 from .galvo.device import Galvo
 from .time_tagger.device import TimeTagger
+from .ccd.device import CCD
 
-__all__ = ["Device", "device_registry", "DAQ", "Galvo", "TimeTagger"]
+__all__ = [
+    "Device",
+    "device_registry",
+    "DAQ",
+    "Galvo",
+    "TimeTagger",
+    "CCD",
+]

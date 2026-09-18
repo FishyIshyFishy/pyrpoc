@@ -19,6 +19,7 @@ from .split_confocal import SplitConfocal
 from .flim import FLIM
 from .pinpoint_raman import PinpointRaman
 from .simulation import Simulation
+from .spectrum import Spectrum
 
 __all__ = [
     "program_registry",
@@ -27,4 +28,5 @@ __all__ = [
     "FLIM",
     "PinpointRaman",
     "Simulation",
+    "Spectrum",
 ]
