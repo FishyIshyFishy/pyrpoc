@@ -12,21 +12,32 @@ and arrives with the device, not with the shape contract.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pyqtgraph as pg
+from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtWidgets import QVBoxLayout, QWidget
 
 from pyrpoc.core.streams import Spectrum1D
 
 from ..base import Panel
 from ..components.colors import color_for_index
+from ..components.source_picker import SourcePicker
 from ..registry import panel_registry
+
+if TYPE_CHECKING:  # pragma: no cover
+    from pyrpoc.data.dataset import Dataset
+    from pyrpoc.data.library import DatasetLibrary
 
 
 @panel_registry.register("spectrum")
 class SpectrumPanel(Panel):
+    #: Declared but never emitted: this panel has no spatial meaning to
+    #: report, but Application.add_panel connects to it on every panel the
+    #: registry can produce, so it must exist.
+    point_picked = pyqtSignal(str, int, int)
+
     display_name = "Spectrum"
     renders = [Spectrum1D]
 
@@ -34,8 +45,17 @@ class SpectrumPanel(Panel):
         super().__init__(parent=parent)
         self._curves: list[pg.PlotDataItem] = []
 
-        root = QVBoxLayout(self.body)
-        root.setContentsMargins(6, 6, 6, 6)
+        root = QVBoxLayout(self)
+        root.setContentsMargins(4, 4, 4, 4)
+        root.setSpacing(4)
+        self.source = SourcePicker(self.renders, self)
+        self.source.changed.connect(self.refresh)
+        root.addWidget(self.source)
+        self.body = QWidget(self)
+        root.addWidget(self.body, 1)
+
+        body_root = QVBoxLayout(self.body)
+        body_root.setContentsMargins(6, 6, 6, 6)
 
         self._plot = pg.PlotWidget(self.body)
         self._plot.setMenuEnabled(False)
@@ -43,7 +63,19 @@ class SpectrumPanel(Panel):
         self._plot.setLabel("bottom", "Sample")
         self._plot.setLabel("left", "Counts")
         self._legend = self._plot.addLegend(offset=(-10, 10))
-        root.addWidget(self._plot, 1)
+        body_root.addWidget(self._plot, 1)
+
+    # -- binding --------------------------------------------------------------- #
+
+    def attach_library(self, library: "DatasetLibrary") -> None:
+        self.source.attach_library(library)
+
+    def dataset(self) -> "Dataset | None":
+        return self.source.current()
+
+    def set_picking(self, active: bool) -> None:
+        """No spatial meaning to report; a no-op, not a missing method."""
+        del active
 
     # -- rendering ------------------------------------------------------------ #
 

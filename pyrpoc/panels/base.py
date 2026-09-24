@@ -1,34 +1,25 @@
-"""What a dataset-rendering panel is: renders datasets, emits interaction events.
+"""A widget that lives in the dock area: identity and a title, no more.
 
-This is the base for the four panels that render a dataset -- image_2d,
-overlay, mask_editor, spectrum. It is not (yet) the base for devices,
-data_library or acquisition: those show and drive application state rather
-than a dataset, and unifying all seven under one lifecycle is future work.
-See ``panels/__init__.py`` for how the two kinds currently differ.
+All seven panels inherit this -- devices and the data library exactly as much
+as image_2d does. What used to live here besides identity was a source
+picker: a combo box naming which open dataset to show. That is not a
+property of "being a panel", it is a property of showing a dataset that
+outlives its renderer, so it moved to ``components/source_picker.py`` as a
+widget a panel adds to its own layout, not something every panel is forced to
+carry. That is what keeps devices and acquisition from needing a "source"
+with nothing to put in it.
 
-A panel holds no arrays. ``self._dataset`` plus ``dataset.latest()`` replaces
-``self._data_chw``, which in v3.0 *was* the data -- closing a display destroyed
-it, and two displays over one run held two drifting copies.
-
-Every panel gets a source picker, because with data outliving its renderer
-there is a real question of which run is being shown. "Latest" follows the
-newest matching dataset, which reproduces v3.0's implicit behaviour of pushing
-the current run at whatever was open.
+The persistence hooks are the other half of what "thin" buys: a future
+docking/layout system has one place to call, on every panel, without any of
+them having had to know that was coming.
 """
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import Any
 from uuid import uuid4
 
-from PyQt6.QtCore import pyqtSignal
-from PyQt6.QtWidgets import QComboBox, QHBoxLayout, QLabel, QVBoxLayout, QWidget
-
-from pyrpoc.core.streams import Stream
-
-if TYPE_CHECKING:  # pragma: no cover
-    from pyrpoc.data.dataset import Dataset
-    from pyrpoc.data.library import DatasetLibrary
+from PyQt6.QtWidgets import QWidget
 
 
 def make_instance_id(prefix: str) -> str:
@@ -38,48 +29,16 @@ def make_instance_id(prefix: str) -> str:
 
 
 class Panel(QWidget):
-    """Renders one or more streams from datasets. Never references a program."""
-
-    #: The user picked a position in the data: dataset id, then pixel x and y.
-    #: Pixel coordinates and an id are the whole payload, because they are the
-    #: only things a panel actually knows -- what a pixel means in volts depends
-    #: on the scan geometry, which belongs to the dataset, not to the renderer.
-    #: Emitted unconditionally by panels that have a spatial meaning, the same
-    #: way the source combo emits on a change; a panel holds no armed state and
-    #: does not know whether anything is listening.
-    point_picked = pyqtSignal(str, int, int)
+    """A widget that lives in the dock area. Identity and a title, no more."""
 
     display_name: str = "Panel"
     registry_key: str = "panel"
-
-    #: Shape contracts this panel can render. A dataset whose spec is not here
-    #: cannot be bound to it.
-    renders: list[type[Stream]] = []
 
     def __init__(self, parent: QWidget | None = None):
         super().__init__(parent)
         self.instance_id = make_instance_id(self.registry_key)
         self.user_label: str | None = None
         self.last_error: str | None = None
-
-        self._dataset: "Dataset | None" = None
-        self._library: "DatasetLibrary | None" = None
-        self._follow_latest = True
-
-        self.root = QVBoxLayout(self)
-        self.root.setContentsMargins(4, 4, 4, 4)
-        self.root.setSpacing(4)
-
-        header = QHBoxLayout()
-        header.setContentsMargins(0, 0, 0, 0)
-        header.addWidget(QLabel("Source:", self))
-        self.source_combo = QComboBox(self)
-        self.source_combo.currentIndexChanged.connect(self.on_source_chosen)
-        header.addWidget(self.source_combo, 1)
-        self.root.addLayout(header)
-
-        self.body = QWidget(self)
-        self.root.addWidget(self.body, 1)
 
     @property
     def type_key(self) -> str:
@@ -88,94 +47,6 @@ class Panel(QWidget):
     @property
     def title(self) -> str:
         return self.user_label or self.display_name
-
-    # -- binding ------------------------------------------------------------ #
-
-    def attach_library(self, library: "DatasetLibrary") -> None:
-        self._library = library
-        library.subscribe(self.refresh_sources)
-        self.refresh_sources()
-
-    def candidates(self) -> list["Dataset"]:
-        if self._library is None:
-            return []
-        return self._library.matching(*self.renders)
-
-    def refresh_sources(self) -> None:
-        """Rebuild the picker, keeping the current choice where possible."""
-        current = self.source_combo.currentData()
-        self.source_combo.blockSignals(True)
-        self.source_combo.clear()
-        self.source_combo.addItem("Latest", None)
-        for dataset in self.candidates():
-            self.source_combo.addItem(dataset.label, dataset.id)
-        if not self._follow_latest and isinstance(current, str):
-            index = self.source_combo.findData(current)
-            self.source_combo.setCurrentIndex(max(index, 0))
-        self.source_combo.blockSignals(False)
-        self.apply_source()
-
-    def on_source_chosen(self, _index: int) -> None:
-        self._follow_latest = self.source_combo.currentData() is None
-        self.apply_source()
-
-    def apply_source(self) -> None:
-        chosen = self.source_combo.currentData()
-        if chosen is None:
-            candidates = self.candidates()
-            self.bind(candidates[0] if candidates else None)
-        elif self._library is not None:
-            self.bind(self._library.by_id(chosen))
-
-    def bind(self, dataset: "Dataset | None") -> None:
-        if dataset is not None and dataset.spec not in self.renders:
-            raise TypeError(
-                f"{type(self).__name__} renders {[s.name for s in self.renders]}, "
-                f"not {dataset.spec.name}"
-            )
-        self._dataset = dataset
-        self.refresh()
-
-    def dataset(self) -> "Dataset | None":
-        return self._dataset
-
-    def library(self) -> "DatasetLibrary | None":
-        """The open datasets, for a panel that publishes as well as renders.
-
-        The read counterpart of ``attach_library``. A panel that authors data --
-        the mask editor draws one -- files it here rather than handing it to
-        whatever will consume it, which is what keeps it from knowing what that
-        is.
-        """
-        return self._library
-
-    def renders_dataset(self, dataset: "Dataset") -> bool:
-        return dataset.spec in self.renders
-
-    # -- drawing ------------------------------------------------------------- #
-
-    def refresh(self) -> None:
-        """Re-read the bound dataset and redraw. Subclasses implement this."""
-        raise NotImplementedError
-
-    def clear(self) -> None:
-        raise NotImplementedError
-
-    def configure(self, params: dict[str, Any]) -> None:
-        del params
-
-    # -- picking -------------------------------------------------------------- #
-
-    def set_picking(self, active: bool) -> None:
-        """Offer to pick a position in the data, or stop offering.
-
-        A no-op default rather than a capability flag the shell branches on, so
-        a panel with no spatial meaning implements nothing and its author never
-        learns this exists. The same shape as ``configure`` and the persistence
-        hooks above: optional behaviour is an overridable no-op here, not a
-        negotiation.
-        """
-        del active
 
     # -- persistence ---------------------------------------------------------- #
 

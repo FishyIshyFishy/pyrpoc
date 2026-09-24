@@ -28,6 +28,7 @@ from PyQt6.QtWidgets import QHBoxLayout, QHeaderView, QLabel, QPushButton, QVBox
 
 from pyrpoc.data.dataset import Dataset
 
+from ..base import Panel
 from ..components.table import ListTable
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -60,7 +61,9 @@ def format_size(nbytes: int) -> str:
     return f"{size:.1f} {UNITS[unit]}" if size < 10.0 else f"{size:.0f} {UNITS[unit]}"
 
 
-class DataLibraryPanel(QWidget):
+class DataLibraryPanel(Panel):
+    display_name = "Data Library"
+
     def __init__(self, app: "Application", parent: QWidget | None = None):
         super().__init__(parent)
         self.app = app

@@ -30,13 +30,16 @@ from pyrpoc.devices.base import Device
 from pyrpoc.devices.registry import device_registry
 from pyrpoc.shell.param_form import ParamForm
 
+from ..base import Panel
 from ..components.cards import RemovableCardWidget
 
 if TYPE_CHECKING:  # pragma: no cover
     from pyrpoc.shell.app import Application
 
 
-class DevicesPanel(QWidget):
+class DevicesPanel(Panel):
+    display_name = "Devices"
+
     def __init__(self, app: "Application", parent: QWidget | None = None):
         super().__init__(parent)
         self.app = app

@@ -8,7 +8,7 @@ bound dataset instead, so the arrays outlive this widget.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 import numpy as np
 import pyqtgraph as pg
@@ -22,12 +22,17 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, pyqtSignal
 
 from pyrpoc.core.streams import Image2D
 
 from ..base import Panel
+from ..components.source_picker import SourcePicker
 from ..registry import panel_registry
+
+if TYPE_CHECKING:  # pragma: no cover
+    from pyrpoc.data.dataset import Dataset
+    from pyrpoc.data.library import DatasetLibrary
 
 
 @dataclass
@@ -43,6 +48,11 @@ class ChannelTile:
 
 @panel_registry.register("image_2d")
 class Image2DPanel(Panel):
+    #: The user picked a position in the data: dataset id, then pixel x and y.
+    #: What a pixel means in volts depends on the scan geometry, which
+    #: belongs to the dataset, not to the renderer.
+    point_picked = pyqtSignal(str, int, int)
+
     display_name = "2D Tiled"
     renders = [Image2D]
 
@@ -67,6 +77,15 @@ class Image2DPanel(Panel):
             ),
         )
 
+        root = QVBoxLayout(self)
+        root.setContentsMargins(4, 4, 4, 4)
+        root.setSpacing(4)
+        self.source = SourcePicker(self.renders, self)
+        self.source.changed.connect(self.refresh)
+        root.addWidget(self.source)
+        self.body = QWidget(self)
+        root.addWidget(self.body, 1)
+
         outer = QVBoxLayout(self.body)
         outer.setContentsMargins(0, 0, 0, 0)
         self._scroll = QScrollArea(self.body)
@@ -79,6 +98,14 @@ class Image2DPanel(Panel):
         self._grid.setHorizontalSpacing(10)
         self._grid.setVerticalSpacing(10)
         self._scroll.setWidget(self._content)
+
+    # -- binding --------------------------------------------------------------- #
+
+    def attach_library(self, library: "DatasetLibrary") -> None:
+        self.source.attach_library(library)
+
+    def dataset(self) -> "Dataset | None":
+        return self.source.current()
 
     # -- rendering ----------------------------------------------------------- #
 

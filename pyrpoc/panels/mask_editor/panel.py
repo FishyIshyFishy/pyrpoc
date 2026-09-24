@@ -8,42 +8,42 @@ A finished mask leaves by being added to the dataset library as a ``Mask2D``
 entry, which is the whole of how it reaches a modality. This panel does not
 know what a modality is, and the Modulation parameter that consumes masks does
 not know this panel exists -- it asks the library for entries matching
-``Mask2D`` the same way every panel asks for its own sources. The alternative,
-and the reason this is worth stating, was for one of the two to name the other.
+``Mask2D`` the same way every dataset panel asks for its own sources. The
+alternative, and the reason this is worth stating, was for one of the two to
+name the other.
 
 ``Save mask...`` stays, and is now only what it says: writing a PNG for
 something outside this application to read. It is not how a mask gets used.
 
-The threshold and polygon-ROI machinery is unchanged.
+The threshold and polygon-ROI machinery is unchanged, split across two
+sibling files: ``canvas.py`` for the ROI data model and the drawing surface,
+``dialog.py`` for the re-threshold popup. What is left here is the panel
+itself: the controls around those two, the mask/channel state they read and
+write, and the two ways a finished mask leaves.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from dataclasses import replace
 from pathlib import Path
-from typing import Any, cast
-import random
+from typing import TYPE_CHECKING
 
 import cv2
 import numpy as np
 from PyQt6.QtCore import QPointF, QRectF, Qt, pyqtSignal
-from PyQt6.QtGui import QColor, QImage, QPainter, QPainterPath, QPen, QPixmap
+from PyQt6.QtGui import QImage, QPixmap
 from PyQt6.QtWidgets import (
     QCheckBox,
     QDialog,
-    QDialogButtonBox,
     QFileDialog,
-    QGraphicsPathItem,
     QGraphicsPixmapItem,
     QGraphicsScene,
-    QGraphicsTextItem,
-    QGraphicsView,
     QHBoxLayout,
     QHeaderView,
     QLabel,
     QLineEdit,
-    QMessageBox,
     QMenu,
+    QMessageBox,
     QPushButton,
     QSizePolicy,
     QSpinBox,
@@ -60,14 +60,20 @@ from pyrpoc.data.transforms import normalize_channels
 
 from ..base import Panel
 from ..components.range_slider import RangeSlider
+from ..components.source_picker import SourcePicker
 from ..registry import panel_registry
+from .canvas import MaskImageView, MaskRoi
+from .dialog import RoiThresholdDialog
+
+if TYPE_CHECKING:  # pragma: no cover
+    from pyrpoc.data.library import DatasetLibrary
 
 
 def write_mask(path: Path | str, mask: np.ndarray) -> Path:
     """Write a 2-D mask to disk. Returns the path written.
 
     An export, not a step in using a mask -- nothing in this application reads
-    the file back. It lives here because this editor is the only thing that
+    the file back. It lives here because this panel is the only thing that
     authors a mask at all.
     """
     array = np.asarray(mask, dtype=np.uint8)
@@ -80,289 +86,14 @@ def write_mask(path: Path | str, mask: np.ndarray) -> Path:
     return resolved
 
 
-@dataclass
-class MaskRoi:
-    """One drawn region. Its number is its position in the editor's list.
-
-    There is no stored id: a stable id and a displayed row number are two
-    numberings of the same thing, and deleting an ROI made them disagree --
-    the table renumbered, the labels drawn on the image did not.
-    """
-
-    points: list[tuple[float, float]]
-    threshold_low: float
-    threshold_high: float
-    active_channels: list[bool]
-
-
-class MaskImageView(QGraphicsView):
-    def __init__(self, scene: QGraphicsScene, editor: "MaskEditorPanel"):
-        super().__init__(scene)
-        self.gscene: QGraphicsScene = scene
-        self.editor = editor
-        self.setRenderHints(self.renderHints() | QPainter.RenderHint.Antialiasing)
-        self.setMouseTracking(True)
-
-        self._drawing = False
-        self._current_points: list[QPointF] = []
-        self._live_path: QPainterPath | None = None
-        self._live_path_item: QGraphicsPathItem | None = None
-        self._path_pen = QPen(QColor(255, 80, 80), 2, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap)
-
-        self._roi_items: list[QGraphicsPathItem] = []
-        self._roi_labels: list[QGraphicsTextItem] = []
-        self._zoom_level = 0
-
-    def wheelEvent(self, event) -> None:
-        if event is None:
-            return
-        factor = 1.15 if event.angleDelta().y() > 0 else 0.87
-        self._zoom_level += 1 if factor > 1.0 else -1
-        self.scale(factor, factor)
-
-    def mousePressEvent(self, event) -> None:
-        if event is None:
-            return
-        if event.button() == Qt.MouseButton.LeftButton:
-            scene_pos = self.mapToScene(event.pos())
-            scene_pos = self.editor.clamp_scene_point(scene_pos)
-            self._drawing = True
-            self._current_points = [scene_pos]
-            self._live_path = QPainterPath(scene_pos)
-            self.clear_live_path()
-            self._live_path_item = self.gscene.addPath(self._live_path, self._path_pen)
-            return
-        super().mousePressEvent(event)
-
-    def mouseMoveEvent(self, event) -> None:
-        if event is None:
-            return
-        if self._drawing and self._live_path is not None:
-            scene_pos = self.mapToScene(event.pos())
-            scene_pos = self.editor.clamp_scene_point(scene_pos)
-            self._current_points.append(scene_pos)
-            self._live_path.lineTo(scene_pos)
-            if self._live_path_item is not None:
-                self._live_path_item.setPath(self._live_path)
-            return
-        super().mouseMoveEvent(event)
-
-    def mouseReleaseEvent(self, event) -> None:
-        if event is None:
-            return
-        if event.button() == Qt.MouseButton.LeftButton and self._drawing:
-            self._drawing = False
-            points = [(float(p.x()), float(p.y())) for p in self._current_points]
-            self.clear_live_path()
-            self._current_points = []
-            self._live_path = None
-            self.editor.add_roi(points)
-            return
-        super().mouseReleaseEvent(event)
-
-    def clear_live_path(self) -> None:
-        if self._live_path_item is not None:
-            self.gscene.removeItem(self._live_path_item)
-            self._live_path_item = None
-
-    def clear_rois(self) -> None:
-        for item in self._roi_items:
-            self.gscene.removeItem(item)
-        for label in self._roi_labels:
-            self.gscene.removeItem(label)
-        self._roi_items = []
-        self._roi_labels = []
-
-    def set_rois(self, rois: list[MaskRoi]) -> None:
-        """Redraw every ROI. The only way the drawn numbers change.
-
-        Redrawing all of them on any edit is what keeps the labels honest:
-        deleting one shifts the number of every ROI after it, so there is no
-        such thing as removing one drawing and leaving the rest alone.
-        """
-        self.clear_rois()
-        for index, roi in enumerate(rois):
-            self.draw_roi(index, roi)
-
-    def draw_roi(self, index: int, roi: MaskRoi) -> None:
-        if len(roi.points) < 3:
-            return
-
-        color = self.color_for_index(index)
-        path = QPainterPath(QPointF(roi.points[0][0], roi.points[0][1]))
-        for x, y in roi.points[1:]:
-            path.lineTo(QPointF(x, y))
-        path.closeSubpath()
-
-        outline = cast(QGraphicsPathItem, self.gscene.addPath(path, QPen(color, 2)))
-        outline.setBrush(QColor(color.red(), color.green(), color.blue(), 80))
-        self._roi_items.append(outline)
-
-        label = QGraphicsTextItem(str(index + 1))
-        label.setDefaultTextColor(Qt.GlobalColor.white)
-        bounds = label.boundingRect()
-        cx = sum(p[0] for p in roi.points) / len(roi.points)
-        cy = sum(p[1] for p in roi.points) / len(roi.points)
-        label.setPos(cx - bounds.width() / 2, cy - bounds.height() / 2)
-        label.setZValue(10_000)
-        self.gscene.addItem(label)
-        self._roi_labels.append(label)
-
-    def color_for_index(self, index: int) -> QColor:
-        rng = random.Random(index * 17 + 11)
-        return QColor(rng.randint(60, 255), rng.randint(60, 255), rng.randint(60, 255))
-
-
-class MaskPreviewLabel(QLabel):
-    """Shows a mask scaled to fit, and keeps fitting it as it is resized.
-
-    Scaling once when the mask changes is not enough: the label is stretched
-    by its layout after that, and a pixmap sized to the old geometry is
-    silently clipped rather than re-fitted.
-    """
-
-    def __init__(self, parent: QWidget | None = None):
-        super().__init__(parent)
-        self._source: QPixmap | None = None
-        self.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.setMinimumSize(240, 240)
-        self.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Ignored)
-
-    def set_source(self, pixmap: QPixmap | None) -> None:
-        self._source = pixmap
-        self.rescale()
-
-    def rescale(self) -> None:
-        if self._source is None or self._source.isNull():
-            return
-        # Nearest-neighbour: a mask is two values, and smoothing invents
-        # greys that no pixel of it has.
-        super().setPixmap(
-            self._source.scaled(
-                self.contentsRect().size(),
-                Qt.AspectRatioMode.KeepAspectRatio,
-                Qt.TransformationMode.FastTransformation,
-            )
-        )
-
-    def resizeEvent(self, event) -> None:
-        super().resizeEvent(event)
-        self.rescale()
-
-
-class RoiThresholdDialog(QDialog):
-    """Re-threshold one ROI against a live preview of the resulting mask.
-
-    The preview is the same array ``Preview`` shows -- the whole mask, every
-    ROI -- recomputed on each change. Showing only the edited ROI's own pixels
-    would answer a question nobody asked: a threshold is chosen for how the
-    finished mask looks, and the other ROIs are the context that decision is
-    made in.
-
-    The editor's stored ROI is untouched until the dialog is accepted, so the
-    preview runs against a substituted copy and Cancel needs no undo.
-    """
-
-    def __init__(self, editor: "MaskEditorPanel", index: int):
-        super().__init__(editor)
-        self.editor = editor
-        self.index = index
-        roi = editor.rois()[index]
-        self.setWindowTitle(f"ROI {index + 1} thresholds")
-
-        int_min = int(np.floor(editor.data_min()))
-        int_max = int(np.ceil(editor.data_max()))
-        low = max(int_min, min(int_max, int(round(roi.threshold_low))))
-        high = max(low, min(int_max, int(round(roi.threshold_high))))
-
-        layout = QVBoxLayout(self)
-
-        self.preview_label = MaskPreviewLabel(self)
-        layout.addWidget(self.preview_label, 1)
-
-        threshold_row = QHBoxLayout()
-        self.low_spin = QSpinBox(self)
-        self.high_spin = QSpinBox(self)
-        for spin in (self.low_spin, self.high_spin):
-            spin.setRange(int_min, int_max)
-            spin.setFixedWidth(74)
-            spin.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.low_spin.setValue(low)
-        self.high_spin.setValue(high)
-        self.low_spin.valueChanged.connect(self.on_spin_changed)
-        self.high_spin.valueChanged.connect(self.on_spin_changed)
-
-        self.slider = RangeSlider(self)
-        self.slider.setRange(int_min, int_max)
-        self.slider.setValues(low, high)
-        self.slider.values_changed.connect(self.on_slider_changed)
-
-        threshold_row.addWidget(self.low_spin)
-        threshold_row.addWidget(self.slider, 1)
-        threshold_row.addWidget(self.high_spin)
-        layout.addLayout(threshold_row)
-
-        buttons = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel,
-            parent=self,
-        )
-        buttons.accepted.connect(self.accept)
-        buttons.rejected.connect(self.reject)
-        layout.addWidget(buttons)
-
-        self.resize(420, 520)
-        self.update_preview()
-
-    def values(self) -> tuple[int, int]:
-        low = int(self.low_spin.value())
-        high = int(self.high_spin.value())
-        if high < low:
-            low, high = high, low
-        return low, high
-
-    def write_values(self, low: int, high: int) -> None:
-        controls = (self.low_spin, self.high_spin, self.slider)
-        for control in controls:
-            control.blockSignals(True)
-        self.low_spin.setValue(low)
-        self.high_spin.setValue(high)
-        self.slider.setValues(low, high)
-        for control in controls:
-            control.blockSignals(False)
-
-    def on_spin_changed(self, _value: int) -> None:
-        low, high = self.values()
-        self.write_values(low, high)
-        self.update_preview()
-
-    def on_slider_changed(self, low: int, high: int) -> None:
-        self.write_values(low, high)
-        self.update_preview()
-
-    def previewed_rois(self) -> list[MaskRoi]:
-        low, high = self.values()
-        rois = list(self.editor.rois())
-        if 0 <= self.index < len(rois):
-            rois[self.index] = replace(
-                rois[self.index], threshold_low=float(low), threshold_high=float(high)
-            )
-        return rois
-
-    def update_preview(self) -> None:
-        mask = self.editor.generate_mask(self.previewed_rois())
-        if mask is None:
-            self.preview_label.setText("No ROI to preview.")
-            return
-        height, width = mask.shape
-        qimg = QImage(
-            mask.tobytes(), width, height, width, QImage.Format.Format_Grayscale8
-        ).copy()
-        self.preview_label.set_source(QPixmap.fromImage(qimg))
-
-
 @panel_registry.register("mask_editor")
 class MaskEditorPanel(Panel):
     """Draw thresholded polygon ROIs over an acquired image and file the mask."""
+
+    #: Declared but never emitted: this panel has no spatial meaning to
+    #: report, but Application.add_panel connects to it on every panel the
+    #: registry can produce, so it must exist.
+    point_picked = pyqtSignal(str, int, int)
 
     display_name = "Mask Editor"
     renders = [Image2D]
@@ -388,10 +119,36 @@ class MaskEditorPanel(Panel):
         self._data_max = 1.0
         self.apply_new_data(None)
 
+        root = QVBoxLayout(self)
+        root.setContentsMargins(4, 4, 4, 4)
+        root.setSpacing(4)
+        self.source = SourcePicker(self.renders, self)
+        self.source.changed.connect(self.refresh)
+        root.addWidget(self.source)
+        self.body = QWidget(self)
+        root.addWidget(self.body, 1)
+
         self.build_ui()
         self.rebuild_channel_boxes()
         self.reset_threshold_controls()
         self.update_view_image()
+
+    # -- binding ------------------------------------------------------------ #
+
+    def attach_library(self, library: "DatasetLibrary") -> None:
+        self.source.attach_library(library)
+
+    def dataset(self) -> "Dataset | None":
+        return self.source.current()
+
+    def library(self) -> "DatasetLibrary | None":
+        return self.source.library()
+
+    def set_picking(self, active: bool) -> None:
+        """No spatial meaning to report; a no-op, not a missing method."""
+        del active
+
+    # -- layout ---------------------------------------------------------------- #
 
     def build_ui(self) -> None:
         # A single column. The ROI table used to be a second column beside the
@@ -508,6 +265,8 @@ class MaskEditorPanel(Panel):
         rows = min(max(self.roi_table.rowCount(), 1), 5)
         self.roi_table.setFixedHeight(header + rows * row_height + 4)
 
+    # -- data -------------------------------------------------------------------- #
+
     def apply_new_data(self, image_data: np.ndarray | None) -> None:
         self._data = self.coerce_input_data(image_data)
         self._h = int(self._data.shape[1])
@@ -614,6 +373,8 @@ class MaskEditorPanel(Panel):
         self._channel_visibility[idx] = bool(checked)
         self.update_view_image()
 
+    # -- thresholds ---------------------------------------------------------------- #
+
     def write_thresholds(self, low: int, high: int) -> None:
         """Push one pair of values into every threshold control at once.
 
@@ -678,6 +439,8 @@ class MaskEditorPanel(Panel):
         self._display_qimage = qimg.copy()
         self.image_item.setPixmap(QPixmap.fromImage(self._display_qimage))
         self.scene.setSceneRect(QRectF(self._display_qimage.rect()))
+
+    # -- ROIs ------------------------------------------------------------------- #
 
     def add_roi(self, points: list[tuple[float, float]]) -> None:
         if len(points) < 3:
@@ -779,6 +542,8 @@ class MaskEditorPanel(Panel):
         self._dirty = dirty
         self.dirty_state_changed.emit(dirty)
 
+    # -- generating and using the mask -------------------------------------------- #
+
     def generate_mask(self, rois: list[MaskRoi] | None = None) -> np.ndarray | None:
         """The mask *rois* would produce, defaulting to the drawn ones.
 
@@ -877,5 +642,3 @@ class MaskEditorPanel(Panel):
             return
         self.set_dirty(False)
         QMessageBox.information(self, "Mask Saved", f"Wrote a mask to {written}.")
-
-

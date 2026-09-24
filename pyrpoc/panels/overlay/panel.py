@@ -7,11 +7,11 @@ come from a bound dataset rather than an array the widget owns.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pyqtgraph as pg
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import (
     QCheckBox,
     QHBoxLayout,
@@ -26,7 +26,12 @@ from pyrpoc.core.streams import Image2D
 
 from ..base import Panel
 from ..components.colors import color_for_index
+from ..components.source_picker import SourcePicker
 from ..registry import panel_registry
+
+if TYPE_CHECKING:  # pragma: no cover
+    from pyrpoc.data.dataset import Dataset
+    from pyrpoc.data.library import DatasetLibrary
 
 
 def color_map_from_rgb(rgb: tuple[int, int, int]) -> pg.ColorMap:
@@ -50,6 +55,11 @@ class ChannelControl:
 
 @panel_registry.register("overlay")
 class OverlayPanel(Panel):
+    #: Declared but never emitted: this panel has no spatial meaning to
+    #: report, but Application.add_panel connects to it on every panel the
+    #: registry can produce, so it must exist.
+    point_picked = pyqtSignal(str, int, int)
+
     display_name = "2D Overlaid"
     renders = [Image2D]
 
@@ -59,6 +69,15 @@ class OverlayPanel(Panel):
         self._controls: list[ChannelControl] = []
         self._pending_channel_state: list[dict[str, Any]] = []
         self._suspend_lut_signal = False
+
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(4, 4, 4, 4)
+        outer.setSpacing(4)
+        self.source = SourcePicker(self.renders, self)
+        self.source.changed.connect(self.refresh)
+        outer.addWidget(self.source)
+        self.body = QWidget(self)
+        outer.addWidget(self.body, 1)
 
         root = QHBoxLayout(self.body)
         root.setContentsMargins(6, 6, 6, 6)
@@ -91,6 +110,18 @@ class OverlayPanel(Panel):
         splitter.setStretchFactor(0, 1)
         splitter.setStretchFactor(1, 0)
         splitter.setSizes([900, 300])
+
+    # -- binding --------------------------------------------------------------- #
+
+    def attach_library(self, library: "DatasetLibrary") -> None:
+        self.source.attach_library(library)
+
+    def dataset(self) -> "Dataset | None":
+        return self.source.current()
+
+    def set_picking(self, active: bool) -> None:
+        """No spatial meaning to report; a no-op, not a missing method."""
+        del active
 
     # -- rendering ------------------------------------------------------------ #
 

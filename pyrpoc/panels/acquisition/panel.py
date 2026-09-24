@@ -43,11 +43,15 @@ from pyrpoc.core.errors import ParameterError
 from pyrpoc.shell import catalog
 from pyrpoc.shell.param_form import ParamForm
 
+from ..base import Panel
+
 if TYPE_CHECKING:  # pragma: no cover
     from pyrpoc.shell.app import Application
 
 
-class AcquisitionPanel(QWidget):
+class AcquisitionPanel(Panel):
+    display_name = "Acquisition"
+
     def __init__(self, app: "Application", parent: QWidget | None = None):
         super().__init__(parent)
         self.app = app

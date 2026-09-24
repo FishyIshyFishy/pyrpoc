@@ -9,6 +9,7 @@ here, never the other way around.
 from .cards import BaseCardWidget, RemovableCardWidget
 from .colors import color_for_index
 from .range_slider import RangeSlider
+from .source_picker import SourcePicker
 from .table import ListTable
 
 __all__ = [
@@ -16,5 +17,6 @@ __all__ = [
     "RemovableCardWidget",
     "color_for_index",
     "RangeSlider",
+    "SourcePicker",
     "ListTable",
 ]
