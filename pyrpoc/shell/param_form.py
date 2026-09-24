@@ -1,15 +1,8 @@
 """A form generated from parameter blocks, writing back into them.
 
-The Qt half of v3.0's ``backend_utils/parameter_utils.py``. What that module did
-in one class per field -- definition, coercion, widget, get, set, connect -- is
-split: ``core/params.py`` holds the definition and coercion, this holds the
-widget.
-
 The blocks are authoritative. Every widget change writes straight back into the
 block instance, so nothing has to scrape the form at play time and anything
-other than the form can parameterise a run. Because a block instance is shared
-by every modality that declares it, that write is also how the value reaches
-the other modalities.
+other than the form can parameterise a run.
 
 One generator serves the acquisition form and the device panels both, so adding
 a field to a device config adds its row with no panel edit.
