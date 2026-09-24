@@ -1,5 +1,13 @@
 """The acquisition panel: pick a program, name it, set it up, run it.
 
+One of the three fixed panels -- always present, built once by
+shell/window.py, not offered under Add. See ``panels/__init__.py`` for how
+that differs from the four dataset-rendering panels. Reaches into shell/ for
+the program catalog and drives the run through ``app.bridge``, the same way
+shell/param_form.py already reaches into programs/ for the mask and point
+widgets -- unlike the four dataset-rendering panels, this one is not held to
+"must not import run/ or programs/".
+
 Replaces gui/main_widgets/acquisition_mgr/. The form is generated from the
 program's parameter model and writes back into it, so nothing scrapes widgets at
 play time -- collect_values is gone.
@@ -12,6 +20,8 @@ they belong next to the button that starts the run.
 """
 
 from __future__ import annotations
+
+from typing import TYPE_CHECKING
 
 from PyQt6.QtWidgets import (
     QCheckBox,
@@ -30,14 +40,15 @@ from PyQt6.QtWidgets import (
 )
 
 from pyrpoc.core.errors import ParameterError
+from pyrpoc.shell import catalog
+from pyrpoc.shell.param_form import ParamForm
 
-from . import catalog
-from .app import Application
-from .param_form import ParamForm
+if TYPE_CHECKING:  # pragma: no cover
+    from pyrpoc.shell.app import Application
 
 
-class LauncherPanel(QWidget):
-    def __init__(self, app: Application, parent: QWidget | None = None):
+class AcquisitionPanel(QWidget):
+    def __init__(self, app: "Application", parent: QWidget | None = None):
         super().__init__(parent)
         self.app = app
         self.form: ParamForm | None = None
@@ -231,7 +242,7 @@ class LauncherPanel(QWidget):
 
         Goes through ``start`` rather than ``app.start_run`` so the one place
         that reports a failed launch keeps reporting it. That matters more here
-        than on the play button: this path begins in a view's mouse handler, and
+        than on the play button: this path begins in a panel's mouse handler, and
         an exception escaping a Qt slot aborts the process instead of unwinding.
         """
         if self.form is not None:

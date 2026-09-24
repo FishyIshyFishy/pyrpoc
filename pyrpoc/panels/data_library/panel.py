@@ -1,4 +1,8 @@
-"""The data panel: every acquisition this session has open.
+"""The data library panel: every acquisition this session has open.
+
+One of the three fixed panels -- always present, built once by
+shell/window.py, not offered under Add. See ``panels/__init__.py`` for how
+that differs from the four dataset-rendering panels.
 
 The Data Library dock holds this and nothing else. The list of open displays
 shared it for a while, on the grounds that what exists and what is drawing it
@@ -17,22 +21,17 @@ This is not a safeguard -- nothing in this panel stops a run -- but it turns
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import (
-    QAbstractItemView,
-    QHBoxLayout,
-    QHeaderView,
-    QLabel,
-    QPushButton,
-    QTableWidget,
-    QTableWidgetItem,
-    QVBoxLayout,
-    QWidget,
-)
+from PyQt6.QtWidgets import QHBoxLayout, QHeaderView, QLabel, QPushButton, QVBoxLayout, QWidget
 
 from pyrpoc.data.dataset import Dataset
 
-from .app import Application
+from ..components.table import ListTable
+
+if TYPE_CHECKING:  # pragma: no cover
+    from pyrpoc.shell.app import Application
 
 TIME, NAME, STREAM, SIZE = range(4)
 COLUMNS = ["Time", "Name", "Stream", "Size"]
@@ -61,8 +60,8 @@ def format_size(nbytes: int) -> str:
     return f"{size:.1f} {UNITS[unit]}" if size < 10.0 else f"{size:.0f} {UNITS[unit]}"
 
 
-class DataPanel(QWidget):
-    def __init__(self, app: Application, parent: QWidget | None = None):
+class DataLibraryPanel(QWidget):
+    def __init__(self, app: "Application", parent: QWidget | None = None):
         super().__init__(parent)
         self.app = app
         #: Datasets in table order, so a row number maps back to a dataset.
@@ -80,21 +79,8 @@ class DataPanel(QWidget):
         self.empty_label.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
         root.addWidget(self.empty_label)
 
-        self.table = QTableWidget(0, len(COLUMNS), self)
-        self.table.setHorizontalHeaderLabels(COLUMNS)
-        self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-        self.table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
-        self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        # Grid lines and row numbers draw a box around every cell in a table
-        # whose whole job is to be skimmed. Alternating bands separate the rows
-        # with no ink of their own.
-        self.table.setShowGrid(False)
-        self.table.setAlternatingRowColors(True)
-        self.table.setWordWrap(False)
-        self.table.setCornerButtonEnabled(False)
-        self.table.verticalHeader().setVisible(False)
+        self.table = ListTable(COLUMNS, self)
         header = self.table.horizontalHeader()
-        header.setHighlightSections(False)
         for column in (TIME, STREAM, SIZE):
             header.setSectionResizeMode(column, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(NAME, QHeaderView.ResizeMode.Stretch)
@@ -133,10 +119,10 @@ class DataPanel(QWidget):
         self.rows = list(reversed(self.app.library.all()))
         self.table.setRowCount(len(self.rows))
         for row, dataset in enumerate(self.rows):
-            self.set_cell(row, TIME, dataset.started_time or "-")
-            self.set_cell(row, NAME, dataset.name)
-            self.set_cell(row, STREAM, dataset.stream)
-            self.set_cell(row, SIZE, format_size(dataset.nbytes), right=True)
+            self.table.set_cell(row, TIME, dataset.started_time or "-")
+            self.table.set_cell(row, NAME, dataset.name)
+            self.table.set_cell(row, STREAM, dataset.stream)
+            self.table.set_cell(row, SIZE, format_size(dataset.nbytes), right=True)
             self.table.item(row, NAME).setToolTip(f"{dataset.name} · {dataset.spec.name}")
 
         self.table.setVisible(bool(self.rows))
@@ -155,22 +141,13 @@ class DataPanel(QWidget):
         """
         for row, existing in enumerate(self.rows):
             if existing is dataset:
-                self.set_cell(row, SIZE, format_size(dataset.nbytes), right=True)
+                self.table.set_cell(row, SIZE, format_size(dataset.nbytes), right=True)
                 self.refresh_total()
                 return
 
     def refresh_total(self) -> None:
         total = sum(dataset.nbytes for dataset in self.rows)
         self.total_label.setText(f"{format_size(total)} in memory" if total else "")
-
-    def set_cell(self, row: int, column: int, text: str, *, right: bool = False) -> None:
-        item = self.table.item(row, column)
-        if item is None:
-            item = QTableWidgetItem()
-            self.table.setItem(row, column, item)
-        item.setText(text)
-        if right:
-            item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
 
     # -- the selection -------------------------------------------------------- #
 

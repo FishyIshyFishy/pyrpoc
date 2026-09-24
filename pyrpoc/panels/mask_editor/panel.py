@@ -1,15 +1,15 @@
 """Authoring a mask from an acquired dataset.
 
-Was ``gui/main_widgets/opto_control_mgr/mask_editor.py``. It is a view now: it
+Was ``gui/main_widgets/opto_control_mgr/mask_editor.py``. It is a panel now: it
 reads a bound dataset rather than reaching into a display widget's
 ``_data_chw``.
 
 A finished mask leaves by being added to the dataset library as a ``Mask2D``
-entry, which is the whole of how it reaches a modality. This view does not know
-what a modality is, and the Modulation parameter that consumes masks does not
-know this view exists -- it asks the library for entries matching ``Mask2D`` the
-same way every view asks for its own sources. The alternative, and the reason
-this is worth stating, was for one of the two to name the other.
+entry, which is the whole of how it reaches a modality. This panel does not
+know what a modality is, and the Modulation parameter that consumes masks does
+not know this panel exists -- it asks the library for entries matching
+``Mask2D`` the same way every panel asks for its own sources. The alternative,
+and the reason this is worth stating, was for one of the two to name the other.
 
 ``Save mask...`` stays, and is now only what it says: writing a PNG for
 something outside this application to read. It is not how a mask gets used.
@@ -58,9 +58,9 @@ from pyrpoc.data.dataset import Dataset, Provenance
 from pyrpoc.data.io import utc_now
 from pyrpoc.data.transforms import normalize_channels
 
-from .base import View
-from .range_slider import RangeSlider
-from .registry import view_registry
+from ..base import Panel
+from ..components.range_slider import RangeSlider
+from ..registry import panel_registry
 
 
 def write_mask(path: Path | str, mask: np.ndarray) -> Path:
@@ -96,7 +96,7 @@ class MaskRoi:
 
 
 class MaskImageView(QGraphicsView):
-    def __init__(self, scene: QGraphicsScene, editor: "MaskEditorView"):
+    def __init__(self, scene: QGraphicsScene, editor: "MaskEditorPanel"):
         super().__init__(scene)
         self.gscene: QGraphicsScene = scene
         self.editor = editor
@@ -263,7 +263,7 @@ class RoiThresholdDialog(QDialog):
     preview runs against a substituted copy and Cancel needs no undo.
     """
 
-    def __init__(self, editor: "MaskEditorView", index: int):
+    def __init__(self, editor: "MaskEditorPanel", index: int):
         super().__init__(editor)
         self.editor = editor
         self.index = index
@@ -360,8 +360,8 @@ class RoiThresholdDialog(QDialog):
         self.preview_label.set_source(QPixmap.fromImage(qimg))
 
 
-@view_registry.register("mask_editor")
-class MaskEditorView(View):
+@panel_registry.register("mask_editor")
+class MaskEditorPanel(Panel):
     """Draw thresholded polygon ROIs over an acquired image and file the mask."""
 
     display_name = "Mask Editor"
@@ -395,7 +395,7 @@ class MaskEditorView(View):
 
     def build_ui(self) -> None:
         # A single column. The ROI table used to be a second column beside the
-        # image, which sized it to the tallest thing in the view rather than to
+        # image, which sized it to the tallest thing in the panel rather than to
         # the handful of rows it holds -- mostly empty, and it took width the
         # image wanted.
         column = QVBoxLayout(self.body)
@@ -831,7 +831,7 @@ class MaskEditorView(View):
         library = self.library()
         if library is None:
             QMessageBox.warning(
-                self, "No Library", "This view is not attached to the open data yet."
+                self, "No Library", "This panel is not attached to the open data yet."
             )
             return
         mask = self.generate_mask()

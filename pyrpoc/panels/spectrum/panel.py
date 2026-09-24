@@ -1,6 +1,6 @@
 """One curve per channel of a 1-D spectrum.
 
-The simplest view in the folder, and deliberately so: a spectrum needs no LUT,
+The simplest panel in the folder, and deliberately so: a spectrum needs no LUT,
 no autoscale checkbox and no per-channel tile, because the axes already carry
 the numbers a histogram widget exists to recover for an image.
 
@@ -20,27 +20,13 @@ from PyQt6.QtWidgets import QVBoxLayout, QWidget
 
 from pyrpoc.core.streams import Spectrum1D
 
-from .base import View
-from .registry import view_registry
+from ..base import Panel
+from ..components.colors import color_for_index
+from ..registry import panel_registry
 
 
-def color_for_index(index: int) -> tuple[int, int, int]:
-    """Same palette as the overlay view, so a channel keeps its colour."""
-    palette = [
-        (255, 80, 80),
-        (80, 220, 120),
-        (70, 150, 255),
-        (255, 200, 70),
-        (190, 110, 255),
-        (70, 230, 230),
-        (255, 120, 210),
-        (180, 180, 180),
-    ]
-    return palette[index % len(palette)]
-
-
-@view_registry.register("spectrum")
-class SpectrumView(View):
+@panel_registry.register("spectrum")
+class SpectrumPanel(Panel):
     display_name = "Spectrum"
     renders = [Spectrum1D]
 

@@ -1,11 +1,20 @@
 """The devices panel: what is configured, and how it is wired.
 
+One of the three fixed panels -- always present, built once by
+shell/window.py, not offered under Add. See ``panels/__init__.py`` for how
+that differs from the four dataset-rendering panels.
+
+Named after ``pyrpoc.devices``, the driver package it lists -- not to be
+confused with it. This is the panel that shows and edits that inventory.
+
 Replaces gui/main_widgets/instrument_mgr/. Each card's body is a form generated
 from the device's own config plus whatever extra controls the device supplies
 from its panel.py -- so adding a config field adds its row with no edit here.
 """
 
 from __future__ import annotations
+
+from typing import TYPE_CHECKING
 
 from PyQt6.QtWidgets import (
     QComboBox,
@@ -19,14 +28,16 @@ from PyQt6.QtWidgets import (
 
 from pyrpoc.devices.base import Device
 from pyrpoc.devices.registry import device_registry
+from pyrpoc.shell.param_form import ParamForm
 
-from .app import Application
-from .cards import RemovableCardWidget
-from .param_form import ParamForm
+from ..components.cards import RemovableCardWidget
+
+if TYPE_CHECKING:  # pragma: no cover
+    from pyrpoc.shell.app import Application
 
 
 class DevicesPanel(QWidget):
-    def __init__(self, app: Application, parent: QWidget | None = None):
+    def __init__(self, app: "Application", parent: QWidget | None = None):
         super().__init__(parent)
         self.app = app
         self.cards: dict[Device, RemovableCardWidget] = {}

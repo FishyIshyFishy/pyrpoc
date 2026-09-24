@@ -3,11 +3,11 @@
 Ignorant parts still have to be connected, and the only choice is whether the
 connecting code lives in one identifiable place or smeared across the parts
 meant to stay ignorant. This is that place. When it gets fat, that is a signal
-to examine, not something to hide by pushing wiring back into views/ or
+to examine, not something to hide by pushing wiring back into panels/ or
 programs/.
 
 It replaces AppState plus the five services: instrument -> devices here,
-display -> views here, modality -> run/runner, interpreter -> the dataset
+display -> panels here, modality -> run/runner, interpreter -> the dataset
 notification below, session -> session/.
 """
 
@@ -33,7 +33,7 @@ class Application(QObject):
     """What exists, how it is configured, and what is running."""
 
     devices_changed = pyqtSignal()
-    views_changed = pyqtSignal()
+    panels_changed = pyqtSignal()
     program_selected = pyqtSignal(str)
     params_changed = pyqtSignal()
     save_changed = pyqtSignal()
@@ -46,7 +46,11 @@ class Application(QObject):
     def __init__(self, parent: QObject | None = None):
         super().__init__(parent)
         self.devices: list[Device] = []
-        self.views: list[Any] = []
+        #: The added panels -- image_2d, overlay, mask_editor, spectrum
+        #: instances the Add menu has created. The three fixed panels
+        #: (acquisition, devices, data library) are not in here: they are
+        #: built once by shell/window.py and never removed.
+        self.panels: list[Any] = []
         self.library = DatasetLibrary()
         self.bridge = RunBridge(self.library, self)
 
@@ -125,13 +129,13 @@ class Application(QObject):
     # -- picking ------------------------------------------------------------ #
 
     def set_pick_armed(self, active: bool) -> None:
-        """Turn point picking on or off across every view.
+        """Turn point picking on or off across every panel.
 
         Told to all of them unconditionally rather than to a filtered set:
-        ``View.set_picking`` is a no-op by default, so a view with no spatial
-        meaning needs no capability flag and this needs no branch. One bad view
-        must not leave the rest in a different state from the flag, which is why
-        the loop swallows the way ``on_dataset_changed`` does.
+        ``Panel.set_picking`` is a no-op by default, so a panel with no spatial
+        meaning needs no capability flag and this needs no branch. One bad
+        panel must not leave the rest in a different state from the flag,
+        which is why the loop swallows the way ``on_dataset_changed`` does.
 
         Never emits ``state_changed``. That signal drives the autosave, and this
         is the one piece of state that must not survive a relaunch.
@@ -140,15 +144,15 @@ class Application(QObject):
         if active == self.pick_armed:
             return
         self.pick_armed = active
-        for view in list(self.views):
+        for panel in list(self.panels):
             try:
-                view.set_picking(active)
-            except Exception as exc:  # noqa: BLE001 - one bad view must not stick
-                view.last_error = str(exc)
+                panel.set_picking(active)
+            except Exception as exc:  # noqa: BLE001 - one bad panel must not stick
+                panel.last_error = str(exc)
         self.pick_armed_changed.emit(active)
 
     def on_point_picked(self, dataset_id: str, x: int, y: int) -> None:
-        """A display reported a pixel. Turn it into volts and acquire there.
+        """A panel reported a pixel. Turn it into volts and acquire there.
 
         Disarming happens first, before anything that can fail, so no path out
         of here leaves a live cursor behind.
@@ -208,45 +212,46 @@ class Application(QObject):
         self.devices.clear()
         self.devices_changed.emit()
 
-    # -- views -------------------------------------------------------------- #
+    # -- panels --------------------------------------------------------------- #
 
     def on_dataset_changed(self, dataset) -> None:
-        """Refresh every view showing this dataset.
+        """Refresh every panel showing this dataset.
 
-        Unconditionally, because a view exists exactly as long as its dock
-        does: closing one deletes it, so there is no open-but-unseen view to
-        skip redrawing.
+        Unconditionally, because an added panel exists exactly as long as its
+        dock does: closing one deletes it, so there is no open-but-unseen
+        panel to skip redrawing.
         """
-        for view in list(self.views):
-            if view.dataset() is not dataset:
+        for panel in list(self.panels):
+            if panel.dataset() is not dataset:
                 continue
             try:
-                view.refresh()
-            except Exception as exc:  # noqa: BLE001 - one bad view must not stop a run
-                view.last_error = str(exc)
+                panel.refresh()
+            except Exception as exc:  # noqa: BLE001 - one bad panel must not stop a run
+                panel.last_error = str(exc)
 
-    def add_view(self, view: Any) -> Any:
-        view.attach_library(self.library)
-        #: Connected for every view, including those that never emit. A view
-        #: added while picking is on has to arrive already picking, which is why
-        #: the state is pushed here rather than only from ``set_pick_armed``.
-        view.point_picked.connect(self.on_point_picked)
-        view.set_picking(self.pick_armed)
-        self.views.append(view)
-        self.views_changed.emit()
+    def add_panel(self, panel: Any) -> Any:
+        panel.attach_library(self.library)
+        #: Connected for every panel, including those that never emit. A panel
+        #: added while picking is on has to arrive already picking, which is
+        #: why the state is pushed here rather than only from
+        #: ``set_pick_armed``.
+        panel.point_picked.connect(self.on_point_picked)
+        panel.set_picking(self.pick_armed)
+        self.panels.append(panel)
+        self.panels_changed.emit()
         self.state_changed.emit()
-        return view
+        return panel
 
-    def remove_view(self, view: Any) -> None:
-        if view not in self.views:
+    def remove_panel(self, panel: Any) -> None:
+        if panel not in self.panels:
             return
-        self.views.remove(view)
-        self.views_changed.emit()
+        self.panels.remove(panel)
+        self.panels_changed.emit()
         self.state_changed.emit()
 
-    def clear_views(self) -> None:
-        for view in list(self.views):
-            self.remove_view(view)
+    def clear_panels(self) -> None:
+        for panel in list(self.panels):
+            self.remove_panel(panel)
 
     # -- running ------------------------------------------------------------ #
 

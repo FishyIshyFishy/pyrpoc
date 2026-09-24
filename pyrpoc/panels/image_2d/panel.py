@@ -26,8 +26,8 @@ from PyQt6.QtCore import Qt
 
 from pyrpoc.core.streams import Image2D
 
-from .base import View
-from .registry import view_registry
+from ..base import Panel
+from ..registry import panel_registry
 
 
 @dataclass
@@ -41,8 +41,8 @@ class ChannelTile:
     max_val: float = 1.0
 
 
-@view_registry.register("image_2d")
-class Image2DView(View):
+@panel_registry.register("image_2d")
+class Image2DPanel(Panel):
     display_name = "2D Tiled"
     renders = [Image2D]
 
@@ -195,7 +195,7 @@ class Image2DView(View):
             self.apply_pick_cursor(tile)
 
     def apply_pick_cursor(self, tile: ChannelTile) -> None:
-        """Crosshair over the image itself, not the whole view.
+        """Crosshair over the image itself, not the whole panel.
 
         The cursor is set on the plot rather than on this widget so the source
         picker and the tile name fields keep a normal pointer -- the crosshair

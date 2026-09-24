@@ -5,7 +5,9 @@ named; one slider with two handles says what they *do* -- everything outside
 the span is excluded, and that is legible without reading a label, because the
 groove is only accented between the handles.
 
-It lives in views/ rather than shell/ because views/ may not import shell/.
+A generic Qt building block rather than something specific to the mask editor
+-- its only user today -- so it lives in components/ with the cards and the
+list table, not inside mask_editor/.
 """
 
 from __future__ import annotations

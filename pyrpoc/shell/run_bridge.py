@@ -6,7 +6,7 @@ does it by subscribing to each dataset the runner creates and re-emitting as Qt
 signals -- emitting from any thread is safe, and Qt queues delivery to receivers
 living in the GUI thread. Same guarantee v3.0's ``data_emitted`` pyqtSignal gave.
 
-This is the only subscriber to a dataset's change notification. No view
+This is the only subscriber to a dataset's change notification. No panel
 subscribes directly, because ``Dataset.append`` runs on the worker thread.
 """
 

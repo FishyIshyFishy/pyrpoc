@@ -1,13 +1,19 @@
-"""What a view is: something that renders datasets and emits interaction events.
+"""What a dataset-rendering panel is: renders datasets, emits interaction events.
 
-A view holds no arrays. ``self._dataset`` plus ``dataset.latest()`` replaces
+This is the base for the four panels that render a dataset -- image_2d,
+overlay, mask_editor, spectrum. It is not (yet) the base for devices,
+data_library or acquisition: those show and drive application state rather
+than a dataset, and unifying all seven under one lifecycle is future work.
+See ``panels/__init__.py`` for how the two kinds currently differ.
+
+A panel holds no arrays. ``self._dataset`` plus ``dataset.latest()`` replaces
 ``self._data_chw``, which in v3.0 *was* the data -- closing a display destroyed
 it, and two displays over one run held two drifting copies.
 
-Every view gets a source picker, because with data outliving its renderer there
-is a real question of which run is being shown. "Latest" follows the newest
-matching dataset, which reproduces v3.0's implicit behaviour of pushing the
-current run at whatever was open.
+Every panel gets a source picker, because with data outliving its renderer
+there is a real question of which run is being shown. "Latest" follows the
+newest matching dataset, which reproduces v3.0's implicit behaviour of pushing
+the current run at whatever was open.
 """
 
 from __future__ import annotations
@@ -26,27 +32,27 @@ if TYPE_CHECKING:  # pragma: no cover
 
 
 def make_instance_id(prefix: str) -> str:
-    token = (prefix or "view").strip().lower()
+    token = (prefix or "panel").strip().lower()
     safe = "".join(ch if ch.isalnum() or ch in {"_", "-"} else "_" for ch in token)
-    return f"{safe or 'view'}-{uuid4().hex[:12]}"
+    return f"{safe or 'panel'}-{uuid4().hex[:12]}"
 
 
-class View(QWidget):
+class Panel(QWidget):
     """Renders one or more streams from datasets. Never references a program."""
 
     #: The user picked a position in the data: dataset id, then pixel x and y.
     #: Pixel coordinates and an id are the whole payload, because they are the
-    #: only things a view actually knows -- what a pixel means in volts depends
+    #: only things a panel actually knows -- what a pixel means in volts depends
     #: on the scan geometry, which belongs to the dataset, not to the renderer.
-    #: Emitted unconditionally by views that have a spatial meaning, the same
-    #: way the source combo emits on a change; a view holds no armed state and
+    #: Emitted unconditionally by panels that have a spatial meaning, the same
+    #: way the source combo emits on a change; a panel holds no armed state and
     #: does not know whether anything is listening.
     point_picked = pyqtSignal(str, int, int)
 
-    display_name: str = "View"
-    registry_key: str = "view"
+    display_name: str = "Panel"
+    registry_key: str = "panel"
 
-    #: Shape contracts this view can render. A dataset whose spec is not here
+    #: Shape contracts this panel can render. A dataset whose spec is not here
     #: cannot be bound to it.
     renders: list[type[Stream]] = []
 
@@ -134,9 +140,9 @@ class View(QWidget):
         return self._dataset
 
     def library(self) -> "DatasetLibrary | None":
-        """The open datasets, for a view that publishes as well as renders.
+        """The open datasets, for a panel that publishes as well as renders.
 
-        The read counterpart of ``attach_library``. A view that authors data --
+        The read counterpart of ``attach_library``. A panel that authors data --
         the mask editor draws one -- files it here rather than handing it to
         whatever will consume it, which is what keeps it from knowing what that
         is.
@@ -164,7 +170,7 @@ class View(QWidget):
         """Offer to pick a position in the data, or stop offering.
 
         A no-op default rather than a capability flag the shell branches on, so
-        a view with no spatial meaning implements nothing and its author never
+        a panel with no spatial meaning implements nothing and its author never
         learns this exists. The same shape as ``configure`` and the persistence
         hooks above: optional behaviour is an overridable no-op here, not a
         negotiation.

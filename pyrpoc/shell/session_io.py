@@ -1,8 +1,14 @@
 """Capturing and applying a session: the wiring, which belongs to the shell.
 
-``session/`` knows the file format. It does not know what a device or a view is,
-and it must not import Qt. Turning live objects into a SessionState and back is
-connection logic, so it lives here.
+``session/`` knows the file format. It does not know what a device or a panel
+is, and it must not import Qt. Turning live objects into a SessionState and
+back is connection logic, so it lives here.
+
+``SessionState.views``/``ViewState`` keep their name from before panels/ was
+panels/: it is the on-disk field name, and renaming it would reset every
+saved session's added-panel layout for no functional gain. It holds the
+added panels only -- image_2d, overlay, mask_editor, spectrum -- the same set
+``Application.panels`` does; the three fixed panels are not saved here at all.
 
 Replaces services/session_coordinator.py.
 """
@@ -14,7 +20,7 @@ from pathlib import Path
 from PyQt6.QtCore import QObject, QTimer
 
 from pyrpoc.devices.registry import device_registry
-from pyrpoc.views.registry import view_registry
+from pyrpoc.panels.registry import panel_registry
 from pyrpoc.session.state import DeviceState, SaveState, SessionState, ViewState
 from pyrpoc.session.store import SessionStore
 
@@ -32,18 +38,18 @@ def capture(app: Application, window=None) -> SessionState:
         )
         for device in app.devices
     ]
-    views = [
+    panels = [
         ViewState(
-            key=view.type_key,
-            instance_id=str(getattr(view, "instance_id", "")),
-            user_label=getattr(view, "user_label", None),
-            state=view.export_persistence_state(),
+            key=panel.type_key,
+            instance_id=str(getattr(panel, "instance_id", "")),
+            user_label=getattr(panel, "user_label", None),
+            state=panel.export_persistence_state(),
         )
-        for view in app.views
+        for panel in app.panels
     ]
     return SessionState(
         devices=devices,
-        views=views,
+        views=panels,
         selected_program=app.selected_program,
         param_blocks=app.params_state(),
         save=SaveState(
@@ -59,9 +65,9 @@ def apply(state: SessionState, app: Application, window=None) -> None:
     """Rebuild runtime state from a saved session.
 
     Anything that cannot be recreated -- a device type that no longer exists, a
-    view whose class was removed -- is skipped rather than blocking the launch.
+    panel whose class was removed -- is skipped rather than blocking the launch.
     """
-    app.clear_views()
+    app.clear_panels()
     app.clear_devices()
 
     for row in state.devices:
@@ -74,12 +80,12 @@ def apply(state: SessionState, app: Application, window=None) -> None:
 
     for row in state.views:
         try:
-            view = view_registry.get(row.key)()
+            panel = panel_registry.get(row.key)()
             if row.instance_id:
-                view.instance_id = row.instance_id
-            view.user_label = row.user_label
-            view.import_persistence_state(row.state)
-            app.add_view(view)
+                panel.instance_id = row.instance_id
+            panel.user_label = row.user_label
+            panel.import_persistence_state(row.state)
+            app.add_panel(panel)
         except Exception:
             continue
 
@@ -131,7 +137,7 @@ class Autosave(QObject):
         self.timer.timeout.connect(self.save_now)
 
         app.state_changed.connect(self.schedule)
-        app.views_changed.connect(self.schedule)
+        app.panels_changed.connect(self.schedule)
         app.devices_changed.connect(self.schedule)
 
     def schedule(self) -> None:
@@ -159,7 +165,7 @@ class Autosave(QObject):
     def reset(self) -> None:
         self.suspended = True
         try:
-            self.app.clear_views()
+            self.app.clear_panels()
             self.app.clear_devices()
             self.app.blocks.clear()
             self.app.set_save(name=SaveState().name, directory="", enabled=False)

@@ -24,22 +24,9 @@ from PyQt6.QtWidgets import (
 
 from pyrpoc.core.streams import Image2D
 
-from .base import View
-from .registry import view_registry
-
-
-def color_for_index(index: int) -> tuple[int, int, int]:
-    palette = [
-        (255, 80, 80),
-        (80, 220, 120),
-        (70, 150, 255),
-        (255, 200, 70),
-        (190, 110, 255),
-        (70, 230, 230),
-        (255, 120, 210),
-        (180, 180, 180),
-    ]
-    return palette[index % len(palette)]
+from ..base import Panel
+from ..components.colors import color_for_index
+from ..registry import panel_registry
 
 
 def color_map_from_rgb(rgb: tuple[int, int, int]) -> pg.ColorMap:
@@ -61,8 +48,8 @@ class ChannelControl:
     max_val: float = 1.0
 
 
-@view_registry.register("overlay")
-class OverlayView(View):
+@panel_registry.register("overlay")
+class OverlayPanel(Panel):
     display_name = "2D Overlaid"
     renders = [Image2D]
 
