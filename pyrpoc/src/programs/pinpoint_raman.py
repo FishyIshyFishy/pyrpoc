@@ -1,16 +1,20 @@
 """Pinpoint Raman: park the galvos at one point and take a spectrum there.
 
 The point comes from ``PointGroup``, typed or set by an ``ArmAndRun`` runner
-from a clicked pixel; ``run`` does not know a display exists. The spectrometer
-is synthetic and the parking a stub, so this runs with no card. A spectrum is a
-function of (seed, point, frame index), so re-clicking a pixel reproduces it.
+from a clicked pixel; ``run`` does not know a display exists. The parking is
+real and is left in place when the run ends, so the beam stays on the spot for
+a spectrometer read by external software. The spectrum published here is
+synthetic until there is a CCD device: a function of (seed, point, frame
+index), so re-clicking a pixel reproduces it.
 """
 
 from __future__ import annotations
 
+import nidaqmx as nx
+import nidaqmx.errors
 import numpy as np
 
-from pyrpoc.src.devices.daq.device import DAQ
+from pyrpoc.src.devices.daq.device import DAQ, DaqError
 from pyrpoc.src.devices.galvo.device import Galvo
 from pyrpoc.src.structs.data import Spectrum1D
 from pyrpoc.src.structs.params import BlockMap
@@ -27,13 +31,21 @@ NOISE_STREAM = 0x5EED
 
 
 def park_galvos(daq: DAQ, galvo: Galvo, point: Point) -> None:
-    """Hold the galvos at one position. Not implemented yet.
+    """Move the galvos to ``point`` and leave them there.
 
-    It will write ``point.fast_v``/``slow_v`` on the galvo's AO channels as an
-    un-clocked task, held for the spectrum. It exists with its real signature
-    because it is the one place in this file that will touch hardware.
+    An un-clocked task, so the write is one on-demand sample per channel.
+    Closing the task frees the AO channels for the next scan; the card holds
+    its last written voltage, so the mirrors stay parked after the run ends.
     """
-    del daq, galvo, point
+    device_name = daq.config.device_name
+    try:
+        with nx.Task() as task:
+            task.ao_channels.add_ao_voltage_chan(f"{device_name}/ao{galvo.config.fast_ao}")
+            task.ao_channels.add_ao_voltage_chan(f"{device_name}/ao{galvo.config.slow_ao}")
+            # One sample per channel, so write() auto-starts.
+            task.write([point.fast_v, point.slow_v])
+    except nidaqmx.errors.Error as exc:
+        raise DaqError(f"could not park the galvos: {exc}") from exc
 
 
 def synthetic_spectrum(spec: SpectrumGroup, point: Point, *, frame_index: int) -> np.ndarray:
