@@ -1,7 +1,7 @@
 """Confocal: raster the galvo, read the analog inputs, publish a frame.
 
 The program owns its loop and its hardware. There is no base class supplying
-``while not should_stop``, no saving (the runner reads ``emits`` and creates
+``while not should_stop``, no saving (the executor reads ``emits`` and creates
 datasets with a save policy before ``run`` is called), and no frame counting.
 
 The scan code lives here rather than in a shared operations folder: it is

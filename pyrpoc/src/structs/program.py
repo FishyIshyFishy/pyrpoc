@@ -2,7 +2,7 @@
 
 A program is something with a ``run()`` that drives hardware and emits data over
 time. Its three attributes are not a declaration format; they are the three
-things the runner must know in order to start it. Nothing about labels, menus or
+things the executor must know in order to start it. Nothing about labels, menus or
 how it was launched -- a program should not know it is in a dropdown.
 """
 

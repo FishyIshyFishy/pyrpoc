@@ -1,8 +1,8 @@
-"""Qt in front of the runner.
+"""Qt in front of the executor.
 
-``runner.py`` is pure Python so it can be tested with no QApplication. That
+``executor.py`` is pure Python so it can be tested with no QApplication. That
 leaves one job here: getting worker-thread events onto the GUI thread. This
-does it by subscribing to each dataset the runner creates and re-emitting as Qt
+does it by subscribing to each dataset the executor creates and re-emitting as Qt
 signals -- emitting from any thread is safe, and Qt queues delivery to receivers
 living in the GUI thread. Same guarantee v3.0's ``data_emitted`` pyqtSignal gave.
 
@@ -21,7 +21,7 @@ from pyrpoc.src.structs.device import Device, MissingDevice
 from pyrpoc.src.structs.params import ParameterError
 
 from .library import DataLibrary
-from .runner import Runner
+from .executor import Executor
 from .saving import SaveTarget
 
 
@@ -36,12 +36,12 @@ class RunBridge(QObject):
     def __init__(self, library: DataLibrary | None = None, parent: QObject | None = None):
         super().__init__(parent)
         self.library = library if library is not None else DataLibrary()
-        self.runner = Runner(self.library)
+        self.executor = Executor(self.library)
         self._subscribed: list[Dataset] = []
 
     @property
     def is_running(self) -> bool:
-        return self.runner.is_running
+        return self.executor.is_running
 
     def start(
         self,
@@ -55,7 +55,7 @@ class RunBridge(QObject):
     ):
         """Start a run. Raises MissingDevice or ParameterError before anything begins."""
         try:
-            handle = self.runner.start(
+            handle = self.executor.start(
                 program,
                 blocks,
                 devices,
@@ -74,7 +74,7 @@ class RunBridge(QObject):
         return handle
 
     def stop(self) -> None:
-        self.runner.stop()
+        self.executor.stop()
 
     def on_dataset(self, dataset: Dataset) -> None:
         dataset.subscribe(self.on_dataset_changed)

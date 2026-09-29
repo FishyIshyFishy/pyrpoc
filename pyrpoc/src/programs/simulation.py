@@ -2,7 +2,7 @@
 
 ``uses = []``, so it runs on any machine: no DAQ, no galvo, no tagger, nothing
 to claim. Everything above the hardware boundary is the real thing -- the
-runner's thread, dataset creation from ``emits``, publishing, the save policy,
+executor's thread, dataset creation from ``emits``, publishing, the save policy,
 views and their source picker -- so this is how you exercise the software
 itself, and how the UI can be looked at away from the rig.
 

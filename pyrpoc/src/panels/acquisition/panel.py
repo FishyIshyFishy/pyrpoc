@@ -201,7 +201,7 @@ class AcquisitionPanel(Panel):
         """What has to be supplied before a run can start.
 
         The empty name is in here rather than left to fail at play time: the
-        runner raises on it, and a play button that throws is worse than one
+        executor raises on it, and a play button that throws is worse than one
         that says why it is grey.
         """
         key = self.app.selected_program

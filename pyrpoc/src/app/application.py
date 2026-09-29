@@ -7,7 +7,7 @@ to examine, not something to hide by pushing wiring back into panels/ or
 programs/.
 
 It replaces AppState plus the five services: instrument -> devices here,
-display -> panels here, modality -> runner.py, interpreter -> the dataset
+display -> panels here, modality -> executor.py, interpreter -> the dataset
 notification below, session -> session.py.
 """
 

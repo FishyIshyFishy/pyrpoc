@@ -3,7 +3,7 @@
 Pure Python, no Qt, so a run can be driven with no QApplication at all. The
 thread marshalling the GUI needs lives in ``run_bridge.py``.
 
-The runner never knows what any program does; it only knows how to execute one.
+The executor never knows what any program does; it only knows how to execute one.
 What it does own is what a program deliberately does not: creating a dataset per
 declared output, and attaching a save policy. It counts nothing -- how much data
 a run produces is the program's business, and no layer above one has a reason to
@@ -29,7 +29,7 @@ from .saving import RunSaver, SaveTarget
 def default_program_key(program: Program) -> str:
     """``SplitConfocal`` -> ``split_confocal``, ``FLIM`` -> ``flim``.
 
-    The runner does not import programs/, so it cannot look a key up in the
+    The executor does not import programs/, so it cannot look a key up in the
     program registry. The application passes the key explicitly; this is the
     fallback for a program started without one.
     """
@@ -46,7 +46,7 @@ class RunHandle:
         self.thread = thread
 
 
-class Runner:
+class Executor:
     def __init__(self, library: DataLibrary):
         self.library = library
         self._thread: threading.Thread | None = None
@@ -145,7 +145,7 @@ class Runner:
 
         Saving arrives as its own argument rather than being dug out of the
         parameter model. Reaching through the model meant every one of them had
-        to declare a group it never read, and the runner had to guess whether
+        to declare a group it never read, and the executor had to guess whether
         the one in front of it had. How much to acquire left by the same door:
         it is an imaging parameter, so it reaches the metadata inside
         ``parameters`` with the geometry, and nothing has to pull it back out

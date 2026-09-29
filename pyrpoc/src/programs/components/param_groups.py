@@ -233,7 +233,7 @@ class PointField(Field):
     """A galvo position, with a widget that can pick one off a display.
 
     ``coerce`` has to be idempotent on a live ``Point``: the form coerces what
-    its widget hands back, and ``Runner.start`` re-coerces every held value
+    its widget hands back, and ``Executor.start`` re-coerces every held value
     through ``BlockStore.validate`` before a run begins. ``decode`` is inherited
     -- ``Field.decode`` is ``coerce``, and ``from_dict`` takes both forms.
     """

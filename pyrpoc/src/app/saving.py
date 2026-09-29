@@ -43,10 +43,10 @@ class SaveTarget:
     """What an acquisition is called, where it goes, and whether it goes.
 
     Not a parameter group. Every program declared an identical ``SaveGroup``
-    and the runner reached past the parameter model to find it, which made
+    and the executor reached past the parameter model to find it, which made
     saving look like a decision a program makes. It is not: nothing about
     where bytes land depends on what produced them, so this travels as its own
-    argument to the runner and lives once per session rather than once per
+    argument to the executor and lives once per session rather than once per
     program.
 
     ``name`` is a bare filename and means something with saving off -- it is
@@ -199,7 +199,7 @@ class RunSaver:
     def finalize(self, error: Exception | None) -> None:
         """Rewrite the metadata now that every writer knows its paths.
 
-        ``Runner.worker`` finalizes every dataset before it finalizes the
+        ``Executor.worker`` finalizes every dataset before it finalizes the
         saver, so ``tiff_paths`` and ``auxiliary_paths`` are both complete by
         the time this runs.
         """

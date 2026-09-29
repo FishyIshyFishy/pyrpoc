@@ -95,7 +95,7 @@ class MaskSourceCombo(QComboBox):
 
     Repopulated in ``showPopup`` rather than from a library subscription, and
     that is deliberate. The form is rebuilt on every modality change, and the
-    library notifies its subscribers from inside ``Runner.start``; a stale
+    library notifies its subscribers from inside ``Executor.start``; a stale
     callback into a deleted row would raise there, taking out the run that was
     starting. A list built when it is opened cannot go stale.
     """

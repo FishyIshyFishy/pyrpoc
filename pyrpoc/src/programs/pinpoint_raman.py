@@ -8,7 +8,7 @@ needed no new concept to gain one.
 
 The spectrometer is synthetic for now and the parking is a documented stub, so
 this runs on a laptop with no card in it. What is real is everything above the
-hardware boundary: claims over the galvo, the runner's thread, dataset creation
+hardware boundary: claims over the galvo, the executor's thread, dataset creation
 from ``emits``, publishing, the save policy and the spectrum view.
 
 Deterministic by construction, like ``simulation.py``: a spectrum is a function
