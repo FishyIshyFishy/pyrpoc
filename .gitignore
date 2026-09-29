@@ -17,3 +17,4 @@ dist/
 build/
 
 .vscode/
+.python-version
