@@ -10,8 +10,8 @@ Device.panel() so the headless layers stay importable without Qt.
 
 from .base import Device
 from .registry import device_registry
-from .daq.device import DAQ
+from .daq.device import DAQ, DaqError
 from .galvo.device import Galvo
-from .time_tagger.device import TimeTagger
+from .time_tagger.device import TaggerError, TimeTagger
 
-__all__ = ["Device", "device_registry", "DAQ", "Galvo", "TimeTagger"]
+__all__ = ["Device", "device_registry", "DAQ", "DaqError", "Galvo", "TaggerError", "TimeTagger"]

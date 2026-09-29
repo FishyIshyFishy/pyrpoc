@@ -17,13 +17,16 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from pyrpoc.structs import params as P
-from pyrpoc.structs.errors import TaggerError
 
-from ..base import Device
+from ..base import Device, DeviceError
 from ..registry import device_registry
 
 if TYPE_CHECKING:  # pragma: no cover
     from PyQt6.QtWidgets import QWidget
+
+
+class TaggerError(DeviceError):
+    """A TimeTagger operation failed."""
 
 
 @dataclass

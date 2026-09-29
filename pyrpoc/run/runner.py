@@ -17,7 +17,7 @@ import threading
 from typing import Any, Callable
 
 from pyrpoc.structs import params as P
-from pyrpoc.structs.errors import Cancelled
+from .program import Cancelled
 from pyrpoc.data.dataset import Dataset, Provenance
 from pyrpoc.data.io import RunSaver, SaveTarget, utc_now
 from pyrpoc.data.library import DatasetLibrary

@@ -21,9 +21,8 @@ import numpy as np
 import nidaqmx as nx
 from nidaqmx.constants import AcquisitionType, Signal
 
-from pyrpoc.structs.errors import DaqError
 from pyrpoc.structs.data import Cube3D, Image2D
-from pyrpoc.devices import DAQ, Galvo, TimeTagger
+from pyrpoc.devices import DAQ, DaqError, Galvo, TimeTagger
 from pyrpoc.run.program import Program
 
 from .components import (

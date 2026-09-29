@@ -16,7 +16,10 @@ from __future__ import annotations
 from dataclasses import dataclass, field as dc_field, fields, is_dataclass
 from typing import Any, ClassVar, Iterable, Iterator, Mapping, Sequence, TypeVar
 
-from .errors import ParameterError
+
+
+class ParameterError(Exception):
+    """A parameter value is missing, out of range, or the wrong type."""
 
 
 # --------------------------------------------------------------------------- #

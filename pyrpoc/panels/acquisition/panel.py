@@ -39,7 +39,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from pyrpoc.structs.errors import ParameterError
+from pyrpoc.structs.params import ParameterError
 from pyrpoc.shell import catalog
 from pyrpoc.shell.param_form import ParamForm
 

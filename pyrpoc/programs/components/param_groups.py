@@ -17,7 +17,7 @@ from typing import Any, ClassVar, Iterable, Sequence, TypeVar
 
 import numpy as np
 
-from pyrpoc.structs.errors import ParameterError
+from pyrpoc.structs.params import ParameterError
 from pyrpoc.structs.params import (
     Field,
     Group,

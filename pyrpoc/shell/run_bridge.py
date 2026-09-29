@@ -16,11 +16,11 @@ from typing import Any
 
 from PyQt6.QtCore import QObject, pyqtSignal
 
-from pyrpoc.structs.errors import MissingDevice, ParameterError
+from pyrpoc.structs.params import ParameterError
 from pyrpoc.data.dataset import Dataset
 from pyrpoc.data.io import SaveTarget
 from pyrpoc.data.library import DatasetLibrary
-from pyrpoc.devices.base import Device
+from pyrpoc.devices.base import Device, MissingDevice
 from pyrpoc.run.runner import Runner
 
 

@@ -22,6 +22,18 @@ def make_instance_id(prefix: str) -> str:
     return f"{safe or 'device'}-{uuid4().hex[:12]}"
 
 
+class DeviceError(Exception):
+    """A device could not be reached or configured."""
+
+
+class MissingDevice(DeviceError):
+    """A program needs devices that are not in the inventory."""
+
+    def __init__(self, missing: list[str]):
+        self.missing = list(missing)
+        super().__init__("missing required devices: " + ", ".join(self.missing))
+
+
 class Device:
     """One addressable piece of the instrument."""
 

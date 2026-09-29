@@ -18,11 +18,15 @@ from typing import TYPE_CHECKING
 
 from pyrpoc.structs import params as P
 
-from ..base import Device
+from ..base import Device, DeviceError
 from ..registry import device_registry
 
 if TYPE_CHECKING:  # pragma: no cover
     from PyQt6.QtWidgets import QWidget
+
+
+class DaqError(DeviceError):
+    """An NI-DAQ operation failed."""
 
 
 @dataclass

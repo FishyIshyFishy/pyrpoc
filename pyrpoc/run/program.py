@@ -14,7 +14,6 @@ from typing import TYPE_CHECKING, Any, Callable, Iterator, TypeVar
 
 import numpy as np
 
-from pyrpoc.structs.errors import Cancelled
 from pyrpoc.structs.data import Stream
 from pyrpoc.devices.base import Device
 
@@ -22,6 +21,14 @@ if TYPE_CHECKING:  # pragma: no cover
     from pyrpoc.data.dataset import Dataset
 
 D = TypeVar("D", bound=Device)
+
+
+class Cancelled(Exception):
+    """Raised inside a running program when the run has been stopped.
+
+    Propagates out through ``Program.run``, which is what makes a program's
+    ``finally`` blocks the teardown mechanism for a cancelled run.
+    """
 
 
 class DeviceMap(Mapping[type[Device], Device]):

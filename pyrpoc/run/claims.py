@@ -9,8 +9,7 @@ lands.
 
 from __future__ import annotations
 
-from pyrpoc.structs.errors import MissingDevice
-from pyrpoc.devices.base import Device
+from pyrpoc.devices.base import Device, MissingDevice
 
 
 def expand(uses: list[type[Device]]) -> list[type[Device]]:
