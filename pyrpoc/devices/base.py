@@ -10,7 +10,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
-from pyrpoc.core import params as P
+from pyrpoc.structs import params as P
 
 if TYPE_CHECKING:  # pragma: no cover - import only for type checkers
     from PyQt6.QtWidgets import QWidget

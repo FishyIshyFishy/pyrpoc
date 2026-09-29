@@ -19,7 +19,7 @@ import pyqtgraph as pg
 from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtWidgets import QVBoxLayout, QWidget
 
-from pyrpoc.core.streams import Spectrum1D
+from pyrpoc.structs.data import Spectrum1D
 
 from ..base import Panel
 from ..components.colors import color_for_index

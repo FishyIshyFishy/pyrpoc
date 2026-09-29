@@ -25,8 +25,8 @@ import numpy as np
 import nidaqmx as nx
 from nidaqmx.constants import AcquisitionType
 
-from pyrpoc.core.errors import DaqError
-from pyrpoc.core.streams import Image2D, Samples4D
+from pyrpoc.structs.errors import DaqError
+from pyrpoc.structs.data import Image2D, Samples4D
 from pyrpoc.devices import DAQ, Galvo
 from pyrpoc.run.program import Program
 

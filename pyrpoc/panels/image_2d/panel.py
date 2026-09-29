@@ -24,7 +24,7 @@ from PyQt6.QtWidgets import (
 
 from PyQt6.QtCore import Qt, pyqtSignal
 
-from pyrpoc.core.streams import Image2D
+from pyrpoc.structs.data import Image2D
 
 from ..base import Panel
 from ..components.source_picker import SourcePicker

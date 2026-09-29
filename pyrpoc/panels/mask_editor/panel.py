@@ -53,7 +53,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from pyrpoc.core.streams import Image2D, Mask2D
+from pyrpoc.structs.data import Image2D, Mask2D
 from pyrpoc.data.dataset import Dataset, Provenance
 from pyrpoc.data.io import utc_now
 from pyrpoc.data.transforms import normalize_channels

@@ -33,9 +33,9 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from pyrpoc.core import params as P
-from pyrpoc.core.errors import ParameterError
-from pyrpoc.core.streams import Mask2D
+from pyrpoc.structs import params as P
+from pyrpoc.structs.errors import ParameterError
+from pyrpoc.structs.data import Mask2D
 from pyrpoc.data.library import DatasetLibrary
 from pyrpoc.panels.components.cards import BaseCardWidget
 from pyrpoc.programs.components import Mask, MasksField, Point, PointField

@@ -14,8 +14,8 @@ from typing import TYPE_CHECKING, Any, Callable, Iterator, TypeVar
 
 import numpy as np
 
-from pyrpoc.core.errors import Cancelled
-from pyrpoc.core.streams import Stream
+from pyrpoc.structs.errors import Cancelled
+from pyrpoc.structs.data import Stream
 from pyrpoc.devices.base import Device
 
 if TYPE_CHECKING:  # pragma: no cover

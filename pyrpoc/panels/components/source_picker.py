@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING, Sequence
 from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtWidgets import QComboBox, QHBoxLayout, QLabel, QWidget
 
-from pyrpoc.core.streams import Stream
+from pyrpoc.structs.data import Stream
 
 if TYPE_CHECKING:  # pragma: no cover
     from pyrpoc.data.dataset import Dataset

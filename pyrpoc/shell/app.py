@@ -17,7 +17,7 @@ from typing import Any
 
 from PyQt6.QtCore import QObject, pyqtSignal
 
-from pyrpoc.core import params as P
+from pyrpoc.structs import params as P
 from pyrpoc.data.io import SaveTarget
 from pyrpoc.data.library import DatasetLibrary
 from pyrpoc.devices.base import Device

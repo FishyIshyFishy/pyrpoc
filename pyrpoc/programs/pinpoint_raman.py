@@ -22,7 +22,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from pyrpoc.core.streams import Spectrum1D
+from pyrpoc.structs.data import Spectrum1D
 from pyrpoc.devices.daq.device import DAQ
 from pyrpoc.devices.galvo.device import Galvo
 from pyrpoc.run.program import Program

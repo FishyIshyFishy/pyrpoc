@@ -9,7 +9,7 @@ lands.
 
 from __future__ import annotations
 
-from pyrpoc.core.errors import MissingDevice
+from pyrpoc.structs.errors import MissingDevice
 from pyrpoc.devices.base import Device
 
 

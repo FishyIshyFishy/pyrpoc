@@ -20,7 +20,7 @@ from __future__ import annotations
 import threading
 from typing import Callable
 
-from pyrpoc.core.streams import Stream
+from pyrpoc.structs.data import Stream
 
 from .dataset import Dataset
 

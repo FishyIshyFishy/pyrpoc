@@ -17,8 +17,8 @@ from typing import Any, ClassVar, Iterable, Sequence, TypeVar
 
 import numpy as np
 
-from pyrpoc.core.errors import ParameterError
-from pyrpoc.core.params import (
+from pyrpoc.structs.errors import ParameterError
+from pyrpoc.structs.params import (
     Field,
     Group,
     bool_field,

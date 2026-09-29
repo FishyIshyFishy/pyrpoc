@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from pyrpoc.core import params as P
+from pyrpoc.structs import params as P
 
 from ..base import Device
 from ..daq.device import DAQ

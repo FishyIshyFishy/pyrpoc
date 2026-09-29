@@ -16,8 +16,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from pyrpoc.core import params as P
-from pyrpoc.core.errors import TaggerError
+from pyrpoc.structs import params as P
+from pyrpoc.structs.errors import TaggerError
 
 from ..base import Device
 from ..registry import device_registry

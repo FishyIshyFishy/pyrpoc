@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from pyrpoc.core.registry import Registry
+from pyrpoc.structs.registries import Registry
 
 from .base import Device
 

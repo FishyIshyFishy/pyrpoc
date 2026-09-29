@@ -34,8 +34,8 @@ from typing import Any
 import numpy as np
 import tifffile
 
-from pyrpoc.core.errors import ParameterError
-from pyrpoc.core.streams import Image2D, Stream
+from pyrpoc.structs.errors import ParameterError
+from pyrpoc.structs.data import Image2D, Stream
 
 from .dataset import Dataset
 

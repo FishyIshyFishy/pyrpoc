@@ -17,7 +17,7 @@ from typing import Sequence
 
 import numpy as np
 
-from pyrpoc.core.streams import Image2D
+from pyrpoc.structs.data import Image2D
 from pyrpoc.run.program import Program
 
 from .components import (

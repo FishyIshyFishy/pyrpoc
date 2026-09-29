@@ -22,7 +22,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from pyrpoc.core.streams import Image2D
+from pyrpoc.structs.data import Image2D
 
 from ..base import Panel
 from ..components.colors import color_for_index

@@ -21,7 +21,7 @@ from uuid import uuid4
 
 import numpy as np
 
-from pyrpoc.core.streams import Stream
+from pyrpoc.structs.data import Stream
 
 
 @dataclass(frozen=True)

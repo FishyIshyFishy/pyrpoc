@@ -16,7 +16,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from pyrpoc.core import params as P
+from pyrpoc.structs import params as P
 
 from ..base import Device
 from ..registry import device_registry
