@@ -44,7 +44,7 @@ from .application import Application
 #: shared by every modality that declares it, so there is one flat state dict
 #: keyed by block class name instead of a nested dict keyed by program. A v7
 #: file's ``params_by_program`` has no single answer to map onto -- three
-#: programs could each hold a different ScanGroup -- so there is no converter
+#: programs could each hold a different scan block -- so there is no converter
 #: and a v7 session loads as defaults, once.
 SCHEMA_VERSION = 8
 

@@ -393,7 +393,7 @@ def build_ttl(
     """Turn the bound masks into per-pixel TTL waveforms.
 
     Done once before the loop rather than once per frame. The pixels arrive with
-    the parameter, resolved against the open data when the mask was chosen, so
+    the parameter, resolved against the open data when the run started, so
     this reads nothing.
     """
     if not modulation.masks:

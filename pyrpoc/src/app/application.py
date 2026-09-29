@@ -53,8 +53,8 @@ class Application(QObject):
 
         self.selected_program: str | None = None
         #: Every parameter block that exists, one instance per class. Two
-        #: programs declaring ScanGroup are handed the same object, which is
-        #: what makes switching modality keep the geometry you set.
+        #: programs declaring the same block are handed the same object, which is
+        #: what makes switching modality keep the settings you made.
         self.blocks = P.BlockStore()
         #: One save target for the session, not one per program: what a run is
         #: called and where it goes has nothing to do with which program runs.

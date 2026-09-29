@@ -253,8 +253,8 @@ def build_mask(frame_shape: FrameGroup, modulation: ModulationGroup):
     """Flatten the bound masks onto the frame grid.
 
     Same shape as confocal's ``build_ttl``: once before the loop. The pixels
-    come with the parameter -- a mask was resolved against the open data when it
-    was chosen -- so there is nothing to load here.
+    come with the parameter -- a mask was resolved against the open data when the
+    run started -- so there is nothing to load here.
     """
     if not modulation.masks:
         return None

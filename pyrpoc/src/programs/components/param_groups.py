@@ -12,14 +12,16 @@ the content.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field as dc_field
+from dataclasses import dataclass, field as dc_field, replace
 from typing import Any, ClassVar, Iterable, Sequence
 
 import numpy as np
 
 from pyrpoc.src.structs.data import Dataset
 from pyrpoc.src.structs.params import (
+    Editor,
     Field,
+    FieldContext,
     Group,
     ParameterError,
     block_name,
@@ -41,21 +43,21 @@ from pyrpoc.src.structs.registries import block
 
 @dataclass(frozen=True)
 class Mask:
-    """One authored mask wired to one digital output line.
+    """One authored mask wired to one digital output line -- by reference.
 
-    The same two halves as ``Point``, for the same reason. ``array`` is what the
-    hardware does, so a run needs nothing but its parameters to proceed;
-    ``source_id`` and ``source_label`` are provenance on top of that, saying
-    which library entry this came from. The label is stored rather than resolved
-    because a dataset id means nothing to anyone reading the metadata six months
-    later, and the entry it named may not be open any more.
+    The parameter is which library entry, and which port and line it drives.
+    ``source_label`` is stored beside the id because a dataset id means nothing
+    to anyone reading the metadata six months later, and the entry it named may
+    not be open any more.
 
-    The array is carried rather than a reference to the library because a
-    program has no library: ``RunContext`` hands out this run's own parameters
-    and datasets and nothing else, and widening that to every open dataset in
-    order to fetch a mask would be a much larger hole than this feature is
-    worth. So it is resolved once, when the user picks it -- which is exactly
-    when ``Point`` resolves a clicked pixel into volts.
+    ``array`` is empty in the stored value and filled in only when a run starts:
+    ``MasksField.resolve`` reads the pixels out of the library into a copy the
+    program is handed. A program has no library -- ``RunContext`` hands out
+    this run's own parameters and datasets and nothing else -- so the pixels
+    have to arrive with the parameters, but the shared block, the session file
+    and the run metadata keep only the reference. That is what lets a binding
+    survive a relaunch, and what makes a closed entry stop the run instead of
+    running silently without it.
 
     ``array`` is ``compare=False`` because this is a frozen dataclass: the
     generated ``__eq__`` would compare two arrays elementwise and then call
@@ -81,7 +83,7 @@ class Mask:
 
     @property
     def resolved(self) -> bool:
-        """Whether this mask still carries the pixels it names."""
+        """Whether this mask carries its pixels, i.e. it is a run's copy."""
         return self.array is not None
 
     def describe(self) -> str:
@@ -129,23 +131,26 @@ class MasksField(Field):
     def encode(self, value: Any) -> Any:
         return [mask.to_dict() for mask in (value or ())]
 
-    def decode(self, raw: Any) -> tuple[Mask, ...]:
-        """Nothing. Masks do not survive a relaunch.
+    def resolve(self, value: Any, library: Any) -> tuple[Mask, ...]:
+        """Each binding with its pixels, read from the open data.
 
-        The only field in the application that overrides ``decode``, because it
-        is the only one whose value is not self-contained. ``encode`` is shared
-        by the run metadata and the session file, and the two want different
-        things from it: a run must record exactly which masks drove which lines,
-        while a session reload cannot honour that record at all -- the library
-        is empty at launch, so every id in it is dangling.
-
-        Returning the rows without their arrays would put the modality one
-        silent step from acquiring with a mask that is not there. Returning
-        nothing is the honest answer until the library itself persists, at which
-        point this override is what should go away.
+        A binding whose entry is not open refuses the run rather than being
+        skipped: acquiring without a mask the user bound is worse than not
+        acquiring.
         """
-        del raw
-        return ()
+        out: list[Mask] = []
+        for mask in self.coerce(value):
+            dataset = library.by_id(mask.source_id) if library is not None else None
+            array = dataset.latest() if dataset is not None else None
+            if array is None:
+                raise ParameterError(f"mask '{mask.describe()}' is not open")
+            out.append(replace(mask, array=array))
+        return tuple(out)
+
+    def editor(self, parent: Any, context: FieldContext) -> Editor:
+        from .editors import mask_editor
+
+        return mask_editor(parent, context)
 
 
 def masks_field(label="Masks", *, tooltip=""):
@@ -255,7 +260,7 @@ class Point:
 
 @dataclass(frozen=True)
 class PointField(Field):
-    """A galvo position, with a widget that can pick one off a display.
+    """A galvo position: volts, plus the pixel they were picked from, if any.
 
     ``coerce`` has to be idempotent on a live ``Point``: the form coerces what
     its widget hands back, and ``Executor.start`` re-coerces every held value
@@ -268,6 +273,11 @@ class PointField(Field):
 
     def encode(self, value: Any) -> Any:
         return Point.from_dict(value).to_dict()
+
+    def editor(self, parent: Any, context: FieldContext) -> Editor:
+        from .editors import point_editor
+
+        return point_editor(parent, context)
 
 
 def point_field(label="Target", *, tooltip=""):

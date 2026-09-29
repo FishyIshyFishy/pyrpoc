@@ -78,7 +78,9 @@ class Executor:
         """Execute one program on a worker thread.
 
         ``blocks`` is every parameter block that exists; the program gets the
-        ones it declared and no others. ``save`` says what the run is called
+        ones it declared and no others, resolved against the library -- a mask
+        bound by reference gets its pixels here, and one that is no longer open
+        stops the run before it starts. ``save`` says what the run is called
         and whether it is written to disk. Both arrive as their own arguments
         rather than being read off a parameter model, because neither is
         something one program does differently from another.
@@ -90,6 +92,12 @@ class Executor:
             devices = claims.resolve(list(program.uses), inventory)
             declared = list(program.params)
             blocks.validate(declared)
+            params = P.BlockMap(
+                {
+                    cls: P.resolve_block(block, self.library)
+                    for cls, block in blocks.for_program(declared).items()
+                }
+            )
             key = program_key or default_program_key(program)
 
             self._run_id += 1
@@ -120,7 +128,7 @@ class Executor:
                     on_dataset(dataset)
 
             ctx = RunContext(
-                params=blocks.for_program(declared),
+                params=params,
                 devices=devices,
                 datasets=datasets,
                 cancel=self._cancel,

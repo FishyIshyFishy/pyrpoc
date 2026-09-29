@@ -13,8 +13,8 @@ everywhere -- declaration key, form key, session key, metadata key.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field as dc_field, fields, is_dataclass
-from typing import Any, ClassVar, Iterable, Iterator, Mapping, Sequence, TypeVar
+from dataclasses import dataclass, field as dc_field, fields, is_dataclass, replace
+from typing import Any, Callable, ClassVar, Iterable, Iterator, Mapping, Sequence, TypeVar
 
 
 
@@ -42,6 +42,57 @@ class Field:
     def decode(self, raw: Any) -> Any:
         """JSON-safe -> value, with validation."""
         return self.coerce(raw)
+
+    def resolve(self, value: Any, library: Any) -> Any:
+        """The value a run is handed, given the open data.
+
+        Unchanged for every field whose value is self-contained. A field whose
+        value *names* data -- a mask bound by reference -- fills it in here,
+        and raises ``ParameterError`` when what it names is gone. Called once,
+        at run start; the stored value keeps only the reference.
+        """
+        del library
+        return value
+
+    def editor(self, parent: Any, context: "FieldContext") -> "Editor | None":
+        """A custom widget for this field, or None for the form's own.
+
+        The generic fields here leave it None and the form builds their
+        widgets. A field type declared elsewhere, whose widget the form cannot
+        know about, supplies its own -- which is what keeps the form from
+        importing the code that declares it.
+        """
+        del parent, context
+        return None
+
+
+@dataclass
+class Editor:
+    """One field's widget, as the form drives it.
+
+    Toolkit-free by type -- ``widget`` is whatever the view draws -- so a field
+    declared outside the view can hand one over without this module importing Qt.
+    """
+
+    widget: Any
+    get: Callable[[], Any]
+    set: Callable[[Any], None]
+    connect: Callable[[Callable[[], None]], None]
+    summary: Callable[[], str]
+    #: The spec this widget was built from. Carried rather than looked up:
+    #: resolving it per path per keystroke was quadratic in field count.
+    spec: "Field | None" = None
+
+
+@dataclass(frozen=True)
+class FieldContext:
+    """What the form's owner can offer a field's editor.
+
+    ``library`` is the open data, for editors whose value names it. None when
+    there is none to offer, as for a device configuration.
+    """
+
+    library: Any = None
 
 
 @dataclass(frozen=True)
@@ -418,6 +469,23 @@ def validate_block(block: Any) -> None:
     """Re-run every field's coercion against the values currently held."""
     for name, spec in block_fields(block):
         spec.coerce(getattr(block, name))
+
+
+def resolve_block(block: B, library: Any) -> B:
+    """``block`` as a run should see it: every field resolved against ``library``.
+
+    A copy when anything resolved to something new, so the shared block -- and
+    the metadata and session encoded from it -- keeps only references. The
+    block itself otherwise, so a live edit still reaches a running program the
+    way it always has.
+    """
+    changes: dict[str, Any] = {}
+    for name, spec in block_fields(block):
+        value = getattr(block, name)
+        resolved = spec.resolve(value, library)
+        if resolved is not value:
+            changes[name] = resolved
+    return replace(block, **changes) if changes else block  # type: ignore[type-var]
 
 
 #: Device configurations are blocks too -- same fields, same form, same

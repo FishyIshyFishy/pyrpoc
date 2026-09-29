@@ -3,10 +3,8 @@
 One of the three fixed panels -- always present, built once by
 app/window.py, not offered under Add. See ``panels/__init__.py`` for how
 that differs from the four dataset-rendering panels. Reaches into app/ for
-the program catalog and drives the run through ``app.bridge``, the same way
-panels/components/param_form.py already reaches into programs/ for the mask and point
-widgets -- unlike the four dataset-rendering panels, this one is not held to
-"must not import app/ or programs/".
+the program catalog, the runner host and the run bridge -- unlike the four
+dataset-rendering panels, this one is not held to "must not import app/".
 
 Replaces gui/main_widgets/acquisition_mgr/. The form is generated from the
 program's parameter model and writes back into it, so nothing scrapes widgets at
@@ -46,7 +44,7 @@ from PyQt6.QtWidgets import (
 
 from pyrpoc.src.app import catalog
 from pyrpoc.src.structs.panel import Panel
-from pyrpoc.src.structs.params import ParameterError
+from pyrpoc.src.structs.params import FieldContext, ParameterError
 from pyrpoc.src.structs.runner import Button, Control, Toggle
 
 from ..components.icons import asset_icon
@@ -170,7 +168,7 @@ class AcquisitionPanel(Panel):
         params = self.app.current_params()
         if params is None:
             return
-        self.form = ParamForm(params, self, library=self.app.library)
+        self.form = ParamForm(params, self, context=FieldContext(library=self.app.library))
         self.form.changed.connect(self.app.params_changed.emit)
         self.form.changed.connect(self.app.state_changed.emit)
         self.form.invalid.connect(self.show_status)
