@@ -7,8 +7,8 @@ to examine, not something to hide by pushing wiring back into panels/ or
 programs/.
 
 It replaces AppState plus the five services: instrument -> devices here,
-display -> panels here, modality -> run/runner, interpreter -> the dataset
-notification below, session -> session/.
+display -> panels here, modality -> runner.py, interpreter -> the dataset
+notification below, session -> session.py.
 """
 
 from __future__ import annotations
@@ -49,7 +49,7 @@ class Application(QObject):
         #: The added panels -- image_2d, overlay, mask_editor, spectrum
         #: instances the Add menu has created. The three fixed panels
         #: (acquisition, devices, data library) are not in here: they are
-        #: built once by shell/window.py and never removed.
+        #: built once by app/window.py and never removed.
         self.panels: list[Any] = []
         self.library = DataLibrary()
         self.bridge = RunBridge(self.library, self)

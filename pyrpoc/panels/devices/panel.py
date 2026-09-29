@@ -1,7 +1,7 @@
 """The devices panel: what is configured, and how it is wired.
 
 One of the three fixed panels -- always present, built once by
-shell/window.py, not offered under Add. See ``panels/__init__.py`` for how
+app/window.py, not offered under Add. See ``panels/__init__.py`` for how
 that differs from the four dataset-rendering panels.
 
 Named after ``pyrpoc.devices``, the driver package it lists -- not to be

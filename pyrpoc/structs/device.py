@@ -47,7 +47,7 @@ class Device:
     #: this link, so claiming the galvo claims its DAQ.
     backed_by: type["Device"] | None = None
 
-    #: A ``core.params`` group describing this device's wiring and calibration.
+    #: A ``structs.params`` group describing this device's wiring and calibration.
     config_cls: type | None = None
 
     def __init__(self, instance_id: str | None = None, user_label: str | None = None):
@@ -97,7 +97,7 @@ class Device:
         Returns None when the generated form is the whole panel. Subclasses
         import their widget *inside* this method: a module-scope Qt import
         would make ``pyrpoc.devices`` unimportable on a machine with no display,
-        which every layer below the shell has to stay.
+        which everything outside app/ has to stay.
         """
         del parent, on_change
         return None

@@ -1,9 +1,9 @@
 """One file per experiment, plus the components they are assembled from.
 
 The thing changed most often, so it sits at the bottom with everything else
-ignorant of it: nothing imports programs/ except shell/ (to launch them) and the
+ignorant of it: nothing imports programs/ except app/ (to launch them) and the
 registry (to collect them). Any program can be deleted outright -- its file and
-its row in shell/catalog.py.
+its row in app/catalog.py.
 
 A program is a composition. It declares the parameter blocks it wants from
 ``components/`` and writes the loop that drives them; the scan code it needs to

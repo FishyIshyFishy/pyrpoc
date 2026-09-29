@@ -1,6 +1,6 @@
 """Device-specific controls for the TimeTagger, beneath its generated form.
 
-The form itself is generated from ``TaggerConfig`` by ``shell/devices_panel.py``,
+The form itself is generated from ``TaggerConfig`` by ``panels/devices/panel.py``,
 so adding a field to the config adds its row with no edit here. What lives in
 this file is what a generated form cannot produce: the reachability check.
 """

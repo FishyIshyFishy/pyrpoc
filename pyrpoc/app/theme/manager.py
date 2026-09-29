@@ -69,7 +69,7 @@ def _derive_palette(qss_text: str, qss_path: str) -> QPalette:
     The bundled Breeze stylesheets recolor most widgets with literal hex
     values on type selectors, so those widgets re-theme on their own via
     ``QApplication.setStyleSheet``. Anything styled against ``palette(...)``
-    tokens (e.g. the card widgets in ``shell/cards.py``) only re-themes if
+    tokens (e.g. the card widgets in ``panels/components/cards.py``) only re-themes if
     the app's QPalette is kept in sync -- which this derives directly from
     the same stylesheet text so there is a single source of truth per theme.
     """

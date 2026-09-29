@@ -5,8 +5,8 @@ wants and the store hands it the one instance of each, so two modalities
 declaring ``ScanGroup`` are configuring the same scan -- change the geometry in
 confocal and FLIM already has it.
 
-These live here rather than in ``core/`` because they are what this instrument
-is, not what the software is. ``core/params.py`` holds the machinery; this holds
+These live here rather than in ``structs/`` because they are what this instrument
+is, not what the software is. ``structs/params.py`` holds the machinery; this holds
 the content.
 """
 

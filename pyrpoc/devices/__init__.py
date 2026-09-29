@@ -4,7 +4,8 @@ A device has configuration, calibration, a panel and persistence. Two properties
 vary: whether it owns a connection, and whether it is backed by another device
 rather than having one of its own.
 
-May import core/. Qt appears only in devices/*/panel.py, imported lazily inside
+Each folder implements ``structs.device.Device``. May import structs/. Qt
+appears only in devices/*/panel.py, imported lazily inside
 Device.panel() so the headless layers stay importable without Qt.
 """
 

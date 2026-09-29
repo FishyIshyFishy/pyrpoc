@@ -1,7 +1,7 @@
 """The data library panel: every acquisition this session has open.
 
 One of the three fixed panels -- always present, built once by
-shell/window.py, not offered under Add. See ``panels/__init__.py`` for how
+app/window.py, not offered under Add. See ``panels/__init__.py`` for how
 that differs from the four dataset-rendering panels.
 
 The Data Library dock holds this and nothing else. The list of open displays

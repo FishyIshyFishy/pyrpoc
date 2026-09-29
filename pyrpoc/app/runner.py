@@ -1,7 +1,7 @@
 """Executing a program: the worker thread, cancellation, and dataset setup.
 
 Pure Python, no Qt, so a run can be driven with no QApplication at all. The
-thread marshalling the GUI needs lives in ``shell/run_bridge.py``.
+thread marshalling the GUI needs lives in ``run_bridge.py``.
 
 The runner never knows what any program does; it only knows how to execute one.
 What it does own is what a program deliberately does not: creating a dataset per
@@ -29,8 +29,8 @@ from .saving import RunSaver, SaveTarget
 def default_program_key(program: Program) -> str:
     """``SplitConfocal`` -> ``split_confocal``, ``FLIM`` -> ``flim``.
 
-    run/ may not import programs/, so the runner cannot look a key up in the
-    program registry. The shell passes the registry key explicitly; this is the
+    The runner does not import programs/, so it cannot look a key up in the
+    program registry. The application passes the key explicitly; this is the
     fallback for a program started without one.
     """
     name = type(program).__name__

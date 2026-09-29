@@ -1,12 +1,12 @@
 """The acquisition panel: pick a program, name it, set it up, run it.
 
 One of the three fixed panels -- always present, built once by
-shell/window.py, not offered under Add. See ``panels/__init__.py`` for how
-that differs from the four dataset-rendering panels. Reaches into shell/ for
+app/window.py, not offered under Add. See ``panels/__init__.py`` for how
+that differs from the four dataset-rendering panels. Reaches into app/ for
 the program catalog and drives the run through ``app.bridge``, the same way
-shell/param_form.py already reaches into programs/ for the mask and point
+panels/components/param_form.py already reaches into programs/ for the mask and point
 widgets -- unlike the four dataset-rendering panels, this one is not held to
-"must not import run/ or programs/".
+"must not import app/ or programs/".
 
 Replaces gui/main_widgets/acquisition_mgr/. The form is generated from the
 program's parameter model and writes back into it, so nothing scrapes widgets at

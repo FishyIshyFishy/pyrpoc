@@ -1,10 +1,8 @@
-"""Array transforms shared by whoever renders or re-uses acquired data.
+"""Array transforms for panels that render or re-use acquired data.
 
 ``normalize_channels`` was duplicated as ``get_normalized_data_3d`` in both
-displays. Only views/ uses it today, so by section 6.4's test this is the file
-in data/ most likely to be misfiled; section 5 places it here and programs are
-the intended second caller. Worth revisiting in 3.2 if nothing outside views/
-has picked it up.
+displays. Only the mask editor uses it today, which is why it lives with the
+panel building blocks; if a program ever needs it, it has become a struct.
 """
 
 from __future__ import annotations

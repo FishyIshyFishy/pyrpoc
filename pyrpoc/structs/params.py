@@ -1,7 +1,7 @@
 """The parameter model: field definitions, blocks, coercion.
 
 No Qt, no hardware, no instrument vocabulary. The widget half lives in
-``shell/param_form.py``; the blocks themselves live with the code that declares
+``panels/components/param_form.py``; the blocks themselves live with the code that declares
 them. What stays here is label, tooltip, bounds, how a raw value becomes a real
 one, and how a set of blocks is held, addressed and serialised.
 
@@ -423,7 +423,7 @@ def validate_block(block: Any) -> None:
 #: Device configurations are blocks too -- same fields, same form, same
 #: encoding -- but they are per-instance rather than per-class and persist with
 #: their device, so they never enter the BlockStore. These aliases are what
-#: ``devices/base.py`` calls.
+#: ``structs/device.py`` calls.
 to_dict = encode_block
 from_dict = decode_block
 validate = validate_block

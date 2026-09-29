@@ -208,7 +208,7 @@ class Dataset:
         """Validate, store, save, then notify.
 
         Runs on the worker thread, so subscriber callbacks do too. Nothing that
-        touches Qt subscribes directly -- ``shell/run_bridge.py`` is the only
+        touches Qt subscribes directly -- ``app/run_bridge.py`` is the only
         subscriber and it re-emits on a signal, which Qt queues to the GUI
         thread.
         """
