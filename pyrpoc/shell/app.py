@@ -19,7 +19,7 @@ from PyQt6.QtCore import QObject, pyqtSignal
 
 from pyrpoc.structs import params as P
 from pyrpoc.data.io import SaveTarget
-from pyrpoc.data.library import DatasetLibrary
+from pyrpoc.data.library import DataLibrary
 from pyrpoc.devices.base import Device
 from pyrpoc.devices.registry import device_registry
 from pyrpoc.programs.components import BLOCKS, Point, PointGroup, ScanGroup
@@ -51,7 +51,7 @@ class Application(QObject):
         #: (acquisition, devices, data library) are not in here: they are
         #: built once by shell/window.py and never removed.
         self.panels: list[Any] = []
-        self.library = DatasetLibrary()
+        self.library = DataLibrary()
         self.bridge = RunBridge(self.library, self)
 
         self.selected_program: str | None = None

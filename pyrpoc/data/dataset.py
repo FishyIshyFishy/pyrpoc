@@ -21,7 +21,7 @@ from uuid import uuid4
 
 import numpy as np
 
-from pyrpoc.structs.data import Stream
+from pyrpoc.structs.data import Data
 
 
 @dataclass(frozen=True)
@@ -39,20 +39,20 @@ class Provenance:
 
 
 class Dataset:
-    """One named output stream of one run."""
+    """One named output of one run: frames of one kind of ``Data``."""
 
     def __init__(
         self,
         *,
-        stream: str,
-        spec: type[Stream],
+        output: str,
+        spec: type[Data],
         provenance: Provenance,
         channel_labels: list[str] | None = None,
         metadata: dict[str, Any] | None = None,
         writer: Any | None = None,
     ):
-        self.id = f"{stream}-{uuid4().hex[:12]}"
-        self.stream = stream
+        self.id = f"{output}-{uuid4().hex[:12]}"
+        self.output = output
         self.spec = spec
         self.provenance = provenance
         self.channel_labels: list[str] = list(channel_labels or [])
@@ -99,7 +99,7 @@ class Dataset:
         The run id used to stand in for identity here. The time is what a user
         actually recognises a run by, and the name is what they chose.
         """
-        parts = (self.started_time, self.name, self.stream)
+        parts = (self.started_time, self.name, self.output)
         return " · ".join(part for part in parts if part)
 
     def resolved_channel_labels(self, count: int) -> list[str]:
@@ -186,4 +186,4 @@ class Dataset:
             self.writer.finalize(self, error)
 
     def __repr__(self) -> str:  # pragma: no cover - debugging aid
-        return f"<Dataset {self.stream} frames={len(self)}>"
+        return f"<Dataset {self.output} frames={len(self)}>"

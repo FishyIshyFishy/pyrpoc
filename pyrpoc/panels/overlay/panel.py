@@ -31,7 +31,7 @@ from ..registry import panel_registry
 
 if TYPE_CHECKING:  # pragma: no cover
     from pyrpoc.data.dataset import Dataset
-    from pyrpoc.data.library import DatasetLibrary
+    from pyrpoc.data.library import DataLibrary
 
 
 def color_map_from_rgb(rgb: tuple[int, int, int]) -> pg.ColorMap:
@@ -113,7 +113,7 @@ class OverlayPanel(Panel):
 
     # -- binding --------------------------------------------------------------- #
 
-    def attach_library(self, library: "DatasetLibrary") -> None:
+    def attach_library(self, library: "DataLibrary") -> None:
         self.source.attach_library(library)
 
     def dataset(self) -> "Dataset | None":

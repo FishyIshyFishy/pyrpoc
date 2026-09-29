@@ -3,20 +3,20 @@
 The on-disk layout:
 
     <root>_<channel>.tiff   appended float32, one page per published array
-    <root>_<stream>.npz     data / parameters
+    <root>_<output>.npz     data / parameters
     <root>_meta.json        written once when the run starts, once when it ends
 
 Nothing here counts. How much a run produced is recoverable from the data
 itself -- the page count of a TIFF, the leading axis of an npz -- and how much
 was asked for rides in ``parameters`` with the rest of the acquisition
-settings. A saver that tracked a total had to nominate one stream of a
-multi-stream run as the one worth counting, which is a hierarchy none of these
+settings. A saver that tracked a total had to nominate one output of a
+multi-output run as the one worth counting, which is a hierarchy none of these
 files needs.
 
 The auxiliary-payload machinery this replaces -- ``_pending_auxiliary``,
 ``append_auxiliary_payload``, ``flush_auxiliary_payloads`` -- existed only
 because split confocal produced a second output and there was no way to declare
-one. Streams are declared in ``emits`` now, so they all travel the same path.
+one. Outputs are declared in ``emits`` now, so they all travel the same path.
 
 ``<root>`` comes from a ``SaveTarget``, which is also where the acquisition's
 name comes from. It is here rather than in the parameter model because saving
@@ -35,7 +35,7 @@ import numpy as np
 import tifffile
 
 from pyrpoc.structs.params import ParameterError
-from pyrpoc.structs.data import Image2D, Stream
+from pyrpoc.structs.data import Data, Image2D
 
 from .dataset import Dataset
 
@@ -91,12 +91,12 @@ class SaveTarget:
         return self.folder / stem
 
 
-class StreamWriter:
-    """Base: puts one stream's arrays on disk."""
+class Writer:
+    """Base: puts one output's arrays on disk."""
 
-    def __init__(self, saver: "RunSaver", stream: str):
+    def __init__(self, saver: "RunSaver", output: str):
         self.saver = saver
-        self.stream = stream
+        self.output = output
         self.paths: dict[str, Path] = {}
 
     def write(self, dataset: Dataset, array: np.ndarray) -> None:
@@ -106,7 +106,7 @@ class StreamWriter:
         pass
 
 
-class TiffStreamWriter(StreamWriter):
+class TiffWriter(Writer):
     """``Image2D``: one appended TIFF per channel, one page per publish."""
 
     def write(self, dataset: Dataset, array: np.ndarray) -> None:
@@ -130,11 +130,11 @@ class TiffStreamWriter(StreamWriter):
                 writer.write(np.asarray(channel_plane, dtype=np.float32))
 
 
-class NpzStreamWriter(StreamWriter):
+class NpzWriter(Writer):
     """Everything that is not ``Image2D``: buffered, written once at finalize."""
 
-    def __init__(self, saver: "RunSaver", stream: str):
-        super().__init__(saver, stream)
+    def __init__(self, saver: "RunSaver", output: str):
+        super().__init__(saver, output)
         self._buffer: list[np.ndarray] = []
 
     def write(self, dataset: Dataset, array: np.ndarray) -> None:
@@ -144,7 +144,7 @@ class NpzStreamWriter(StreamWriter):
         if not self._buffer:
             return
         root = self.saver.root
-        path = root.with_name(f"{root.name}_{self.stream}.npz")
+        path = root.with_name(f"{root.name}_{self.output}.npz")
         #: Leading axis is one entry per published array, in publish order.
         payload = np.stack(self._buffer, axis=0)
         np.savez_compressed(
@@ -152,21 +152,21 @@ class NpzStreamWriter(StreamWriter):
             data=payload,
             parameters=np.asarray(self.saver.parameters, dtype=object),
         )
-        self.paths = {self.stream: path}
+        self.paths = {self.output: path}
 
 
-def writer_for_spec(saver: "RunSaver", stream: str, spec: type[Stream]) -> StreamWriter:
+def make_writer(saver: "RunSaver", output: str, spec: type[Data]) -> Writer:
     return (
-        TiffStreamWriter(saver, stream)
+        TiffWriter(saver, output)
         if spec is Image2D
-        else NpzStreamWriter(saver, stream)
+        else NpzWriter(saver, output)
     )
 
 
 class RunSaver:
-    """Owns one run's output: the per-stream writers and the metadata file.
+    """Owns one run's output: the per-output writers and the metadata file.
 
-    One metadata file per run rather than per stream, so a multi-stream run
+    One metadata file per run rather than per output, so a multi-output run
     still describes itself in one place. It is written twice -- once from
     ``prepare`` so the run is on disk before any data is, and once from
     ``finalize`` once the writers know their paths.
@@ -190,17 +190,17 @@ class RunSaver:
         self.started_at = started_at or utc_now()
 
         self.json_path = self.root.with_name(f"{self.root.name}_meta.json")
-        self.writers: dict[str, StreamWriter] = {}
+        self.writers: dict[str, Writer] = {}
 
-    def prepare(self, streams: dict[str, type[Stream]]) -> None:
+    def prepare(self, outputs: dict[str, type[Data]]) -> None:
         """Create the output directory and write the metadata stub."""
         self.root.parent.mkdir(parents=True, exist_ok=True)
-        for stream, spec in streams.items():
-            self.writers[stream] = writer_for_spec(self, stream, spec)
+        for output, spec in outputs.items():
+            self.writers[output] = make_writer(self, output, spec)
         self.write_metadata(None)
 
-    def writer_for(self, stream: str) -> StreamWriter | None:
-        return self.writers.get(stream)
+    def writer_for(self, output: str) -> Writer | None:
+        return self.writers.get(output)
 
     def finalize(self, error: Exception | None) -> None:
         """Rewrite the metadata now that every writer knows its paths.
@@ -216,14 +216,14 @@ class RunSaver:
     def tiff_paths(self) -> dict[str, str]:
         out: dict[str, str] = {}
         for writer in self.writers.values():
-            if isinstance(writer, TiffStreamWriter):
+            if isinstance(writer, TiffWriter):
                 out.update({label: str(path) for label, path in writer.paths.items()})
         return out
 
     def auxiliary_paths(self) -> dict[str, str]:
         out: dict[str, str] = {}
         for writer in self.writers.values():
-            if isinstance(writer, NpzStreamWriter):
+            if isinstance(writer, NpzWriter):
                 out.update({label: str(path) for label, path in writer.paths.items()})
         return out
 
@@ -234,7 +234,7 @@ class RunSaver:
             "program_key": self.program_key,
             "save_root_path": str(self.root),
             "save_json_path": str(self.json_path),
-            "streams": sorted(self.writers),
+            "outputs": sorted(self.writers),
             "tiff_paths": self.tiff_paths(),
             "auxiliary_paths": self.auxiliary_paths(),
             "parameters": self.parameters,

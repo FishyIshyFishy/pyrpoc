@@ -19,7 +19,7 @@ from PyQt6.QtCore import QObject, pyqtSignal
 from pyrpoc.structs.params import ParameterError
 from pyrpoc.data.dataset import Dataset
 from pyrpoc.data.io import SaveTarget
-from pyrpoc.data.library import DatasetLibrary
+from pyrpoc.data.library import DataLibrary
 from pyrpoc.devices.base import Device, MissingDevice
 from pyrpoc.run.runner import Runner
 
@@ -32,9 +32,9 @@ class RunBridge(QObject):
     run_finished = pyqtSignal()
     run_failed = pyqtSignal(str)
 
-    def __init__(self, library: DatasetLibrary | None = None, parent: QObject | None = None):
+    def __init__(self, library: DataLibrary | None = None, parent: QObject | None = None):
         super().__init__(parent)
-        self.library = library if library is not None else DatasetLibrary()
+        self.library = library if library is not None else DataLibrary()
         self.runner = Runner(self.library)
         self._subscribed: list[Dataset] = []
 

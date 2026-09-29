@@ -20,12 +20,12 @@ from __future__ import annotations
 import threading
 from typing import Callable
 
-from pyrpoc.structs.data import Stream
+from pyrpoc.structs.data import Data
 
 from .dataset import Dataset
 
 
-class DatasetLibrary:
+class DataLibrary:
     def __init__(self) -> None:
         self._datasets: list[Dataset] = []
         self._subscribers: list[Callable[[], None]] = []
@@ -57,13 +57,13 @@ class DatasetLibrary:
         with self._lock:
             return next((d for d in self._datasets if d.id == dataset_id), None)
 
-    def get(self, run_id: int, stream: str) -> Dataset | None:
+    def get(self, run_id: int, output: str) -> Dataset | None:
         with self._lock:
             return next(
-                (d for d in self._datasets if d.run_id == run_id and d.stream == stream), None
+                (d for d in self._datasets if d.run_id == run_id and d.output == output), None
             )
 
-    def matching(self, *specs: type[Stream]) -> list[Dataset]:
+    def matching(self, *specs: type[Data]) -> list[Dataset]:
         """Datasets a view declaring these contracts could render, newest first."""
         wanted = set(specs)
         with self._lock:

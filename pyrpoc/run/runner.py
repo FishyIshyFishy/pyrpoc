@@ -5,7 +5,7 @@ thread marshalling the GUI needs lives in ``shell/run_bridge.py``.
 
 The runner never knows what any program does; it only knows how to execute one.
 What it does own is what a program deliberately does not: creating a dataset per
-declared stream, and attaching a save policy. It counts nothing -- how much data
+declared output, and attaching a save policy. It counts nothing -- how much data
 a run produces is the program's business, and no layer above one has a reason to
 total it up.
 """
@@ -20,7 +20,7 @@ from pyrpoc.structs import params as P
 from .program import Cancelled
 from pyrpoc.data.dataset import Dataset, Provenance
 from pyrpoc.data.io import RunSaver, SaveTarget, utc_now
-from pyrpoc.data.library import DatasetLibrary
+from pyrpoc.data.library import DataLibrary
 from pyrpoc.devices.base import Device
 
 from . import claims
@@ -48,7 +48,7 @@ class RunHandle:
 
 
 class Runner:
-    def __init__(self, library: DatasetLibrary):
+    def __init__(self, library: DataLibrary):
         self.library = library
         self._thread: threading.Thread | None = None
         self._cancel = threading.Event()
@@ -167,13 +167,13 @@ class Runner:
 
     def build_datasets(self, program, provenance, saver) -> dict[str, Dataset]:
         return {
-            stream: Dataset(
-                stream=stream,
+            output: Dataset(
+                output=output,
                 spec=spec,
                 provenance=provenance,
-                writer=saver.writer_for(stream) if saver is not None else None,
+                writer=saver.writer_for(output) if saver is not None else None,
             )
-            for stream, spec in program.emits.items()
+            for output, spec in program.emits.items()
         }
 
     @staticmethod

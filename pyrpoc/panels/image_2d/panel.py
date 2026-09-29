@@ -32,7 +32,7 @@ from ..registry import panel_registry
 
 if TYPE_CHECKING:  # pragma: no cover
     from pyrpoc.data.dataset import Dataset
-    from pyrpoc.data.library import DatasetLibrary
+    from pyrpoc.data.library import DataLibrary
 
 
 @dataclass
@@ -101,7 +101,7 @@ class Image2DPanel(Panel):
 
     # -- binding --------------------------------------------------------------- #
 
-    def attach_library(self, library: "DatasetLibrary") -> None:
+    def attach_library(self, library: "DataLibrary") -> None:
         self.source.attach_library(library)
 
     def dataset(self) -> "Dataset | None":

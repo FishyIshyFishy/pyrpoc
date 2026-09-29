@@ -1,9 +1,10 @@
-"""Shape contracts for acquired arrays.
+"""The kinds of data the application passes around, and what holds them.
 
-A contract says what shape and dtype an array has and what its axes mean. It is
-the type half of the old ``DataKind``; the name half is a key in a program's
-``emits``. A view declares which contracts it can render, so a binding can be
-checked before a run starts rather than inferred from a tag mid-flight.
+A ``Data`` subclass says what shape and dtype an array has and what its axes
+mean -- ``Image2D`` is one. A program names each of its outputs in ``emits``
+and says which kind it carries; a panel declares which kinds it can render; the
+library filters on the kind. So a binding can be checked before a run starts
+rather than inferred from a tag mid-flight.
 """
 
 from __future__ import annotations
@@ -11,10 +12,10 @@ from __future__ import annotations
 import numpy as np
 
 
-class Stream:
-    """Base contract. Subclasses fix ``ndim``, ``axes`` and a human name."""
+class Data:
+    """Base kind. Subclasses fix ``ndim``, ``axes`` and a human name."""
 
-    name: str = "stream"
+    name: str = "data"
     ndim: int = 0
     axes: tuple[str, ...] = ()
     dtype = np.float32
@@ -36,7 +37,7 @@ class Stream:
         return np.asarray(array, dtype=cls.dtype)
 
 
-class Image2D(Stream):
+class Image2D(Data):
     """``(C, H, W)`` float32 — one image per channel."""
 
     name = "Image2D"
@@ -44,7 +45,7 @@ class Image2D(Stream):
     axes = ("channel", "y", "x")
 
 
-class Cube3D(Stream):
+class Cube3D(Data):
     """``(H, W, B)`` float32 — one value per pixel per bin (FLIM histograms)."""
 
     name = "Cube3D"
@@ -52,10 +53,10 @@ class Cube3D(Stream):
     axes = ("y", "x", "bin")
 
 
-class Samples4D(Stream):
+class Samples4D(Data):
     """``(C, H, W, S)`` float32 — per-pixel raw samples, unaveraged.
 
-    Split confocal's raw pixel stream. The design document files this as
+    Split confocal's raw per-pixel samples. The design document files this as
     ``Image2D``; the array ``reshape_to_split_frame`` returns is four
     dimensional, so it gets its own contract rather than a false one.
     """
@@ -65,7 +66,7 @@ class Samples4D(Stream):
     axes = ("channel", "y", "x", "sample")
 
 
-class Spectrum1D(Stream):
+class Spectrum1D(Data):
     """``(C, W)`` float32 — one spectrum per channel.
 
     Channel-first like ``Image2D`` rather than a bare ``(W,)``, for two
@@ -84,12 +85,12 @@ class Spectrum1D(Stream):
     axes = ("channel", "wavelength")
 
 
-class Mask2D(Stream):
+class Mask2D(Data):
     """``(H, W)`` uint8 -- an authored region, 0 outside and non-zero inside.
 
     Its own contract rather than a one-channel ``Image2D``, and that is what
     makes the Modulation picker work: a mask is chosen with
-    ``DatasetLibrary.matching(Mask2D)``, so a contract shared with acquired
+    ``DataLibrary.matching(Mask2D)``, so a contract shared with acquired
     images would offer every run as a mask. The spec *is* the filter.
 
     uint8 rather than float32 because a mask is a decision per pixel, not a
@@ -101,12 +102,3 @@ class Mask2D(Stream):
     ndim = 2
     axes = ("y", "x")
     dtype = np.uint8
-
-
-CONTRACTS: dict[str, type[Stream]] = {
-    Image2D.name: Image2D,
-    Cube3D.name: Cube3D,
-    Samples4D.name: Samples4D,
-    Spectrum1D.name: Spectrum1D,
-    Mask2D.name: Mask2D,
-}

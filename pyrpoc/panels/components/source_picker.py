@@ -17,11 +17,11 @@ from typing import TYPE_CHECKING, Sequence
 from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtWidgets import QComboBox, QHBoxLayout, QLabel, QWidget
 
-from pyrpoc.structs.data import Stream
+from pyrpoc.structs.data import Data
 
 if TYPE_CHECKING:  # pragma: no cover
     from pyrpoc.data.dataset import Dataset
-    from pyrpoc.data.library import DatasetLibrary
+    from pyrpoc.data.library import DataLibrary
 
 
 class SourcePicker(QWidget):
@@ -31,10 +31,10 @@ class SourcePicker(QWidget):
     #: user picked a different entry. The panel re-reads ``current()``.
     changed = pyqtSignal()
 
-    def __init__(self, renders: Sequence[type[Stream]], parent: QWidget | None = None):
+    def __init__(self, renders: Sequence[type[Data]], parent: QWidget | None = None):
         super().__init__(parent)
         self.renders = list(renders)
-        self._library: "DatasetLibrary | None" = None
+        self._library: "DataLibrary | None" = None
         self._follow_latest = True
 
         layout = QHBoxLayout(self)
@@ -46,12 +46,12 @@ class SourcePicker(QWidget):
 
     # -- library --------------------------------------------------------------- #
 
-    def attach_library(self, library: "DatasetLibrary") -> None:
+    def attach_library(self, library: "DataLibrary") -> None:
         self._library = library
         library.subscribe(self.refresh_sources)
         self.refresh_sources()
 
-    def library(self) -> "DatasetLibrary | None":
+    def library(self) -> "DataLibrary | None":
         return self._library
 
     def candidates(self) -> list["Dataset"]:

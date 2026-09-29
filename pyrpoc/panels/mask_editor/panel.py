@@ -66,7 +66,7 @@ from .canvas import MaskImageView, MaskRoi
 from .dialog import RoiThresholdDialog
 
 if TYPE_CHECKING:  # pragma: no cover
-    from pyrpoc.data.library import DatasetLibrary
+    from pyrpoc.data.library import DataLibrary
 
 
 def write_mask(path: Path | str, mask: np.ndarray) -> Path:
@@ -135,13 +135,13 @@ class MaskEditorPanel(Panel):
 
     # -- binding ------------------------------------------------------------ #
 
-    def attach_library(self, library: "DatasetLibrary") -> None:
+    def attach_library(self, library: "DataLibrary") -> None:
         self.source.attach_library(library)
 
     def dataset(self) -> "Dataset | None":
         return self.source.current()
 
-    def library(self) -> "DatasetLibrary | None":
+    def library(self) -> "DataLibrary | None":
         return self.source.library()
 
     def set_picking(self, active: bool) -> None:
@@ -605,7 +605,7 @@ class MaskEditorPanel(Panel):
             return
 
         dataset = Dataset(
-            stream="mask",
+            output="mask",
             spec=Mask2D,
             provenance=Provenance(
                 program_key="mask_editor",

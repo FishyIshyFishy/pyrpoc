@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING, Any, Callable, Iterator, TypeVar
 
 import numpy as np
 
-from pyrpoc.structs.data import Stream
+from pyrpoc.structs.data import Data
 from pyrpoc.devices.base import Device
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -68,8 +68,8 @@ class Program:
     #: are handed the same instance.
     params: list[type] = []
 
-    #: Named output streams and their shape contracts.
-    emits: dict[str, type[Stream]] = {}
+    #: Named outputs, and the kind of ``Data`` each one carries.
+    emits: dict[str, type[Data]] = {}
 
     def run(self, ctx: "RunContext") -> None:
         raise NotImplementedError
@@ -102,32 +102,32 @@ class RunContext:
 
     # -- output ------------------------------------------------------------ #
 
-    def publish(self, stream: str, data: np.ndarray, *, channels=None) -> None:
+    def publish(self, output: str, data: np.ndarray, *, channels=None) -> None:
         """Write one array into one of this run's datasets.
 
-        The stream name is declared in ``emits``, so a view binding exists
+        The output name is declared in ``emits``, so a view binding exists
         before the run starts rather than being inferred from a tag mid-flight.
         """
-        dataset = self.datasets.get(stream)
+        dataset = self.datasets.get(output)
         if dataset is None:
             raise KeyError(
-                f"{stream!r} is not declared in emits; this program declares "
+                f"{output!r} is not declared in emits; this program declares "
                 f"{sorted(self.datasets)}"
             )
         if channels and not dataset.channel_labels:
             dataset.channel_labels = list(channels)
         dataset.append(data)
 
-    def describe(self, stream: str, **metadata: Any) -> None:
+    def describe(self, output: str, **metadata: Any) -> None:
         """Record metadata on one of this run's datasets.
 
         FLIM uses it for laser_period_ps / binwidth_ps / n_bins, which v3.0
-        attached to every AcquiredData it emitted. Per stream and set once, not
+        attached to every AcquiredData it emitted. Per output and set once, not
         per frame.
         """
-        dataset = self.datasets.get(stream)
+        dataset = self.datasets.get(output)
         if dataset is None:
-            raise KeyError(f"{stream!r} is not declared in emits")
+            raise KeyError(f"{output!r} is not declared in emits")
         dataset.metadata.update(metadata)
 
     def status(self, text: str) -> None:

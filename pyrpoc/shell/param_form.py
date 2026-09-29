@@ -36,7 +36,7 @@ from PyQt6.QtWidgets import (
 from pyrpoc.structs import params as P
 from pyrpoc.structs.params import ParameterError
 from pyrpoc.structs.data import Mask2D
-from pyrpoc.data.library import DatasetLibrary
+from pyrpoc.data.library import DataLibrary
 from pyrpoc.panels.components.cards import BaseCardWidget
 from pyrpoc.programs.components import Mask, MasksField, Point, PointField
 
@@ -81,7 +81,7 @@ class FieldWidget:
     #: rather than describing it -- the mask table is the one -- and left None
     #: by every other builder, which is what lets a device panel build the same
     #: form with no library in sight.
-    attach_library: Callable[["DatasetLibrary"], None] | None = None
+    attach_library: Callable[["DataLibrary"], None] | None = None
 
 
 # --------------------------------------------------------------------------- #
@@ -145,7 +145,7 @@ class MaskTable(QWidget):
 
     def __init__(self, parent: QWidget | None = None):
         super().__init__(parent)
-        self._library: DatasetLibrary | None = None
+        self._library: DataLibrary | None = None
 
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
@@ -178,7 +178,7 @@ class MaskTable(QWidget):
 
     # -- the open data ----------------------------------------------------- #
 
-    def attach_library(self, library: DatasetLibrary) -> None:
+    def attach_library(self, library: DataLibrary) -> None:
         self._library = library
 
     def sources(self) -> list:
@@ -684,7 +684,7 @@ class ParamForm(QWidget):
         parent: QWidget | None = None,
         *,
         cards: bool = True,
-        library: DatasetLibrary | None = None,
+        library: DataLibrary | None = None,
     ):
         """``library`` is for fields whose value names data rather than
         describing it. Optional because a device configuration is the same form

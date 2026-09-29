@@ -34,8 +34,8 @@ from ..components.table import ListTable
 if TYPE_CHECKING:  # pragma: no cover
     from pyrpoc.shell.app import Application
 
-TIME, NAME, STREAM, SIZE = range(4)
-COLUMNS = ["Time", "Name", "Stream", "Size"]
+TIME, NAME, OUTPUT, SIZE = range(4)
+COLUMNS = ["Time", "Name", "Output", "Size"]
 
 #: 1024-based, because the number a user compares this against is the one their
 #: task manager shows.
@@ -84,7 +84,7 @@ class DataLibraryPanel(Panel):
 
         self.table = ListTable(COLUMNS, self)
         header = self.table.horizontalHeader()
-        for column in (TIME, STREAM, SIZE):
+        for column in (TIME, OUTPUT, SIZE):
             header.setSectionResizeMode(column, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(NAME, QHeaderView.ResizeMode.Stretch)
         root.addWidget(self.table, 1)
@@ -124,7 +124,7 @@ class DataLibraryPanel(Panel):
         for row, dataset in enumerate(self.rows):
             self.table.set_cell(row, TIME, dataset.started_time or "-")
             self.table.set_cell(row, NAME, dataset.name)
-            self.table.set_cell(row, STREAM, dataset.stream)
+            self.table.set_cell(row, OUTPUT, dataset.output)
             self.table.set_cell(row, SIZE, format_size(dataset.nbytes), right=True)
             self.table.item(row, NAME).setToolTip(f"{dataset.name} · {dataset.spec.name}")
 
