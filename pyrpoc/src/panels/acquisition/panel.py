@@ -12,16 +12,21 @@ Replaces gui/main_widgets/acquisition_mgr/. The form is generated from the
 program's parameter model and writes back into it, so nothing scrapes widgets at
 play time -- collect_values is gone.
 
+The transport row starts with the selected program's controls, rendered from
+``app.runners``: Start, Continuous and "Acquire at point..." are whatever the
+program's runners asked for, and this panel only knows how to draw a
+``Button`` and a ``Toggle``. Stop is fixed: every run can be stopped.
+
 The name and the save switch sit in the transport row rather than in the
 generated form, because they are not parameters of the program. "Frame" and
 "Signal" describe what simulation does; a filename describes what happens to
 the result, so it is the same two widgets whichever program is selected and
-they belong next to the button that starts the run.
+they belong next to the controls that start the run.
 """
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable
 
 from PyQt6.QtWidgets import (
     QCheckBox,
@@ -42,7 +47,9 @@ from PyQt6.QtWidgets import (
 from pyrpoc.src.app import catalog
 from pyrpoc.src.structs.panel import Panel
 from pyrpoc.src.structs.params import ParameterError
+from pyrpoc.src.structs.runner import Button, Control, Toggle
 
+from ..components.icons import asset_icon
 from ..components.param_form import ParamForm
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -56,6 +63,9 @@ class AcquisitionPanel(Panel):
         super().__init__(parent)
         self.app = app
         self.form: ParamForm | None = None
+        #: The rendered controls: descriptor, its button, and the watcher
+        #: that keeps the button in line with it.
+        self.control_buttons: list[tuple[Control, QPushButton, Callable[[], None]]] = []
 
         root = QVBoxLayout(self)
         root.setContentsMargins(8, 8, 8, 8)
@@ -71,20 +81,16 @@ class AcquisitionPanel(Panel):
 
         controls = QHBoxLayout()
         style = self.style()
-        self.start_btn = QPushButton(self)
-        self.start_btn.setToolTip("Start")
-        self.continuous_btn = QPushButton(self)
-        self.continuous_btn.setToolTip("Continuous acquisition")
+        self.controls_strip = QHBoxLayout()
+        self.controls_strip.setContentsMargins(0, 0, 0, 0)
+        controls.addLayout(self.controls_strip)
         self.stop_btn = QPushButton(self)
         self.stop_btn.setToolTip("Stop")
-        if style is not None:
-            self.start_btn.setIcon(style.standardIcon(QStyle.StandardPixmap.SP_MediaPlay))
-            self.continuous_btn.setIcon(
-                style.standardIcon(QStyle.StandardPixmap.SP_MediaSkipForward)
-            )
+        stop_icon = asset_icon("stop")
+        if stop_icon is not None:
+            self.stop_btn.setIcon(stop_icon)
+        elif style is not None:
             self.stop_btn.setIcon(style.standardIcon(QStyle.StandardPixmap.SP_MediaStop))
-        controls.addWidget(self.start_btn)
-        controls.addWidget(self.continuous_btn)
         controls.addWidget(self.stop_btn)
 
         separator = QFrame(self)
@@ -117,8 +123,6 @@ class AcquisitionPanel(Panel):
         root.addWidget(self.scroll, 1)
 
         self.program_combo.currentIndexChanged.connect(self.on_program_chosen)
-        self.start_btn.clicked.connect(lambda: self.start(continuous=False))
-        self.continuous_btn.clicked.connect(lambda: self.start(continuous=True))
         self.stop_btn.clicked.connect(self.app.stop_run)
         self.save_check.toggled.connect(lambda checked: self.app.set_save(enabled=checked))
         self.name_edit.textChanged.connect(lambda text: self.app.set_save(name=text))
@@ -127,14 +131,16 @@ class AcquisitionPanel(Panel):
         self.app.program_selected.connect(self.on_program_selected)
         self.app.devices_changed.connect(self.refresh_readiness)
         self.app.save_changed.connect(self.on_save_changed)
-        self.app.pick_armed_changed.connect(self.on_pick_armed_changed)
-        self.app.point_acquired.connect(self.on_point_acquired)
-        self.app.pick_failed.connect(self.on_pick_failed)
+        self.app.params_written.connect(self.on_params_written)
+        self.app.runners.controls_changed.connect(self.render_controls)
+        self.app.runners.status.connect(self.show_status)
+        self.app.runners.picking_changed.connect(self.on_picking_changed)
         self.app.bridge.run_started.connect(self.on_run_started)
-        self.app.bridge.run_status.connect(lambda text: self.status_label.setText(f"Status: {text}"))
+        self.app.bridge.run_status.connect(self.show_status)
         self.app.bridge.run_finished.connect(self.on_run_finished)
         self.app.bridge.run_failed.connect(self.on_run_failed)
 
+        self.render_controls()
         self.set_running_ui(False)
         self.on_save_changed()
         if self.app.selected_program is None and catalog.CATALOG:
@@ -161,100 +167,95 @@ class AcquisitionPanel(Panel):
         self.refresh_readiness()
 
     def rebuild_form(self) -> None:
-        """Build the form for the selected program, disarming as we go.
-
-        The widget holding the arm button is about to be destroyed, so the
-        application's flag has to come down with it -- otherwise switching
-        modality would leave every display armed with no button to un-press.
-        """
         params = self.app.current_params()
         if params is None:
             return
-        self.app.set_pick_armed(False)
         self.form = ParamForm(params, self, library=self.app.library)
         self.form.changed.connect(self.app.params_changed.emit)
         self.form.changed.connect(self.app.state_changed.emit)
-        self.form.invalid.connect(lambda text: self.status_label.setText(f"Status: {text}"))
-        self.form.pick_armed.connect(self.on_pick_armed_requested)
+        self.form.invalid.connect(self.show_status)
         self.scroll.setWidget(self.form)
 
+    def on_params_written(self) -> None:
+        """Something other than the form wrote the blocks -- a runner applying
+        a pick -- so show what is there now."""
+        if self.form is not None:
+            self.form.reload()
+
     def refresh_readiness(self, *, announce: bool = True) -> None:
-        """Enable or disable play, and say what is missing if anything is.
+        """Enable or disable the controls, and say what is missing if anything is.
 
         ``announce`` is off when a run has just ended, so the outcome message is
         not immediately overwritten with "ready".
         """
         if self.app.selected_program is None:
             return
-        missing = self.blockers()
+        missing = self.app.blockers()
         running = self.app.bridge.is_running
-        if missing and self.app.pick_armed:
-            self.app.set_pick_armed(False)
-        self.start_btn.setEnabled(not missing and not running)
-        self.continuous_btn.setEnabled(not missing and not running)
+        self.apply_enabled()
         if missing:
-            self.status_label.setText("Status: needs " + ", ".join(missing))
-        elif announce and not running:
-            self.status_label.setText("Status: ready")
+            self.show_status("needs " + ", ".join(missing))
+        elif announce and not running and not self.app.runners.picking:
+            self.show_status("ready")
 
-    def blockers(self) -> list[str]:
-        """What has to be supplied before a run can start.
+    def show_status(self, text: str) -> None:
+        self.status_label.setText(f"Status: {text}")
 
-        The empty name is in here rather than left to fail at play time: the
-        executor raises on it, and a play button that throws is worse than one
-        that says why it is grey.
+    # -- controls ------------------------------------------------------------- #
+
+    def render_controls(self) -> None:
+        """Draw the selected program's controls, replacing whatever was there.
+
+        ``clicked`` rather than ``toggled`` on a toggle, so the runner putting
+        its own toggle somewhere is shown without being mistaken for the user.
         """
-        key = self.app.selected_program
-        missing = self.app.missing_devices(key) if key else []
-        if self.app.save.enabled and not self.app.save.filename:
-            missing = missing + ["a name to save under"]
-        return missing
+        for control, button, watcher in self.control_buttons:
+            control.unwatch(watcher)
+            self.controls_strip.removeWidget(button)
+            button.deleteLater()
+        self.control_buttons = []
 
-    # -- picking -------------------------------------------------------------- #
+        for control in self.app.runners.controls:
+            button = QPushButton(self)
+            icon = asset_icon(control.icon) if control.icon else None
+            if icon is not None:
+                button.setIcon(icon)
+            else:
+                button.setText(control.label)
+            button.setToolTip(control.tooltip or control.label)
+            if isinstance(control, Toggle):
+                button.setCheckable(True)
+                button.setChecked(control.checked)
+                button.clicked.connect(lambda checked, c=control: c.toggle(checked))
+            elif isinstance(control, Button):
+                button.clicked.connect(lambda _checked=False, c=control: c.press())
 
-    def on_pick_armed_requested(self, active: bool) -> None:
-        """A field asked to be filled from a display. Allow it, or say why not.
+            watcher = self.make_watcher(control, button)
+            control.watch(watcher)
+            self.controls_strip.addWidget(button)
+            self.control_buttons.append((control, button, watcher))
+        self.apply_enabled()
 
-        Arming is refused for anything that would stop play working, because
-        the click acquires: a crosshair promising a run that cannot start is a
-        worse lie than a greyed button.
-        """
-        missing = self.blockers() if active else []
-        if missing:
-            self.status_label.setText("Status: needs " + ", ".join(missing))
-            if self.form is not None:
-                self.form.show_pick_armed(False)
-            return
-        if active and self.app.bridge.is_running:
-            self.status_label.setText("Status: already acquiring")
-            if self.form is not None:
-                self.form.show_pick_armed(False)
-            return
-        self.app.set_pick_armed(active)
+    def make_watcher(self, control: Control, button: QPushButton) -> Callable[[], None]:
+        """Keep ``button`` in line with ``control`` when its runner changes it."""
 
-    def on_pick_armed_changed(self, active: bool) -> None:
-        """Reflect the application's arming state in the form and the status."""
-        if self.form is not None:
-            self.form.show_pick_armed(active)
-        if active:
-            self.status_label.setText("Status: click a point on an image")
-        elif not self.app.bridge.is_running:
+        def watcher() -> None:
+            if isinstance(control, Toggle) and button.isChecked() != control.checked:
+                button.setChecked(control.checked)
+            self.apply_enabled()
+
+        return watcher
+
+    def apply_enabled(self) -> None:
+        """One policy for every control: off while something is missing or a
+        run is in progress, and off whenever its runner says so."""
+        ready = not self.app.blockers() and not self.app.bridge.is_running
+        for control, button, _ in self.control_buttons:
+            button.setEnabled(ready and control.enabled)
+
+    def on_picking_changed(self, active: bool) -> None:
+        if not active and not self.app.bridge.is_running:
             self.refresh_readiness()
-
-    def on_point_acquired(self) -> None:
-        """A pixel became a point. Show the volts, then run.
-
-        Goes through ``start`` rather than ``app.start_run`` so the one place
-        that reports a failed launch keeps reporting it. That matters more here
-        than on the play button: this path begins in a panel's mouse handler, and
-        an exception escaping a Qt slot aborts the process instead of unwinding.
-        """
-        if self.form is not None:
-            self.form.reload()
-        self.start(continuous=False)
-
-    def on_pick_failed(self, message: str) -> None:
-        self.status_label.setText(f"Status: {message}")
 
     # -- saving --------------------------------------------------------------- #
 
@@ -301,30 +302,20 @@ class AcquisitionPanel(Panel):
 
     # -- running -------------------------------------------------------------- #
 
-    def start(self, *, continuous: bool) -> None:
-        try:
-            self.app.start_run(continuous=continuous)
-        except Exception as exc:  # noqa: BLE001 - surfaced to the user
-            self.status_label.setText(f"Status: error - {exc}")
-            QMessageBox.critical(self, "Acquisition Error", str(exc))
-
     def on_run_started(self) -> None:
-        self.status_label.setText("Status: acquiring")
+        self.show_status("acquiring")
         self.set_running_ui(True)
 
     def on_run_finished(self) -> None:
         self.set_running_ui(False)
         self.refresh_readiness(announce=False)
-        self.status_label.setText("Status: stopped")
+        self.show_status("stopped")
 
     def on_run_failed(self, message: str) -> None:
-        self.status_label.setText(f"Status: error - {message}")
+        self.show_status(f"error - {message}")
         self.set_running_ui(False)
         QMessageBox.critical(self, "Acquisition Error", message)
 
     def set_running_ui(self, running: bool) -> None:
-        if running:
-            self.app.set_pick_armed(False)
-        self.start_btn.setEnabled(not running)
-        self.continuous_btn.setEnabled(not running)
+        self.apply_enabled()
         self.stop_btn.setEnabled(running)

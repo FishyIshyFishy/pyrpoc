@@ -17,7 +17,6 @@ from typing import Any
 
 from PyQt6.QtCore import QObject, pyqtSignal
 
-from pyrpoc.src.programs.components import Point, PointGroup, ScanGroup
 from pyrpoc.src.structs import params as P
 from pyrpoc.src.structs.device import Device
 from pyrpoc.src.structs.registries import block_registry, device_registry
@@ -26,6 +25,7 @@ from . import catalog
 from . import claims
 from .library import DataLibrary
 from .run_bridge import RunBridge
+from .runner_host import RunnerHost
 from .saving import SaveTarget
 
 
@@ -37,11 +37,8 @@ class Application(QObject):
     program_selected = pyqtSignal(str)
     params_changed = pyqtSignal()
     save_changed = pyqtSignal()
+    params_written = pyqtSignal()         # blocks changed outside the form
     state_changed = pyqtSignal()          # anything worth autosaving
-
-    pick_armed_changed = pyqtSignal(bool)  # picking turned on or off
-    point_acquired = pyqtSignal()          # a pixel became a point in the blocks
-    pick_failed = pyqtSignal(str)          # a click could not be placed, and why
 
     def __init__(self, parent: QObject | None = None):
         super().__init__(parent)
@@ -62,13 +59,9 @@ class Application(QObject):
         #: One save target for the session, not one per program: what a run is
         #: called and where it goes has nothing to do with which program runs.
         self.save = SaveTarget()
-        #: Whether a click on a display reports a position. Interaction state,
-        #: not configuration: it is in ``save``'s category of "a control near
-        #: play that is not a parameter of the program", but unlike ``save`` it
-        #: has ``library``'s lifetime and is deliberately absent from the
-        #: session file. A relaunch that came back armed would be pointing a
-        #: hardware trigger at the next stray click.
-        self.pick_armed = False
+        #: The selected program's entry points. The app hosts them and knows
+        #: nothing else about them.
+        self.runners = RunnerHost(self)
 
         self.bridge.run_started.connect(lambda: self.state_changed.emit())
         self.bridge.dataset_changed.connect(self.on_dataset_changed)
@@ -81,6 +74,7 @@ class Application(QObject):
         catalog.entry_for(key)  # raises on an unknown key
         self.selected_program = key
         self.params_for(key)    # ensure its blocks exist
+        self.runners.attach(catalog.entry_for(key).program)
         self.program_selected.emit(key)
         self.state_changed.emit()
 
@@ -102,6 +96,19 @@ class Application(QObject):
     def missing_devices(self, key: str) -> list[str]:
         entry = catalog.entry_for(key)
         return [cls.display_name for cls in claims.missing(list(entry.program.uses), self.devices)]
+
+    def blockers(self) -> list[str]:
+        """What has to be supplied before the selected program can run.
+
+        The empty name is in here rather than left to fail at play time: the
+        executor raises on it, and a play button that throws is worse than one
+        that says why it is grey.
+        """
+        key = self.selected_program
+        missing = self.missing_devices(key) if key else []
+        if self.save.enabled and not self.save.filename:
+            missing = missing + ["a name to save under"]
+        return missing
 
     # -- saving ------------------------------------------------------------- #
 
@@ -125,72 +132,6 @@ class Application(QObject):
             self.save.enabled = bool(enabled)
         self.save_changed.emit()
         self.state_changed.emit()
-
-    # -- picking ------------------------------------------------------------ #
-
-    def set_pick_armed(self, active: bool) -> None:
-        """Turn point picking on or off across every panel.
-
-        Told to all of them unconditionally rather than to a filtered set:
-        ``Panel.set_picking`` is a no-op by default, so a panel with no spatial
-        meaning needs no capability flag and this needs no branch. One bad
-        panel must not leave the rest in a different state from the flag,
-        which is why the loop swallows the way ``on_dataset_changed`` does.
-
-        Never emits ``state_changed``. That signal drives the autosave, and this
-        is the one piece of state that must not survive a relaunch.
-        """
-        active = bool(active)
-        if active == self.pick_armed:
-            return
-        self.pick_armed = active
-        for panel in list(self.panels):
-            try:
-                panel.set_picking(active)
-            except Exception as exc:  # noqa: BLE001 - one bad panel must not stick
-                panel.last_error = str(exc)
-        self.pick_armed_changed.emit(active)
-
-    def on_point_picked(self, dataset_id: str, x: int, y: int) -> None:
-        """A panel reported a pixel. Turn it into volts and acquire there.
-
-        Disarming happens first, before anything that can fail, so no path out
-        of here leaves a live cursor behind.
-
-        The geometry comes from the dataset's provenance rather than the live
-        ``ScanGroup``. Blocks are shared and mutable: change the amplitude after
-        taking an image and the live block no longer describes the picture being
-        clicked, so the volts would point somewhere it never looked.
-        """
-        if not self.pick_armed:
-            return
-        self.set_pick_armed(False)
-
-        dataset = self.library.by_id(dataset_id)
-        if dataset is None:
-            self.pick_failed.emit("that data is no longer open")
-            return
-
-        raw = dataset.provenance.parameters.get(P.block_name(ScanGroup))
-        if not isinstance(raw, dict):
-            self.pick_failed.emit(
-                f"{dataset.label} was not acquired with a scan geometry, "
-                "so a pixel does not name a position"
-            )
-            return
-
-        try:
-            scan = P.decode_block(ScanGroup, raw)
-            fast_v, slow_v = scan.voltage_at(x, y)
-        except Exception as exc:  # noqa: BLE001 - reported, not raised: Qt slot
-            self.pick_failed.emit(f"could not place that pixel: {exc}")
-            return
-
-        self.blocks.get(PointGroup).target = Point(
-            fast_v, slow_v, dataset_id, dataset.label, x, y
-        )
-        self.state_changed.emit()
-        self.point_acquired.emit()
 
     # -- devices ------------------------------------------------------------ #
 
@@ -231,12 +172,7 @@ class Application(QObject):
 
     def add_panel(self, panel: Any) -> Any:
         panel.attach_library(self.library)
-        #: Connected for every panel, including those that never emit. A panel
-        #: added while picking is on has to arrive already picking, which is
-        #: why the state is pushed here rather than only from
-        #: ``set_pick_armed``.
-        panel.point_picked.connect(self.on_point_picked)
-        panel.set_picking(self.pick_armed)
+        self.runners.attach_display(panel)
         self.panels.append(panel)
         self.panels_changed.emit()
         self.state_changed.emit()
@@ -246,6 +182,7 @@ class Application(QObject):
         if panel not in self.panels:
             return
         self.panels.remove(panel)
+        self.runners.detach_display(panel)
         self.panels_changed.emit()
         self.state_changed.emit()
 

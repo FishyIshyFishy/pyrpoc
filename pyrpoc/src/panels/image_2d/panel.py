@@ -26,6 +26,7 @@ from PyQt6.QtCore import Qt, pyqtSignal
 
 from pyrpoc.src.structs.data import Image2D
 from pyrpoc.src.structs.panel import Panel, panel_registry
+from pyrpoc.src.structs.picks import Pick, PixelPick
 
 from ..components.source_picker import SourcePicker
 
@@ -47,10 +48,11 @@ class ChannelTile:
 
 @panel_registry.register("image_2d")
 class Image2DPanel(Panel):
-    #: The user picked a position in the data: dataset id, then pixel x and y.
-    #: What a pixel means in volts depends on the scan geometry, which
-    #: belongs to the dataset, not to the renderer.
-    point_picked = pyqtSignal(str, int, int)
+    #: A ``PixelPick`` the user clicked while a pick was requested. What a
+    #: pixel means in volts depends on the scan geometry, which belongs to the
+    #: dataset, not to the renderer -- and turning it into anything is the
+    #: requesting program's business.
+    picked = pyqtSignal(object)
 
     display_name = "2D Tiled"
     renders = [Image2D]
@@ -200,7 +202,7 @@ class Image2DPanel(Panel):
         autoscale_box.toggled.connect(lambda checked, i=index: self.on_autoscale_toggled(i))
         hist_widget.item.sigLevelsChanged.connect(lambda _item, i=index: self.on_lut_levels_changed(i))
 
-        # Wired and cursored at build time, not when picking is switched on:
+        # Wired and cursored at build time, not when a pick is requested:
         # sync_channel_tiles creates and destroys these as the channel count
         # changes, so a tile appearing after arming has to arrive ready.
         # pyqtgraph's GraphicsScene carries sigMouseClicked; the Qt stub for
@@ -215,8 +217,13 @@ class Image2DPanel(Panel):
 
     # -- picking ---------------------------------------------------------------- #
 
-    def set_picking(self, active: bool) -> None:
-        self._picking = bool(active)
+    def set_pick_mode(self, kind: type[Pick] | None) -> None:
+        """Start or stop answering a pick request.
+
+        Only a request this panel can satisfy turns the crosshair on: a pixel
+        is what it produces, so a request for any kind a ``PixelPick`` is.
+        """
+        self._picking = kind is not None and issubclass(PixelPick, kind)
         for tile in self._tiles:
             self.apply_pick_cursor(tile)
 
@@ -260,7 +267,7 @@ class Image2DPanel(Panel):
             return
 
         event.accept()
-        self.point_picked.emit(dataset.id, x, y)
+        self.picked.emit(PixelPick(dataset, x, y))
 
     def current_channel(self, index: int) -> np.ndarray | None:
         dataset = self.dataset()

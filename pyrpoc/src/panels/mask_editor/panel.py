@@ -87,11 +87,6 @@ def write_mask(path: Path | str, mask: np.ndarray) -> Path:
 class MaskEditorPanel(Panel):
     """Draw thresholded polygon ROIs over an acquired image and file the mask."""
 
-    #: Declared but never emitted: this panel has no spatial meaning to
-    #: report, but Application.add_panel connects to it on every panel the
-    #: registry can produce, so it must exist.
-    point_picked = pyqtSignal(str, int, int)
-
     display_name = "Mask Editor"
     renders = [Image2D]
 
@@ -140,10 +135,6 @@ class MaskEditorPanel(Panel):
 
     def library(self) -> "DataLibrary | None":
         return self.source.library()
-
-    def set_picking(self, active: bool) -> None:
-        """No spatial meaning to report; a no-op, not a missing method."""
-        del active
 
     # -- layout ---------------------------------------------------------------- #
 

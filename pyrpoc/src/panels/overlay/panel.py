@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pyqtgraph as pg
-from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QCheckBox,
     QHBoxLayout,
@@ -54,11 +54,6 @@ class ChannelControl:
 
 @panel_registry.register("overlay")
 class OverlayPanel(Panel):
-    #: Declared but never emitted: this panel has no spatial meaning to
-    #: report, but Application.add_panel connects to it on every panel the
-    #: registry can produce, so it must exist.
-    point_picked = pyqtSignal(str, int, int)
-
     display_name = "2D Overlaid"
     renders = [Image2D]
 
@@ -117,10 +112,6 @@ class OverlayPanel(Panel):
 
     def dataset(self) -> "Dataset | None":
         return self.source.current()
-
-    def set_picking(self, active: bool) -> None:
-        """No spatial meaning to report; a no-op, not a missing method."""
-        del active
 
     # -- rendering ------------------------------------------------------------ #
 

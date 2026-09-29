@@ -68,16 +68,6 @@ class FieldWidget:
     #: resolving it per path per keystroke was quadratic in field count.
     spec: P.Field | None = None
 
-    #: Subscribe to "the user asked to pick this value off a display". Set only
-    #: by widgets that can be filled by something outside the form; every other
-    #: builder leaves it None and the form skips it.
-    arm: Callable[[Callable[[bool], None]], None] | None = None
-
-    #: Show or clear the armed state. The reverse of ``arm``, and the reason
-    #: there are two hooks rather than one: the application disarms after a
-    #: pick, so the widget has to be told, not just asked.
-    set_armed: Callable[[bool], None] | None = None
-
     #: Hand over the open datasets. Set only by widgets whose value names data
     #: rather than describing it -- the mask table is the one -- and left None
     #: by every other builder, which is what lets a device panel build the same
@@ -345,22 +335,14 @@ NO_ORIGIN = "—"
 
 
 class PointPicker(QWidget):
-    """Galvo volts, typed or picked off an image.
+    """Galvo volts, typed or picked off an image, and where they came from.
 
-    The button is a widget affordance, not a parameter: which is the whole
-    reason arming is not a field. ``Browse...`` on a path field is the same
-    idea -- press it, something outside the form temporarily takes over to fill
-    one value, it ends. Nothing about the button is validated, encoded or
-    persisted, so the application can never come back from a relaunch armed at
-    hardware.
-
-    It is checkable because arming outlives the press: the click that fills it
-    happens somewhere else entirely. ``set_armed`` exists for that reason -- the
-    application decides when arming ends, and says so.
+    A plain editor. Picking a point off an image is an entry point of the
+    program that wants one -- an ``ArmAndRun`` runner -- not something this
+    widget does; it shows the result when the form reloads.
     """
 
     changed = pyqtSignal()
-    arm_requested = pyqtSignal(bool)
 
     def __init__(self, parent: QWidget | None = None):
         super().__init__(parent)
@@ -383,21 +365,12 @@ class PointPicker(QWidget):
         volts.addWidget(self.slow_spin, 1)
         root.addLayout(volts)
 
-        self.pick_btn = QPushButton("\u2295 Acquire at point\u2026", self)
-        self.pick_btn.setCheckable(True)
-        self.pick_btn.setToolTip(
-            "Arm, then click a point on an image to park the galvos there and "
-            "acquire. Clicking moves hardware."
-        )
-        root.addWidget(self.pick_btn)
-
         self.origin_label = QLabel(f"from: {NO_ORIGIN}", self)
         self.origin_label.setEnabled(False)
         root.addWidget(self.origin_label)
 
         self.fast_spin.valueChanged.connect(self.on_spin_changed)
         self.slow_spin.valueChanged.connect(self.on_spin_changed)
-        self.pick_btn.toggled.connect(self.arm_requested.emit)
 
     def build_spin(self, tooltip: str) -> QDoubleSpinBox:
         spin = QDoubleSpinBox(self)
@@ -448,16 +421,6 @@ class PointPicker(QWidget):
 
     def summary(self) -> str:
         return f"{self.fast_spin.value():.3f} / {self.slow_spin.value():.3f} V"
-
-    # -- arming ------------------------------------------------------------- #
-
-    def set_armed(self, active: bool) -> None:
-        """Reflect the application's arming state without asking for a change."""
-        if self.pick_btn.isChecked() == bool(active):
-            return
-        self.pick_btn.blockSignals(True)
-        self.pick_btn.setChecked(bool(active))
-        self.pick_btn.blockSignals(False)
 
 
 # --------------------------------------------------------------------------- #
@@ -617,17 +580,12 @@ def build_point(spec: PointField, parent) -> FieldWidget:
     def connect(cb: Callable[[], None]) -> None:
         picker.changed.connect(lambda *_: cb())
 
-    def arm(cb: Callable[[bool], None]) -> None:
-        picker.arm_requested.connect(cb)
-
     return FieldWidget(
         picker,
         get=picker.value,
         set=picker.set_value,
         connect=connect,
         summary=picker.summary,
-        arm=arm,
-        set_armed=picker.set_armed,
     )
 
 
@@ -674,10 +632,6 @@ class ParamForm(QWidget):
 
     changed = pyqtSignal()
     invalid = pyqtSignal(str)
-    #: A field asked to be filled from outside the form. Bubbled rather than
-    #: handled, exactly as ``changed`` is: the form does not know what a pick
-    #: is, only that a widget offered one.
-    pick_armed = pyqtSignal(bool)
 
     def __init__(
         self,
@@ -714,8 +668,6 @@ class ParamForm(QWidget):
             for path, spec in section.entries:
                 field = build_field(spec, body)
                 field.connect(self.on_field_changed)
-                if field.arm is not None:
-                    field.arm(self.pick_armed.emit)
                 if field.attach_library is not None and library is not None:
                     field.attach_library(library)
                 self.fields[path] = field
@@ -765,16 +717,6 @@ class ParamForm(QWidget):
         for path, value in coerced.items():
             P.set_path(lookup, path, value)
         return self.blocks if target is None else target
-
-    def show_pick_armed(self, active: bool) -> None:
-        """Push the armed state down to whichever field can be picked.
-
-        Fans out over every field because the form has no reason to know which
-        one it is; builders that left ``set_armed`` unset are skipped.
-        """
-        for field in self.fields.values():
-            if field.set_armed is not None:
-                field.set_armed(active)
 
     def on_field_changed(self) -> None:
         """Runs inside a Qt slot, so nothing may escape from here.

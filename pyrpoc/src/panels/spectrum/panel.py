@@ -16,7 +16,6 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pyqtgraph as pg
-from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtWidgets import QVBoxLayout, QWidget
 
 from pyrpoc.src.structs.data import Spectrum1D
@@ -32,11 +31,6 @@ if TYPE_CHECKING:  # pragma: no cover
 
 @panel_registry.register("spectrum")
 class SpectrumPanel(Panel):
-    #: Declared but never emitted: this panel has no spatial meaning to
-    #: report, but Application.add_panel connects to it on every panel the
-    #: registry can produce, so it must exist.
-    point_picked = pyqtSignal(str, int, int)
-
     display_name = "Spectrum"
     renders = [Spectrum1D]
 
@@ -71,10 +65,6 @@ class SpectrumPanel(Panel):
 
     def dataset(self) -> "Dataset | None":
         return self.source.current()
-
-    def set_picking(self, active: bool) -> None:
-        """No spatial meaning to report; a no-op, not a missing method."""
-        del active
 
     # -- rendering ------------------------------------------------------------ #
 

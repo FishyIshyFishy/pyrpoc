@@ -17,13 +17,16 @@ from typing import Any, ClassVar, Iterable, Sequence
 
 import numpy as np
 
+from pyrpoc.src.structs.data import Dataset
 from pyrpoc.src.structs.params import (
     Field,
     Group,
     ParameterError,
+    block_name,
     bool_field,
     channels_field,
     choice_field,
+    decode_block,
     float_field,
     int_field,
     spec_field,
@@ -188,6 +191,28 @@ class Point:
         object.__setattr__(self, "source_label", str(self.source_label))
         object.__setattr__(self, "pixel_x", int(self.pixel_x))
         object.__setattr__(self, "pixel_y", int(self.pixel_y))
+
+    @classmethod
+    def from_pixel(cls, dataset: Dataset, x: int, y: int) -> "Point":
+        """The position pixel ``(x, y)`` of ``dataset`` was measured at.
+
+        The geometry comes from the dataset's provenance rather than the live
+        ``ScanGroup``. Blocks are shared and mutable: change the amplitude after
+        taking an image and the live block no longer describes the picture being
+        clicked, so the volts would point somewhere it never looked.
+        """
+        raw = dataset.provenance.parameters.get(block_name(ScanGroup))
+        if not isinstance(raw, dict):
+            raise ParameterError(
+                f"{dataset.label} was not acquired with a scan geometry, "
+                "so a pixel does not name a position"
+            )
+        try:
+            scan = decode_block(ScanGroup, raw)
+            fast_v, slow_v = scan.voltage_at(x, y)
+        except Exception as exc:  # noqa: BLE001 - a bad record, reported as one
+            raise ParameterError(f"could not place that pixel: {exc}") from exc
+        return cls(fast_v, slow_v, dataset.id, dataset.label, x, y)
 
     @property
     def picked(self) -> bool:

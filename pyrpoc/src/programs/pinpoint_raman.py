@@ -1,10 +1,10 @@
 """Pinpoint Raman: park the galvos at one point and take a spectrum there.
 
 The first program configured by clicking rather than typing. That changes
-nothing about the program: it declares ``PointGroup`` the way confocal declares
-``ScanGroup``, reads volts out of it, and has no idea a display exists. Which is
-the point -- a click is a way of filling in a parameter, so the acquisition side
-needed no new concept to gain one.
+nothing about ``run``: it declares ``PointGroup`` the way confocal declares
+``ScanGroup``, reads volts out of it, and has no idea a display exists. The
+click arrives through ``runners``: an ``ArmAndRun`` asks the displays for a
+``PixelPick``, ``aim_at_pick`` turns it into volts, and then the run starts.
 
 The spectrometer is synthetic for now and the parking is a documented stub, so
 this runs on a laptop with no card in it. What is real is everything above the
@@ -25,8 +25,11 @@ import numpy as np
 from pyrpoc.src.devices.daq.device import DAQ
 from pyrpoc.src.devices.galvo.device import Galvo
 from pyrpoc.src.structs.data import Spectrum1D
+from pyrpoc.src.structs.params import BlockMap
+from pyrpoc.src.structs.picks import Pick, PixelPick
 from pyrpoc.src.structs.program import Program
 from pyrpoc.src.structs.registries import program_registry
+from pyrpoc.src.structs.runner import ArmAndRun, Continuous, Single
 
 from .components import Point, PointGroup, SpectrumGroup
 
@@ -93,11 +96,22 @@ def synthetic_spectrum(
     return np.clip(spectrum, 0.0, None).astype(np.float32)[np.newaxis]
 
 
+def aim_at_pick(pick: Pick, params: BlockMap) -> None:
+    """Point the galvos at the picked pixel: its volts become the target."""
+    assert isinstance(pick, PixelPick)
+    params[PointGroup].target = Point.from_pixel(pick.dataset, pick.x, pick.y)
+
+
 @program_registry.register("pinpoint_raman")
 class PinpointRaman(Program):
     uses = [Galvo]
     params = [PointGroup, SpectrumGroup]
     emits = {"spectrum": Spectrum1D}
+    runners = [
+        Single(),
+        Continuous(),
+        ArmAndRun(PixelPick, aim_at_pick, label="Acquire at point…"),
+    ]
 
     def run(self, ctx) -> None:
         point = ctx.params[PointGroup].target
