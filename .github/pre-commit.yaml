@@ -1,0 +1,48 @@
+# Installed with: uv run pre-commit install --config .github/pre-commit.yaml
+# Run by hand:    uv run pre-commit run --all-files --config .github/pre-commit.yaml
+#
+# Every hook runs from the project's locked environment (uv.lock), so these are
+# the same tool versions as `uv run ...` on the command line.
+
+# Vendored example code from Swabian, kept as reference and not held to our rules.
+exclude: ^docs/swabian_demos/
+
+repos:
+  - repo: local
+    hooks:
+      - id: ruff-check
+        name: ruff check
+        language: system
+        # --force-exclude: pre-commit passes paths explicitly, and without it
+        # ruff ignores its own extend-exclude for those.
+        entry: uv run ruff check --fix --force-exclude
+        types_or: [python, pyi]
+      - id: ruff-format
+        name: ruff format
+        language: system
+        entry: uv run ruff format --force-exclude
+        types_or: [python, pyi]
+      - id: no-colon-comments
+        name: no '#:' comments
+        language: pygrep
+        entry: '#:'
+        types: [python]
+      - id: no-type-ignores
+        name: no type-checker ignore comments
+        language: pygrep
+        entry: '(type|pyright):\s*ignore'
+        types: [python]
+      # Uses the project's pyright and venv, the same configuration Pylance
+      # reads from pyproject.toml, so a clean run means no red squiggles.
+      - id: pyright
+        name: pyright
+        language: system
+        entry: uv run pyright
+        types: [python]
+        pass_filenames: false
+      - id: lint-imports
+        name: import-linter
+        language: system
+        entry: uv run lint-imports
+        types: [python]
+        pass_filenames: false

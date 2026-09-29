@@ -39,6 +39,7 @@ dev = [
   "pyright",
   "ruff",
   "pre-commit",
+  "import-linter>=2.15",
 ]
 
 [tool.pyright]
@@ -84,3 +85,43 @@ ignore = ["SIM118"]
 # Every file must start with this (rule I002, auto-fixable). Once it is there,
 # quotes around a type name are never needed, and UP037 flags them.
 required-imports = ["from __future__ import annotations"]
+
+[tool.ruff.format]
+line-ending = "lf"
+
+# The architecture, checked by `uv run lint-imports`. Each ignore_imports list
+# is a ledger of known debt: delete a line when its import is fixed, and never
+# add one to make a new violation pass.
+[tool.importlinter]
+root_package = "pyrpoc"
+include_external_packages = true
+
+[[tool.importlinter.contracts]]
+name = "Layers: app > panels | programs > devices > structs"
+type = "layers"
+containers = ["pyrpoc.src"]
+layers = ["app", "panels | programs", "devices", "structs"]
+ignore_imports = [
+  "pyrpoc.src.panels.acquisition.panel -> pyrpoc.src.app.catalog",
+  "pyrpoc.src.panels.** -> pyrpoc.src.app.application",
+  "pyrpoc.src.panels.** -> pyrpoc.src.app.library",
+]
+
+[[tool.importlinter.contracts]]
+name = "structs is Qt-free, except panel.py"
+type = "forbidden"
+source_modules = [
+  "pyrpoc.src.structs.data",
+  "pyrpoc.src.structs.device",
+  "pyrpoc.src.structs.params",
+  "pyrpoc.src.structs.picks",
+  "pyrpoc.src.structs.program",
+  "pyrpoc.src.structs.registries",
+  "pyrpoc.src.structs.runner",
+]
+forbidden_modules = ["PyQt6", "pyqtgraph"]
+ignore_imports = [
+  # A type-only import, for the return type of Device.panel().
+  "pyrpoc.src.structs.device -> PyQt6",
+]
+
