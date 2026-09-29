@@ -24,7 +24,8 @@ they belong next to the controls that start the run.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Callable
+from collections.abc import Callable
+from typing import TYPE_CHECKING
 
 from PyQt6.QtWidgets import (
     QCheckBox,
@@ -57,12 +58,12 @@ if TYPE_CHECKING:  # pragma: no cover
 class AcquisitionPanel(Panel):
     display_name = "Acquisition"
 
-    def __init__(self, app: "Application", parent: QWidget | None = None):
+    def __init__(self, app: Application, parent: QWidget | None = None):
         super().__init__(parent)
         self.app = app
         self.form: ParamForm | None = None
-        #: The rendered controls: descriptor, its button, and the watcher
-        #: that keeps the button in line with it.
+        # The rendered controls: descriptor, its button, and the watcher
+        # that keeps the button in line with it.
         self.control_buttons: list[tuple[Control, QPushButton, Callable[[], None]]] = []
 
         root = QVBoxLayout(self)
@@ -116,9 +117,9 @@ class AcquisitionPanel(Panel):
         self.status_label = QLabel("Status: idle", self)
         root.addWidget(self.status_label)
 
-        self.scroll = QScrollArea(self)
-        self.scroll.setWidgetResizable(True)
-        root.addWidget(self.scroll, 1)
+        self.scroll_area = QScrollArea(self)
+        self.scroll_area.setWidgetResizable(True)
+        root.addWidget(self.scroll_area, 1)
 
         self.program_combo.currentIndexChanged.connect(self.on_program_chosen)
         self.stop_btn.clicked.connect(self.app.stop_run)
@@ -172,7 +173,7 @@ class AcquisitionPanel(Panel):
         self.form.changed.connect(self.app.params_changed.emit)
         self.form.changed.connect(self.app.state_changed.emit)
         self.form.invalid.connect(self.show_status)
-        self.scroll.setWidget(self.form)
+        self.scroll_area.setWidget(self.form)
 
     def on_params_written(self) -> None:
         """Something other than the form wrote the blocks -- a runner applying

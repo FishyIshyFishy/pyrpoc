@@ -21,8 +21,7 @@ from pyrpoc.src.structs import params as P
 from pyrpoc.src.structs.device import Device
 from pyrpoc.src.structs.registries import block_registry, device_registry
 
-from . import catalog
-from . import claims
+from . import catalog, claims
 from .library import DataLibrary
 from .run_bridge import RunBridge
 from .runner_host import RunnerHost
@@ -37,30 +36,30 @@ class Application(QObject):
     program_selected = pyqtSignal(str)
     params_changed = pyqtSignal()
     save_changed = pyqtSignal()
-    params_written = pyqtSignal()         # blocks changed outside the form
-    state_changed = pyqtSignal()          # anything worth autosaving
+    params_written = pyqtSignal()  # blocks changed outside the form
+    state_changed = pyqtSignal()  # anything worth autosaving
 
     def __init__(self, parent: QObject | None = None):
         super().__init__(parent)
         self.devices: list[Device] = []
-        #: The added panels -- image_2d, overlay, mask_editor, spectrum
-        #: instances the Add menu has created. The three fixed panels
-        #: (acquisition, devices, data library) are not in here: they are
-        #: built once by app/window.py and never removed.
+        # The added panels -- image_2d, overlay, mask_editor, spectrum
+        # instances the Add menu has created. The three fixed panels
+        # (acquisition, devices, data library) are not in here: they are
+        # built once by app/window.py and never removed.
         self.panels: list[Any] = []
         self.library = DataLibrary()
         self.bridge = RunBridge(self.library, self)
 
         self.selected_program: str | None = None
-        #: Every parameter block that exists, one instance per class. Two
-        #: programs declaring the same block are handed the same object, which is
-        #: what makes switching modality keep the settings you made.
+        # Every parameter block that exists, one instance per class. Two
+        # programs declaring the same block are handed the same object, which is
+        # what makes switching modality keep the settings you made.
         self.blocks = P.BlockStore()
-        #: One save target for the session, not one per program: what a run is
-        #: called and where it goes has nothing to do with which program runs.
+        # One save target for the session, not one per program: what a run is
+        # called and where it goes has nothing to do with which program runs.
         self.save = SaveTarget()
-        #: The selected program's entry points. The app hosts them and knows
-        #: nothing else about them.
+        # The selected program's entry points. The app hosts them and knows
+        # nothing else about them.
         self.runners = RunnerHost(self)
 
         self.bridge.run_started.connect(lambda: self.state_changed.emit())
@@ -73,7 +72,7 @@ class Application(QObject):
             self.bridge.stop()
         catalog.entry_for(key)  # raises on an unknown key
         self.selected_program = key
-        self.params_for(key)    # ensure its blocks exist
+        self.params_for(key)  # ensure its blocks exist
         self.runners.attach(catalog.entry_for(key).program)
         self.program_selected.emit(key)
         self.state_changed.emit()
@@ -136,7 +135,7 @@ class Application(QObject):
     # -- devices ------------------------------------------------------------ #
 
     def add_device(self, key: str, **kwargs) -> Device:
-        device = device_registry.create(key, **kwargs)
+        device = device_registry.get(key)(**kwargs)
         self.devices.append(device)
         self.devices_changed.emit()
         self.state_changed.emit()

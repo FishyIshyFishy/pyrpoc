@@ -198,7 +198,7 @@ class BaseCardWidget(QFrame):
         while (item := self.body_layout.takeAt(0)) is not None:
             child = item.widget()
             if child is not None:
-                child.setParent(None)  # type: ignore[arg-type]
+                child.setParent(None)
                 child.deleteLater()
         if body is not None:
             self.body_layout.addWidget(body)
@@ -317,17 +317,13 @@ class RemovableCardWidget(BaseCardWidget):
             f"QToolButton {{ color: {_REMOVE_BTN_COLOR}; font-weight: 700; }}"
         )
         self.remove_btn.setToolTip("Remove")
-        super().__init__(
-            state_obj, title, parent, card_name=card_name, accent_color=accent_color
-        )
+        super().__init__(state_obj, title, parent, card_name=card_name, accent_color=accent_color)
         # Wire signal after super().__init__ so self is fully constructed
-        self.remove_btn.clicked.connect(
-            lambda: self.remove_requested.emit(self.state_obj)
-        )
+        self.remove_btn.clicked.connect(lambda: self.remove_requested.emit(self.state_obj))
 
     def finalise_header(self, root: QVBoxLayout) -> None:
         """Insert remove button before committing header row to layout."""
-        self.remove_btn.setParent(self)  # type: ignore[arg-type]
+        self.remove_btn.setParent(self)
         self._header_row.addWidget(self.remove_btn)
         root.addLayout(self._header_row)
 
@@ -335,6 +331,7 @@ class RemovableCardWidget(BaseCardWidget):
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def hex_to_rgb(hex_color: str) -> tuple[int, int, int]:
     """Parse ``"#rrggbb"`` → ``(r, g, b)``."""

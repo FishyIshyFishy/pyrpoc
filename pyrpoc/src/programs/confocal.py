@@ -19,25 +19,29 @@ inverted static write on teardown.
 
 from __future__ import annotations
 
-from typing import Sequence
+import contextlib
+from collections.abc import Sequence
 
-import numpy as np
 import nidaqmx as nx
+import numpy as np
 from nidaqmx.constants import AcquisitionType
+from nidaqmx.stream_readers import AnalogMultiChannelReader
 
-from pyrpoc.src.structs.data import Image2D
-from pyrpoc.src.structs.data import Dataset  # noqa: F401  (documents what publish writes into)
 from pyrpoc.src.devices import DAQ, DaqError, Galvo
+from pyrpoc.src.structs.data import (
+    Dataset,  # noqa: F401  (documents what publish writes into)
+    Image2D,
+)
 from pyrpoc.src.structs.program import Program
+from pyrpoc.src.structs.registries import program_registry
 
-from .components import (
+from .components.param_groups import (
     DaqGroup,
     Mask,
     ModulationGroup,
     ScanGroup,
 )
-from pyrpoc.src.structs.registries import program_registry
-
+from .components.runners import Continuous, Single
 
 # --------------------------------------------------------------------------- #
 # Waveform arithmetic                                                          #
@@ -65,23 +69,24 @@ def generate_raster_waveform(
     slow_axis_offset: float,
     slow_axis_amplitude: float,
 ) -> np.ndarray:
-    '''
+    """
     create a waveform from the raster scan
     1. compute total pixels given the extra left and right
     2. compute total amplitude per line by padding the voltage step size to the left and right
         of the offset-amp and offset+amp points
     3. create waveforms
-    '''
+    """
     total_x = extra_left + x_pixels + extra_right
     fast_amp = max(float(fast_axis_amplitude), 1e-6)
     slow_amp = max(float(slow_axis_amplitude), 1e-6)
     fast_step = (2.0 * fast_amp) / float(x_pixels)
     fast_start = -fast_amp - (float(extra_left) * fast_step)
-    fast_axis = fast_start + (np.arange(total_x, dtype=np.float32) * fast_step) + float(fast_axis_offset)
-    slow_axis = (
-        np.linspace(-1.0, 1.0, y_pixels, endpoint=False, dtype=np.float32) * slow_amp
-        + float(slow_axis_offset)
+    fast_axis = (
+        fast_start + (np.arange(total_x, dtype=np.float32) * fast_step) + float(fast_axis_offset)
     )
+    slow_axis = np.linspace(
+        -1.0, 1.0, y_pixels, endpoint=False, dtype=np.float32
+    ) * slow_amp + float(slow_axis_offset)
     fast_raster = np.tile(np.repeat(fast_axis, pixel_samples), y_pixels)
     slow_raster = np.repeat(slow_axis, total_x * pixel_samples)
     return np.vstack((fast_raster, slow_raster)).astype(np.float64)
@@ -292,16 +297,22 @@ def run_raster(
                         sample_mode=AcquisitionType.FINITE,
                         samps_per_chan=total_samples,
                     )
-                    payload = dynamic_ttls[0].tolist() if len(dynamic_channels) == 1 else [t.tolist() for t in dynamic_ttls]
-                    do_task.write(payload, auto_start=False)  # pyright:ignore
+                    payload = (
+                        dynamic_ttls[0].tolist()
+                        if len(dynamic_channels) == 1
+                        else [t.tolist() for t in dynamic_ttls]
+                    )
+                    # Many samples per line, so write() does not auto-start.
+                    do_task.write(payload)
 
                 if static_channels:
                     static_do_task = nx.Task()
                     for ch in static_channels:
                         static_do_task.do_channels.add_do_chan(ch)
-                    static_do_task.write(static_values, auto_start=True)  # pyright:ignore
+                    # One sample per line, so write() auto-starts.
+                    static_do_task.write(static_values)
 
-            ao_task.write(np.asarray(waveform, dtype=np.float64), auto_start=False)  # pyright:ignore
+            ao_task.write(np.asarray(waveform, dtype=np.float64))
             ai_task.start()
             if do_task is not None:
                 do_task.start()
@@ -313,14 +324,18 @@ def run_raster(
             if do_task is not None:
                 do_task.wait_until_done(timeout=timeout)
 
-            acq_data = np.asarray(ai_task.read(number_of_samples_per_channel=total_samples), dtype=np.float32)  # pyright:ignore
-            if acq_data.ndim == 1:
-                acq_data = acq_data[np.newaxis, :]
-            elif acq_data.ndim != 2:
-                raise RuntimeError("Unexpected NI-DAQ data shape")
+            # Task.read is typed to accept no sample count; the stream reader
+            # takes one, and always fills (channels, samples).
+            raw = np.empty((ai_task.number_of_channels, total_samples), dtype=np.float64)
+            AnalogMultiChannelReader(ai_task.in_stream).read_many_sample(
+                raw, number_of_samples_per_channel=total_samples
+            )
+            acq_data = raw.astype(np.float32)
 
             channels_out = [
-                extract_kept_samples(ch_data, total_y, total_x, samples_per_pixel, extra_left, x_pixels)
+                extract_kept_samples(
+                    ch_data, total_y, total_x, samples_per_pixel, extra_left, x_pixels
+                )
                 for ch_data in acq_data
             ]
             return (
@@ -337,10 +352,8 @@ def run_raster(
             do_task.close()
         if static_do_task is not None:
             if static_values:
-                try:
-                    static_do_task.write([not v for v in static_values], auto_start=True)  # pyright:ignore
-                except Exception:
-                    pass
+                with contextlib.suppress(Exception):
+                    static_do_task.write([not v for v in static_values])
             static_do_task.close()
 
 
@@ -387,9 +400,7 @@ def channel_labels(daq: DAQ) -> list[str]:
     return [f"ai{index}" for index in daq.config.ai_channels]
 
 
-def build_ttl(
-    scan: ScanGroup, modulation: ModulationGroup, daq_params: DaqGroup, daq: DAQ
-) -> dict:
+def build_ttl(scan: ScanGroup, modulation: ModulationGroup, daq_params: DaqGroup, daq: DAQ) -> dict:
     """Turn the bound masks into per-pixel TTL waveforms.
 
     Done once before the loop rather than once per frame. The pixels arrive with
@@ -412,6 +423,7 @@ class Confocal(Program):
     uses = [Galvo, DAQ]
     params = [ScanGroup, DaqGroup, ModulationGroup]
     emits = {"intensity": Image2D}
+    runners = [Single(), Continuous()]
 
     def run(self, ctx) -> None:
         scan = ctx.params[ScanGroup]

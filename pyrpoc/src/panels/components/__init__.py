@@ -6,6 +6,8 @@ helpers, not application logic. Nothing here may import a panel or app/; a
 panel imports what it needs from here, never the other way around.
 """
 
+from __future__ import annotations
+
 from .cards import BaseCardWidget, RemovableCardWidget
 from .colors import color_for_index
 from .range_slider import RangeSlider

@@ -34,11 +34,7 @@ def expand(uses: list[type[Device]]) -> list[type[Device]]:
 
 def missing(uses: list[type[Device]], inventory: list[Device]) -> list[type[Device]]:
     """Which required device classes have no instance configured."""
-    return [
-        cls
-        for cls in expand(uses)
-        if not any(isinstance(device, cls) for device in inventory)
-    ]
+    return [cls for cls in expand(uses) if not any(isinstance(device, cls) for device in inventory)]
 
 
 def resolve(uses: list[type[Device]], inventory: list[Device]) -> dict[type[Device], Device]:

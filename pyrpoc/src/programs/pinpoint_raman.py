@@ -3,8 +3,9 @@
 The first program configured by clicking rather than typing. That changes
 nothing about ``run``: it declares ``PointGroup`` the way confocal declares
 ``ScanGroup``, reads volts out of it, and has no idea a display exists. The
-click arrives through ``runners``: an ``ArmAndRun`` asks the displays for a
-``PixelPick``, ``aim_at_pick`` turns it into volts, and then the run starts.
+click arrives through ``runners``: an ``ArmAndRun`` requests a ``PixelPick``,
+``aim_at_pick`` turns the one it receives into volts, and then the run starts.
+Where the pixel came from is not this program's concern.
 
 The spectrometer is synthetic for now and the parking is a documented stub, so
 this runs on a laptop with no card in it. What is real is everything above the
@@ -29,12 +30,12 @@ from pyrpoc.src.structs.params import BlockMap
 from pyrpoc.src.structs.picks import Pick, PixelPick
 from pyrpoc.src.structs.program import Program
 from pyrpoc.src.structs.registries import program_registry
-from pyrpoc.src.structs.runner import ArmAndRun, Continuous, Single
 
-from .components import Point, PointGroup, SpectrumGroup
+from .components.param_groups import Point, PointGroup, SpectrumGroup
+from .components.runners import ArmAndRun, Continuous, Single
 
-#: Keeps the noise generator off the band generator's stream, so changing the
-#: frame index cannot shift a band centre.
+# Keeps the noise generator off the band generator's stream, so changing the
+# frame index cannot shift a band centre.
 NOISE_STREAM = 0x5EED
 
 
@@ -56,9 +57,7 @@ def park_galvos(daq: DAQ, galvo: Galvo, point: Point) -> None:
     del daq, galvo, point
 
 
-def synthetic_spectrum(
-    spec: SpectrumGroup, point: Point, *, frame_index: int
-) -> np.ndarray:
+def synthetic_spectrum(spec: SpectrumGroup, point: Point, *, frame_index: int) -> np.ndarray:
     """A ``(1, n_points)`` spectrum of gaussian bands, keyed to the position.
 
     The position enters the seed quantised to 0.1 mV, so that a re-click on the
@@ -83,7 +82,7 @@ def synthetic_spectrum(
         centres = bands.uniform(0.05, 0.95, peaks) * n_points
         widths = bands.uniform(0.004, 0.02, peaks) * n_points
         heights = bands.uniform(0.2, 1.0, peaks)
-        for centre, width, height in zip(centres, widths, heights):
+        for centre, width, height in zip(centres, widths, heights, strict=True):
             spectrum += height * np.exp(-((xs - centre) ** 2) / (2.0 * width**2))
 
     # A broad fluorescence background, so the bands sit on something.

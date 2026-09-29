@@ -14,7 +14,8 @@ from __future__ import annotations
 
 import re
 import threading
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from pyrpoc.src.structs import params as P
 from pyrpoc.src.structs.data import Dataset, Provenance, utc_now
@@ -105,11 +106,16 @@ class Executor:
             started_at = utc_now()
             self._cancel = threading.Event()
 
-            #: One encoding, shared by the run metadata and the session file.
+            # One encoding, shared by the run metadata and the session file.
             encoded = blocks.to_dict(declared)
 
             saver = self.build_saver(
-                program, encoded, devices, key, save=save, run_id=run_id,
+                program,
+                encoded,
+                devices,
+                key,
+                save=save,
+                run_id=run_id,
                 started_at=started_at,
             )
             provenance = Provenance(

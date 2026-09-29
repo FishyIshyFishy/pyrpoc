@@ -25,11 +25,17 @@ from ..daq.device import DAQ
 @dataclass
 class GalvoConfig(P.Group):
     fast_ao: int = P.int_field(
-        "Fast Axis AO", 0, minimum=0, maximum=31,
+        "Fast Axis AO",
+        0,
+        minimum=0,
+        maximum=31,
         tooltip="Analog output channel for the fast (X) galvo",
     )
     slow_ao: int = P.int_field(
-        "Slow Axis AO", 1, minimum=0, maximum=31,
+        "Slow Axis AO",
+        1,
+        minimum=0,
+        maximum=31,
         tooltip="Analog output channel for the slow (Y) galvo",
     )
 

@@ -14,8 +14,9 @@ through ``Field.editor``, so the form never learns what it is editing.
 
 from __future__ import annotations
 
+from collections.abc import Callable, Sequence
 from pathlib import Path
-from typing import Any, Callable, Sequence
+from typing import Any
 
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import (
@@ -54,8 +55,8 @@ CHANNEL_BUTTON_CSS = (
 )
 
 
-#: One field's widget. The record lives in ``structs`` so a field declared
-#: elsewhere can build its own through ``Field.editor``.
+# One field's widget. The record lives in ``structs`` so a field declared
+# elsewhere can build its own through ``Field.editor``.
 FieldWidget = P.Editor
 
 
@@ -117,7 +118,9 @@ def build_path(spec: P.PathField, parent) -> FieldWidget:
     def pick() -> None:
         current = edit.text().strip()
         start = str(Path(current).expanduser()) if current else str(Path.cwd())
-        selected, _ = QFileDialog.getSaveFileName(root, "Select output path", start, spec.dialog_filter)
+        selected, _ = QFileDialog.getSaveFileName(
+            root, "Select output path", start, spec.dialog_filter
+        )
         if selected:
             edit.setText(selected)
 
@@ -311,8 +314,10 @@ class ParamForm(QWidget):
         Coerces everything before writing anything, so a value that fails its
         bounds leaves every block untouched rather than half-updated.
         """
-        lookup = self.index if target is None else P.index(
-            [target] if isinstance(target, P.Group) else list(target)
+        lookup = (
+            self.index
+            if target is None
+            else P.index([target] if isinstance(target, P.Group) else list(target))
         )
         coerced = {
             path: (field.spec or P.spec_at(lookup, path)).coerce(field.get())

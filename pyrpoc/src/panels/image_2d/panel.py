@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 import numpy as np
 import pyqtgraph as pg
+from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import (
     QCheckBox,
     QGridLayout,
@@ -22,8 +23,6 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from PyQt6.QtCore import Qt, pyqtSignal
-
 from pyrpoc.src.structs.data import Image2D
 from pyrpoc.src.structs.panel import Panel, panel_registry
 from pyrpoc.src.structs.picks import Pick, PixelPick
@@ -31,8 +30,8 @@ from pyrpoc.src.structs.picks import Pick, PixelPick
 from ..components.source_picker import SourcePicker
 
 if TYPE_CHECKING:  # pragma: no cover
-    from pyrpoc.src.structs.data import Dataset
     from pyrpoc.src.app.library import DataLibrary
+    from pyrpoc.src.structs.data import Dataset
 
 
 @dataclass
@@ -48,10 +47,10 @@ class ChannelTile:
 
 @panel_registry.register("image_2d")
 class Image2DPanel(Panel):
-    #: A ``PixelPick`` the user clicked while a pick was requested. What a
-    #: pixel means in volts depends on the scan geometry, which belongs to the
-    #: dataset, not to the renderer -- and turning it into anything is the
-    #: requesting program's business.
+    # A ``PixelPick`` the user clicked while a pick was requested. What a
+    # pixel means in volts depends on the scan geometry, which belongs to the
+    # dataset, not to the renderer -- and turning it into anything is the
+    # requesting program's business.
     picked = pyqtSignal(object)
 
     display_name = "2D Tiled"
@@ -63,8 +62,8 @@ class Image2DPanel(Panel):
         self._tiles: list[ChannelTile] = []
         self._pending_channel_state: list[dict[str, Any]] = []
         self._suspend_lut_signal = False
-        #: Whether a click reports a position. Held here rather than per tile
-        #: because tiles come and go with the channel count.
+        # Whether a click reports a position. Held here rather than per tile
+        # because tiles come and go with the channel count.
         self._picking = False
         self._lut = pg.ColorMap(
             pos=np.array([0.0, 0.999, 1.0], dtype=float),
@@ -102,10 +101,10 @@ class Image2DPanel(Panel):
 
     # -- binding --------------------------------------------------------------- #
 
-    def attach_library(self, library: "DataLibrary") -> None:
+    def attach_library(self, library: DataLibrary) -> None:
         self.source.attach_library(library)
 
-    def dataset(self) -> "Dataset | None":
+    def dataset(self) -> Dataset | None:
         return self.source.current()
 
     # -- rendering ----------------------------------------------------------- #
@@ -139,8 +138,7 @@ class Image2DPanel(Panel):
 
     def get_channel_names(self) -> list[str]:
         return [
-            tile.name_edit.text().strip() or f"Input {i + 1}"
-            for i, tile in enumerate(self._tiles)
+            tile.name_edit.text().strip() or f"Input {i + 1}" for i, tile in enumerate(self._tiles)
         ]
 
     # -- tiles ---------------------------------------------------------------- #
@@ -200,7 +198,9 @@ class Image2DPanel(Panel):
             hist_widget=hist_widget,
         )
         autoscale_box.toggled.connect(lambda checked, i=index: self.on_autoscale_toggled(i))
-        hist_widget.item.sigLevelsChanged.connect(lambda _item, i=index: self.on_lut_levels_changed(i))
+        hist_widget.item.sigLevelsChanged.connect(
+            lambda _item, i=index: self.on_lut_levels_changed(i)
+        )
 
         # Wired and cursored at build time, not when a pick is requested:
         # sync_channel_tiles creates and destroys these as the channel count

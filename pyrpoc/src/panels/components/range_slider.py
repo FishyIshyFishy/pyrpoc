@@ -25,7 +25,7 @@ _HIGH = 1
 class RangeSlider(QWidget):
     """Horizontal slider with a low and a high handle over one groove."""
 
-    #: Low and high, after clamping. Emitted whenever either moves.
+    # Low and high, after clamping. Emitted whenever either moves.
     values_changed = pyqtSignal(int, int)
 
     def __init__(self, parent: QWidget | None = None):

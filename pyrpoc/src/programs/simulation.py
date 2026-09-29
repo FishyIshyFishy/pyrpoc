@@ -13,22 +13,23 @@ test can assert on pixels.
 
 from __future__ import annotations
 
-from typing import Sequence
+from collections.abc import Sequence
 
 import numpy as np
 
 from pyrpoc.src.structs.data import Image2D
 from pyrpoc.src.structs.program import Program
+from pyrpoc.src.structs.registries import program_registry
 
-from .components import (
+from .components.param_groups import (
     FrameGroup,
     ModulationGroup,
     PacingGroup,
     SignalGroup,
 )
-from pyrpoc.src.structs.registries import program_registry
+from .components.runners import Continuous, Single
 
-#: Blobs per channel in the "cells" pattern.
+# Blobs per channel in the "cells" pattern.
 BLOB_COUNT = 14
 
 
@@ -106,9 +107,7 @@ def gradient_plane(
     del seed
     ys, xs = _axes(y_pixels, x_pixels)
     angle = channel * (np.pi / 3.0)
-    ramp = np.cos(angle) * (xs / max(1, x_pixels - 1)) + np.sin(angle) * (
-        ys / max(1, y_pixels - 1)
-    )
+    ramp = np.cos(angle) * (xs / max(1, x_pixels - 1)) + np.sin(angle) * (ys / max(1, y_pixels - 1))
     shift = (float(drift) * float(frame_index)) / max(1, max(y_pixels, x_pixels))
     swept = (ramp + shift) % 2.0
     return np.abs(1.0 - swept).astype(np.float32)
@@ -261,9 +260,7 @@ def build_mask(frame_shape: FrameGroup, modulation: ModulationGroup):
     loaded = [mask.array for mask in modulation.masks if mask.array is not None]
     if not loaded:
         return None
-    return combine_masks(
-        loaded, y_pixels=frame_shape.y_pixels, x_pixels=frame_shape.x_pixels
-    )
+    return combine_masks(loaded, y_pixels=frame_shape.y_pixels, x_pixels=frame_shape.x_pixels)
 
 
 @program_registry.register("simulation")
@@ -271,6 +268,7 @@ class Simulation(Program):
     uses = []
     params = [FrameGroup, SignalGroup, ModulationGroup, PacingGroup]
     emits = {"intensity": Image2D}
+    runners = [Single(), Continuous()]
 
     def run(self, ctx) -> None:
         frame_shape = ctx.params[FrameGroup]

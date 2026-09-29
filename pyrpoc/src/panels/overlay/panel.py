@@ -29,8 +29,8 @@ from ..components.colors import color_for_index
 from ..components.source_picker import SourcePicker
 
 if TYPE_CHECKING:  # pragma: no cover
-    from pyrpoc.src.structs.data import Dataset
     from pyrpoc.src.app.library import DataLibrary
+    from pyrpoc.src.structs.data import Dataset
 
 
 def color_map_from_rgb(rgb: tuple[int, int, int]) -> pg.ColorMap:
@@ -39,6 +39,14 @@ def color_map_from_rgb(rgb: tuple[int, int, int]) -> pg.ColorMap:
         pos=np.array([0.0, 1.0], dtype=float),
         color=np.array([[0, 0, 0, 255], [r, g, b, 255]], dtype=np.ubyte),
     )
+
+
+def mono_levels(hist_widget: pg.HistogramLUTWidget) -> tuple[float, float]:
+    """The (min, max) levels of a mono-mode histogram. pyqtgraph's
+    ``getLevels`` is untyped and also covers rgba mode, so the result is read
+    through numpy rather than trusted as a pair of floats."""
+    lo, hi = np.asarray(hist_widget.item.getLevels(), dtype=np.float64).ravel()[:2]
+    return float(lo), float(hi)
 
 
 @dataclass
@@ -107,10 +115,10 @@ class OverlayPanel(Panel):
 
     # -- binding --------------------------------------------------------------- #
 
-    def attach_library(self, library: "DataLibrary") -> None:
+    def attach_library(self, library: DataLibrary) -> None:
         self.source.attach_library(library)
 
-    def dataset(self) -> "Dataset | None":
+    def dataset(self) -> Dataset | None:
         return self.source.current()
 
     # -- rendering ------------------------------------------------------------ #
@@ -197,12 +205,12 @@ class OverlayPanel(Panel):
         if index < 0 or index >= len(self._controls):
             return
         control = self._controls[index]
-        min_val, max_val = control.hist_widget.item.getLevels()
-        if max_val <= min_val:  # pyright:ignore
-            max_val = min_val + 1e-12  # pyright:ignore
+        min_val, max_val = mono_levels(control.hist_widget)
+        if max_val <= min_val:
+            max_val = min_val + 1e-12
             control.hist_widget.item.setLevels(min_val, max_val)
-        control.min_val = float(min_val)  # pyright:ignore
-        control.max_val = float(max_val)  # pyright:ignore
+        control.min_val = min_val
+        control.max_val = max_val
         self.update_overlay()
 
     def update_channel(self, index: int, channel: np.ndarray) -> None:
@@ -216,8 +224,7 @@ class OverlayPanel(Panel):
                 max_val = min_val + 1e-12
             self.apply_levels(control, min_val, max_val)
         else:
-            min_val, max_val = control.hist_widget.item.getLevels()
-            self.apply_levels(control, float(min_val), float(max_val))  # pyright:ignore
+            self.apply_levels(control, *mono_levels(control.hist_widget))
 
     def apply_levels(self, control: ChannelControl, min_val: float, max_val: float) -> None:
         control.min_val = float(min_val)

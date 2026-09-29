@@ -25,8 +25,8 @@ from ..components.colors import color_for_index
 from ..components.source_picker import SourcePicker
 
 if TYPE_CHECKING:  # pragma: no cover
-    from pyrpoc.src.structs.data import Dataset
     from pyrpoc.src.app.library import DataLibrary
+    from pyrpoc.src.structs.data import Dataset
 
 
 @panel_registry.register("spectrum")
@@ -60,10 +60,10 @@ class SpectrumPanel(Panel):
 
     # -- binding --------------------------------------------------------------- #
 
-    def attach_library(self, library: "DataLibrary") -> None:
+    def attach_library(self, library: DataLibrary) -> None:
         self.source.attach_library(library)
 
-    def dataset(self) -> "Dataset | None":
+    def dataset(self) -> Dataset | None:
         return self.source.current()
 
     # -- rendering ------------------------------------------------------------ #

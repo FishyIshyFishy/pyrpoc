@@ -1,9 +1,9 @@
 from __future__ import annotations
 
+from PyQt6 import sip
 from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtGui import QAction, QActionGroup
 from PyQt6.QtWidgets import QMenu, QMenuBar
-from PyQt6 import sip
 
 from .theme.manager import available_breeze_themes
 
@@ -18,7 +18,7 @@ _STYLE_VARIANTS = [
 
 class MainMenuBar(QMenuBar):
     style_selected = pyqtSignal(str)
-    #: A panel type was chosen from Add, by registry key.
+    # A panel type was chosen from Add, by registry key.
     panel_requested = pyqtSignal(str)
 
     def __init__(self, parent=None):

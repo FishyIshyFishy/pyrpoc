@@ -19,7 +19,6 @@ from typing import TYPE_CHECKING
 from PyQt6.QtWidgets import (
     QComboBox,
     QHBoxLayout,
-    QLabel,
     QPushButton,
     QScrollArea,
     QVBoxLayout,
@@ -40,7 +39,7 @@ if TYPE_CHECKING:  # pragma: no cover
 class DevicesPanel(Panel):
     display_name = "Devices"
 
-    def __init__(self, app: "Application", parent: QWidget | None = None):
+    def __init__(self, app: Application, parent: QWidget | None = None):
         super().__init__(parent)
         self.app = app
         self.cards: dict[Device, RemovableCardWidget] = {}
@@ -58,14 +57,14 @@ class DevicesPanel(Panel):
         top.addWidget(self.add_btn)
         root.addLayout(top)
 
-        self.scroll = QScrollArea(self)
-        self.scroll.setWidgetResizable(True)
-        self.content = QWidget(self.scroll)
+        self.scroll_area = QScrollArea(self)
+        self.scroll_area.setWidgetResizable(True)
+        self.content = QWidget(self.scroll_area)
         self.instances_layout = QVBoxLayout(self.content)
         self.instances_layout.setContentsMargins(0, 0, 0, 0)
         self.instances_layout.setSpacing(6)
-        self.scroll.setWidget(self.content)
-        root.addWidget(self.scroll, 1)
+        self.scroll_area.setWidget(self.content)
+        root.addWidget(self.scroll_area, 1)
 
         self.add_btn.clicked.connect(self.on_add_clicked)
         self.app.devices_changed.connect(self.refresh)
@@ -108,7 +107,9 @@ class DevicesPanel(Panel):
             form.changed.connect(lambda d=device, c=card: self.on_config_changed(d, c))
             layout.addWidget(form)
 
-        extra = device.panel(parent=body, on_change=lambda d=device, c=card: self.on_config_changed(d, c))
+        extra = device.panel(
+            parent=body, on_change=lambda d=device, c=card: self.on_config_changed(d, c)
+        )
         if extra is not None:
             layout.addWidget(extra)
 

@@ -29,7 +29,7 @@ from PyQt6.QtWidgets import QHBoxLayout, QHeaderView, QLabel, QPushButton, QVBox
 from pyrpoc.src.structs.data import Dataset
 from pyrpoc.src.structs.panel import Panel
 
-from ..components.table import ListTable
+from ..components.table import ListTable, horizontal_header
 
 if TYPE_CHECKING:  # pragma: no cover
     from pyrpoc.src.app.application import Application
@@ -37,8 +37,8 @@ if TYPE_CHECKING:  # pragma: no cover
 TIME, NAME, OUTPUT, SIZE = range(4)
 COLUMNS = ["Time", "Name", "Output", "Size"]
 
-#: 1024-based, because the number a user compares this against is the one their
-#: task manager shows.
+# 1024-based, because the number a user compares this against is the one their
+# task manager shows.
 UNITS = ("B", "KB", "MB", "GB", "TB")
 
 
@@ -64,10 +64,10 @@ def format_size(nbytes: int) -> str:
 class DataLibraryPanel(Panel):
     display_name = "Data Library"
 
-    def __init__(self, app: "Application", parent: QWidget | None = None):
+    def __init__(self, app: Application, parent: QWidget | None = None):
         super().__init__(parent)
         self.app = app
-        #: Datasets in table order, so a row number maps back to a dataset.
+        # Datasets in table order, so a row number maps back to a dataset.
         self.rows: list[Dataset] = []
 
         root = QVBoxLayout(self)
@@ -83,7 +83,7 @@ class DataLibraryPanel(Panel):
         root.addWidget(self.empty_label)
 
         self.table = ListTable(COLUMNS, self)
-        header = self.table.horizontalHeader()
+        header = horizontal_header(self.table)
         for column in (TIME, OUTPUT, SIZE):
             header.setSectionResizeMode(column, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(NAME, QHeaderView.ResizeMode.Stretch)
@@ -123,10 +123,10 @@ class DataLibraryPanel(Panel):
         self.table.setRowCount(len(self.rows))
         for row, dataset in enumerate(self.rows):
             self.table.set_cell(row, TIME, dataset.started_time or "-")
-            self.table.set_cell(row, NAME, dataset.name)
+            name = self.table.set_cell(row, NAME, dataset.name)
+            name.setToolTip(f"{dataset.name} · {dataset.spec.name}")
             self.table.set_cell(row, OUTPUT, dataset.output)
             self.table.set_cell(row, SIZE, format_size(dataset.nbytes), right=True)
-            self.table.item(row, NAME).setToolTip(f"{dataset.name} · {dataset.spec.name}")
 
         self.table.setVisible(bool(self.rows))
         self.empty_label.setVisible(not self.rows)

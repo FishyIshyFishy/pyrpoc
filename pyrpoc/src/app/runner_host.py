@@ -12,10 +12,11 @@ its runners were given -- and detaching drops the slot, so its controls and run
 callbacks go with it and any pending pick is cancelled. An armed display never
 outlives a program switch.
 
-**Picks.** Displays opt in by duck typing: a panel with ``set_pick_mode`` and a
-``picked`` signal is told what kind of pick is wanted, or ``None``, and emits a
-``Pick`` when the user makes one. One request at a time; the host checks the
-pick is the kind asked for before handing it over.
+**Requests.** A runner asks for a kind of ``Pick`` and never learns who answers.
+This host answers with displays, which opt in by duck typing: a panel with
+``set_pick_mode`` and a ``picked`` signal is told what kind of pick is wanted,
+or ``None``, and emits a ``Pick`` when the user makes one. One request at a
+time; the host checks the pick is the kind asked for before handing it over.
 
 Pick state is interaction, not configuration, and deliberately never reaches
 the session file: a relaunch that came back armed would be pointing a hardware
@@ -24,7 +25,9 @@ trigger at the next stray click.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Callable
+import contextlib
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any
 
 from PyQt6.QtCore import QObject, pyqtSignal
 
@@ -47,7 +50,7 @@ class Slot(RunnerContext):
     ``closed`` is set before the host lets go of it.
     """
 
-    def __init__(self, host: "RunnerHost", program: type[Program]):
+    def __init__(self, host: RunnerHost, program: type[Program]):
         self.host = host
         self.program = program
         self.controls: list[Control] = []
@@ -85,15 +88,16 @@ class Slot(RunnerContext):
             self.host.app.params_written.emit()
             self.host.app.state_changed.emit()
 
-    # -- picks ------------------------------------------------------------- #
+    # -- requests ---------------------------------------------------------- #
 
-    def request_pick(self, kind: type[Pick], callback: PickCallback) -> None:
+    def request(self, kind: type[Pick], callback: PickCallback) -> None:
+        """Answered by a display: that is this host's choice, not the runner's."""
         if self.closed:
             callback(None)
             return
         self.host.request_pick(kind, callback)
 
-    def cancel_pick(self) -> None:
+    def cancel_request(self) -> None:
         self.host.cancel_pick()
 
     # -- view -------------------------------------------------------------- #
@@ -114,16 +118,16 @@ class Slot(RunnerContext):
 class RunnerHost(QObject):
     """Attaches the selected program's runners and routes what they ask for."""
 
-    #: The control list changed: a program was attached or detached, or a
-    #: runner added a control. The view re-renders from ``controls``.
+    # The control list changed: a program was attached or detached, or a
+    # runner added a control. The view re-renders from ``controls``.
     controls_changed = pyqtSignal()
-    #: A runner (or the host on its behalf) has something to say.
+    # A runner (or the host on its behalf) has something to say.
     status = pyqtSignal(str)
-    #: A pick was requested (True) or ended (False), for anything that wants
-    #: to say "click a point" while one is pending.
+    # A pick was requested (True) or ended (False), for anything that wants
+    # to say "click a point" while one is pending.
     picking_changed = pyqtSignal(bool)
 
-    def __init__(self, app: "Application"):
+    def __init__(self, app: Application):
         super().__init__(app)
         self.app = app
         self.slot: Slot | None = None
@@ -206,10 +210,9 @@ class RunnerHost(QObject):
         if panel not in self.displays:
             return
         self.displays.remove(panel)
-        try:
+        # TypeError/RuntimeError: already gone with its widget.
+        with contextlib.suppress(TypeError, RuntimeError):
             panel.picked.disconnect(self.on_picked)
-        except (TypeError, RuntimeError):
-            pass  # already gone with its widget
 
     def request_pick(self, kind: type[Pick], callback: PickCallback) -> None:
         self.cancel_pick()

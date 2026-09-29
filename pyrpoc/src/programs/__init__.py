@@ -13,12 +13,15 @@ the waveform arithmetic. Those copies are meant to stay identical: change one
 and change the others, or say in the docstring why they now differ.
 """
 
+from __future__ import annotations
+
 from pyrpoc.src.structs.registries import program_registry
+
 from .confocal import Confocal
-from .split_confocal import SplitConfocal
 from .flim import FLIM
 from .pinpoint_raman import PinpointRaman
 from .simulation import Simulation
+from .split_confocal import SplitConfocal
 
 __all__ = [
     "program_registry",

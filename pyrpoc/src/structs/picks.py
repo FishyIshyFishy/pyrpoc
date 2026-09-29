@@ -1,12 +1,11 @@
-"""What a display hands back when it is asked to point at something.
+"""What a runner can request: a location in some data.
 
-A pick is a dataset plus a location in it. Displays produce them; programs
-consume them, through an ``ArmAndRun`` runner's apply function. Neither side
-knows the other: a display knows how to turn a click into a ``PixelPick``, a
-program knows how to turn a ``PixelPick`` into parameter values, and the app in
-between only carries it.
+A pick is a dataset plus a location in it. A runner requests one by kind and
+receives one back; it never learns what provided it. A program knows how to
+turn a ``PixelPick`` into parameter values, whatever produced it knows how to
+make one, and the host in between only carries it.
 
-A box or a line is a new subclass here, and a display opts in to producing it.
+A box or a line is a new subclass here.
 """
 
 from __future__ import annotations

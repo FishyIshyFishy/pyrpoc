@@ -9,7 +9,8 @@ program can still be imported with no Qt in sight.
 
 from __future__ import annotations
 
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtWidgets import (
@@ -30,7 +31,6 @@ from pyrpoc.src.structs.params import Editor, FieldContext
 
 from .param_groups import Mask, Point
 
-
 # --------------------------------------------------------------------------- #
 # The mask table -- the replacement for the whole optocontrol subsystem        #
 # --------------------------------------------------------------------------- #
@@ -46,7 +46,7 @@ class MaskSourceCombo(QComboBox):
     starting. A list built when it is opened cannot go stale.
     """
 
-    def __init__(self, table: "MaskTable", parent: QWidget | None = None):
+    def __init__(self, table: MaskTable, parent: QWidget | None = None):
         super().__init__(parent)
         self._table = table
         self.setToolTip("A mask drawn in the Mask Editor. Add one there to see it here.")
@@ -92,8 +92,8 @@ class MaskTable(QWidget):
 
     def __init__(self, parent: QWidget | None = None):
         super().__init__(parent)
-        #: The open data, from the form's ``FieldContext``. Duck-typed: the
-        #: library is the app's, and programs/ does not import app/.
+        # The open data, from the form's ``FieldContext``. Duck-typed: the
+        # library is the app's, and programs/ does not import app/.
         self._library: Any = None
 
         root = QVBoxLayout(self)
@@ -102,8 +102,13 @@ class MaskTable(QWidget):
 
         self.table = QTableWidget(0, 3, self)
         self.table.setHorizontalHeaderLabels(["Mask", "Port", "Line"])
-        self.table.verticalHeader().setVisible(False)
+        # A table builds both headers in its constructor; PyQt types them as
+        # optional regardless.
+        rows = self.table.verticalHeader()
         header = self.table.horizontalHeader()
+        if rows is None or header is None:
+            raise RuntimeError("QTableWidget was built without headers")
+        rows.setVisible(False)
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
@@ -288,11 +293,11 @@ class MaskTable(QWidget):
 
 
 # --------------------------------------------------------------------------- #
-# The point picker -- two volts and a way to pick them off a display          #
+# The point editor -- two volts and where they came from                       #
 # --------------------------------------------------------------------------- #
 
 
-#: Shown under the spin boxes when no point has been set yet.
+# Shown under the spin boxes when no point has been set yet.
 NO_ORIGIN = "—"
 
 
@@ -309,8 +314,8 @@ class PointPicker(QWidget):
     def __init__(self, parent: QWidget | None = None):
         super().__init__(parent)
         self._point = Point()
-        #: True while ``set_value`` is driving the spin boxes, so a programmatic
-        #: write keeps the provenance a hand edit is supposed to clear.
+        # True while ``set_value`` is driving the spin boxes, so a programmatic
+        # write keeps the provenance a hand edit is supposed to clear.
         self._programmatic = False
 
         root = QVBoxLayout(self)

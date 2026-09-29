@@ -33,14 +33,17 @@ table, the channel colour palette, asset icons. Nothing there may import a
 panel or programs/.
 """
 
+from __future__ import annotations
+
 from pyrpoc.src.structs.panel import Panel, panel_registry
-from .image_2d.panel import Image2DPanel
-from .overlay.panel import OverlayPanel
-from .mask_editor.panel import MaskEditorPanel
-from .spectrum.panel import SpectrumPanel
+
+from .acquisition.panel import AcquisitionPanel
 from .data_library.panel import DataLibraryPanel
 from .devices.panel import DevicesPanel
-from .acquisition.panel import AcquisitionPanel
+from .image_2d.panel import Image2DPanel
+from .mask_editor.panel import MaskEditorPanel
+from .overlay.panel import OverlayPanel
+from .spectrum.panel import SpectrumPanel
 
 __all__ = [
     "Panel",

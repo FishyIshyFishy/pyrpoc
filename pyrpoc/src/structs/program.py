@@ -13,14 +13,14 @@ not know it is in a dropdown.
 from __future__ import annotations
 
 import threading
-from collections.abc import Mapping
-from typing import TYPE_CHECKING, Any, Callable, Iterator, TypeVar
+from collections.abc import Callable, Iterator, Mapping
+from typing import Any, TypeVar
 
 import numpy as np
 
 from .data import Data, Dataset
 from .device import Device
-from .runner import Continuous, Runner, Single
+from .runner import Runner
 
 D = TypeVar("D", bound=Device)
 
@@ -47,7 +47,10 @@ class DeviceMap(Mapping[type[Device], Device]):
         self._devices: dict[type[Device], Device] = dict(devices or {})
 
     def __getitem__(self, key: type[D]) -> D:
-        return self._devices[key]  # type: ignore[return-value]
+        device = self._devices[key]
+        if not isinstance(device, key):
+            raise TypeError(f"{device!r} is stored under {key.__name__} but is not one")
+        return device
 
     def __iter__(self) -> Iterator[type[Device]]:
         return iter(self._devices)
@@ -63,22 +66,24 @@ class Program:
     """Subclasses define ``uses``, ``params``, ``emits`` and ``run``, and may
     override ``runners``."""
 
-    #: Device classes to claim. Claims propagate along ``backed_by``.
+    # Device classes to claim. Claims propagate along ``backed_by``.
     uses: list[type[Device]] = []
 
-    #: The parameter blocks this program is configured with, in form order.
-    #: Declaring a block is what shares it: two programs naming ``ScanGroup``
-    #: are handed the same instance.
+    # The parameter blocks this program is configured with, in form order.
+    # Declaring a block is what shares it: two programs naming ``ScanGroup``
+    # are handed the same instance.
     params: list[type] = []
 
-    #: Named outputs, and the kind of ``Data`` each one carries.
+    # Named outputs, and the kind of ``Data`` each one carries.
     emits: dict[str, type[Data]] = {}
 
-    #: The ways this program can be started, in the order their controls are
-    #: drawn. Shared declarations: attaching is what builds per-program state.
-    runners: list[Runner] = [Single(), Continuous()]
+    # The ways this program can be started, in the order their controls are
+    # drawn. Shared declarations: attaching is what builds per-program state.
+    # Empty by default -- the runners are implementations, in
+    # ``programs/components/runners/``, and every program names its own.
+    runners: list[Runner] = []
 
-    def run(self, ctx: "RunContext") -> None:
+    def run(self, ctx: RunContext) -> None:
         raise NotImplementedError
 
 
@@ -95,7 +100,7 @@ class RunContext:
         *,
         params: Any,
         devices: Mapping[type[Device], Device],
-        datasets: dict[str, "Dataset"],
+        datasets: dict[str, Dataset],
         cancel: threading.Event,
         continuous: bool = False,
         on_status: Callable[[str], None] | None = None,

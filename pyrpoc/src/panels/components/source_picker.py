@@ -12,7 +12,8 @@ implicit behaviour of pushing the current run at whatever was open.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Sequence
+from collections.abc import Sequence
+from typing import TYPE_CHECKING
 
 from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtWidgets import QComboBox, QHBoxLayout, QLabel, QWidget
@@ -20,21 +21,21 @@ from PyQt6.QtWidgets import QComboBox, QHBoxLayout, QLabel, QWidget
 from pyrpoc.src.structs.data import Data
 
 if TYPE_CHECKING:  # pragma: no cover
-    from pyrpoc.src.structs.data import Dataset
     from pyrpoc.src.app.library import DataLibrary
+    from pyrpoc.src.structs.data import Dataset
 
 
 class SourcePicker(QWidget):
     """Names one dataset matching ``renders``, out of everything open."""
 
-    #: The chosen dataset may have changed -- library membership moved, or the
-    #: user picked a different entry. The panel re-reads ``current()``.
+    # The chosen dataset may have changed -- library membership moved, or the
+    # user picked a different entry. The panel re-reads ``current()``.
     changed = pyqtSignal()
 
     def __init__(self, renders: Sequence[type[Data]], parent: QWidget | None = None):
         super().__init__(parent)
         self.renders = list(renders)
-        self._library: "DataLibrary | None" = None
+        self._library: DataLibrary | None = None
         self._follow_latest = True
 
         layout = QHBoxLayout(self)
@@ -46,15 +47,15 @@ class SourcePicker(QWidget):
 
     # -- library --------------------------------------------------------------- #
 
-    def attach_library(self, library: "DataLibrary") -> None:
+    def attach_library(self, library: DataLibrary) -> None:
         self._library = library
         library.subscribe(self.refresh_sources)
         self.refresh_sources()
 
-    def library(self) -> "DataLibrary | None":
+    def library(self) -> DataLibrary | None:
         return self._library
 
-    def candidates(self) -> list["Dataset"]:
+    def candidates(self) -> list[Dataset]:
         if self._library is None:
             return []
         return self._library.matching(*self.renders)
@@ -79,7 +80,7 @@ class SourcePicker(QWidget):
 
     # -- the chosen dataset ------------------------------------------------------ #
 
-    def current(self) -> "Dataset | None":
+    def current(self) -> Dataset | None:
         chosen = self.combo.currentData()
         if chosen is None:
             candidates = self.candidates()

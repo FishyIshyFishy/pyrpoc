@@ -37,7 +37,6 @@ from pyrpoc.src.structs.data import Data, Dataset, Image2D, utc_now
 from pyrpoc.src.structs.params import ParameterError
 
 
-
 @dataclass
 class SaveTarget:
     """What an acquisition is called, where it goes, and whether it goes.
@@ -88,7 +87,7 @@ class SaveTarget:
 class Writer:
     """Base: puts one output's arrays on disk."""
 
-    def __init__(self, saver: "RunSaver", output: str):
+    def __init__(self, saver: RunSaver, output: str):
         self.saver = saver
         self.output = output
         self.paths: dict[str, Path] = {}
@@ -109,9 +108,7 @@ class TiffWriter(Writer):
         if not self.paths:
             labels = dataset.resolved_channel_labels(len(channels))
             root = self.saver.root
-            self.paths = {
-                label: root.with_name(f"{root.name}_{label}.tiff") for label in labels
-            }
+            self.paths = {label: root.with_name(f"{root.name}_{label}.tiff") for label in labels}
             for path in self.paths.values():
                 if path.exists():
                     path.unlink()
@@ -119,7 +116,7 @@ class TiffWriter(Writer):
         if len(channels) != len(self.paths):
             raise ValueError("channel count does not match the configured save layout")
 
-        for path, channel_plane in zip(self.paths.values(), channels):
+        for path, channel_plane in zip(self.paths.values(), channels, strict=True):
             with tifffile.TiffWriter(str(path), append=True) as writer:
                 writer.write(np.asarray(channel_plane, dtype=np.float32))
 
@@ -127,7 +124,7 @@ class TiffWriter(Writer):
 class NpzWriter(Writer):
     """Everything that is not ``Image2D``: buffered, written once at finalize."""
 
-    def __init__(self, saver: "RunSaver", output: str):
+    def __init__(self, saver: RunSaver, output: str):
         super().__init__(saver, output)
         self._buffer: list[np.ndarray] = []
 
@@ -139,7 +136,7 @@ class NpzWriter(Writer):
             return
         root = self.saver.root
         path = root.with_name(f"{root.name}_{self.output}.npz")
-        #: Leading axis is one entry per published array, in publish order.
+        # Leading axis is one entry per published array, in publish order.
         payload = np.stack(self._buffer, axis=0)
         np.savez_compressed(
             str(path),
@@ -149,12 +146,8 @@ class NpzWriter(Writer):
         self.paths = {self.output: path}
 
 
-def make_writer(saver: "RunSaver", output: str, spec: type[Data]) -> Writer:
-    return (
-        TiffWriter(saver, output)
-        if spec is Image2D
-        else NpzWriter(saver, output)
-    )
+def make_writer(saver: RunSaver, output: str, spec: type[Data]) -> Writer:
+    return TiffWriter(saver, output) if spec is Image2D else NpzWriter(saver, output)
 
 
 class RunSaver:
@@ -235,9 +228,7 @@ class RunSaver:
             "devices": self.devices,
             "last_error": last_error,
         }
-        self.json_path.write_text(
-            json.dumps(payload, indent=2, default=str), encoding="utf-8"
-        )
+        self.json_path.write_text(json.dumps(payload, indent=2, default=str), encoding="utf-8")
 
 
 def read_metadata(path: Path) -> dict[str, Any]:

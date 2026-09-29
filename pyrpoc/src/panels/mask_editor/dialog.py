@@ -82,7 +82,7 @@ class RoiThresholdDialog(QDialog):
     preview runs against a substituted copy and Cancel needs no undo.
     """
 
-    def __init__(self, editor: "MaskEditorPanel", index: int):
+    def __init__(self, editor: MaskEditorPanel, index: int):
         super().__init__(editor)
         self.editor = editor
         self.index = index
@@ -173,7 +173,5 @@ class RoiThresholdDialog(QDialog):
             self.preview_label.setText("No ROI to preview.")
             return
         height, width = mask.shape
-        qimg = QImage(
-            mask.tobytes(), width, height, width, QImage.Format.Format_Grayscale8
-        ).copy()
+        qimg = QImage(mask.tobytes(), width, height, width, QImage.Format.Format_Grayscale8).copy()
         self.preview_label.set_source(QPixmap.fromImage(qimg))

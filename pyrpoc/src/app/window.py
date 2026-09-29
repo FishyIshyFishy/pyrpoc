@@ -14,14 +14,15 @@ menu entry.
 
 from __future__ import annotations
 
+import contextlib
 from dataclasses import dataclass
 from enum import Enum
 
+import PyQt6Ads as qtads
 from PyQt6 import sip
 from PyQt6.QtCore import QByteArray, QTimer, pyqtSignal
 from PyQt6.QtGui import QAction, QCloseEvent
 from PyQt6.QtWidgets import QVBoxLayout, QWidget
-import PyQt6Ads as qtads
 
 from pyrpoc.src.panels import AcquisitionPanel, DataLibraryPanel, DevicesPanel, panel_registry
 
@@ -77,10 +78,10 @@ class MainWindow(QWidget):
         self.dock_by_key: dict[DockKey, qtads.CDockWidget] = {}
         self.panel_docks: dict[QWidget, qtads.CDockWidget] = {}
         self.panel_actions: dict[QWidget, QAction] = {}
-        #: Which instance of its type each panel is, so two of the same kind
-        #: can be told apart. Held here rather than on the panel: what a panel
-        #: is called among its siblings is the window's business, not the
-        #: renderer's.
+        # Which instance of its type each panel is, so two of the same kind
+        # can be told apart. Held here rather than on the panel: what a panel
+        # is called among its siblings is the window's business, not the
+        # renderer's.
         self.panel_ordinals: dict[QWidget, int] = {}
 
         self.menubar = MainMenuBar(self)
@@ -225,22 +226,16 @@ class MainWindow(QWidget):
         self.panel_ordinals.pop(panel, None)
 
         if action is not None and not sip.isdeleted(action):
-            try:
+            with contextlib.suppress(Exception):
                 action.toggled.disconnect()
-            except Exception:
-                pass
-            try:
+            with contextlib.suppress(Exception):
                 self.menubar.panels_menu.removeAction(action)
-            except Exception:
-                pass
             action.setParent(None)
             action.deleteLater()
 
         if dock is not None and not sip.isdeleted(dock):
-            try:
+            with contextlib.suppress(Exception):
                 self.dock_manager.removeDockWidget(dock)
-            except Exception:
-                pass
             try:
                 detached = dock.takeWidget()
                 if detached is not None:

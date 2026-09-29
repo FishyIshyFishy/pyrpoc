@@ -10,9 +10,10 @@ rather than inferred from a tag mid-flight.
 from __future__ import annotations
 
 import threading
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Callable
+from typing import Any
 from uuid import uuid4
 
 import numpy as np
@@ -31,8 +32,7 @@ class Data:
         arr = np.asarray(array)
         if arr.ndim != cls.ndim:
             raise ValueError(
-                f"{cls.name} expects {cls.ndim} dimensions {cls.axes}, "
-                f"got shape {arr.shape}"
+                f"{cls.name} expects {cls.ndim} dimensions {cls.axes}, got shape {arr.shape}"
             )
         if any(size <= 0 for size in arr.shape):
             raise ValueError(f"{cls.name} received an empty axis: shape {arr.shape}")
@@ -128,8 +128,8 @@ class Provenance:
     devices: dict[str, Any] = field(default_factory=dict)
     started_at: str = ""
     run_id: int = 0
-    #: What the run was called -- the save filename, set whether or not the
-    #: run was saved. An unnamed run falls back to its program.
+    # What the run was called -- the save filename, set whether or not the
+    # run was saved. An unnamed run falls back to its program.
     name: str = ""
 
 
@@ -156,7 +156,7 @@ class Dataset:
 
         self._frames: list[np.ndarray] = []
         self._nbytes = 0
-        self._subscribers: list[Callable[["Dataset"], None]] = []
+        self._subscribers: list[Callable[[Dataset], None]] = []
         self._lock = threading.RLock()
 
     # -- identity ---------------------------------------------------------- #
@@ -258,12 +258,12 @@ class Dataset:
 
     # -- change notification ------------------------------------------------ #
 
-    def subscribe(self, callback: Callable[["Dataset"], None]) -> None:
+    def subscribe(self, callback: Callable[[Dataset], None]) -> None:
         with self._lock:
             if callback not in self._subscribers:
                 self._subscribers.append(callback)
 
-    def unsubscribe(self, callback: Callable[["Dataset"], None]) -> None:
+    def unsubscribe(self, callback: Callable[[Dataset], None]) -> None:
         with self._lock:
             if callback in self._subscribers:
                 self._subscribers.remove(callback)

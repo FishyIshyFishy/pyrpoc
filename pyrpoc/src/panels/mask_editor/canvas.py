@@ -38,7 +38,7 @@ class MaskRoi:
 
 
 class MaskImageView(QGraphicsView):
-    def __init__(self, scene: QGraphicsScene, editor: "MaskEditorPanel"):
+    def __init__(self, scene: QGraphicsScene, editor: MaskEditorPanel):
         super().__init__(scene)
         self.gscene: QGraphicsScene = scene
         self.editor = editor
@@ -49,7 +49,9 @@ class MaskImageView(QGraphicsView):
         self._current_points: list[QPointF] = []
         self._live_path: QPainterPath | None = None
         self._live_path_item: QGraphicsPathItem | None = None
-        self._path_pen = QPen(QColor(255, 80, 80), 2, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap)
+        self._path_pen = QPen(
+            QColor(255, 80, 80), 2, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap
+        )
 
         self._roi_items: list[QGraphicsPathItem] = []
         self._roi_labels: list[QGraphicsTextItem] = []

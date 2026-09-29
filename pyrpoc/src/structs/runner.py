@@ -1,36 +1,36 @@
 """Runners: the ways a program can be started, declared by the program.
 
-Start and Continuous used to be two buttons the acquisition panel always drew,
-and click-to-acquire was a path through the application, the form and the
-panel that knew about points and scan geometry. Which entry points make sense
-depends on the program, so the program declares them in ``Program.runners``
-and the app only hosts them.
+Which entry points make sense depends on the program, so the program declares
+them in ``Program.runners`` and whatever hosts it draws and wires them without
+knowing what any of them does.
 
 A **runner** is a frozen declaration with one method, ``attach``. Attaching
 builds fresh per-program state -- its controls, its callbacks -- against a
 ``RunnerContext``, so one declaration can be shared as a class attribute.
 
-A ``RunnerContext`` is the host's side: run, stop, the program's parameters,
-pick requests to displays, and a place to put controls. The host implements it;
-runners call it and never learn what hosts them.
+A ``RunnerContext`` is the host's side: run, stop, the program's parameters, a
+place to put controls, and a way to **request** something. A request goes out
+("this runner wants a ``PixelPick``") and at most one answer comes back; who
+answers is the host's business. A runner that starts a run from a clicked
+pixel knows it needs a pixel of a dataset, not that someone was looking at an
+image -- the acquisition does not care why the user chose to start it.
 
-**Controls** are Qt-free descriptors of a widget -- a ``Button`` or a ``Toggle``
--- which the host's view renders. They are primitives, not features: "Acquire
-at point" is a ``Toggle`` whose callback happens to request a pick.
+**Controls** are Qt-free descriptors of a widget -- a ``Button`` or a
+``Toggle`` -- which the host's view renders. They are primitives, not
+features: arming is a ``Toggle`` whose callback happens to make a request.
 
-The three generic runners sit here next to the base, the way ``IntField`` sits
-next to ``Field``.
+The runners themselves are implementations and live in
+``programs/components/runners/``.
 """
 
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable
 
-from .params import BlockMap, ParameterError
+from .params import BlockMap
 from .picks import Pick
-
 
 # --------------------------------------------------------------------------- #
 # Controls                                                                     #
@@ -170,18 +170,18 @@ class RunnerContext(ABC):
     def params_written(self) -> None:
         """Announce that ``params`` was changed somewhere other than the form."""
 
-    # -- picks ------------------------------------------------------------- #
+    # -- requests ---------------------------------------------------------- #
 
     @abstractmethod
-    def request_pick(self, kind: type[Pick], callback: Callable[[Pick | None], None]) -> None:
-        """Ask the displays for one pick of ``kind``.
+    def request(self, kind: type[Pick], callback: Callable[[Pick | None], None]) -> None:
+        """Announce that this runner wants one ``kind``, and wait for it.
 
-        One request at a time: a new one cancels the old. ``callback`` gets the
-        pick, or ``None`` if the request was cancelled.
+        One request at a time: a new one cancels the old. ``callback`` gets
+        what was provided, or ``None`` if the request was cancelled.
         """
 
     @abstractmethod
-    def cancel_pick(self) -> None: ...
+    def cancel_request(self) -> None: ...
 
     # -- view -------------------------------------------------------------- #
 
@@ -197,7 +197,7 @@ class RunnerContext(ABC):
 
 
 # --------------------------------------------------------------------------- #
-# Runners                                                                      #
+# The base                                                                     #
 # --------------------------------------------------------------------------- #
 
 
@@ -207,77 +207,3 @@ class Runner:
 
     def attach(self, ctx: RunnerContext) -> None:
         raise NotImplementedError
-
-
-@dataclass(frozen=True)
-class Single(Runner):
-    """Run once."""
-
-    def attach(self, ctx: RunnerContext) -> None:
-        ctx.add_control(Button("Start", ctx.execute, icon="single", tooltip="Start"))
-
-
-@dataclass(frozen=True)
-class Continuous(Runner):
-    """Run until stopped."""
-
-    def attach(self, ctx: RunnerContext) -> None:
-        ctx.add_control(
-            Button(
-                "Continuous",
-                lambda: ctx.execute(continuous=True),
-                icon="multi",
-                tooltip="Continuous acquisition",
-            )
-        )
-
-
-@dataclass(frozen=True)
-class ArmAndRun(Runner):
-    """Arm, wait for a pick from a display, turn it into parameters, run.
-
-    ``apply`` is the program's half: it writes the pick into the blocks it is
-    given, and raises ``ParameterError`` when the pick cannot be placed.
-
-    Arming is refused while anything would stop the run starting, because the
-    pick is what starts it: a crosshair promising a run that cannot happen is
-    worse than a refusal that says why.
-    """
-
-    pick: type[Pick]
-    apply: Callable[[Pick, BlockMap], None]
-    label: str = "Arm"
-    icon: str | None = None
-    tooltip: str = "Arm, then click a display to run there"
-
-    def attach(self, ctx: RunnerContext) -> None:
-        def on_change(checked: bool) -> None:
-            if not checked:
-                ctx.cancel_pick()
-                return
-            missing = ctx.blockers()
-            if missing:
-                ctx.status("needs " + ", ".join(missing))
-                toggle.set(False)
-                return
-            ctx.request_pick(self.pick, on_pick)
-
-        def on_pick(pick: Pick | None) -> None:
-            toggle.set(False)
-            if pick is None:
-                return
-            try:
-                self.apply(pick, ctx.params)
-            except ParameterError as exc:
-                ctx.status(str(exc))
-                return
-            ctx.params_written()
-            ctx.execute()
-
-        def on_run_started() -> None:
-            if toggle.checked:
-                ctx.cancel_pick()
-
-        toggle = Toggle(self.label, on_change, icon=self.icon, tooltip=self.tooltip)
-        ctx.on_run_started(on_run_started)
-        ctx.add_control(toggle)

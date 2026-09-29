@@ -19,7 +19,7 @@ if TYPE_CHECKING:  # pragma: no cover
 class DaqPanel(QWidget):
     def __init__(
         self,
-        device: "DAQ",
+        device: DAQ,
         parent: QWidget | None = None,
         on_change: Callable[[], None] | None = None,
     ) -> None:

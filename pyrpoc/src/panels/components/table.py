@@ -15,7 +15,30 @@ is a different kind of table doing a different job.
 from __future__ import annotations
 
 from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QAbstractItemView, QTableWidget, QTableWidgetItem, QWidget
+from PyQt6.QtWidgets import (
+    QAbstractItemView,
+    QHeaderView,
+    QTableView,
+    QTableWidget,
+    QTableWidgetItem,
+    QWidget,
+)
+
+
+# PyQt types a table's headers as optional, though a table builds both in its
+# constructor. These say so once, rather than every caller checking for None.
+def horizontal_header(table: QTableView) -> QHeaderView:
+    header = table.horizontalHeader()
+    if header is None:
+        raise RuntimeError("table has no horizontal header")
+    return header
+
+
+def vertical_header(table: QTableView) -> QHeaderView:
+    header = table.verticalHeader()
+    if header is None:
+        raise RuntimeError("table has no vertical header")
+    return header
 
 
 class ListTable(QTableWidget):
@@ -34,10 +57,13 @@ class ListTable(QTableWidget):
         self.setAlternatingRowColors(True)
         self.setWordWrap(False)
         self.setCornerButtonEnabled(False)
-        self.verticalHeader().setVisible(False)
-        self.horizontalHeader().setHighlightSections(False)
+        vertical_header(self).setVisible(False)
+        horizontal_header(self).setHighlightSections(False)
 
-    def set_cell(self, row: int, column: int, text: str, *, right: bool = False) -> None:
+    def set_cell(
+        self, row: int, column: int, text: str, *, right: bool = False
+    ) -> QTableWidgetItem:
+        """Set a cell's text, creating its item if needed, and return the item."""
         item = self.item(row, column)
         if item is None:
             item = QTableWidgetItem()
@@ -45,3 +71,4 @@ class ListTable(QTableWidget):
         item.setText(text)
         if right:
             item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        return item

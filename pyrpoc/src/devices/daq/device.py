@@ -30,9 +30,7 @@ class DaqError(DeviceError):
 
 @dataclass
 class DaqConfig(P.Group):
-    device_name: str = P.text_field(
-        "DAQ Device", "Dev1", tooltip="NI-DAQ device name (e.g. Dev1)"
-    )
+    device_name: str = P.text_field("DAQ Device", "Dev1", tooltip="NI-DAQ device name (e.g. Dev1)")
     ai_channels: tuple[int, ...] = P.channels_field(
         "Active AI Channels",
         num_channels=9,
@@ -58,7 +56,7 @@ class DAQ(Device):
         names = {device.name for device in nidaqmx.system.System.local().devices}
         return self.config.device_name in names
 
-    def panel(self, parent: "QWidget | None" = None, on_change=None) -> "QWidget | None":
+    def panel(self, parent: QWidget | None = None, on_change=None) -> QWidget | None:
         from .panel import DaqPanel
 
         return DaqPanel(self, parent=parent, on_change=on_change)

@@ -13,9 +13,10 @@ everywhere -- declaration key, form key, session key, metadata key.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field as dc_field, fields, is_dataclass, replace
-from typing import Any, Callable, ClassVar, Iterable, Iterator, Mapping, Sequence, TypeVar
-
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
+from dataclasses import dataclass, fields, is_dataclass, replace
+from dataclasses import field as dc_field
+from typing import Any, ClassVar, TypeVar
 
 
 class ParameterError(Exception):
@@ -54,7 +55,7 @@ class Field:
         del library
         return value
 
-    def editor(self, parent: Any, context: "FieldContext") -> "Editor | None":
+    def editor(self, parent: Any, context: FieldContext) -> Editor | None:
         """A custom widget for this field, or None for the form's own.
 
         The generic fields here leave it None and the form builds their
@@ -77,11 +78,13 @@ class Editor:
     widget: Any
     get: Callable[[], Any]
     set: Callable[[Any], None]
-    connect: Callable[[Callable[[], None]], None]
+    # Returns object, not None: the result is ignored, and Qt's connect()
+    # returns a Connection handle that builders pass straight through.
+    connect: Callable[[Callable[[], None]], object]
     summary: Callable[[], str]
-    #: The spec this widget was built from. Carried rather than looked up:
-    #: resolving it per path per keystroke was quadratic in field count.
-    spec: "Field | None" = None
+    # The spec this widget was built from. Carried rather than looked up:
+    # resolving it per path per keystroke was quadratic in field count.
+    spec: Field | None = None
 
 
 @dataclass(frozen=True)
@@ -255,6 +258,9 @@ def channels_field(label, *, num_channels=9, default=None, tooltip=""):
 # --------------------------------------------------------------------------- #
 
 
+# A dataclass with no fields, so every block type-checks as a dataclass
+# instance and ``dataclasses.replace`` accepts it without a cast.
+@dataclass
 class Group:
     """Base for parameter blocks.
 
@@ -307,15 +313,16 @@ class BlockStore:
     def get(self, cls: type[B]) -> B:
         """The instance for ``cls``, created at defaults on first request."""
         block = self._blocks.get(cls)
-        if block is None:
-            block = cls()
-            self._blocks[cls] = block
-        return block  # type: ignore[return-value]
+        if isinstance(block, cls):
+            return block
+        created = cls()
+        self._blocks[cls] = created
+        return created
 
     def has(self, cls: type) -> bool:
         return cls in self._blocks
 
-    def for_program(self, declared: Sequence[type[Group]]) -> "BlockMap":
+    def for_program(self, declared: Sequence[type[Group]]) -> BlockMap:
         return BlockMap({cls: self.get(cls) for cls in declared})
 
     # -- serialisation ------------------------------------------------------ #
@@ -363,13 +370,13 @@ class BlockMap(Mapping):
         self._blocks: dict[type, Group] = dict(blocks or {})
 
     def __getitem__(self, key: type[B]) -> B:
-        try:
-            return self._blocks[key]  # type: ignore[return-value]
-        except KeyError:
+        block = self._blocks.get(key)
+        if not isinstance(block, key):
             raise KeyError(
                 f"{getattr(key, '__name__', key)!r} is not in this program's params; "
                 f"it declares {sorted(block_name(c) for c in self._blocks)}"
-            ) from None
+            )
+        return block
 
     def __iter__(self) -> Iterator[type]:
         return iter(self._blocks)
@@ -396,9 +403,7 @@ def sections(blocks: Sequence[Group]) -> list[Section]:
     """One section per block, in the order the program declared them."""
     out: list[Section] = []
     for block in blocks:
-        entries = tuple(
-            (f"{block_name(block)}.{name}", spec) for name, spec in block_fields(block)
-        )
+        entries = tuple((f"{block_name(block)}.{name}", spec) for name, spec in block_fields(block))
         out.append(Section(type(block).label or block_name(block), entries))
     return out
 
@@ -457,11 +462,7 @@ def decode_block(cls: type, raw: Mapping[str, Any] | None, *, strict: bool = Fal
         if unknown:
             raise ParameterError("unknown parameters: " + ", ".join(unknown))
 
-    kwargs = {
-        name: spec.decode(values[name])
-        for name, spec in block_fields(cls)
-        if name in values
-    }
+    kwargs = {name: spec.decode(values[name]) for name, spec in block_fields(cls) if name in values}
     return cls(**kwargs)
 
 
@@ -485,13 +486,13 @@ def resolve_block(block: B, library: Any) -> B:
         resolved = spec.resolve(value, library)
         if resolved is not value:
             changes[name] = resolved
-    return replace(block, **changes) if changes else block  # type: ignore[type-var]
+    return replace(block, **changes) if changes else block
 
 
-#: Device configurations are blocks too -- same fields, same form, same
-#: encoding -- but they are per-instance rather than per-class and persist with
-#: their device, so they never enter the BlockStore. These aliases are what
-#: ``structs/device.py`` calls.
+# Device configurations are blocks too -- same fields, same form, same
+# encoding -- but they are per-instance rather than per-class and persist with
+# their device, so they never enter the BlockStore. These aliases are what
+# ``structs/device.py`` calls.
 to_dict = encode_block
 from_dict = decode_block
 validate = validate_block

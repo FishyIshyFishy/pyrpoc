@@ -31,7 +31,7 @@ from typing import TYPE_CHECKING
 import cv2
 import numpy as np
 from PyQt6.QtCore import QPointF, QRectF, Qt, pyqtSignal
-from PyQt6.QtGui import QImage, QPixmap
+from PyQt6.QtGui import QAction, QImage, QPixmap
 from PyQt6.QtWidgets import (
     QCheckBox,
     QDialog,
@@ -58,6 +58,7 @@ from pyrpoc.src.structs.panel import Panel, panel_registry
 
 from ..components.range_slider import RangeSlider
 from ..components.source_picker import SourcePicker
+from ..components.table import horizontal_header, vertical_header
 from ..components.transforms import normalize_channels
 from .canvas import MaskImageView, MaskRoi
 from .dialog import RoiThresholdDialog
@@ -97,7 +98,8 @@ class MaskEditorPanel(Panel):
         self.setObjectName("maskEditorRoot")
         self.setStyleSheet(
             "#maskEditorRoot, #maskEditorRoot QWidget { background: transparent; }"
-            "#maskEditorRoot QGraphicsView, #maskEditorRoot QTableWidget { background: transparent; }"
+            "#maskEditorRoot QGraphicsView, #maskEditorRoot QTableWidget"
+            " { background: transparent; }"
         )
         self._rois: list[MaskRoi] = []
         self._dirty = False
@@ -127,13 +129,13 @@ class MaskEditorPanel(Panel):
 
     # -- binding ------------------------------------------------------------ #
 
-    def attach_library(self, library: "DataLibrary") -> None:
+    def attach_library(self, library: DataLibrary) -> None:
         self.source.attach_library(library)
 
-    def dataset(self) -> "Dataset | None":
+    def dataset(self) -> Dataset | None:
         return self.source.current()
 
-    def library(self) -> "DataLibrary | None":
+    def library(self) -> DataLibrary | None:
         return self.source.library()
 
     # -- layout ---------------------------------------------------------------- #
@@ -171,9 +173,7 @@ class MaskEditorPanel(Panel):
         self.threshold_slider = RangeSlider(self)
         self.threshold_slider.setRange(int_min, int_max)
         self.threshold_slider.setValues(low_default, high_default)
-        self.threshold_slider.setToolTip(
-            "Pixels inside the accented span count toward the mask."
-        )
+        self.threshold_slider.setToolTip("Pixels inside the accented span count toward the mask.")
         self.threshold_slider.values_changed.connect(self.on_slider_changed)
 
         threshold_row.addWidget(self.low_spin)
@@ -232,9 +232,9 @@ class MaskEditorPanel(Panel):
         table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
         table.setCornerButtonEnabled(False)
-        table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
-        table.horizontalHeader().setHighlightSections(False)
-        table.verticalHeader().setHighlightSections(False)
+        horizontal_header(table).setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        horizontal_header(table).setHighlightSections(False)
+        vertical_header(table).setHighlightSections(False)
         table.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
         # Editing an ROI is done on the row that names it, rather than through
         # a button elsewhere that acts on whatever happens to be selected.
@@ -248,8 +248,8 @@ class MaskEditorPanel(Panel):
         A table that keeps its own height is what stops it from either
         swallowing the image or leaving an empty slab under it.
         """
-        header = self.roi_table.horizontalHeader().height()
-        row_height = self.roi_table.verticalHeader().defaultSectionSize()
+        header = horizontal_header(self.roi_table).height()
+        row_height = vertical_header(self.roi_table).defaultSectionSize()
         rows = min(max(self.roi_table.rowCount(), 1), 5)
         self.roi_table.setFixedHeight(header + rows * row_height + 4)
 
@@ -475,17 +475,19 @@ class MaskEditorPanel(Panel):
         if row < 0 or row >= len(self._rois):
             return
         self.roi_table.selectRow(row)
+        viewport = self.roi_table.viewport()
+        if viewport is None:
+            return
         menu = QMenu(self.roi_table)
         # Connected rather than compared against exec()'s return value: Qt
         # hides the menu before it emits triggered, so the dialog opens with
         # the menu already gone.
-        menu.addAction("Change thresholds...").triggered.connect(
-            lambda _checked=False, r=row: self.change_roi_thresholds(r)
-        )
-        menu.addAction("Delete").triggered.connect(
-            lambda _checked=False, r=row: self.delete_roi(r)
-        )
-        menu.exec(self.roi_table.viewport().mapToGlobal(pos))
+        change = QAction("Change thresholds...", menu)
+        change.triggered.connect(lambda _checked=False, r=row: self.change_roi_thresholds(r))
+        delete = QAction("Delete", menu)
+        delete.triggered.connect(lambda _checked=False, r=row: self.delete_roi(r))
+        menu.addActions([change, delete])
+        menu.exec(viewport.mapToGlobal(pos))
 
     def change_roi_thresholds(self, row: int) -> None:
         if row < 0 or row >= len(self._rois):
@@ -545,7 +547,9 @@ class MaskEditorPanel(Panel):
         for roi in rois:
             if len(roi.points) < 3:
                 continue
-            polygon = np.array([[int(round(x)), int(round(y))] for x, y in roi.points], dtype=np.int32).reshape(-1, 1, 2)
+            polygon = np.array(
+                [[int(round(x)), int(round(y))] for x, y in roi.points], dtype=np.int32
+            ).reshape(-1, 1, 2)
             roi_mask = np.zeros((self._h, self._w), dtype=np.uint8)
             cv2.fillPoly(roi_mask, [polygon], 255)
 
@@ -563,7 +567,9 @@ class MaskEditorPanel(Panel):
         if mask is None:
             QMessageBox.warning(self, "No ROI", "Draw at least one ROI before previewing.")
             return
-        qimg = QImage(mask.tobytes(), self._w, self._h, self._w, QImage.Format.Format_Grayscale8).copy()
+        qimg = QImage(
+            mask.tobytes(), self._w, self._h, self._w, QImage.Format.Format_Grayscale8
+        ).copy()
         dlg = QDialog(self)
         dlg.setWindowTitle("Mask Preview")
         layout = QVBoxLayout(dlg)

@@ -17,22 +17,22 @@ analog input is read at all -- the image comes from the photon stream.
 
 from __future__ import annotations
 
-import numpy as np
 import nidaqmx as nx
+import numpy as np
 from nidaqmx.constants import AcquisitionType, Signal
 
+from pyrpoc.src.devices import DAQ, DaqError, FlimMeasurement, Galvo, TimeTagger
 from pyrpoc.src.structs.data import Cube3D, Image2D
-from pyrpoc.src.devices import DAQ, DaqError, Galvo, TimeTagger
 from pyrpoc.src.structs.program import Program
+from pyrpoc.src.structs.registries import program_registry
 
-from .components import (
+from .components.param_groups import (
     DaqGroup,
     HistogramGroup,
     ScanGroup,
     TriggerGroup,
 )
-from pyrpoc.src.structs.registries import program_registry
-
+from .components.runners import Continuous, Single
 
 # --------------------------------------------------------------------------- #
 # Waveform arithmetic                                                          #
@@ -65,11 +65,12 @@ def generate_raster_waveform(
     slow_amp = max(float(slow_axis_amplitude), 1e-6)
     fast_step = (2.0 * fast_amp) / float(x_pixels)
     fast_start = -fast_amp - (float(extra_left) * fast_step)
-    fast_axis = fast_start + (np.arange(total_x, dtype=np.float32) * fast_step) + float(fast_axis_offset)
-    slow_axis = (
-        np.linspace(-1.0, 1.0, y_pixels, endpoint=False, dtype=np.float32) * slow_amp
-        + float(slow_axis_offset)
+    fast_axis = (
+        fast_start + (np.arange(total_x, dtype=np.float32) * fast_step) + float(fast_axis_offset)
     )
+    slow_axis = np.linspace(
+        -1.0, 1.0, y_pixels, endpoint=False, dtype=np.float32
+    ) * slow_amp + float(slow_axis_offset)
     fast_raster = np.tile(np.repeat(fast_axis, pixel_samples), y_pixels)
     slow_raster = np.repeat(slow_axis, total_x * pixel_samples)
     return np.vstack((fast_raster, slow_raster)).astype(np.float64)
@@ -143,8 +144,9 @@ def run_flim_scan(
                 f"/{device_name}/ao/StartTrigger"
             )
 
-            ao_task.write(np.asarray(raster_waveform, dtype=np.float64), auto_start=False)  # pyright:ignore
-            co_task.start()   # arms and waits for the AO start trigger
+            # Many samples per channel, so write() does not auto-start.
+            ao_task.write(np.asarray(raster_waveform, dtype=np.float64))
+            co_task.start()  # arms and waits for the AO start trigger
             ao_task.start()
             ao_task.wait_until_done(timeout=timeout)
             co_task.wait_until_done(timeout=timeout)
@@ -209,7 +211,7 @@ def flim_intensity(hist_frame: np.ndarray) -> np.ndarray:
 
 
 def read_flim_frame(
-    flim_measurement,
+    flim_measurement: FlimMeasurement,
     n_bins: int,
     y_pixels: int,
     total_x_pixels: int,
@@ -234,6 +236,7 @@ class FLIM(Program):
     uses = [Galvo, DAQ, TimeTagger]
     params = [ScanGroup, DaqGroup, TriggerGroup, HistogramGroup]
     emits = {"intensity": Image2D, "histogram": Cube3D}
+    runners = [Single(), Continuous()]
 
     def run(self, ctx) -> None:
         scan = ctx.params[ScanGroup]

@@ -20,8 +20,8 @@ from pyrpoc.src.structs.data import Dataset
 from pyrpoc.src.structs.device import Device, MissingDevice
 from pyrpoc.src.structs.params import ParameterError
 
-from .library import DataLibrary
 from .executor import Executor
+from .library import DataLibrary
 from .saving import SaveTarget
 
 

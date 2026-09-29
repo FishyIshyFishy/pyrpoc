@@ -40,14 +40,14 @@ class Device:
     display_name: str = "Device"
     registry_key: str = "device"
 
-    #: True when this device holds a resource that can be opened and verified.
+    # True when this device holds a resource that can be opened and verified.
     owns_connection: bool = False
 
-    #: Set when this device has no connection of its own. Claims propagate up
-    #: this link, so claiming the galvo claims its DAQ.
-    backed_by: type["Device"] | None = None
+    # Set when this device has no connection of its own. Claims propagate up
+    # this link, so claiming the galvo claims its DAQ.
+    backed_by: type[Device] | None = None
 
-    #: A ``structs.params`` group describing this device's wiring and calibration.
+    # A ``structs.params`` group describing this device's wiring and calibration.
     config_cls: type | None = None
 
     def __init__(self, instance_id: str | None = None, user_label: str | None = None):
@@ -91,7 +91,7 @@ class Device:
 
     # -- panel ------------------------------------------------------------- #
 
-    def panel(self, parent: "QWidget | None" = None, on_change=None) -> "QWidget | None":
+    def panel(self, parent: QWidget | None = None, on_change=None) -> QWidget | None:
         """Device-specific controls, beneath the form generated from ``config``.
 
         Returns None when the generated form is the whole panel. Subclasses

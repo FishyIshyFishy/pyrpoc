@@ -19,7 +19,7 @@ if TYPE_CHECKING:  # pragma: no cover
 class TimeTaggerPanel(QWidget):
     def __init__(
         self,
-        device: "TimeTagger",
+        device: TimeTagger,
         parent: QWidget | None = None,
         on_change: Callable[[], None] | None = None,
     ) -> None:

@@ -6,7 +6,7 @@ from pathlib import Path
 
 from PyQt6.QtGui import QIcon
 
-#: ``pyrpoc/assets``, beside ``pyrpoc/src``.
+# ``pyrpoc/assets``, beside ``pyrpoc/src``.
 ASSETS = Path(__file__).resolve().parents[3] / "assets"
 
 

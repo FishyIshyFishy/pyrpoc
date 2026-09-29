@@ -12,7 +12,8 @@ registers a device.
 
 from __future__ import annotations
 
-from typing import Any, Callable, Generic, TypeVar
+from collections.abc import Callable
+from typing import Generic, TypeVar
 
 from .device import Device
 from .params import Group
@@ -20,35 +21,40 @@ from .program import Program
 
 T = TypeVar("T")
 
-#: The decorated class itself, so ``@registry.register(...)`` returns the class
-#: it was given rather than a bare ``type``. Without this every registered
-#: device, view and program is ``Unknown`` downstream: ``daq.config.device_name``
-#: type-checks against nothing, which is most of the value of handing whole
-#: devices to the hardware layer instead of splatting their config.
+# The decorated class itself, so ``@registry.register(...)`` returns the class
+# it was given rather than a bare ``type``. Without this every registered
+# device, view and program is ``Unknown`` downstream: ``daq.config.device_name``
+# type-checks against nothing, which is most of the value of handing whole
+# devices to the hardware layer instead of splatting their config.
 C = TypeVar("C", bound=type)
 
 
 class Registry(Generic[T]):
-    def __init__(self, name: str, base_class: type, *, stamp: bool = True):
+    def __init__(self, name: str, base_class: type[T], *, stamp: str | None = "registry_key"):
         self.name = name
         self.base_class = base_class
-        #: Whether to record the key on the class. Off for programs, so a
-        #: Program subclass keeps to the four attributes section 12 allows.
+        # The class attribute to record the key on, or None to not record it.
+        # None for programs, so a Program subclass keeps to the four
+        # attributes section 12 allows.
         self.stamp = stamp
         self.entries: dict[str, type[T]] = {}
 
     def register(self, key: str) -> Callable[[C], C]:
         def decorator(cls: C) -> C:
-            if not issubclass(cls, self.base_class):
-                raise TypeError(f"{cls.__name__} must inherit from {self.base_class.__name__}")
-            if key in self.entries:
-                raise KeyError(f"{key!r} is already registered in {self.name}")
-            self.entries[key] = cls  # type: ignore[assignment]
-            if self.stamp:
-                cls.registry_key = key  # type: ignore[attr-defined]
+            self.add(key, cls)
             return cls
 
         return decorator
+
+    def add(self, key: str, cls: type) -> None:
+        # The issubclass check is what narrows ``cls`` to ``type[T]``.
+        if not issubclass(cls, self.base_class):
+            raise TypeError(f"{cls.__name__} must inherit from {self.base_class.__name__}")
+        if key in self.entries:
+            raise KeyError(f"{key!r} is already registered in {self.name}")
+        self.entries[key] = cls
+        if self.stamp is not None:
+            setattr(cls, self.stamp, key)
 
     def keys(self) -> list[str]:
         return sorted(self.entries)
@@ -64,9 +70,6 @@ class Registry(Generic[T]):
                 return key
         raise KeyError(f"{getattr(cls, '__name__', cls)!r} is not registered in {self.name}")
 
-    def create(self, key: str, **kwargs: Any) -> T:
-        return self.get(key)(**kwargs)  # type: ignore[call-arg]
-
 
 # --------------------------------------------------------------------------- #
 # The registries                                                               #
@@ -74,16 +77,16 @@ class Registry(Generic[T]):
 
 device_registry: Registry[Device] = Registry("DeviceRegistry", Device)
 
-#: stamp=False: a Program subclass must define nothing beyond uses, params,
-#: emits and run (section 12), so the key stays at the registration site.
-program_registry: Registry[Program] = Registry("ProgramRegistry", Program, stamp=False)
+# stamp=None: a Program subclass must define nothing beyond uses, params,
+# emits and run (section 12), so the key stays at the registration site.
+program_registry: Registry[Program] = Registry("ProgramRegistry", Program, stamp=None)
 
-#: Keyed by class name, which is a block's identity everywhere: declaration,
-#: form, session file and run metadata.
-block_registry: Registry[Group] = Registry("BlockRegistry", Group, stamp=False)
+# Keyed by class name, which is a block's identity everywhere: declaration,
+# form, session file and run metadata.
+block_registry: Registry[Group] = Registry("BlockRegistry", Group, stamp=None)
 
-#: The decorated class itself, so ``@block`` returns ``type[ScanGroup]`` rather
-#: than ``type[Group]``; see ``C`` above.
+# The decorated class itself, so ``@block`` returns ``type[ScanGroup]`` rather
+# than ``type[Group]``; see ``C`` above.
 B = TypeVar("B", bound=type)
 
 

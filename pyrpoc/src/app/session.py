@@ -21,6 +21,7 @@ added panels only -- image_2d, overlay, mask_editor, spectrum -- the same set
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 from dataclasses import asdict, dataclass, field
@@ -35,17 +36,16 @@ from pyrpoc.src.structs.registries import device_registry
 from . import catalog
 from .application import Application
 
-
 # --------------------------------------------------------------------------- #
 # What a saved session holds                                                   #
 # --------------------------------------------------------------------------- #
 
-#: Bumped from 7. Parameters are no longer stored per program: a block is
-#: shared by every modality that declares it, so there is one flat state dict
-#: keyed by block class name instead of a nested dict keyed by program. A v7
-#: file's ``params_by_program`` has no single answer to map onto -- three
-#: programs could each hold a different scan block -- so there is no converter
-#: and a v7 session loads as defaults, once.
+# Bumped from 7. Parameters are no longer stored per program: a block is
+# shared by every modality that declares it, so there is one flat state dict
+# keyed by block class name instead of a nested dict keyed by program. A v7
+# file's ``params_by_program`` has no single answer to map onto -- three
+# programs could each hold a different scan block -- so there is no converter
+# and a v7 session loads as defaults, once.
 SCHEMA_VERSION = 8
 
 
@@ -83,8 +83,8 @@ class SessionState:
     devices: list[DeviceState] = field(default_factory=list)
     views: list[ViewState] = field(default_factory=list)
     selected_program: str | None = None
-    #: Every parameter block, keyed by class name. The state dict: one entry
-    #: per block, not one per program, because a block is shared.
+    # Every parameter block, keyed by class name. The state dict: one entry
+    # per block, not one per program, because a block is shared.
     param_blocks: dict[str, dict[str, Any]] = field(default_factory=dict)
     save: SaveState = field(default_factory=SaveState)
     ads_layout: str | None = None
@@ -251,8 +251,9 @@ def apply(state: SessionState, app: Application, window=None) -> None:
 
     for row in state.devices:
         try:
-            device = app.add_device(row.key, instance_id=row.instance_id or None,
-                                    user_label=row.user_label)
+            device = app.add_device(
+                row.key, instance_id=row.instance_id or None, user_label=row.user_label
+            )
             device.import_state(row.state)
         except Exception:
             continue
@@ -302,8 +303,13 @@ def seed_defaults(app: Application) -> None:
 class Autosave(QObject):
     """Debounced save on any state change, plus explicit save/reset actions."""
 
-    def __init__(self, app: Application, window,
-                 store: SessionStore | None = None, parent: QObject | None = None):
+    def __init__(
+        self,
+        app: Application,
+        window,
+        store: SessionStore | None = None,
+        parent: QObject | None = None,
+    ):
         super().__init__(parent)
         self.app = app
         self.window = window
@@ -327,10 +333,9 @@ class Autosave(QObject):
     def save_now(self) -> None:
         if self.suspended:
             return
-        try:
+        # a failed autosave must never interrupt an experiment
+        with contextlib.suppress(Exception):
             self.store.save(capture(self.app, self.window))
-        except Exception:
-            pass  # a failed autosave must never interrupt an experiment
 
     def restore(self) -> None:
         self.suspended = True

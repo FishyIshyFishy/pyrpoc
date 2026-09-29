@@ -13,8 +13,9 @@ histogram bins and bin width stay run parameters.
 
 from __future__ import annotations
 
+import contextlib
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Protocol
 
 from pyrpoc.src.structs import params as P
 from pyrpoc.src.structs.device import Device, DeviceError
@@ -26,6 +27,15 @@ if TYPE_CHECKING:  # pragma: no cover
 
 class TaggerError(DeviceError):
     """A TimeTagger operation failed."""
+
+
+class FlimMeasurement(Protocol):
+    """The part of the SDK's ``Flim`` measurement this code calls. Declared
+    here because the Swabian SDK ships no type information."""
+
+    def stop(self) -> None: ...
+
+    def getCurrentFrameEx(self) -> Any: ...
 
 
 @dataclass
@@ -117,7 +127,9 @@ class TimeTagger(Device):
         if c.laser_input_delay_ps:
             self.tagger.setInputDelay(c.laser_channel, int(c.laser_input_delay_ps))
 
-    def start_flim_measurement(self, *, n_pixels: int, n_bins: int, binwidth_ps: int) -> object:
+    def start_flim_measurement(
+        self, *, n_pixels: int, n_bins: int, binwidth_ps: int
+    ) -> FlimMeasurement:
         """Create the hardware Flim measurement that histograms laser-to-photon
         delays into per-pixel decay curves.
 
@@ -144,19 +156,17 @@ class TimeTagger(Device):
             n_frame_average=1,
         )
 
-    def stop_flim_measurement(self, flim: object | None) -> None:
+    def stop_flim_measurement(self, flim: FlimMeasurement | None) -> None:
         """Stop the measurement and free the tagger. Called once per run, from
         the program's ``finally`` -- not once per frame as v3.0 did."""
         if flim is not None:
-            try:
-                flim.stop()  # type: ignore[attr-defined]
-            except Exception:
-                pass
+            with contextlib.suppress(Exception):
+                flim.stop()
         self.free_tagger()
 
     # -- panel ------------------------------------------------------------- #
 
-    def panel(self, parent: "QWidget | None" = None, on_change=None) -> "QWidget | None":
+    def panel(self, parent: QWidget | None = None, on_change=None) -> QWidget | None:
         from .panel import TimeTaggerPanel
 
         return TimeTaggerPanel(self, parent=parent, on_change=on_change)
