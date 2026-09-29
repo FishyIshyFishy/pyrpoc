@@ -1,9 +1,13 @@
 """What a program is, and the service surface it gets while running.
 
 A program is something with a ``run()`` that drives hardware and emits data over
-time. Its three attributes are not a declaration format; they are the three
-things the executor must know in order to start it. Nothing about labels, menus or
-how it was launched -- a program should not know it is in a dropdown.
+time. ``uses``, ``params`` and ``emits`` are not a declaration format; they are
+the three things the executor must know in order to start it. ``runners`` is
+the fourth attribute and the one about the outside: the ways it can be started
+-- Start, Continuous, "acquire where I click" -- because which entry points make
+sense depends on the program. They are Qt-free declarations the app hosts
+without knowing what they do. Nothing about labels or menus -- a program should
+not know it is in a dropdown.
 """
 
 from __future__ import annotations
