@@ -2,7 +2,7 @@
 
 A block is a dataclass whose fields carry their spec in ``metadata``, so one
 declaration gives the value, default, form row and validation. The block class
-is its identity everywhere: declaration, form, session and run metadata.
+is its identity everywhere: declaration, form, workspace and run metadata.
 """
 
 from __future__ import annotations
@@ -276,7 +276,7 @@ class BlockStore:
 
     def load_dict(self, raw: Mapping[str, dict[str, Any]], registry: Mapping[str, type]) -> None:
         """Fill the store from a saved state dict. An unknown name is skipped,
-        so deleting a block does not strand a session; a block that fails
+        so deleting a block does not strand a workspace; a block that fails
         coercion falls back to defaults, so one bad number costs only itself."""
         for name, values in raw.items():
             cls = registry.get(name)
@@ -375,13 +375,14 @@ def validate_block(block: Any) -> None:
 
 
 def resolve_block(block: B, library: Library) -> B:
-    """``block`` as a run should see it. A copy when any field resolved to
-    something new, so the shared block keeps only references; otherwise the
-    block itself, so a live edit still reaches a running program."""
+    """A copy of ``block`` as a run should see it. Always a copy, so a run
+    keeps what it started with while the form edits the shared block, and two
+    overlapping runs never share one; field values are immutable, so shallow
+    is enough."""
     changes: dict[str, Any] = {}
     for name, spec in block_fields(block):
         value = getattr(block, name)
         resolved = spec.resolve(value, library)
         if resolved is not value:
             changes[name] = resolved
-    return replace(block, **changes) if changes else block
+    return replace(block, **changes)

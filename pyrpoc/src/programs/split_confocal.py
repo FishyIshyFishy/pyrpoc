@@ -28,7 +28,7 @@ from .components.param_groups import (
     ScanGroup,
     SplitGroup,
 )
-from .components.runners import Continuous, Single
+from .components.runners import Single
 
 
 def pixel_samples(dwell_time_us: float, sample_rate_hz: float) -> int:
@@ -374,10 +374,11 @@ def build_ttl(
 
 @program_registry.register("split_confocal")
 class SplitConfocal(Program):
+    display_name = "Split Confocal"
     uses = [Galvo, DAQ]
     params = [ScanGroup, DaqGroup, SplitGroup, ModulationGroup]
     emits = {"intensity": Image2D, "raw_pixel_stream": Samples4D}
-    runners = [Single(), Continuous()]
+    runners = [Single()]
 
     def run(self, ctx) -> None:
         scan = ctx.params[ScanGroup]
@@ -391,10 +392,10 @@ class SplitConfocal(Program):
 
         ttl = build_ttl(scan, modulation, daq_params, split, daq)
         labels = channel_labels(daq)
-        total = "" if ctx.continuous else f"/{num_frames}"
 
-        for index in ctx.frames(num_frames):
-            ctx.status(f"frame {index + 1}{total}")
+        for index in range(num_frames):
+            ctx.check_cancel()
+            ctx.status(f"frame {index + 1}/{num_frames}")
             split_frame, raw = split_raster_scan(
                 daq=daq,
                 galvo=galvo,

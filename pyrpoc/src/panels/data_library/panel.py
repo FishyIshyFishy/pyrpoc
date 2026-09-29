@@ -17,7 +17,7 @@ from pyrpoc.src.structs.panel import Panel
 from ..components.table import ListTable, horizontal_header
 
 if TYPE_CHECKING:  # pragma: no cover
-    from pyrpoc.src.app.application import Application
+    from pyrpoc.src.app.model.application import Application
 
 TIME, NAME, OUTPUT, SIZE = range(4)
 COLUMNS = ["Time", "Name", "Output", "Size"]
@@ -69,7 +69,7 @@ class DataLibraryPanel(Panel):
 
         self.table.itemSelectionChanged.connect(self.refresh_actions)
         self.app.library.subscribe(self.rebuild)
-        self.app.bridge.dataset_changed.connect(self.on_dataset_changed)
+        self.app.runs.dataset_changed.connect(self.on_dataset_changed)
         self.rebuild()
 
     def build_actions_row(self) -> QHBoxLayout:
@@ -108,8 +108,8 @@ class DataLibraryPanel(Panel):
         self.refresh_actions()
 
     def on_dataset_changed(self, dataset: Dataset) -> None:
-        """Update one cell and the total, not the whole table: a continuous run
-        appends several times a second, and a rebuild would drop the selection."""
+        """Update one cell and the total, not the whole table: a running
+        acquisition appends several times a second, and a rebuild would drop the selection."""
         if dataset in self.rows:
             row = self.rows.index(dataset)
             self.table.set_cell(row, SIZE, format_size(dataset.nbytes), right=True)
@@ -126,7 +126,7 @@ class DataLibraryPanel(Panel):
     def close_selected(self) -> None:
         dataset = self.selected_dataset()
         if dataset is not None:
-            self.app.bridge.release(dataset)
+            self.app.runs.release(dataset)
 
     def refresh_actions(self) -> None:
         """An empty panel shows only the hint, with no button to grey out."""

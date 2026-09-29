@@ -11,10 +11,13 @@ import threading
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Protocol
+from pathlib import Path
+from typing import Any, ClassVar, Protocol
 from uuid import uuid4
 
 import numpy as np
+
+from .params import ParameterError
 
 
 class Data:
@@ -110,6 +113,42 @@ class Provenance:
     run_id: int = 0
 
 
+@dataclass
+class SaveTarget:
+    """What an acquisition is called, where it goes, and whether it goes.
+
+    Its own argument to the executor rather than a parameter block, because
+    where bytes land does not depend on which program produced them. ``name``
+    is a bare filename and also names the run in the data panel with saving off.
+    """
+
+    name: str = "acquisition"
+    directory: str = ""
+    enabled: bool = False
+
+    @property
+    def filename(self) -> str:
+        """``name`` with no directory and no TIFF suffix; the writers append
+        their own ``_<channel>.tiff``."""
+        stem = Path(self.name.strip()).name
+        if stem.lower().endswith((".tif", ".tiff")):
+            stem = stem.rsplit(".", 1)[0]
+        return stem
+
+    @property
+    def folder(self) -> Path:
+        """Where files go. No directory means the working directory."""
+        text = self.directory.strip()
+        return Path(text).expanduser() if text else Path.cwd()
+
+    @property
+    def root(self) -> Path:
+        """The base path the writers hang their suffixes off."""
+        if not self.filename:
+            raise ParameterError("Name is required when saving is enabled")
+        return self.folder / self.filename
+
+
 class Library(Protocol):
     """The open datasets, as panels and parameter editors see them."""
 
@@ -126,12 +165,29 @@ class Library(Protocol):
     def unsubscribe(self, callback: Callable[[], None]) -> None: ...
 
 
-class DatasetWriter(Protocol):
-    """Where a dataset's frames go on disk as they arrive."""
+class Writer:
+    """Puts one output's arrays on disk as they arrive: one file format, and
+    registered in ``writer_registry`` for each kind of ``Data`` it saves.
 
-    def write(self, dataset: Dataset, array: np.ndarray) -> None: ...
+    ``root`` is the base path every file of the run hangs its suffix off, and
+    ``parameters`` the run's encoded blocks, for formats that carry them.
+    """
 
-    def finalize(self, dataset: Dataset, error: Exception | None) -> None: ...
+    # Which metadata entry lists this writer's files.
+    metadata_key: ClassVar[str]
+
+    def __init__(self, root: Path, output: str, parameters: dict[str, Any]):
+        self.root = root
+        self.output = output
+        self.parameters = parameters
+        # What was written, by label, for the run's metadata file.
+        self.paths: dict[str, Path] = {}
+
+    def write(self, dataset: Dataset, array: np.ndarray) -> None:
+        raise NotImplementedError
+
+    def finalize(self, dataset: Dataset, error: Exception | None) -> None:
+        del dataset, error
 
 
 class Dataset:
@@ -143,7 +199,7 @@ class Dataset:
         output: str,
         spec: type[Data],
         provenance: Provenance,
-        writer: DatasetWriter | None = None,
+        writer: Writer | None = None,
     ):
         self.id = f"{output}-{uuid4().hex[:12]}"
         self.output = output
@@ -185,7 +241,7 @@ class Dataset:
 
     def append(self, array: np.ndarray) -> None:
         """Validate, store, save, then notify. Runs on the worker thread, so
-        subscribers must not touch Qt; ``app/run_bridge.py`` re-emits for them."""
+        subscribers must not touch Qt; ``app/run_host.py`` re-emits for them."""
         frame = self.spec.coerce(array)
         with self._lock:
             self._frames.append(frame)
@@ -204,7 +260,7 @@ class Dataset:
 
     @property
     def nbytes(self) -> int:
-        """Memory held by every frame so far. A long continuous run is what can
+        """Memory held by every frame so far. A long run is what can
         exhaust a machine, so the data panel shows this as it grows. Kept as a
         running total because the panel asks on every append."""
         with self._lock:

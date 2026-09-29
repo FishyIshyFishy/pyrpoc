@@ -23,7 +23,7 @@ from .components.param_groups import (
     PacingGroup,
     SignalGroup,
 )
-from .components.runners import Continuous, Single
+from .components.runners import Single
 
 # Blobs per channel in the "cells" pattern.
 BLOB_COUNT = 14
@@ -47,7 +47,7 @@ def cells_plane(
     """Gaussian blobs drifting across the field, each channel its own set.
 
     Separable exponentials keep a 512x512 frame at milliseconds; distances wrap
-    so a long continuous run never empties the field.
+    so a long run never empties the field.
     """
     generator = _rng(seed, channel, 0xB10B)
     centre_y = generator.uniform(0.0, y_pixels, BLOB_COUNT)
@@ -196,10 +196,11 @@ def channel_labels(frame_shape: FrameGroup) -> list[str]:
 
 @program_registry.register("simulation")
 class Simulation(Program):
+    display_name = "Simulation"
     uses = []
     params = [FrameGroup, SignalGroup, ModulationGroup, PacingGroup]
     emits = {"intensity": Image2D}
-    runners = [Single(), Continuous()]
+    runners = [Single()]
 
     def run(self, ctx: RunContext) -> None:
         frame_shape = ctx.params[FrameGroup]
@@ -210,10 +211,10 @@ class Simulation(Program):
         # Built once before the loop; the pixels arrived with the parameter.
         mask = combine_masks(ctx.params[ModulationGroup].masks, frame_shape)
         labels = channel_labels(frame_shape)
-        total = "" if ctx.continuous else f"/{num_frames}"
 
-        for index in ctx.frames(num_frames):
-            ctx.status(f"frame {index + 1}{total}")
+        for index in range(num_frames):
+            ctx.check_cancel()
+            ctx.status(f"frame {index + 1}/{num_frames}")
             frame = synthetic_frame(
                 frame_shape=frame_shape, signal=signal, frame_index=index, mask=mask
             )

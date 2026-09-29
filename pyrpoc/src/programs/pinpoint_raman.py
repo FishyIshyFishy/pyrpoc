@@ -19,7 +19,7 @@ from pyrpoc.src.structs.program import Program, RunContext
 from pyrpoc.src.structs.registries import program_registry
 
 from .components.param_groups import Point, PointGroup, SpectrumGroup
-from .components.runners import ArmAndRun, Continuous, Single
+from .components.runners import ArmAndRun, Single
 
 # Keeps the noise generator off the band generator's stream, so changing the
 # frame index cannot shift a band centre.
@@ -41,7 +41,7 @@ def synthetic_spectrum(spec: SpectrumGroup, point: Point, *, frame_index: int) -
 
     The position enters the seed quantised to 0.1 mV, so a re-click reproduces
     the trace and a click one pixel over does not. Only the noise varies per
-    frame, so a continuous run looks like a detector integrating.
+    frame, so a long run looks like a detector integrating.
     """
     bands = np.random.default_rng(
         [
@@ -76,12 +76,12 @@ def aim_at_pick(pick: Pick, params: BlockMap) -> None:
 
 @program_registry.register("pinpoint_raman")
 class PinpointRaman(Program):
+    display_name = "Pinpoint Raman"
     uses = [Galvo]
     params = [PointGroup, SpectrumGroup]
     emits = {"spectrum": Spectrum1D}
     runners = [
         Single(),
-        Continuous(),
         ArmAndRun(
             PixelPick,
             aim_at_pick,
@@ -100,9 +100,9 @@ class PinpointRaman(Program):
         # follow ``backed_by``, and the mirrors are voltages on the card.
         park_galvos(ctx.devices[DAQ], ctx.devices[Galvo], point)
 
-        total = "" if ctx.continuous else f"/{spec.num_frames}"
-        for index in ctx.frames(spec.num_frames):
-            ctx.status(f"spectrum {index + 1}{total}")
+        for index in range(spec.num_frames):
+            ctx.check_cancel()
+            ctx.status(f"spectrum {index + 1}/{spec.num_frames}")
             ctx.sleep(spec.integration_ms / 1000.0)
             spectrum = synthetic_spectrum(spec, point, frame_index=index)
             ctx.publish("spectrum", spectrum, channels=["raman"])

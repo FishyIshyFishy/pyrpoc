@@ -26,7 +26,7 @@ from .components.param_groups import (
     ModulationGroup,
     ScanGroup,
 )
-from .components.runners import Continuous, Single
+from .components.runners import Single
 
 
 def pixel_samples(dwell_time_us: float, sample_rate_hz: float) -> int:
@@ -319,10 +319,11 @@ def build_ttl(
 
 @program_registry.register("confocal")
 class Confocal(Program):
+    display_name = "Confocal"
     uses = [Galvo, DAQ]
     params = [ScanGroup, DaqGroup, ModulationGroup]
     emits = {"intensity": Image2D}
-    runners = [Single(), Continuous()]
+    runners = [Single()]
 
     def run(self, ctx) -> None:
         scan = ctx.params[ScanGroup]
@@ -335,10 +336,10 @@ class Confocal(Program):
 
         ttl = build_ttl(scan, modulation, daq_params, daq)
         labels = channel_labels(daq)
-        total = "" if ctx.continuous else f"/{num_frames}"
 
-        for index in ctx.frames(num_frames):
-            ctx.status(f"frame {index + 1}{total}")
+        for index in range(num_frames):
+            ctx.check_cancel()
+            ctx.status(f"frame {index + 1}/{num_frames}")
             frame = raster_scan(
                 daq=daq,
                 galvo=galvo,
