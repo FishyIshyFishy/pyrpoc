@@ -19,7 +19,7 @@ from ..components.cards import RemovableCardWidget
 from ..components.param_form import ParamForm
 
 if TYPE_CHECKING:  # pragma: no cover
-    from pyrpoc.src.app.application import Application
+    from pyrpoc.src.app.model.application import Application
 
 
 class DevicesPanel(Panel):

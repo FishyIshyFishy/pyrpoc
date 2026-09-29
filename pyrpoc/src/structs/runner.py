@@ -2,8 +2,9 @@
 
 A runner is a frozen declaration whose ``attach`` builds per-program state
 against a ``RunnerContext``, so one declaration can be a shared class
-attribute. The context is the host's side: run, stop, parameters, controls,
-and requests for a ``Pick`` that the host routes to whoever can answer.
+attribute. The context is the host's side: starting a run, parameters,
+controls, and requests for a ``Pick`` that the host routes to whoever can
+answer.
 Controls are Qt-free descriptors the host's view renders.
 """
 
@@ -103,15 +104,8 @@ class RunnerContext(ABC):
     through one context goes away when its program is deselected."""
 
     @abstractmethod
-    def execute(self, continuous: bool = False) -> None:
-        """Start the selected program. Failures are reported, not raised."""
-
-    @abstractmethod
-    def stop(self) -> None: ...
-
-    @property
-    @abstractmethod
-    def running(self) -> bool: ...
+    def execute(self) -> None:
+        """Start a run of the program. Failures are reported, not raised."""
 
     @abstractmethod
     def on_run_started(self, callback: Callable[[], None]) -> None: ...

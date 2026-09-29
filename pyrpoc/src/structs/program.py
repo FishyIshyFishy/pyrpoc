@@ -2,8 +2,7 @@
 
 ``uses``, ``params`` and ``emits`` are what the executor must know to start a
 program; ``runners`` are the ways it can be started, which depend on the
-program. Nothing about labels or menus: a program does not know it is in a
-dropdown.
+program. ``display_name`` is its one word of presentation, as a device has.
 """
 
 from __future__ import annotations
@@ -51,7 +50,10 @@ class DeviceMap(Mapping[type[Device], Device]):
 
 
 class Program:
-    """Subclasses define ``uses``, ``params``, ``emits``, ``runners`` and ``run``."""
+    """Subclasses define ``display_name``, ``uses``, ``params``, ``emits``,
+    ``runners`` and ``run``."""
+
+    display_name: str = "Program"
 
     # Device classes to claim. Claims propagate along ``backed_by``.
     uses: list[type[Device]] = []
@@ -81,13 +83,11 @@ class RunContext:
         devices: Mapping[type[Device], Device],
         datasets: dict[str, Dataset],
         cancel: threading.Event,
-        continuous: bool,
         on_status: Callable[[str], None],
     ):
         self.params = params
         self.devices = DeviceMap(devices)
         self.datasets = datasets
-        self.continuous = continuous
         self._cancel = cancel
         self._on_status = on_status
 
@@ -116,18 +116,6 @@ class RunContext:
     def check_cancel(self) -> None:
         if self._cancel.is_set():
             raise Cancelled("run stopped")
-
-    def frames(self, count: int) -> Iterator[int]:
-        """Frame indices, checking for cancellation before each one.
-
-        ``count`` is ignored in continuous mode, so the Continuous button works
-        without the program changing and without overwriting the stored count.
-        """
-        index = 0
-        while self.continuous or index < count:
-            self.check_cancel()
-            yield index
-            index += 1
 
     def sleep(self, seconds: float) -> None:
         """Wait, but return early if the run is stopped."""

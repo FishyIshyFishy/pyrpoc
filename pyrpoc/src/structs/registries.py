@@ -9,6 +9,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Generic, TypeVar
 
+from .data import Writer
 from .device import Device
 from .params import Group
 from .program import Program
@@ -65,7 +66,10 @@ device_registry: Registry[Device] = Registry("DeviceRegistry", Device)
 # Programs keep their key at the registration site, not on the class.
 program_registry: Registry[Program] = Registry("ProgramRegistry", Program, stamp=None)
 
-# Keyed by class name, a block's identity in the form, session and metadata.
+# Keyed by the name of the kind of ``Data`` saved; one writer may take several.
+writer_registry: Registry[Writer] = Registry("WriterRegistry", Writer, stamp=None)
+
+# Keyed by class name, a block's identity in the form, workspace and metadata.
 block_registry: Registry[Group] = Registry("BlockRegistry", Group, stamp=None)
 
 B = TypeVar("B", bound=type)

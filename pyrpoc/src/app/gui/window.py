@@ -1,7 +1,8 @@
 """The dock manager: three fixed panels plus one dock per added panel.
 
 The fixed panels hide when unchecked in the menu; an added panel is destroyed,
-so it exists exactly as long as its dock does.
+so it exists exactly as long as its dock does. The window owns the added
+panels and connects each to the model; the model never holds a widget.
 """
 
 from __future__ import annotations
@@ -22,8 +23,9 @@ from pyrpoc.src.panels import (
     DevicesPanel,
     panel_registry,
 )
+from pyrpoc.src.structs.data import Dataset
 
-from .application import Application
+from ..model.application import Application
 from .menubar import MainMenuBar
 from .theme.manager import ThemeController
 
@@ -54,6 +56,8 @@ PANELS = [
 
 class MainWindow(QWidget):
     closing = pyqtSignal()
+    # An added panel came or went.
+    panels_changed = pyqtSignal()
 
     def __init__(self, app: Application, theme_controller: ThemeController):
         super().__init__()
@@ -80,7 +84,7 @@ class MainWindow(QWidget):
         self.menubar.panel_requested.connect(self.add_panel_of_type)
         self.build_panels()
 
-        self.app.panels_changed.connect(self.sync_panel_docks)
+        self.app.runs.dataset_changed.connect(self.on_dataset_changed)
 
         layout = QVBoxLayout(self)
         layout.setMenuBar(self.menubar)
@@ -90,8 +94,8 @@ class MainWindow(QWidget):
         self.menubar.populate_style_menu(self.theme_controller.get_saved_mode())
         self.menubar.style_selected.connect(self.set_style)
 
-    def bind_session(self, save_now: Callable[[], None]) -> None:
-        """Save the session when the window closes."""
+    def bind_workspace(self, save_now: Callable[[], None]) -> None:
+        """Save the workspace when the window closes."""
         self.closing.connect(save_now)
 
     def build_panels(self) -> None:
@@ -125,18 +129,51 @@ class MainWindow(QWidget):
             self.dock_manager.addDockWidgetTab(area, dock)
         return dock
 
-    def add_panel_of_type(self, key: str) -> None:
-        """Add one, from the menu. The dock follows from panels_changed."""
-        self.app.add_panel(panel_registry.get(key)(self.app.library))
+    @property
+    def panels(self) -> list[DatasetPanel]:
+        """The added panels, in the order they were added."""
+        return list(self.panel_docks)
 
-    def sync_panel_docks(self) -> None:
-        for panel in list(self.panel_docks):
-            if panel not in self.app.panels:
-                self.remove_panel_dock(panel)
-        for panel in self.app.panels:
-            if panel not in self.panel_docks:
-                self.add_panel_dock(panel)
+    def add_panel_of_type(self, key: str) -> None:
+        """Add one, from the menu."""
+        self.add_panel(panel_registry.get(key)(self.app.library))
+
+    def add_panel(self, panel: DatasetPanel) -> None:
+        self.add_panel_dock(panel)
+        self.connect_panel(panel)
         self.refresh_panels_menu()
+        self.panels_changed.emit()
+
+    def remove_panel(self, panel: DatasetPanel) -> None:
+        self.disconnect_panel(panel)
+        panel.detach()
+        self.remove_panel_dock(panel)
+        self.refresh_panels_menu()
+        self.panels_changed.emit()
+
+    def clear_panels(self) -> None:
+        for panel in self.panels:
+            self.remove_panel(panel)
+
+    def connect_panel(self, panel: DatasetPanel) -> None:
+        """Let ``panel`` answer pick requests, starting in whatever mode a
+        pending request has already set."""
+        runners = self.app.runners
+        runners.pick_mode_changed.connect(panel.set_pick_mode)
+        panel.picked.connect(runners.on_picked)
+        panel.set_pick_mode(runners.pick_mode)
+
+    def disconnect_panel(self, panel: DatasetPanel) -> None:
+        runners = self.app.runners
+        runners.pick_mode_changed.disconnect(panel.set_pick_mode)
+        panel.picked.disconnect(runners.on_picked)
+
+    def on_dataset_changed(self, dataset: Dataset) -> None:
+        """Refresh every panel showing this dataset. An added panel exists
+        exactly as long as its dock, so there is no unseen panel to skip."""
+        for panel in self.panels:
+            if panel.dataset() is dataset:
+                panel.refresh()
 
     def assign_ordinal(self, panel: DatasetPanel) -> None:
         """The lowest number this type has free, assigned once so a dock never
@@ -200,9 +237,9 @@ class MainWindow(QWidget):
         """
         if self.restoring_layout or self.shutting_down:
             return
-        if panel not in self.app.panels:
+        if panel not in self.panel_docks:
             return
-        QTimer.singleShot(0, lambda p=panel: self.app.remove_panel(p))
+        QTimer.singleShot(0, lambda p=panel: self.remove_panel(p))
 
     def on_panel_toggled(self, panel: DatasetPanel, visible: bool) -> None:
         """Unchecking an added panel deletes it; there is nothing to re-check."""

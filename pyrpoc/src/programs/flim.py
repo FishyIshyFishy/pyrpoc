@@ -24,7 +24,7 @@ from .components.param_groups import (
     ScanGroup,
     TriggerGroup,
 )
-from .components.runners import Continuous, Single
+from .components.runners import Single
 
 
 def pixel_samples(dwell_time_us: float, sample_rate_hz: float) -> int:
@@ -190,10 +190,11 @@ def read_flim_frame(flim: FlimMeasurement, n_bins: int, scan: ScanGroup) -> np.n
 
 @program_registry.register("flim")
 class FLIM(Program):
+    display_name = "FLIM"
     uses = [Galvo, DAQ, TimeTagger]
     params = [ScanGroup, DaqGroup, TriggerGroup, HistogramGroup]
     emits = {"intensity": Image2D, "histogram": Cube3D}
-    runners = [Single(), Continuous()]
+    runners = [Single()]
 
     def run(self, ctx: RunContext) -> None:
         scan = ctx.params[ScanGroup]
@@ -215,9 +216,9 @@ class FLIM(Program):
             binwidth_ps=histogram.histogram_binwidth_ps,
         )
         try:
-            total = "" if ctx.continuous else f"/{scan.num_frames}"
-            for index in ctx.frames(scan.num_frames):
-                ctx.status(f"frame {index + 1}{total}")
+            for index in range(scan.num_frames):
+                ctx.check_cancel()
+                ctx.status(f"frame {index + 1}/{scan.num_frames}")
                 self.acquire_frame(ctx, flim)
         finally:
             tagger.stop_flim_measurement(flim)

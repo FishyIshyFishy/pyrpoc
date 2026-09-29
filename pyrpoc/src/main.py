@@ -10,10 +10,11 @@ from types import TracebackType
 from PyQt6.QtGui import QGuiApplication
 from PyQt6.QtWidgets import QApplication, QMessageBox, QWidget
 
-from pyrpoc.src.app.application import Application
-from pyrpoc.src.app.session import Autosave, SessionStore, default_session_path
-from pyrpoc.src.app.theme.manager import ThemeController
-from pyrpoc.src.app.window import MainWindow
+from pyrpoc.src.app.gui.theme.manager import ThemeController
+from pyrpoc.src.app.gui.window import MainWindow
+from pyrpoc.src.app.model.application import Application
+from pyrpoc.src.app.workspace.autosave import Autosave
+from pyrpoc.src.app.workspace.file import WorkspaceFile, default_workspace_path
 
 log = logging.getLogger("pyrpoc")
 
@@ -70,13 +71,13 @@ def fit_to_available_screen(
 
 
 def build(
-    theme_controller: ThemeController, session_path: Path
+    theme_controller: ThemeController, workspace_path: Path
 ) -> tuple[Application, MainWindow, Autosave]:
     """Build the application, its window and its autosave."""
     app = Application()
     window = MainWindow(app, theme_controller)
-    autosave = Autosave(app, window, SessionStore(session_path), parent=app)
-    window.bind_session(autosave.save_now)
+    autosave = Autosave(app, window, WorkspaceFile(workspace_path), parent=app)
+    window.bind_workspace(autosave.save_now)
     return app, window, autosave
 
 
@@ -88,7 +89,7 @@ def main() -> int:
     theme_controller = ThemeController(qt_app)
     theme_controller.apply_saved_or_default()
 
-    _app, window, autosave = build(theme_controller, default_session_path())
+    _app, window, autosave = build(theme_controller, default_workspace_path())
 
     fit_to_available_screen(window, 1400, 850)
     window.show()
