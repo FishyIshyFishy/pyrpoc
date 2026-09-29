@@ -21,6 +21,8 @@ from uuid import uuid4
 
 from PyQt6.QtWidgets import QWidget
 
+from .registries import Registry
+
 
 def make_instance_id(prefix: str) -> str:
     token = (prefix or "panel").strip().lower()
@@ -55,3 +57,6 @@ class Panel(QWidget):
 
     def import_persistence_state(self, state: dict[str, Any]) -> None:
         del state
+
+
+panel_registry: Registry[Panel] = Registry("PanelRegistry", Panel)

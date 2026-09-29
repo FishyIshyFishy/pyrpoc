@@ -1,13 +1,22 @@
-"""A key -> class map with a registration decorator.
+"""A key -> class map with a registration decorator, and the registries.
 
-Devices, views and programs each need one, and the key belongs at the
-registration site rather than on the class -- which is what lets Program keep to
-the four attributes section 12 allows it.
+Devices, programs and parameter blocks each have one here, and the key belongs
+at the registration site rather than on the class -- which is what lets Program
+keep to the four attributes section 12 allows it. Implementations register
+themselves by importing their registry from here.
+
+Panels have one too, but it lives beside ``Panel`` in ``panel.py``: that base
+is a QWidget, and importing it here would drag Qt into every module that
+registers a device.
 """
 
 from __future__ import annotations
 
 from typing import Any, Callable, Generic, TypeVar
+
+from .device import Device
+from .params import Group
+from .program import Program
 
 T = TypeVar("T")
 
@@ -57,3 +66,27 @@ class Registry(Generic[T]):
 
     def create(self, key: str, **kwargs: Any) -> T:
         return self.get(key)(**kwargs)  # type: ignore[call-arg]
+
+
+# --------------------------------------------------------------------------- #
+# The registries                                                               #
+# --------------------------------------------------------------------------- #
+
+device_registry: Registry[Device] = Registry("DeviceRegistry", Device)
+
+#: stamp=False: a Program subclass must define nothing beyond uses, params,
+#: emits and run (section 12), so the key stays at the registration site.
+program_registry: Registry[Program] = Registry("ProgramRegistry", Program, stamp=False)
+
+#: Keyed by class name, which is a block's identity everywhere: declaration,
+#: form, session file and run metadata.
+block_registry: Registry[Group] = Registry("BlockRegistry", Group, stamp=False)
+
+#: The decorated class itself, so ``@block`` returns ``type[ScanGroup]`` rather
+#: than ``type[Group]``; see ``C`` above.
+B = TypeVar("B", bound=type)
+
+
+def block(cls: B) -> B:
+    """Register a parameter block under its class name."""
+    return block_registry.register(cls.__name__)(cls)

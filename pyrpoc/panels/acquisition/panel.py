@@ -43,7 +43,7 @@ from pyrpoc.structs.params import ParameterError
 from pyrpoc.shell import catalog
 from pyrpoc.shell.param_form import ParamForm
 
-from ..base import Panel
+from pyrpoc.structs.panel import Panel
 
 if TYPE_CHECKING:  # pragma: no cover
     from pyrpoc.shell.app import Application

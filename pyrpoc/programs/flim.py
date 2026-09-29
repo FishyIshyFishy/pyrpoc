@@ -23,7 +23,7 @@ from nidaqmx.constants import AcquisitionType, Signal
 
 from pyrpoc.structs.data import Cube3D, Image2D
 from pyrpoc.devices import DAQ, DaqError, Galvo, TimeTagger
-from pyrpoc.run.program import Program
+from pyrpoc.structs.program import Program
 
 from .components import (
     DaqGroup,
@@ -31,7 +31,7 @@ from .components import (
     ScanGroup,
     TriggerGroup,
 )
-from .registry import program_registry
+from pyrpoc.structs.registries import program_registry
 
 
 # --------------------------------------------------------------------------- #

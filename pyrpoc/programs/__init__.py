@@ -13,7 +13,7 @@ the waveform arithmetic. Those copies are meant to stay identical: change one
 and change the others, or say in the docstring why they now differ.
 """
 
-from .registry import program_registry
+from pyrpoc.structs.registries import program_registry
 from .confocal import Confocal
 from .split_confocal import SplitConfocal
 from .flim import FLIM

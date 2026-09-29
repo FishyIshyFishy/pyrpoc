@@ -27,7 +27,6 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -35,13 +34,8 @@ import numpy as np
 import tifffile
 
 from pyrpoc.structs.params import ParameterError
-from pyrpoc.structs.data import Data, Image2D
+from pyrpoc.structs.data import Data, Dataset, Image2D, utc_now
 
-from .dataset import Dataset
-
-
-def utc_now() -> str:
-    return datetime.now(timezone.utc).isoformat()
 
 
 @dataclass

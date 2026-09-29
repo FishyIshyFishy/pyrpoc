@@ -20,7 +20,7 @@ from PyQt6.QtWidgets import QComboBox, QHBoxLayout, QLabel, QWidget
 from pyrpoc.structs.data import Data
 
 if TYPE_CHECKING:  # pragma: no cover
-    from pyrpoc.data.dataset import Dataset
+    from pyrpoc.structs.data import Dataset
     from pyrpoc.data.library import DataLibrary
 
 

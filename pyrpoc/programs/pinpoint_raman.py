@@ -25,10 +25,10 @@ import numpy as np
 from pyrpoc.structs.data import Spectrum1D
 from pyrpoc.devices.daq.device import DAQ
 from pyrpoc.devices.galvo.device import Galvo
-from pyrpoc.run.program import Program
+from pyrpoc.structs.program import Program
 
 from .components import Point, PointGroup, SpectrumGroup
-from .registry import program_registry
+from pyrpoc.structs.registries import program_registry
 
 #: Keeps the noise generator off the band generator's stream, so changing the
 #: frame index cannot shift a band centre.

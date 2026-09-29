@@ -18,7 +18,7 @@ from typing import Sequence
 import numpy as np
 
 from pyrpoc.structs.data import Image2D
-from pyrpoc.run.program import Program
+from pyrpoc.structs.program import Program
 
 from .components import (
     FrameGroup,
@@ -26,7 +26,7 @@ from .components import (
     PacingGroup,
     SignalGroup,
 )
-from .registry import program_registry
+from pyrpoc.structs.registries import program_registry
 
 #: Blobs per channel in the "cells" pattern.
 BLOB_COUNT = 14

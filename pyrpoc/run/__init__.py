@@ -5,7 +5,7 @@ runner is testable with no QApplication. The Qt marshalling the GUI needs lives
 in shell/run_bridge.py.
 """
 
-from .program import Program, RunContext
+from pyrpoc.structs.program import Program, RunContext
 from .runner import RunHandle, Runner, default_program_key
 from . import claims
 

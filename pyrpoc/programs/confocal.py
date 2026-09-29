@@ -26,9 +26,9 @@ import nidaqmx as nx
 from nidaqmx.constants import AcquisitionType
 
 from pyrpoc.structs.data import Image2D
-from pyrpoc.data.dataset import Dataset  # noqa: F401  (documents what publish writes into)
+from pyrpoc.structs.data import Dataset  # noqa: F401  (documents what publish writes into)
 from pyrpoc.devices import DAQ, DaqError, Galvo
-from pyrpoc.run.program import Program
+from pyrpoc.structs.program import Program
 
 from .components import (
     DaqGroup,
@@ -36,7 +36,7 @@ from .components import (
     ModulationGroup,
     ScanGroup,
 )
-from .registry import program_registry
+from pyrpoc.structs.registries import program_registry
 
 
 # --------------------------------------------------------------------------- #

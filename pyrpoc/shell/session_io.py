@@ -19,8 +19,8 @@ from pathlib import Path
 
 from PyQt6.QtCore import QObject, QTimer
 
-from pyrpoc.devices.registry import device_registry
-from pyrpoc.panels.registry import panel_registry
+from pyrpoc.structs.registries import device_registry
+from pyrpoc.structs.panel import panel_registry
 from pyrpoc.session.state import DeviceState, SaveState, SessionState, ViewState
 from pyrpoc.session.store import SessionStore
 

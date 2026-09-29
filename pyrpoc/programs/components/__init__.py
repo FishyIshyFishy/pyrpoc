@@ -8,7 +8,6 @@ using it, and nothing here writes a dataset.
 """
 
 from .param_groups import (
-    BLOCKS,
     DaqGroup,
     FrameGroup,
     HistogramGroup,
@@ -25,13 +24,11 @@ from .param_groups import (
     SpectrumGroup,
     SplitGroup,
     TriggerGroup,
-    block,
     masks_field,
     point_field,
 )
 
 __all__ = [
-    "BLOCKS",
     "DaqGroup",
     "FrameGroup",
     "HistogramGroup",
@@ -48,7 +45,6 @@ __all__ = [
     "SpectrumGroup",
     "SplitGroup",
     "TriggerGroup",
-    "block",
     "masks_field",
     "point_field",
 ]

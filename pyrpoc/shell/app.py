@@ -20,9 +20,9 @@ from PyQt6.QtCore import QObject, pyqtSignal
 from pyrpoc.structs import params as P
 from pyrpoc.data.io import SaveTarget
 from pyrpoc.data.library import DataLibrary
-from pyrpoc.devices.base import Device
-from pyrpoc.devices.registry import device_registry
-from pyrpoc.programs.components import BLOCKS, Point, PointGroup, ScanGroup
+from pyrpoc.structs.device import Device
+from pyrpoc.structs.registries import block_registry, device_registry
+from pyrpoc.programs.components import Point, PointGroup, ScanGroup
 from pyrpoc.run import claims
 
 from . import catalog
@@ -279,4 +279,4 @@ class Application(QObject):
         return self.blocks.to_dict()
 
     def load_params_state(self, raw: dict[str, dict]) -> None:
-        self.blocks.load_dict(raw, BLOCKS)
+        self.blocks.load_dict(raw, block_registry.entries)

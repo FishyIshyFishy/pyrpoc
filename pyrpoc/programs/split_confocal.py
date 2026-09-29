@@ -27,7 +27,7 @@ from nidaqmx.constants import AcquisitionType
 
 from pyrpoc.structs.data import Image2D, Samples4D
 from pyrpoc.devices import DAQ, DaqError, Galvo
-from pyrpoc.run.program import Program
+from pyrpoc.structs.program import Program
 
 from .components import (
     DaqGroup,
@@ -36,7 +36,7 @@ from .components import (
     ScanGroup,
     SplitGroup,
 )
-from .registry import program_registry
+from pyrpoc.structs.registries import program_registry
 
 
 # --------------------------------------------------------------------------- #

@@ -14,11 +14,8 @@ from typing import TYPE_CHECKING, Any, Callable, Iterator, TypeVar
 
 import numpy as np
 
-from pyrpoc.structs.data import Data
-from pyrpoc.devices.base import Device
-
-if TYPE_CHECKING:  # pragma: no cover
-    from pyrpoc.data.dataset import Dataset
+from .data import Data, Dataset
+from .device import Device
 
 D = TypeVar("D", bound=Device)
 

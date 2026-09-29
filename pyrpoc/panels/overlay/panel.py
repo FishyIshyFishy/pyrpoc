@@ -24,13 +24,12 @@ from PyQt6.QtWidgets import (
 
 from pyrpoc.structs.data import Image2D
 
-from ..base import Panel
+from pyrpoc.structs.panel import Panel, panel_registry
 from ..components.colors import color_for_index
 from ..components.source_picker import SourcePicker
-from ..registry import panel_registry
 
 if TYPE_CHECKING:  # pragma: no cover
-    from pyrpoc.data.dataset import Dataset
+    from pyrpoc.structs.data import Dataset
     from pyrpoc.data.library import DataLibrary
 
 

@@ -13,14 +13,14 @@ the content.
 from __future__ import annotations
 
 from dataclasses import dataclass, field as dc_field
-from typing import Any, ClassVar, Iterable, Sequence, TypeVar
+from typing import Any, ClassVar, Iterable, Sequence
 
 import numpy as np
 
-from pyrpoc.structs.params import ParameterError
 from pyrpoc.structs.params import (
     Field,
     Group,
+    ParameterError,
     bool_field,
     channels_field,
     choice_field,
@@ -29,30 +29,7 @@ from pyrpoc.structs.params import (
     spec_field,
     text_field,
 )
-
-#: name -> class, for turning a saved state dict back into blocks.
-BLOCKS: dict[str, type[Group]] = {}
-
-#: The decorated class itself, so ``@block`` returns ``type[ScanGroup]`` rather
-#: than ``type[Group]``. Without it every registered block is just a ``Group``
-#: downstream and ``scan.x_pixels`` type-checks against nothing -- the same
-#: trap ``core/registry.py`` documents for devices, views and programs.
-B = TypeVar("B", bound=type)
-
-
-def block(cls: B) -> B:
-    """Register a block under its class name, which is its identity everywhere.
-
-    A decorator rather than an explicit-key registry because the key *is* the
-    class name -- writing it twice is one more thing to get out of step.
-    """
-    if not issubclass(cls, Group):
-        raise TypeError(f"{cls.__name__} must inherit from Group")
-    if cls.__name__ in BLOCKS:
-        raise KeyError(f"{cls.__name__!r} is already registered as a block")
-    BLOCKS[cls.__name__] = cls
-    return cls
-
+from pyrpoc.structs.registries import block
 
 # --------------------------------------------------------------------------- #
 # Masks: an authored region plus the digital line it drives                    #

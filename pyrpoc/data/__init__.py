@@ -4,7 +4,7 @@ Exists regardless of how the data was acquired, which is why saving is not a
 program's job. May import core/ and nothing else.
 """
 
-from .dataset import Dataset, Provenance
+from pyrpoc.structs.data import Dataset, Provenance
 from .library import DataLibrary
 from .io import RunSaver, SaveTarget, read_metadata
 from .transforms import channel_levels, normalize_channels

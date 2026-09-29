@@ -17,14 +17,13 @@ import threading
 from typing import Any, Callable
 
 from pyrpoc.structs import params as P
-from .program import Cancelled
-from pyrpoc.data.dataset import Dataset, Provenance
-from pyrpoc.data.io import RunSaver, SaveTarget, utc_now
+from pyrpoc.structs.program import Cancelled, Program, RunContext
+from pyrpoc.structs.data import Dataset, Provenance, utc_now
+from pyrpoc.data.io import RunSaver, SaveTarget
 from pyrpoc.data.library import DataLibrary
-from pyrpoc.devices.base import Device
+from pyrpoc.structs.device import Device
 
 from . import claims
-from .program import Program, RunContext
 
 
 def default_program_key(program: Program) -> str:

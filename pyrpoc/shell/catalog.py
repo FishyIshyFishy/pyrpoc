@@ -18,7 +18,7 @@ from pyrpoc.programs.flim import FLIM
 from pyrpoc.programs.pinpoint_raman import PinpointRaman
 from pyrpoc.programs.simulation import Simulation
 from pyrpoc.programs.split_confocal import SplitConfocal
-from pyrpoc.run.program import Program
+from pyrpoc.structs.program import Program
 
 
 @dataclass(frozen=True)

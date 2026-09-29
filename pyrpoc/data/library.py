@@ -20,9 +20,8 @@ from __future__ import annotations
 import threading
 from typing import Callable
 
-from pyrpoc.structs.data import Data
+from pyrpoc.structs.data import Data, Dataset
 
-from .dataset import Dataset
 
 
 class DataLibrary:

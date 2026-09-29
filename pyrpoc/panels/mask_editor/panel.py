@@ -53,15 +53,12 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from pyrpoc.structs.data import Image2D, Mask2D
-from pyrpoc.data.dataset import Dataset, Provenance
-from pyrpoc.data.io import utc_now
+from pyrpoc.structs.data import Dataset, Image2D, Mask2D, Provenance, utc_now
 from pyrpoc.data.transforms import normalize_channels
 
-from ..base import Panel
+from pyrpoc.structs.panel import Panel, panel_registry
 from ..components.range_slider import RangeSlider
 from ..components.source_picker import SourcePicker
-from ..registry import panel_registry
 from .canvas import MaskImageView, MaskRoi
 from .dialog import RoiThresholdDialog
 

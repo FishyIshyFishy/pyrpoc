@@ -17,9 +17,9 @@ from dataclasses import dataclass
 
 from pyrpoc.structs import params as P
 
-from ..base import Device
+from pyrpoc.structs.device import Device
 from ..daq.device import DAQ
-from ..registry import device_registry
+from pyrpoc.structs.registries import device_registry
 
 
 @dataclass

@@ -30,8 +30,7 @@ cards, the range slider, the source picker, the list table, the channel
 colour palette. Nothing there may import a panel.
 """
 
-from .base import Panel
-from .registry import panel_registry
+from pyrpoc.structs.panel import Panel, panel_registry
 from .image_2d.panel import Image2DPanel
 from .overlay.panel import OverlayPanel
 from .mask_editor.panel import MaskEditorPanel
