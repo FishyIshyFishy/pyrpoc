@@ -302,18 +302,10 @@ class ScanGroup(Group):
         lives here because this block is what the geometry *is* -- a display
         reporting a clicked pixel must not have to know what a galvo is.
 
-        Exact rather than approximate, for two reasons worth stating because
-        both look like off-by-ones otherwise. The displayed frame is already
-        cropped of overscan by ``extract_kept_samples``, so displayed column
-        ``x`` is total column ``extra_left + x`` and the ``extra_left`` term
-        cancels out of the arithmetic. And ``np.repeat`` holds each pixel at one
-        voltage for its whole dwell, so there is no half-pixel centre to add:
+        The displayed frame is already cropped of overscan by ``extract_kept_samples``, 
+        so displayed column ``x`` is total column ``extra_left + x``.
+        ``np.repeat`` holds each pixel at one voltage for its whole dwell, so there is no half-pixel centre to add:
         this is the voltage that pixel was measured at.
-
-        The caller is responsible for reading this off the ``ScanGroup`` in a
-        dataset's provenance rather than the live one. Blocks are shared and
-        mutable, so a scan amplitude changed since the image was taken would
-        otherwise send the galvos somewhere the picture never looked.
         """
         fast_amp = max(float(self.fast_axis_amplitude), 1e-6)
         slow_amp = max(float(self.slow_axis_amplitude), 1e-6)
