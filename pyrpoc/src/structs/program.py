@@ -16,6 +16,7 @@ import numpy as np
 
 from .data import Data, Dataset
 from .device import Device
+from .runner import Continuous, Runner, Single
 
 D = TypeVar("D", bound=Device)
 
@@ -55,7 +56,8 @@ class DeviceMap(Mapping[type[Device], Device]):
 
 
 class Program:
-    """Subclasses define exactly ``uses``, ``params``, ``emits`` and ``run``."""
+    """Subclasses define ``uses``, ``params``, ``emits`` and ``run``, and may
+    override ``runners``."""
 
     #: Device classes to claim. Claims propagate along ``backed_by``.
     uses: list[type[Device]] = []
@@ -67,6 +69,10 @@ class Program:
 
     #: Named outputs, and the kind of ``Data`` each one carries.
     emits: dict[str, type[Data]] = {}
+
+    #: The ways this program can be started, in the order their controls are
+    #: drawn. Shared declarations: attaching is what builds per-program state.
+    runners: list[Runner] = [Single(), Continuous()]
 
     def run(self, ctx: "RunContext") -> None:
         raise NotImplementedError
