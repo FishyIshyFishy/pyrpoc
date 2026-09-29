@@ -6,6 +6,8 @@ from PyQt6.QtCore import QFile, QSettings, QTextStream
 from PyQt6.QtGui import QColor, QPalette
 from PyQt6.QtWidgets import QApplication
 
+from . import breeze_all
+
 _SETTINGS_ORG = "pyrpoc"
 _SETTINGS_APP = "pyrpoc"
 _SETTINGS_KEY_THEME_MODE = "ui/theme_mode"
@@ -97,6 +99,7 @@ def _derive_palette(qss_text: str, qss_path: str) -> QPalette:
 class ThemeController:
     def __init__(self, app: QApplication):
         self.app = app
+        breeze_all.qInitResources()
         self.settings = QSettings(_SETTINGS_ORG, _SETTINGS_APP)
 
     def get_saved_mode(self) -> str:
