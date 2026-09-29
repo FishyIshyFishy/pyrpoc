@@ -25,6 +25,10 @@ pyrpoc = "pyrpoc.src.main:main"
 [tool.setuptools.packages.find]
 include = ["pyrpoc*"]
 
+# pyrpoc/assets/ is not a package, so its icons ship as data of pyrpoc.
+[tool.setuptools.package-data]
+pyrpoc = ["assets/*.svg", "assets/*.png"]
+
 [build-system]
 requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
