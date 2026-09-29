@@ -23,14 +23,14 @@ from PyQt6.QtWidgets import (
 )
 
 from pyrpoc.structs.data import Image2D
-
 from pyrpoc.structs.panel import Panel, panel_registry
+
 from ..components.colors import color_for_index
 from ..components.source_picker import SourcePicker
 
 if TYPE_CHECKING:  # pragma: no cover
     from pyrpoc.structs.data import Dataset
-    from pyrpoc.data.library import DataLibrary
+    from pyrpoc.app.library import DataLibrary
 
 
 def color_map_from_rgb(rgb: tuple[int, int, int]) -> pg.ColorMap:

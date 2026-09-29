@@ -27,14 +27,14 @@ from PyQt6.QtWidgets import (
 )
 
 from pyrpoc.structs.device import Device
-from pyrpoc.structs.registries import device_registry
-from pyrpoc.shell.param_form import ParamForm
-
 from pyrpoc.structs.panel import Panel
+from pyrpoc.structs.registries import device_registry
+
 from ..components.cards import RemovableCardWidget
+from ..components.param_form import ParamForm
 
 if TYPE_CHECKING:  # pragma: no cover
-    from pyrpoc.shell.app import Application
+    from pyrpoc.app.application import Application
 
 
 class DevicesPanel(Panel):

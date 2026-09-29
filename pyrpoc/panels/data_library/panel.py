@@ -27,12 +27,12 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QHBoxLayout, QHeaderView, QLabel, QPushButton, QVBoxLayout, QWidget
 
 from pyrpoc.structs.data import Dataset
-
 from pyrpoc.structs.panel import Panel
+
 from ..components.table import ListTable
 
 if TYPE_CHECKING:  # pragma: no cover
-    from pyrpoc.shell.app import Application
+    from pyrpoc.app.application import Application
 
 TIME, NAME, OUTPUT, SIZE = range(4)
 COLUMNS = ["Time", "Name", "Output", "Size"]

@@ -39,14 +39,14 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from pyrpoc.structs.params import ParameterError
-from pyrpoc.shell import catalog
-from pyrpoc.shell.param_form import ParamForm
-
+from pyrpoc.app import catalog
 from pyrpoc.structs.panel import Panel
+from pyrpoc.structs.params import ParameterError
+
+from ..components.param_form import ParamForm
 
 if TYPE_CHECKING:  # pragma: no cover
-    from pyrpoc.shell.app import Application
+    from pyrpoc.app.application import Application
 
 
 class AcquisitionPanel(Panel):

@@ -21,7 +21,7 @@ from pyrpoc.structs.data import Data
 
 if TYPE_CHECKING:  # pragma: no cover
     from pyrpoc.structs.data import Dataset
-    from pyrpoc.data.library import DataLibrary
+    from pyrpoc.app.library import DataLibrary
 
 
 class SourcePicker(QWidget):

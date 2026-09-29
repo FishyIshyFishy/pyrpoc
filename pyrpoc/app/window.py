@@ -25,7 +25,7 @@ import PyQt6Ads as qtads
 
 from pyrpoc.panels import AcquisitionPanel, DataLibraryPanel, DevicesPanel, panel_registry
 
-from .app import Application
+from .application import Application
 from .menubar import MainMenuBar
 from .theme.manager import ThemeController
 

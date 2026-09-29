@@ -20,14 +20,14 @@ from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtWidgets import QVBoxLayout, QWidget
 
 from pyrpoc.structs.data import Spectrum1D
-
 from pyrpoc.structs.panel import Panel, panel_registry
+
 from ..components.colors import color_for_index
 from ..components.source_picker import SourcePicker
 
 if TYPE_CHECKING:  # pragma: no cover
     from pyrpoc.structs.data import Dataset
-    from pyrpoc.data.library import DataLibrary
+    from pyrpoc.app.library import DataLibrary
 
 
 @panel_registry.register("spectrum")

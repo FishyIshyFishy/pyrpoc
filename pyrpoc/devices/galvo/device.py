@@ -16,10 +16,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from pyrpoc.structs import params as P
-
 from pyrpoc.structs.device import Device
-from ..daq.device import DAQ
 from pyrpoc.structs.registries import device_registry
+
+from ..daq.device import DAQ
 
 
 @dataclass

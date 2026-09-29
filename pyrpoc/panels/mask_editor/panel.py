@@ -54,16 +54,16 @@ from PyQt6.QtWidgets import (
 )
 
 from pyrpoc.structs.data import Dataset, Image2D, Mask2D, Provenance, utc_now
-from pyrpoc.data.transforms import normalize_channels
-
 from pyrpoc.structs.panel import Panel, panel_registry
+
 from ..components.range_slider import RangeSlider
 from ..components.source_picker import SourcePicker
+from ..components.transforms import normalize_channels
 from .canvas import MaskImageView, MaskRoi
 from .dialog import RoiThresholdDialog
 
 if TYPE_CHECKING:  # pragma: no cover
-    from pyrpoc.data.library import DataLibrary
+    from pyrpoc.app.library import DataLibrary
 
 
 def write_mask(path: Path | str, mask: np.ndarray) -> Path:

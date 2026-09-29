@@ -33,8 +33,8 @@ from typing import Any
 import numpy as np
 import tifffile
 
-from pyrpoc.structs.params import ParameterError
 from pyrpoc.structs.data import Data, Dataset, Image2D, utc_now
+from pyrpoc.structs.params import ParameterError
 
 
 
