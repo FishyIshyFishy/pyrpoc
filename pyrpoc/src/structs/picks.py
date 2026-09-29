@@ -1,11 +1,7 @@
 """What a runner can request: a location in some data.
 
-A pick is a dataset plus a location in it. A runner requests one by kind and
-receives one back; it never learns what provided it. A program knows how to
-turn a ``PixelPick`` into parameter values, whatever produced it knows how to
-make one, and the host in between only carries it.
-
-A box or a line is a new subclass here.
+A runner asks for a pick by kind and never learns what provided it; a new
+kind of location (a box, a line) is a new subclass here.
 """
 
 from __future__ import annotations

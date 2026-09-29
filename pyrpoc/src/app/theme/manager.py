@@ -59,15 +59,9 @@ def _require(pattern: str, text: str, qss_path: str) -> str:
 
 
 def _derive_palette(qss_text: str, qss_path: str) -> QPalette:
-    """Build a QPalette matching the colors baked into *qss_text*.
-
-    The bundled Breeze stylesheets recolor most widgets with literal hex
-    values on type selectors, so those widgets re-theme on their own via
-    ``QApplication.setStyleSheet``. Anything styled against ``palette(...)``
-    tokens (e.g. the card widgets in ``panels/components/cards.py``) only re-themes if
-    the app's QPalette is kept in sync -- which this derives directly from
-    the same stylesheet text so there is a single source of truth per theme.
-    """
+    """A QPalette matching the colors in *qss_text*. Widgets styled with
+    ``palette(...)`` tokens only re-theme if the palette tracks the stylesheet,
+    so it is derived from the same text."""
     widget_block = _require(r"QWidget\s*\{([^}]*)\}", qss_text, qss_path)
     lineedit_block = _require(r"QLineEdit\s*\{([^}]*)\}", qss_text, qss_path)
 
@@ -106,6 +100,7 @@ class ThemeController:
         self.settings = QSettings(_SETTINGS_ORG, _SETTINGS_APP)
 
     def get_saved_mode(self) -> str:
+        """The saved theme, or the default if settings hold something unknown."""
         raw = self.settings.value(_SETTINGS_KEY_THEME_MODE, DEFAULT_THEME)
         theme = str(raw).strip().lower()
         if theme in available_breeze_themes:
@@ -119,23 +114,16 @@ class ThemeController:
         qss_path = f":/{theme}/stylesheet.qss"
 
         file = QFile(qss_path)
-        ok = file.open(QFile.OpenModeFlag.ReadOnly | QFile.OpenModeFlag.Text)
-        if not ok:
+        if not file.open(QFile.OpenModeFlag.ReadOnly | QFile.OpenModeFlag.Text):
             raise RuntimeError(f"failed to open breeze stylesheet: {qss_path}")
 
         stream = QTextStream(file)
         return stream.readAll()
 
-    def apply(self, theme: str, persist: bool = True) -> str:
-        normalized = theme.strip().lower()
-        if normalized not in available_breeze_themes:
-            normalized = DEFAULT_THEME
-        selected_theme = normalized
-
+    def apply(self, theme: str, *, persist: bool) -> str:
         if persist:
-            self.settings.setValue(_SETTINGS_KEY_THEME_MODE, selected_theme)
-
-        base_qss = self.load_breeze_stylesheet(selected_theme)
-        self.app.setPalette(_derive_palette(base_qss, f":/{selected_theme}/stylesheet.qss"))
+            self.settings.setValue(_SETTINGS_KEY_THEME_MODE, theme)
+        base_qss = self.load_breeze_stylesheet(theme)
+        self.app.setPalette(_derive_palette(base_qss, f":/{theme}/stylesheet.qss"))
         self.app.setStyleSheet(base_qss)
-        return selected_theme
+        return theme

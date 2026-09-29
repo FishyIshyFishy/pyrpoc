@@ -1,8 +1,4 @@
-"""The ways a program can be started, one runner per file.
-
-A program lists the ones it offers in ``runners``. Each attaches its controls
-and callbacks to a ``RunnerContext`` and knows nothing about what hosts it.
-"""
+"""The ways a program can be started, one runner per file."""
 
 from __future__ import annotations
 

@@ -1,19 +1,12 @@
 """A slider with two handles selecting a span within a range.
 
-Two ``QSlider``s stacked with "Low" and "High" labels say what each one is
-named; one slider with two handles says what they *do* -- everything outside
-the span is excluded, and that is legible without reading a label, because the
-groove is only accented between the handles.
-
-A generic Qt building block rather than something specific to the mask editor
--- its only user today -- so it lives in components/ with the cards and the
-list table, not inside mask_editor/.
+One groove accented only between the handles says what is kept without a label.
 """
 
 from __future__ import annotations
 
 from PyQt6.QtCore import QPoint, QRect, QSize, Qt, pyqtSignal
-from PyQt6.QtGui import QColor, QMouseEvent, QPainter, QPaintEvent
+from PyQt6.QtGui import QColor, QKeyEvent, QMouseEvent, QPainter, QPaintEvent
 from PyQt6.QtWidgets import QSizePolicy, QWidget
 
 _GROOVE_HEIGHT = 5
@@ -28,7 +21,7 @@ class RangeSlider(QWidget):
     # Low and high, after clamping. Emitted whenever either moves.
     values_changed = pyqtSignal(int, int)
 
-    def __init__(self, parent: QWidget | None = None):
+    def __init__(self, parent: QWidget):
         super().__init__(parent)
         self._minimum = 0
         self._maximum = 100
@@ -45,28 +38,10 @@ class RangeSlider(QWidget):
     def minimumSizeHint(self) -> QSize:
         return QSize(4 * _HANDLE_RADIUS, 2 * _HANDLE_RADIUS + 6)
 
-    def minimum(self) -> int:
-        return self._minimum
-
-    def maximum(self) -> int:
-        return self._maximum
-
-    def low(self) -> int:
-        return self._low
-
-    def high(self) -> int:
-        return self._high
-
     def setRange(self, minimum: int, maximum: int) -> None:
-        self._minimum = int(minimum)
-        self._maximum = max(int(maximum), int(minimum))
+        self._minimum = minimum
+        self._maximum = max(maximum, minimum)
         self.setValues(self._low, self._high)
-
-    def setLow(self, value: int) -> None:
-        self.setValues(value, self._high)
-
-    def setHigh(self, value: int) -> None:
-        self.setValues(self._low, value)
 
     def setValues(self, low: int, high: int) -> None:
         low = self._clamp(low)
@@ -163,7 +138,7 @@ class RangeSlider(QWidget):
             return
         self.setValues(self._low, value)
 
-    def keyPressEvent(self, event) -> None:
+    def keyPressEvent(self, event: QKeyEvent | None) -> None:
         if event is None:
             return
         step = 10 if event.modifiers() & Qt.KeyboardModifier.ControlModifier else 1

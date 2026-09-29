@@ -1,31 +1,23 @@
-"""The parameter model: field definitions, blocks, coercion.
+"""The parameter model: field specs, blocks, and how a set of blocks is held.
 
-No Qt, no hardware, no instrument vocabulary. The widget half lives in
-``panels/components/param_form.py``; the blocks themselves live with the code that declares
-them. What stays here is label, tooltip, bounds, how a raw value becomes a real
-one, and how a set of blocks is held, addressed and serialised.
-
-A **block** is a dataclass whose fields carry their spec in ``metadata``, so one
-declaration serves the value, the default, the form and the validation. A
-program declares which block classes it wants; the block class is the identity
-everywhere -- declaration key, form key, session key, metadata key.
+A block is a dataclass whose fields carry their spec in ``metadata``, so one
+declaration gives the value, default, form row and validation. The block class
+is its identity everywhere: declaration, form, session and run metadata.
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
-from dataclasses import dataclass, fields, is_dataclass, replace
+from dataclasses import dataclass, fields, replace
 from dataclasses import field as dc_field
-from typing import Any, ClassVar, TypeVar
+from typing import TYPE_CHECKING, Any, ClassVar, TypeVar
+
+if TYPE_CHECKING:  # pragma: no cover
+    from .data import Library
 
 
 class ParameterError(Exception):
     """A parameter value is missing, out of range, or the wrong type."""
-
-
-# --------------------------------------------------------------------------- #
-# Field specs                                                                  #
-# --------------------------------------------------------------------------- #
 
 
 @dataclass(frozen=True)
@@ -41,61 +33,42 @@ class Field:
         return value
 
     def decode(self, raw: Any) -> Any:
-        """JSON-safe -> value, with validation."""
+        """JSON-safe -> value, raising ``ParameterError`` on bad input."""
         return self.coerce(raw)
 
-    def resolve(self, value: Any, library: Any) -> Any:
-        """The value a run is handed, given the open data.
-
-        Unchanged for every field whose value is self-contained. A field whose
-        value *names* data -- a mask bound by reference -- fills it in here,
-        and raises ``ParameterError`` when what it names is gone. Called once,
-        at run start; the stored value keeps only the reference.
-        """
+    def resolve(self, value: Any, library: Library) -> Any:
+        """The value a run is handed. A field whose value names open data
+        fills it in here, so the stored value keeps only the reference."""
         del library
         return value
 
     def editor(self, parent: Any, context: FieldContext) -> Editor | None:
-        """A custom widget for this field, or None for the form's own.
-
-        The generic fields here leave it None and the form builds their
-        widgets. A field type declared elsewhere, whose widget the form cannot
-        know about, supplies its own -- which is what keeps the form from
-        importing the code that declares it.
-        """
+        """A custom widget, or None for the form's own. Lets a field declared
+        outside ``structs`` bring a widget the form cannot know about."""
         del parent, context
         return None
 
 
 @dataclass
 class Editor:
-    """One field's widget, as the form drives it.
-
-    Toolkit-free by type -- ``widget`` is whatever the view draws -- so a field
-    declared outside the view can hand one over without this module importing Qt.
-    """
+    """One field's widget, as the form drives it. Toolkit-free by type so
+    ``structs`` never imports Qt."""
 
     widget: Any
     get: Callable[[], Any]
     set: Callable[[Any], None]
-    # Returns object, not None: the result is ignored, and Qt's connect()
-    # returns a Connection handle that builders pass straight through.
+    # Returns object: the result is ignored, and Qt's connect() returns a handle.
     connect: Callable[[Callable[[], None]], object]
     summary: Callable[[], str]
-    # The spec this widget was built from. Carried rather than looked up:
-    # resolving it per path per keystroke was quadratic in field count.
-    spec: Field | None = None
+    spec: Field
 
 
 @dataclass(frozen=True)
 class FieldContext:
-    """What the form's owner can offer a field's editor.
+    """What the form's owner can offer a field's editor. ``library`` is the
+    open data; None for a device configuration, which has none."""
 
-    ``library`` is the open data, for editors whose value names it. None when
-    there is none to offer, as for a device configuration.
-    """
-
-    library: Any = None
+    library: Library | None = None
 
 
 @dataclass(frozen=True)
@@ -208,17 +181,12 @@ class ChannelsField(Field):
         return tuple(out)
 
     def encode(self, value: Any) -> Any:
-        return list(value or ())
-
-
-# --------------------------------------------------------------------------- #
-# Field constructors — each returns a dataclasses.field carrying its spec      #
-# --------------------------------------------------------------------------- #
+        return list(value)
 
 
 def spec_field(default: Any, spec: Field, *, factory=None):
-    """A dataclass field carrying its parameter spec. Public so blocks declared
-    outside this module can define their own field types."""
+    """A dataclass field carrying its spec. Public so field types declared
+    outside this module can build their own."""
     if factory is not None:
         return dc_field(default_factory=factory, metadata={"param": spec})
     return dc_field(default=default, metadata={"param": spec})
@@ -253,26 +221,12 @@ def channels_field(label, *, num_channels=9, default=None, tooltip=""):
     return spec_field(None, ChannelsField(label, tooltip, num_channels), factory=lambda: resolved)
 
 
-# --------------------------------------------------------------------------- #
-# Block base                                                                   #
-# --------------------------------------------------------------------------- #
-
-
 # A dataclass with no fields, so every block type-checks as a dataclass
-# instance and ``dataclasses.replace`` accepts it without a cast.
+# instance and ``dataclasses.replace`` accepts it.
 @dataclass
 class Group:
-    """Base for parameter blocks.
-
-    Two jobs, both real. ``label`` is the section heading the form draws, which
-    is why it lives on the class rather than at each declaration site: one block
-    is one section wherever it appears.
-
-    It is deliberately not a mapping. It used to carry ``keys`` and
-    ``__getitem__`` so ``f(**p.some_group)`` would work; every caller now takes
-    the block itself, so a renamed field is a type error instead of a
-    ``TypeError`` on the first frame.
-    """
+    """Base for parameter blocks. ``label`` is the form's section heading; it
+    lives on the class because one block is one section wherever it appears."""
 
     label: ClassVar[str] = ""
 
@@ -280,12 +234,17 @@ class Group:
 B = TypeVar("B", bound=Group)
 
 
+def instance_of(value: object, cls: type[B]) -> B:
+    """``value`` typed as ``cls``. The stores key every block by its class, so
+    this narrows for the type checker rather than validating."""
+    if not isinstance(value, cls):
+        raise TypeError(f"{value!r} is stored under {cls.__name__} but is not one")
+    return value
+
+
 def block_fields(block_or_cls: Any) -> list[tuple[str, Field]]:
     """``(name, spec)`` for every parameter field on a block."""
-    cls = block_or_cls if isinstance(block_or_cls, type) else type(block_or_cls)
-    if not is_dataclass(cls):
-        raise TypeError(f"{cls!r} is not a parameter block")
-    return [(f.name, f.metadata["param"]) for f in fields(cls) if "param" in f.metadata]
+    return [(f.name, f.metadata["param"]) for f in fields(block_or_cls) if "param" in f.metadata]
 
 
 def block_name(block_or_cls: Any) -> str:
@@ -294,62 +253,41 @@ def block_name(block_or_cls: Any) -> str:
     return cls.__name__
 
 
-# --------------------------------------------------------------------------- #
-# Holding blocks: the store and the run-time map                               #
-# --------------------------------------------------------------------------- #
-
-
 class BlockStore:
-    """Every parameter block that exists, one instance per class.
-
-    This is what makes a block shared: two programs declaring ``ScanGroup`` are
-    handed the same object, so editing it in one modality's form is editing it
-    in the other's. The session file is this store, encoded.
-    """
+    """Every parameter block that exists, one instance per class. Two programs
+    declaring the same block share the instance, so an edit under one
+    modality is already made under the other."""
 
     def __init__(self) -> None:
         self._blocks: dict[type, Group] = {}
 
     def get(self, cls: type[B]) -> B:
         """The instance for ``cls``, created at defaults on first request."""
-        block = self._blocks.get(cls)
-        if isinstance(block, cls):
-            return block
-        created = cls()
-        self._blocks[cls] = created
-        return created
-
-    def has(self, cls: type) -> bool:
-        return cls in self._blocks
+        if cls not in self._blocks:
+            self._blocks[cls] = cls()
+        return instance_of(self._blocks[cls], cls)
 
     def for_program(self, declared: Sequence[type[Group]]) -> BlockMap:
         return BlockMap({cls: self.get(cls) for cls in declared})
-
-    # -- serialisation ------------------------------------------------------ #
 
     def to_dict(self, only: Sequence[type[Group]] | None = None) -> dict[str, Any]:
         classes = list(only) if only is not None else list(self._blocks)
         return {block_name(cls): encode_block(self.get(cls)) for cls in classes}
 
-    def load_dict(self, raw: Mapping[str, Any] | None, registry: Mapping[str, type]) -> None:
-        """Fill the store from a saved state dict.
-
-        A name with no class in ``registry`` is skipped rather than fatal: a
-        block can be deleted from the source without stranding a session file.
-        A block whose values fail coercion falls back to its defaults, so one
-        bad number cannot cost the whole rig its settings.
-        """
-        for name, values in (raw or {}).items():
-            cls = registry.get(str(name))
-            if cls is None or not isinstance(values, dict):
+    def load_dict(self, raw: Mapping[str, dict[str, Any]], registry: Mapping[str, type]) -> None:
+        """Fill the store from a saved state dict. An unknown name is skipped,
+        so deleting a block does not strand a session; a block that fails
+        coercion falls back to defaults, so one bad number costs only itself."""
+        for name, values in raw.items():
+            cls = registry.get(name)
+            if cls is None:
                 continue
             try:
                 self._blocks[cls] = decode_block(cls, values)
-            except Exception:
+            except ParameterError:
                 self._blocks[cls] = cls()
 
-    def validate(self, only: Sequence[type[Group]] | None = None) -> None:
-        classes = list(only) if only is not None else list(self._blocks)
+    def validate(self, classes: Sequence[type[Group]]) -> None:
         for cls in classes:
             validate_block(self.get(cls))
 
@@ -358,25 +296,19 @@ class BlockStore:
 
 
 class BlockMap(Mapping):
-    """The blocks one run was given, keyed by class.
+    """The blocks one run was given, keyed by class, so ``ctx.params[ScanGroup]``
+    is typed as a ``ScanGroup``. An undeclared block is absent."""
 
-    The parameter twin of ``DeviceMap``: ``ctx.params[ScanGroup]`` is typed as a
-    ``ScanGroup`` for the same reason ``ctx.devices[DAQ]`` is typed as a ``DAQ``.
-    A block the program did not declare is absent, which is the containment
-    ``uses`` already gives devices.
-    """
-
-    def __init__(self, blocks: Mapping[type, Group] | None = None):
-        self._blocks: dict[type, Group] = dict(blocks or {})
+    def __init__(self, blocks: Mapping[type, Group]):
+        self._blocks: dict[type, Group] = dict(blocks)
 
     def __getitem__(self, key: type[B]) -> B:
-        block = self._blocks.get(key)
-        if not isinstance(block, key):
+        if key not in self._blocks:
             raise KeyError(
-                f"{getattr(key, '__name__', key)!r} is not in this program's params; "
+                f"{key.__name__!r} is not in this program's params; "
                 f"it declares {sorted(block_name(c) for c in self._blocks)}"
             )
-        return block
+        return instance_of(self._blocks[key], key)
 
     def __iter__(self) -> Iterator[type]:
         return iter(self._blocks)
@@ -386,11 +318,6 @@ class BlockMap(Mapping):
 
     def __repr__(self) -> str:  # pragma: no cover - debugging aid
         return f"BlockMap({sorted(block_name(c) for c in self._blocks)})"
-
-
-# --------------------------------------------------------------------------- #
-# Form description and dotted addressing                                       #
-# --------------------------------------------------------------------------- #
 
 
 @dataclass(frozen=True)
@@ -409,7 +336,7 @@ def sections(blocks: Sequence[Group]) -> list[Section]:
 
 
 def index(blocks: Sequence[Group]) -> dict[str, Group]:
-    """``{"ScanGroup": <instance>}`` -- what a dotted path resolves against."""
+    """``{"ScanGroup": <instance>}``, what a dotted path resolves against."""
     return {block_name(block): block for block in blocks}
 
 
@@ -420,49 +347,24 @@ def split_path(path: str) -> tuple[str, str]:
     return name, attr
 
 
-def get_path(blocks: Sequence[Group] | Mapping[str, Group], path: str) -> Any:
-    lookup = blocks if isinstance(blocks, Mapping) else index(blocks)
+def get_path(lookup: Mapping[str, Group], path: str) -> Any:
     name, attr = split_path(path)
     return getattr(lookup[name], attr)
 
 
-def set_path(blocks: Sequence[Group] | Mapping[str, Group], path: str, value: Any) -> None:
-    lookup = blocks if isinstance(blocks, Mapping) else index(blocks)
+def set_path(lookup: Mapping[str, Group], path: str, value: Any) -> None:
     name, attr = split_path(path)
     setattr(lookup[name], attr, value)
-
-
-def spec_at(blocks: Sequence[Group] | Mapping[str, Group], path: str) -> Field:
-    lookup = blocks if isinstance(blocks, Mapping) else index(blocks)
-    name, attr = split_path(path)
-    for field_name, spec in block_fields(lookup[name]):
-        if field_name == attr:
-            return spec
-    raise KeyError(path)
-
-
-# --------------------------------------------------------------------------- #
-# One block in and out of plain data                                           #
-# --------------------------------------------------------------------------- #
 
 
 def encode_block(block: Any) -> dict[str, Any]:
     return {name: spec.encode(getattr(block, name)) for name, spec in block_fields(block)}
 
 
-def decode_block(cls: type, raw: Mapping[str, Any] | None, *, strict: bool = False) -> Any:
-    """Build a block from a plain dict, coercing every value."""
-    values = raw or {}
-    if not isinstance(values, Mapping):
-        raise ParameterError("parameters must be an object")
-
-    known = {name for name, _ in block_fields(cls)}
-    if strict:
-        unknown = sorted(set(values) - known)
-        if unknown:
-            raise ParameterError("unknown parameters: " + ", ".join(unknown))
-
-    kwargs = {name: spec.decode(values[name]) for name, spec in block_fields(cls) if name in values}
+def decode_block(cls: type, raw: Mapping[str, Any]) -> Any:
+    """Build a block from a plain dict, coercing every value. Missing keys
+    take the field's default."""
+    kwargs = {name: spec.decode(raw[name]) for name, spec in block_fields(cls) if name in raw}
     return cls(**kwargs)
 
 
@@ -472,14 +374,10 @@ def validate_block(block: Any) -> None:
         spec.coerce(getattr(block, name))
 
 
-def resolve_block(block: B, library: Any) -> B:
-    """``block`` as a run should see it: every field resolved against ``library``.
-
-    A copy when anything resolved to something new, so the shared block -- and
-    the metadata and session encoded from it -- keeps only references. The
-    block itself otherwise, so a live edit still reaches a running program the
-    way it always has.
-    """
+def resolve_block(block: B, library: Library) -> B:
+    """``block`` as a run should see it. A copy when any field resolved to
+    something new, so the shared block keeps only references; otherwise the
+    block itself, so a live edit still reaches a running program."""
     changes: dict[str, Any] = {}
     for name, spec in block_fields(block):
         value = getattr(block, name)
@@ -487,17 +385,3 @@ def resolve_block(block: B, library: Any) -> B:
         if resolved is not value:
             changes[name] = resolved
     return replace(block, **changes) if changes else block
-
-
-# Device configurations are blocks too -- same fields, same form, same
-# encoding -- but they are per-instance rather than per-class and persist with
-# their device, so they never enter the BlockStore. These aliases are what
-# ``structs/device.py`` calls.
-to_dict = encode_block
-from_dict = decode_block
-validate = validate_block
-
-
-def coerce(cls: type, raw: Mapping[str, Any] | None) -> Any:
-    """Strict ``decode_block``: unknown keys are an error."""
-    return decode_block(cls, raw, strict=True)

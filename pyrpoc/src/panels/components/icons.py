@@ -10,14 +10,11 @@ from PyQt6.QtGui import QIcon
 ASSETS = Path(__file__).resolve().parents[3] / "assets"
 
 
-def asset_icon(name: str) -> QIcon | None:
-    """The icon ``assets/<name>.svg`` (or ``.png``), or None if there is none.
-
-    None rather than an empty icon, so a caller can fall back to text: a
-    button with a blank face is worse than one with a word on it.
-    """
+def asset_icon(name: str) -> QIcon:
+    """The icon ``assets/<name>.svg`` (or ``.png``). A missing file is a
+    packaging bug, so it raises rather than falling back to text."""
     for suffix in (".svg", ".png"):
         path = ASSETS / f"{name}{suffix}"
         if path.is_file():
             return QIcon(str(path))
-    return None
+    raise FileNotFoundError(f"no icon named {name!r} in {ASSETS}")

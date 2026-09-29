@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from PyQt6 import sip
+import PyQt6Ads as qtads
 from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtGui import QAction, QActionGroup
-from PyQt6.QtWidgets import QMenu, QMenuBar
+from PyQt6.QtWidgets import QMenu, QMenuBar, QWidget
 
 from .theme.manager import available_breeze_themes
 
@@ -21,14 +21,13 @@ class MainMenuBar(QMenuBar):
     # A panel type was chosen from Add, by registry key.
     panel_requested = pyqtSignal(str)
 
-    def __init__(self, parent=None):
+    def __init__(self, parent: QWidget):
         super().__init__(parent)
 
         self.panels_menu = QMenu("Panels", self)
         self.addMenu(self.panels_menu)
-        # Parented to the menu bar rather than to Panels, because
-        # populate_panels_menu clears that menu every time the open panels
-        # change and would otherwise be re-adding a submenu it had orphaned.
+        # Parented to the bar, not to Panels: populate_panels_menu clears Panels
+        # on every change and would otherwise orphan this submenu.
         self.add_menu = QMenu("Add", self)
 
         self.style_menu = QMenu("&Style", self)
@@ -38,37 +37,24 @@ class MainMenuBar(QMenuBar):
         self._style_group.setExclusive(True)
 
     def populate_add_menu(self, entries: list[tuple[str, str]]) -> None:
-        """What can be added, as (key, label). Fixed for the session.
-
-        A flat list, browsed by hovering Add the way a colour is browsed under
-        Style. Grouping panel types is a decision nobody has needed to make
-        yet, and a submenu per group over four entries would cost two hovers to
-        reach every one of them.
-        """
+        """What can be added, as (key, label). Fixed for the session."""
         self.add_menu.clear()
         for key, label in entries:
             action = QAction(label, self.add_menu)
             action.triggered.connect(lambda _checked=False, k=key: self.panel_requested.emit(k))
             self.add_menu.addAction(action)
 
-    def populate_panels_menu(self, docks: list, panel_actions: list[QAction] | None = None) -> None:
-        """The fixed panels, then Add, then one entry per panel that was added.
-
-        Unchecking one of the fixed docks hides it; unchecking an added one
-        destroys it. The rule is the only thing separating the two, so the
-        entries below it are kept under Add rather than fenced off from it --
-        what they are is "what Add has produced".
-        """
+    def populate_panels_menu(
+        self, docks: list[qtads.CDockWidget], panel_actions: list[QAction]
+    ) -> None:
+        """The fixed panels, a rule, then Add and one entry per added panel.
+        Unchecking a fixed dock hides it; unchecking an added one destroys it."""
         self.panels_menu.clear()
         for dock in docks:
             self.panels_menu.addAction(dock.toggleViewAction())
         self.panels_menu.addSeparator()
         self.panels_menu.addMenu(self.add_menu)
-        for action in panel_actions or []:
-            if sip.isdeleted(action):
-                continue
-            if not action.isCheckable():
-                action.setCheckable(True)
+        for action in panel_actions:
             self.panels_menu.addAction(action)
 
     def populate_style_menu(self, selected_mode: str) -> None:

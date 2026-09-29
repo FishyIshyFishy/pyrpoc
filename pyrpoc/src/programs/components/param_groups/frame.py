@@ -12,7 +12,7 @@ from pyrpoc.src.structs.registries import block
 @block
 @dataclass
 class FrameGroup(Group):
-    """The shape of a simulated frame -- what ScanGroup decides on a real rig."""
+    """The shape of a simulated frame; ``ScanGroup`` decides it on a real rig."""
 
     label: ClassVar[str] = "Frame"
 

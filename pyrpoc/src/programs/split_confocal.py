@@ -1,20 +1,9 @@
 """Split confocal: the same scan, each pixel's samples split into two windows.
 
-Self-contained by design. The waveform arithmetic and the NI task setup are
-duplicated from ``confocal.py`` rather than shared, so this modality can be
-read, changed or deleted without touching another one. The copies are meant
-to stay identical -- v3.0 let two copies of ``extract_kept_samples`` drift
-apart, which is the failure this arrangement has to be watched for.
-
-What genuinely differs is at the bottom: splitting a pixel's samples into a t0
-window and a t2 window, gating the mask TTL to the t0 window, and returning the
-raw sample stack alongside the image.
-
-The raw pixel stream is a declared output. In v3.0 it travelled as
-``_pending_auxiliary["raw_pixel_stream"]``, was picked up by
-``append_auxiliary_payload``, buffered in memory and written to an npz side
-channel no display ever saw -- a second output smuggled through storage because
-there was no way to declare one.
+The waveform arithmetic and NI task setup are copies of ``confocal.py``'s and
+must stay identical to them. What differs is at the bottom: a pixel's samples
+split into t0 and t2 windows, the mask TTL gated to t0, and the raw samples
+published as their own output.
 """
 
 from __future__ import annotations
@@ -41,10 +30,6 @@ from .components.param_groups import (
 )
 from .components.runners import Continuous, Single
 
-# --------------------------------------------------------------------------- #
-# Waveform arithmetic                                                          #
-# --------------------------------------------------------------------------- #
-
 
 def pixel_samples(dwell_time_us: float, sample_rate_hz: float) -> int:
     """Samples per pixel. Truncating, floor 1 -- as confocal, not as FLIM."""
@@ -62,17 +47,16 @@ def generate_raster_waveform(
     slow_axis_offset: float,
     slow_axis_amplitude: float,
 ) -> np.ndarray:
+    """The (fast, slow) AO waveform for one frame: the fast axis sweeps the
+    overscan-padded width each line, holding ``pixel_samples`` per pixel."""
     total_x = extra_left + x_pixels + extra_right
-    fast_amp = max(float(fast_axis_amplitude), 1e-6)
-    slow_amp = max(float(slow_axis_amplitude), 1e-6)
-    fast_step = (2.0 * fast_amp) / float(x_pixels)
-    fast_start = -fast_amp - (float(extra_left) * fast_step)
-    fast_axis = (
-        fast_start + (np.arange(total_x, dtype=np.float32) * fast_step) + float(fast_axis_offset)
+    fast_step = 2.0 * fast_axis_amplitude / x_pixels
+    fast_start = -fast_axis_amplitude - extra_left * fast_step
+    fast_axis = fast_start + np.arange(total_x, dtype=np.float32) * fast_step + fast_axis_offset
+    slow_axis = (
+        np.linspace(-1.0, 1.0, y_pixels, endpoint=False, dtype=np.float32) * slow_axis_amplitude
+        + slow_axis_offset
     )
-    slow_axis = np.linspace(
-        -1.0, 1.0, y_pixels, endpoint=False, dtype=np.float32
-    ) * slow_amp + float(slow_axis_offset)
     fast_raster = np.tile(np.repeat(fast_axis, pixel_samples), y_pixels)
     slow_raster = np.repeat(slow_axis, total_x * pixel_samples)
     return np.vstack((fast_raster, slow_raster)).astype(np.float64)
@@ -107,109 +91,61 @@ def extract_kept_samples(
     return kept.reshape(total_y, x_pixels * pixel_samples).astype(np.float32, copy=False)
 
 
-# --------------------------------------------------------------------------- #
-# Masks to per-pixel TTL waveforms                                             #
-# --------------------------------------------------------------------------- #
-
-
 def resize_mask_nearest(mask_bool: np.ndarray, target_h: int, target_w: int) -> np.ndarray:
     source_h, source_w = mask_bool.shape
-    if source_h <= 0 or source_w <= 0:
-        return np.zeros((target_h, target_w), dtype=bool)
     y_idx = np.minimum((np.arange(target_h, dtype=np.int64) * source_h) // target_h, source_h - 1)
     x_idx = np.minimum((np.arange(target_w, dtype=np.int64) * source_w) // target_w, source_w - 1)
     return mask_bool[np.ix_(y_idx, x_idx)]
 
 
-def preprocess_mask_to_scan_grid(
-    raw_mask: object,
-    total_x: int,
-    total_y: int,
-    scan_x_pixels: int,
-    extra_left: int,
-    extra_right: int,
-) -> np.ndarray:
-    if total_x <= 0 or total_y <= 0:
-        raise ValueError("total_x and total_y must be positive")
-    if (extra_left + scan_x_pixels + extra_right) != total_x:
-        raise ValueError("total_x must equal extra_left + scan_x_pixels + extra_right")
-
-    mask = np.asarray(raw_mask, dtype=np.uint8)
-    if mask.ndim != 2:
-        raise ValueError(f"Mask must be 2D, got shape={mask.shape}")
-
-    if scan_x_pixels == 0:
-        return np.zeros((total_y, total_x), dtype=bool)
-
-    mask_bool = mask > 0
-    if mask_bool.shape != (total_y, scan_x_pixels):
-        mask_bool = resize_mask_nearest(mask_bool, target_h=total_y, target_w=scan_x_pixels)
-
-    padded = np.zeros((total_y, total_x), dtype=bool)
-    padded[:, extra_left : extra_left + scan_x_pixels] = mask_bool
+def mask_on_scan_grid(mask: np.ndarray, scan: ScanGroup) -> np.ndarray:
+    """The mask resized onto the kept pixels, padded with the overscan columns."""
+    mask_bool = np.asarray(mask, dtype=np.uint8) > 0
+    if mask_bool.shape != (scan.y_pixels, scan.x_pixels):
+        mask_bool = resize_mask_nearest(mask_bool, scan.y_pixels, scan.x_pixels)
+    padded = np.zeros((scan.y_pixels, scan.total_x), dtype=bool)
+    padded[:, scan.extra_left : scan.extra_left + scan.x_pixels] = mask_bool
     return padded
 
 
 def mask_ttl(
-    masks: Sequence[tuple[Mask, np.ndarray]],
+    masks: Sequence[Mask],
     *,
     scan: ScanGroup,
     pixel_samples: int,
     device_name: str,
 ) -> dict[str, np.ndarray]:
-    """One flat boolean TTL signal per bound digital line."""
-    total_x = scan.total_x
-    total_y = scan.y_pixels
-
+    """One flat boolean TTL signal per bound digital line. A mask that is all
+    zero on the scan grid gets no line, so no DO task is created for it."""
     ttl_signals: dict[str, np.ndarray] = {}
-    for binding, mask in masks:
-        if mask is None:
-            continue
-        channel_name = binding.channel(device_name)
-        try:
-            padded = preprocess_mask_to_scan_grid(
-                mask,
-                total_x=total_x,
-                total_y=total_y,
-                scan_x_pixels=scan.x_pixels,
-                extra_left=scan.extra_left,
-                extra_right=scan.extra_right,
-            )
-        except Exception as exc:
-            raise RuntimeError(f"Failed to preprocess mask for {channel_name}: {exc}") from exc
+    for binding in masks:
+        # Narrows for the type checker: a run's masks are resolved at start.
+        if binding.array is None:
+            raise ValueError(f"mask '{binding.describe()}' was not resolved")
+        padded = mask_on_scan_grid(binding.array, scan)
         if not np.any(padded):
             continue
-        ttl = np.zeros((total_y, total_x, pixel_samples), dtype=bool)
+        ttl = np.zeros((scan.y_pixels, scan.total_x, pixel_samples), dtype=bool)
         ttl[padded] = True
-        ttl_signals[channel_name] = ttl.reshape(-1)
-
+        ttl_signals[binding.channel(device_name)] = ttl.reshape(-1)
     return ttl_signals
 
 
 def split_mask_ttl(
-    masks: Sequence[tuple[Mask, np.ndarray]],
+    masks: Sequence[Mask],
     *,
     scan: ScanGroup,
     pixel_samples: int,
     device_name: str,
     t0_samples: int,
 ) -> dict[str, np.ndarray]:
-    """``mask_ttl`` truncated to the first ``t0_samples`` of every pixel.
-
-    That gate is the only thing split confocal's TTL generation does
-    differently.
-    """
+    """``mask_ttl`` truncated to the first ``t0_samples`` of every pixel."""
     signals = mask_ttl(masks, scan=scan, pixel_samples=pixel_samples, device_name=device_name)
     if t0_samples >= pixel_samples:
         return signals
     for signal in signals.values():
         signal.reshape(-1, pixel_samples)[:, t0_samples:] = False
     return signals
-
-
-# --------------------------------------------------------------------------- #
-# The scan                                                                     #
-# --------------------------------------------------------------------------- #
 
 
 def run_raster(
@@ -354,8 +290,8 @@ def reshape_to_split_frame(
     Returns ``(split, raw)`` where ``split`` is ``(C*2, H, W)`` with alternating
     t0/t2 channels and ``raw`` is ``(C, H, W, S)`` of unaveraged samples.
     """
-    split_point = int(t0_samples)
-    second_start = split_point + int(t1_samples)
+    split_point = t0_samples
+    second_start = t0_samples + t1_samples
 
     split_channels: list[np.ndarray] = []
     raw_channels: list[np.ndarray] = []
@@ -410,13 +346,8 @@ def split_raster_scan(
     )
 
 
-# --------------------------------------------------------------------------- #
-# The program                                                                  #
-# --------------------------------------------------------------------------- #
-
-
 def channel_labels(daq: DAQ) -> list[str]:
-    """``ai0_t0``, ``ai0_t2``, ``ai1_t0``, ... -- interleaved, as in v3.0."""
+    """``ai0_t0``, ``ai0_t2``, ``ai1_t0``, ...: interleaved, matching the frame."""
     labels: list[str] = []
     for index in daq.config.ai_channels:
         labels.append(f"ai{index}_t0")
@@ -430,13 +361,10 @@ def build_ttl(
     daq_params: DaqGroup,
     split: SplitGroup,
     daq: DAQ,
-) -> dict:
+) -> dict[str, np.ndarray]:
     """Mask TTL gated to the first ``t0_samples`` of every pixel."""
-    if not modulation.masks:
-        return {}
-    loaded = [(mask, mask.array) for mask in modulation.masks if mask.array is not None]
     return split_mask_ttl(
-        loaded,
+        modulation.masks,
         scan=scan,
         pixel_samples=pixel_samples(scan.dwell_time_us, daq_params.sample_rate_hz),
         device_name=daq.config.device_name,

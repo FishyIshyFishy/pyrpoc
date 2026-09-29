@@ -1,24 +1,38 @@
 from __future__ import annotations
 
+import logging
 import os
 import sys
+import traceback
 from pathlib import Path
+from types import TracebackType
 
 from PyQt6.QtGui import QGuiApplication
-from PyQt6.QtWidgets import QApplication, QWidget
+from PyQt6.QtWidgets import QApplication, QMessageBox, QWidget
 
 from pyrpoc.src.app.application import Application
 from pyrpoc.src.app.session import Autosave, SessionStore, default_session_path
 from pyrpoc.src.app.theme.manager import ThemeController
 from pyrpoc.src.app.window import MainWindow
 
+log = logging.getLogger("pyrpoc")
+
+
+def report_uncaught(
+    kind: type[BaseException], error: BaseException, tb: TracebackType | None
+) -> None:
+    """The one place an unexpected error lands. PyQt aborts the process on an
+    exception escaping a slot unless this hook is set, so code elsewhere lets
+    errors raise instead of guarding each slot."""
+    text = "".join(traceback.format_exception(kind, error, tb))
+    log.error("uncaught exception\n%s", text)
+    if QApplication.instance() is not None:
+        QMessageBox.critical(None, "Unexpected Error", f"{error}\n\n{text}")
+
 
 def configure_qt_fontdir() -> None:
-    if os.name != "nt":
+    if os.name != "nt" or os.environ.get("QT_QPA_FONTDIR"):
         return
-    if os.environ.get("QT_QPA_FONTDIR"):
-        return
-
     windir = Path(os.environ.get("WINDIR", r"C:\Windows"))
     for candidate in (windir / "Fonts", Path(r"C:\Windows\Fonts")):
         if candidate.is_dir():
@@ -27,39 +41,27 @@ def configure_qt_fontdir() -> None:
 
 
 def fit_to_available_screen(
-    window: QWidget,
-    width: int | None = None,
-    height: int | None = None,
+    window: QWidget, width: int | None = None, height: int | None = None
 ) -> None:
-    """Size and position a window so it lands inside a visible screen area.
+    """Size and place a window inside a visible screen area.
 
-    Qt's default placement can drop a window outside the desktop on multi-monitor
-    high-DPI setups: Qt reports a secondary screen's origin in native pixels while
-    its size stays logical, which leaves a hole in the logical coordinate space
-    that default placement can land in. Anchoring to a real availableGeometry()
-    keeps the window reachable. Call once before show() to pick the spot, and
-    again afterwards to re-clamp now that the frame margins are known.
+    On multi-monitor high-DPI setups Qt reports a secondary screen's origin in
+    native pixels but its size in logical ones, leaving a hole default
+    placement can land in. Call before show() to pick the spot, and again
+    after to re-clamp once the frame margins are known.
     """
     screen = window.screen() or QGuiApplication.primaryScreen()
-    if screen is None:
-        if width is not None and height is not None:
-            window.resize(width, height)
-        return
-
-    avail = screen.availableGeometry()
-    if avail.isEmpty():
+    avail = screen.availableGeometry() if screen is not None else None
+    if avail is None or avail.isEmpty():
         if width is not None and height is not None:
             window.resize(width, height)
         return
 
     frame_margin = window.frameGeometry().size() - window.size()
-    target_width = window.width() if width is None else width
-    target_height = window.height() if height is None else height
     window.resize(
-        min(target_width, avail.width() - frame_margin.width()),
-        min(target_height, avail.height() - frame_margin.height()),
+        min(width or window.width(), avail.width() - frame_margin.width()),
+        min(height or window.height(), avail.height() - frame_margin.height()),
     )
-
     frame = window.frameGeometry()
     frame.moveCenter(avail.center())
     frame.moveLeft(max(avail.left(), min(frame.left(), avail.right() - frame.width() + 1)))
@@ -68,29 +70,25 @@ def fit_to_available_screen(
 
 
 def build(
-    theme_controller: ThemeController,
-    session_path=None,
+    theme_controller: ThemeController, session_path: Path
 ) -> tuple[Application, MainWindow, Autosave]:
     """Build the application, its window and its autosave."""
     app = Application()
     window = MainWindow(app, theme_controller)
-    autosave = Autosave(
-        app,
-        window,
-        SessionStore(session_path if session_path is not None else default_session_path()),
-        parent=app,
-    )
-    window.bind_session(autosave)
+    autosave = Autosave(app, window, SessionStore(session_path), parent=app)
+    window.bind_session(autosave.save_now)
     return app, window, autosave
 
 
 def main() -> int:
+    logging.basicConfig(level=logging.INFO)
+    sys.excepthook = report_uncaught
     configure_qt_fontdir()
     qt_app = QApplication(sys.argv)
     theme_controller = ThemeController(qt_app)
     theme_controller.apply_saved_or_default()
 
-    app, window, autosave = build(theme_controller)
+    _app, window, autosave = build(theme_controller, default_session_path())
 
     fit_to_available_screen(window, 1400, 850)
     window.show()

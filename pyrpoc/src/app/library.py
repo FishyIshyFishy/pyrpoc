@@ -1,18 +1,8 @@
-"""The arrays currently open in the application, like a list of open documents.
+"""The datasets currently open, like a list of open documents. Not persisted.
 
-Not persisted. The library starts empty each launch -- the same state the old
-displays started in.
-
-Authored data is filed here too, not only run outputs. A mask drawn in the mask
-editor is added as a ``Mask2D`` entry, which is what lets the Modulation
-parameter select one without the editor and that parameter knowing about each
-other: the editor files a dataset, the parameter asks ``matching(Mask2D)``, and
-neither names the other. The alternative was a path parameter and a save-then-
-reload round trip through the filesystem.
-
-Authored entries are distinguished two ways, both already here: by ``spec``,
-which is what filters every picker, and by ``run_id == 0``, since no run
-produced them.
+Authored data is filed here too: a mask from the mask editor is a ``Mask2D``
+entry, so a parameter can select it by kind without either side naming the
+other. Authored entries have ``run_id == 0``, since no run produced them.
 """
 
 from __future__ import annotations
@@ -37,14 +27,7 @@ class DataLibrary:
 
     def remove(self, dataset: Dataset) -> None:
         with self._lock:
-            if dataset not in self._datasets:
-                return
             self._datasets.remove(dataset)
-        self.notify()
-
-    def clear(self) -> None:
-        with self._lock:
-            self._datasets.clear()
         self.notify()
 
     def all(self) -> list[Dataset]:
@@ -55,27 +38,19 @@ class DataLibrary:
         with self._lock:
             return next((d for d in self._datasets if d.id == dataset_id), None)
 
-    def get(self, run_id: int, output: str) -> Dataset | None:
-        with self._lock:
-            return next(
-                (d for d in self._datasets if d.run_id == run_id and d.output == output), None
-            )
-
     def matching(self, *specs: type[Data]) -> list[Dataset]:
-        """Datasets a view declaring these contracts could render, newest first."""
+        """Datasets of these kinds, newest first."""
         wanted = set(specs)
         with self._lock:
             return [d for d in reversed(self._datasets) if d.spec in wanted]
 
     def subscribe(self, callback: Callable[[], None]) -> None:
         with self._lock:
-            if callback not in self._subscribers:
-                self._subscribers.append(callback)
+            self._subscribers.append(callback)
 
     def unsubscribe(self, callback: Callable[[], None]) -> None:
         with self._lock:
-            if callback in self._subscribers:
-                self._subscribers.remove(callback)
+            self._subscribers.remove(callback)
 
     def notify(self) -> None:
         with self._lock:

@@ -14,13 +14,8 @@ from .point_field import Point, point_field
 @block
 @dataclass
 class PointGroup(Group):
-    """Where a point acquisition happens.
-
-    Its own block rather than a field on the spectrum block, because what the
-    galvos do and what the detector does are configured independently -- and a
-    future point program that is not spectroscopy declares this one and not the
-    other.
-    """
+    """Where a point acquisition happens. Separate from the detector's block
+    because the galvos and the detector are configured independently."""
 
     label: ClassVar[str] = "Point"
 

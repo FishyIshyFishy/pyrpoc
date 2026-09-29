@@ -14,21 +14,16 @@ from pyrpoc.src.structs.runner import Runner, RunnerContext, Toggle
 class ArmAndRun(Runner):
     """Arm, request a ``pick``, turn what comes back into parameters, run.
 
-    Arming sends the request out and disarming withdraws it; the answer comes
-    back from whatever can provide that kind of pick. ``apply`` is the
-    program's half: it writes the pick into the blocks it is given, and raises
-    ``ParameterError`` when the pick cannot be placed.
-
-    Arming is refused while anything would stop the run starting, because the
-    answer is what starts it: an armed control promising a run that cannot
-    happen is worse than a refusal that says why.
+    ``apply`` is the program's half: it writes the pick into the blocks, raising
+    ``ParameterError`` when the pick cannot be placed. Arming is refused while
+    anything would stop the run starting, since the answer is what starts it.
     """
 
     pick: type[Pick]
     apply: Callable[[Pick, BlockMap], None]
-    label: str = "Arm"
-    icon: str | None = None
-    tooltip: str = "Arm, then provide what this run needs to start it"
+    label: str
+    icon: str | None
+    tooltip: str
 
     def attach(self, ctx: RunnerContext) -> None:
         def on_change(checked: bool) -> None:

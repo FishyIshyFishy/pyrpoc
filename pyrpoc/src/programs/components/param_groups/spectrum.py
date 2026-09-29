@@ -12,14 +12,9 @@ from pyrpoc.src.structs.registries import block
 @block
 @dataclass
 class SpectrumGroup(Group):
-    """A stand-in spectrometer, until there is a real one to configure.
-
-    Deterministic in the same way ``SignalGroup`` is: the spectrum is a function
-    of (seed, point, frame index), so the same spot gives the same trace on
-    every run and two different spots visibly differ. ``num_frames`` is here
-    rather than in a block of its own for the same reason it is in
-    ``ScanGroup`` -- it decides how the acquisition is done.
-    """
+    """A stand-in spectrometer, until there is a real one to configure. The
+    spectrum is a function of (seed, point, frame index), so the same spot
+    gives the same trace every run."""
 
     label: ClassVar[str] = "Spectrum"
 

@@ -1,20 +1,8 @@
 """Confocal: raster the galvo, read the analog inputs, publish a frame.
 
-The program owns its loop and its hardware. There is no base class supplying
-``while not should_stop``, no saving (the executor reads ``emits`` and creates
-datasets with a save policy before ``run`` is called), and no frame counting.
-
-The scan code lives here rather than in a shared operations folder: it is
-acquisition-specific, and keeping it beside the program that runs it means
-deleting this file deletes the whole modality. This is the canonical copy of
-the waveform arithmetic; ``split_confocal.py`` and ``flim.py`` carry the same
-functions verbatim and are meant to stay that way.
-
-The NI task setup is not pinned by anything and only fails on the instrument,
-so it is carried over line for line: the lowercase ``/port0/`` test that
-separates clocked DO lines from static ones, the single-channel-versus-list
-payload shape, the AI-then-DO-then-AO start ordering, the timeout, and the
-inverted static write on teardown.
+This is the canonical copy of the waveform arithmetic; ``split_confocal.py``
+and ``flim.py`` carry the same functions and must stay identical. The NI task
+setup only fails on the instrument, so change it with a rig to test on.
 """
 
 from __future__ import annotations
@@ -28,10 +16,7 @@ from nidaqmx.constants import AcquisitionType
 from nidaqmx.stream_readers import AnalogMultiChannelReader
 
 from pyrpoc.src.devices import DAQ, DaqError, Galvo
-from pyrpoc.src.structs.data import (
-    Dataset,  # noqa: F401  (documents what publish writes into)
-    Image2D,
-)
+from pyrpoc.src.structs.data import Image2D
 from pyrpoc.src.structs.program import Program
 from pyrpoc.src.structs.registries import program_registry
 
@@ -43,18 +28,10 @@ from .components.param_groups import (
 )
 from .components.runners import Continuous, Single
 
-# --------------------------------------------------------------------------- #
-# Waveform arithmetic                                                          #
-# --------------------------------------------------------------------------- #
-
 
 def pixel_samples(dwell_time_us: float, sample_rate_hz: float) -> int:
-    """Samples per pixel for a raster scan.
-
-    Truncating, floor 1. The FLIM path rounds and has a floor of 2 because its
-    counter needs a high tick and a low tick. The two formulas genuinely differ
-    -- do not unify them.
-    """
+    """Samples per pixel: truncating, floor 1. FLIM's rounds with floor 2,
+    since its counter needs a high and a low tick; do not unify them."""
     return max(1, int(dwell_time_us * 1e-6 * sample_rate_hz))
 
 
@@ -69,35 +46,22 @@ def generate_raster_waveform(
     slow_axis_offset: float,
     slow_axis_amplitude: float,
 ) -> np.ndarray:
-    """
-    create a waveform from the raster scan
-    1. compute total pixels given the extra left and right
-    2. compute total amplitude per line by padding the voltage step size to the left and right
-        of the offset-amp and offset+amp points
-    3. create waveforms
-    """
+    """The (fast, slow) AO waveform for one frame: the fast axis sweeps the
+    overscan-padded width each line, holding ``pixel_samples`` per pixel."""
     total_x = extra_left + x_pixels + extra_right
-    fast_amp = max(float(fast_axis_amplitude), 1e-6)
-    slow_amp = max(float(slow_axis_amplitude), 1e-6)
-    fast_step = (2.0 * fast_amp) / float(x_pixels)
-    fast_start = -fast_amp - (float(extra_left) * fast_step)
-    fast_axis = (
-        fast_start + (np.arange(total_x, dtype=np.float32) * fast_step) + float(fast_axis_offset)
+    fast_step = 2.0 * fast_axis_amplitude / x_pixels
+    fast_start = -fast_axis_amplitude - extra_left * fast_step
+    fast_axis = fast_start + np.arange(total_x, dtype=np.float32) * fast_step + fast_axis_offset
+    slow_axis = (
+        np.linspace(-1.0, 1.0, y_pixels, endpoint=False, dtype=np.float32) * slow_axis_amplitude
+        + slow_axis_offset
     )
-    slow_axis = np.linspace(
-        -1.0, 1.0, y_pixels, endpoint=False, dtype=np.float32
-    ) * slow_amp + float(slow_axis_offset)
     fast_raster = np.tile(np.repeat(fast_axis, pixel_samples), y_pixels)
     slow_raster = np.repeat(slow_axis, total_x * pixel_samples)
     return np.vstack((fast_raster, slow_raster)).astype(np.float64)
 
 
 def waveform_for_scan(scan: ScanGroup, pixel_samples: int) -> np.ndarray:
-    """``generate_raster_waveform`` driven from a ``ScanGroup``.
-
-    ``generate_raster_waveform`` keeps its explicit nine-argument signature;
-    this is the caller's side of it.
-    """
     return generate_raster_waveform(
         x_pixels=scan.x_pixels,
         extra_left=scan.extra_left,
@@ -140,92 +104,44 @@ def reshape_to_frame(
     return np.stack(frame_channels, axis=0).astype(np.float32, copy=False)
 
 
-# --------------------------------------------------------------------------- #
-# Masks to per-pixel TTL waveforms                                             #
-# --------------------------------------------------------------------------- #
-
-
 def resize_mask_nearest(mask_bool: np.ndarray, target_h: int, target_w: int) -> np.ndarray:
     source_h, source_w = mask_bool.shape
-    if source_h <= 0 or source_w <= 0:
-        return np.zeros((target_h, target_w), dtype=bool)
     y_idx = np.minimum((np.arange(target_h, dtype=np.int64) * source_h) // target_h, source_h - 1)
     x_idx = np.minimum((np.arange(target_w, dtype=np.int64) * source_w) // target_w, source_w - 1)
     return mask_bool[np.ix_(y_idx, x_idx)]
 
 
-def preprocess_mask_to_scan_grid(
-    raw_mask: object,
-    total_x: int,
-    total_y: int,
-    scan_x_pixels: int,
-    extra_left: int,
-    extra_right: int,
-) -> np.ndarray:
-    if total_x <= 0 or total_y <= 0:
-        raise ValueError("total_x and total_y must be positive")
-    if (extra_left + scan_x_pixels + extra_right) != total_x:
-        raise ValueError("total_x must equal extra_left + scan_x_pixels + extra_right")
-
-    mask = np.asarray(raw_mask, dtype=np.uint8)
-    if mask.ndim != 2:
-        raise ValueError(f"Mask must be 2D, got shape={mask.shape}")
-
-    if scan_x_pixels == 0:
-        return np.zeros((total_y, total_x), dtype=bool)
-
-    mask_bool = mask > 0
-    if mask_bool.shape != (total_y, scan_x_pixels):
-        mask_bool = resize_mask_nearest(mask_bool, target_h=total_y, target_w=scan_x_pixels)
-
-    padded = np.zeros((total_y, total_x), dtype=bool)
-    padded[:, extra_left : extra_left + scan_x_pixels] = mask_bool
+def mask_on_scan_grid(mask: np.ndarray, scan: ScanGroup) -> np.ndarray:
+    """The mask resized onto the kept pixels, padded with the overscan columns."""
+    mask_bool = np.asarray(mask, dtype=np.uint8) > 0
+    if mask_bool.shape != (scan.y_pixels, scan.x_pixels):
+        mask_bool = resize_mask_nearest(mask_bool, scan.y_pixels, scan.x_pixels)
+    padded = np.zeros((scan.y_pixels, scan.total_x), dtype=bool)
+    padded[:, scan.extra_left : scan.extra_left + scan.x_pixels] = mask_bool
     return padded
 
 
 def mask_ttl(
-    masks: Sequence[tuple[Mask, np.ndarray]],
+    masks: Sequence[Mask],
     *,
     scan: ScanGroup,
     pixel_samples: int,
     device_name: str,
 ) -> dict[str, np.ndarray]:
-    """One flat boolean TTL signal per bound digital line.
-
-    A mask that is entirely zero after padding is skipped, so its channel does
-    not appear in the result and no DO task is created for it.
-    """
-    total_x = scan.total_x
-    total_y = scan.y_pixels
-
+    """One flat boolean TTL signal per bound digital line. A mask that is all
+    zero on the scan grid gets no line, so no DO task is created for it."""
     ttl_signals: dict[str, np.ndarray] = {}
-    for binding, mask in masks:
-        if mask is None:
-            continue
-        channel_name = binding.channel(device_name)
-        try:
-            padded = preprocess_mask_to_scan_grid(
-                mask,
-                total_x=total_x,
-                total_y=total_y,
-                scan_x_pixels=scan.x_pixels,
-                extra_left=scan.extra_left,
-                extra_right=scan.extra_right,
-            )
-        except Exception as exc:
-            raise RuntimeError(f"Failed to preprocess mask for {channel_name}: {exc}") from exc
+    for binding in masks:
+        # Narrows for the type checker: a run's masks are resolved at start.
+        if binding.array is None:
+            raise ValueError(f"mask '{binding.describe()}' was not resolved")
+        padded = mask_on_scan_grid(binding.array, scan)
         if not np.any(padded):
             continue
-        ttl = np.zeros((total_y, total_x, pixel_samples), dtype=bool)
+        ttl = np.zeros((scan.y_pixels, scan.total_x, pixel_samples), dtype=bool)
         ttl[padded] = True
-        ttl_signals[channel_name] = ttl.reshape(-1)
-
+        ttl_signals[binding.channel(device_name)] = ttl.reshape(-1)
     return ttl_signals
-
-
-# --------------------------------------------------------------------------- #
-# The scan                                                                     #
-# --------------------------------------------------------------------------- #
 
 
 def run_raster(
@@ -365,13 +281,7 @@ def raster_scan(
     sample_rate_hz: float,
     ttl: dict[str, np.ndarray],
 ) -> np.ndarray:
-    """Perform one confocal raster scan and return a ``(C, H, W)`` float32 frame.
-
-    The devices supply their own wiring; the caller supplies the run's geometry.
-    ``ttl`` has no default: an empty dict means "no mask drives a digital line",
-    and the caller has to say so rather than leaving it off and finding out on
-    the instrument which of the two it meant.
-    """
+    """One confocal raster scan, as a ``(C, H, W)`` float32 frame."""
     samples_per_pixel = pixel_samples(scan.dwell_time_us, sample_rate_hz)
 
     scan_data, total_y_out, x_out, px_out = run_raster(
@@ -391,27 +301,16 @@ def raster_scan(
     return reshape_to_frame(scan_data, total_y_out, x_out, px_out)
 
 
-# --------------------------------------------------------------------------- #
-# The program                                                                  #
-# --------------------------------------------------------------------------- #
-
-
 def channel_labels(daq: DAQ) -> list[str]:
     return [f"ai{index}" for index in daq.config.ai_channels]
 
 
-def build_ttl(scan: ScanGroup, modulation: ModulationGroup, daq_params: DaqGroup, daq: DAQ) -> dict:
-    """Turn the bound masks into per-pixel TTL waveforms.
-
-    Done once before the loop rather than once per frame. The pixels arrive with
-    the parameter, resolved against the open data when the run started, so
-    this reads nothing.
-    """
-    if not modulation.masks:
-        return {}
-    loaded = [(mask, mask.array) for mask in modulation.masks if mask.array is not None]
+def build_ttl(
+    scan: ScanGroup, modulation: ModulationGroup, daq_params: DaqGroup, daq: DAQ
+) -> dict[str, np.ndarray]:
+    """The bound masks as per-pixel TTL waveforms, built once before the loop."""
     return mask_ttl(
-        loaded,
+        modulation.masks,
         scan=scan,
         pixel_samples=pixel_samples(scan.dwell_time_us, daq_params.sample_rate_hz),
         device_name=daq.config.device_name,

@@ -1,22 +1,7 @@
-"""The data library panel: every acquisition this session has open.
+"""The data library panel: every dataset this session has open.
 
-One of the three fixed panels -- always present, built once by
-app/window.py, not offered under Add. See ``panels/__init__.py`` for how
-that differs from the four dataset-rendering panels.
-
-The Data Library dock holds this and nothing else. The list of open displays
-shared it for a while, on the grounds that what exists and what is drawing it
-are two halves of one question; that list is the Panels menu now, which answers
-the same half without spending a dock on it.
-
-A table, not the row of concatenated text it replaces. Four narrow columns let
-one acquisition be picked out at a glance where
-"simulation #3 · intensity  -  2D Image" had to be read.
-
-Size is here because a dataset keeps every array it was handed, so a long
-continuous run is the one thing in the application that can exhaust a machine.
-This is not a safeguard -- nothing in this panel stops a run -- but it turns
-"the software got slow" into a number that can be watched while it happens.
+Size is shown because a dataset keeps every frame, so a long continuous run is
+what can exhaust a machine; this makes that visible while it happens.
 """
 
 from __future__ import annotations
@@ -24,7 +9,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QHBoxLayout, QHeaderView, QLabel, QPushButton, QVBoxLayout, QWidget
+from PyQt6.QtWidgets import QHBoxLayout, QHeaderView, QLabel, QPushButton, QVBoxLayout
 
 from pyrpoc.src.structs.data import Dataset
 from pyrpoc.src.structs.panel import Panel
@@ -37,18 +22,12 @@ if TYPE_CHECKING:  # pragma: no cover
 TIME, NAME, OUTPUT, SIZE = range(4)
 COLUMNS = ["Time", "Name", "Output", "Size"]
 
-# 1024-based, because the number a user compares this against is the one their
-# task manager shows.
+# 1024-based, to match the number a task manager shows.
 UNITS = ("B", "KB", "MB", "GB", "TB")
 
 
 def format_size(nbytes: int) -> str:
-    """Bytes as a short string, for a narrow right-aligned cell.
-
-    Three significant figures at most: the question this answers is "is this
-    run about to fill memory", and a byte-exact figure is both wider than the
-    column and less legible than "1.4 GB".
-    """
+    """Bytes in at most three significant figures, for a narrow column."""
     if nbytes <= 0:
         return "-"
     size = float(nbytes)
@@ -64,8 +43,8 @@ def format_size(nbytes: int) -> str:
 class DataLibraryPanel(Panel):
     display_name = "Data Library"
 
-    def __init__(self, app: Application, parent: QWidget | None = None):
-        super().__init__(parent)
+    def __init__(self, app: Application):
+        super().__init__()
         self.app = app
         # Datasets in table order, so a row number maps back to a dataset.
         self.rows: list[Dataset] = []
@@ -73,12 +52,10 @@ class DataLibraryPanel(Panel):
         root = QVBoxLayout(self)
         root.setContentsMargins(8, 4, 8, 8)
         root.setSpacing(6)
-
         self.empty_label = QLabel("No acquisitions yet. Data appears here as it arrives.", self)
         self.empty_label.setStyleSheet("color: palette(mid); font-style: italic;")
         self.empty_label.setWordWrap(True)
-        # Nothing in this layout expands once the table is hidden, so the label
-        # would otherwise be handed the panel's whole height and centre itself.
+        # Nothing expands once the table is hidden, so pin the label to the top.
         self.empty_label.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
         root.addWidget(self.empty_label)
 
@@ -88,41 +65,37 @@ class DataLibraryPanel(Panel):
             header.setSectionResizeMode(column, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(NAME, QHeaderView.ResizeMode.Stretch)
         root.addWidget(self.table, 1)
+        root.addLayout(self.build_actions_row())
 
-        actions = QHBoxLayout()
-        actions.setContentsMargins(0, 0, 0, 0)
-        self.total_label = QLabel("", self)
-        self.total_label.setToolTip("Memory held by every open acquisition together.")
-        self.total_label.setStyleSheet("color: palette(mid);")
-        actions.addWidget(self.total_label)
-        actions.addStretch(1)
-        self.close_btn = QPushButton("Close", self)
-        self.close_btn.setToolTip(
-            "Drop the selected acquisition from memory. Files already saved stay on disk."
-        )
-        actions.addWidget(self.close_btn)
-        root.addLayout(actions)
-
-        self.close_btn.clicked.connect(self.close_selected)
         self.table.itemSelectionChanged.connect(self.refresh_actions)
         self.app.library.subscribe(self.rebuild)
         self.app.bridge.dataset_changed.connect(self.on_dataset_changed)
         self.rebuild()
 
-    # -- rows ---------------------------------------------------------------- #
+    def build_actions_row(self) -> QHBoxLayout:
+        row = QHBoxLayout()
+        row.setContentsMargins(0, 0, 0, 0)
+        self.total_label = QLabel("", self)
+        self.total_label.setToolTip("Memory held by every open acquisition together.")
+        self.total_label.setStyleSheet("color: palette(mid);")
+        row.addWidget(self.total_label)
+        row.addStretch(1)
+        self.close_btn = QPushButton("Close", self)
+        self.close_btn.setToolTip(
+            "Drop the selected acquisition from memory. Files already saved stay on disk."
+        )
+        self.close_btn.clicked.connect(self.close_selected)
+        row.addWidget(self.close_btn)
+        return row
 
     def rebuild(self) -> None:
         """Redraw every row, keeping the selection where the row survives.
-
-        Membership changes are rare -- one per run, one per close -- which is
-        why this can afford to be a full rebuild and ``on_dataset_changed``
-        cannot.
-        """
+        Membership changes are rare enough for a full rebuild."""
         chosen = self.selected_dataset()
         self.rows = list(reversed(self.app.library.all()))
         self.table.setRowCount(len(self.rows))
         for row, dataset in enumerate(self.rows):
-            self.table.set_cell(row, TIME, dataset.started_time or "-")
+            self.table.set_cell(row, TIME, dataset.started_time)
             name = self.table.set_cell(row, NAME, dataset.name)
             name.setToolTip(f"{dataset.name} · {dataset.spec.name}")
             self.table.set_cell(row, OUTPUT, dataset.output)
@@ -130,36 +103,25 @@ class DataLibraryPanel(Panel):
 
         self.table.setVisible(bool(self.rows))
         self.empty_label.setVisible(not self.rows)
-        if chosen is not None and chosen in self.rows:
+        if chosen in self.rows:
             self.table.selectRow(self.rows.index(chosen))
         self.refresh_actions()
 
     def on_dataset_changed(self, dataset: Dataset) -> None:
-        """One cell and the total, not the whole table.
-
-        A continuous run appends several times a second, and rebuilding on each
-        of them would drop the selection out from under whoever is clicking.
-        The total sums over open datasets, not over what they hold, so it stays
-        cheap however long the run goes on.
-        """
-        for row, existing in enumerate(self.rows):
-            if existing is dataset:
-                self.table.set_cell(row, SIZE, format_size(dataset.nbytes), right=True)
-                self.refresh_total()
-                return
+        """Update one cell and the total, not the whole table: a continuous run
+        appends several times a second, and a rebuild would drop the selection."""
+        if dataset in self.rows:
+            row = self.rows.index(dataset)
+            self.table.set_cell(row, SIZE, format_size(dataset.nbytes), right=True)
+            self.refresh_total()
 
     def refresh_total(self) -> None:
         total = sum(dataset.nbytes for dataset in self.rows)
         self.total_label.setText(f"{format_size(total)} in memory" if total else "")
 
-    # -- the selection -------------------------------------------------------- #
-
     def selected_dataset(self) -> Dataset | None:
         rows = {index.row() for index in self.table.selectedIndexes()}
-        if len(rows) != 1:
-            return None
-        row = rows.pop()
-        return self.rows[row] if 0 <= row < len(self.rows) else None
+        return self.rows[rows.pop()] if len(rows) == 1 else None
 
     def close_selected(self) -> None:
         dataset = self.selected_dataset()
@@ -167,7 +129,7 @@ class DataLibraryPanel(Panel):
             self.app.bridge.release(dataset)
 
     def refresh_actions(self) -> None:
-        """An empty panel is the hint and nothing else -- no button to grey out."""
+        """An empty panel shows only the hint, with no button to grey out."""
         self.refresh_total()
         self.total_label.setVisible(bool(self.rows))
         self.close_btn.setVisible(bool(self.rows))

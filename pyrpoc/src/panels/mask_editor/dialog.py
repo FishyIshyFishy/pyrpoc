@@ -1,10 +1,4 @@
-"""Re-thresholding one ROI against a live preview of the resulting mask.
-
-Its own file because it is a real dialog with its own state machine (spin
-boxes and a slider that must never echo each other's change back), not a
-detail of how the panel lays itself out. ``MaskPreviewLabel`` lives here
-rather than in its own file because nothing else uses it.
-"""
+"""Re-thresholding one ROI against a live preview of the resulting mask."""
 
 from __future__ import annotations
 
@@ -13,7 +7,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QImage, QPixmap
+from PyQt6.QtGui import QImage, QPixmap, QResizeEvent
 from PyQt6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
@@ -33,29 +27,25 @@ if TYPE_CHECKING:  # pragma: no cover
 
 
 class MaskPreviewLabel(QLabel):
-    """Shows a mask scaled to fit, and keeps fitting it as it is resized.
+    """Shows a mask scaled to fit, re-fitting on every resize: the layout
+    stretches the label after the mask is set, which would clip a pixmap
+    scaled only once."""
 
-    Scaling once when the mask changes is not enough: the label is stretched
-    by its layout after that, and a pixmap sized to the old geometry is
-    silently clipped rather than re-fitted.
-    """
-
-    def __init__(self, parent: QWidget | None = None):
+    def __init__(self, parent: QWidget):
         super().__init__(parent)
         self._source: QPixmap | None = None
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.setMinimumSize(240, 240)
         self.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Ignored)
 
-    def set_source(self, pixmap: QPixmap | None) -> None:
+    def set_source(self, pixmap: QPixmap) -> None:
         self._source = pixmap
         self.rescale()
 
     def rescale(self) -> None:
-        if self._source is None or self._source.isNull():
+        if self._source is None:
             return
-        # Nearest-neighbour: a mask is two values, and smoothing invents
-        # greys that no pixel of it has.
+        # Nearest-neighbour: smoothing would invent greys a two-value mask lacks.
         super().setPixmap(
             self._source.scaled(
                 self.contentsRect().size(),
@@ -64,63 +54,26 @@ class MaskPreviewLabel(QLabel):
             )
         )
 
-    def resizeEvent(self, event) -> None:
+    def resizeEvent(self, event: QResizeEvent | None) -> None:
         super().resizeEvent(event)
         self.rescale()
 
 
 class RoiThresholdDialog(QDialog):
-    """Re-threshold one ROI against a live preview of the resulting mask.
-
-    The preview is the same array ``Preview`` shows -- the whole mask, every
-    ROI -- recomputed on each change. Showing only the edited ROI's own pixels
-    would answer a question nobody asked: a threshold is chosen for how the
-    finished mask looks, and the other ROIs are the context that decision is
-    made in.
-
-    The editor's stored ROI is untouched until the dialog is accepted, so the
-    preview runs against a substituted copy and Cancel needs no undo.
-    """
+    """Re-threshold one ROI, previewing the whole mask: a threshold is chosen
+    for how the finished mask looks, with the other ROIs as context. The stored
+    ROI is untouched until accepted, so Cancel needs no undo."""
 
     def __init__(self, editor: MaskEditorPanel, index: int):
         super().__init__(editor)
         self.editor = editor
         self.index = index
-        roi = editor.rois()[index]
         self.setWindowTitle(f"ROI {index + 1} thresholds")
 
-        int_min = int(np.floor(editor.data_min()))
-        int_max = int(np.ceil(editor.data_max()))
-        low = max(int_min, min(int_max, int(round(roi.threshold_low))))
-        high = max(low, min(int_max, int(round(roi.threshold_high))))
-
         layout = QVBoxLayout(self)
-
         self.preview_label = MaskPreviewLabel(self)
         layout.addWidget(self.preview_label, 1)
-
-        threshold_row = QHBoxLayout()
-        self.low_spin = QSpinBox(self)
-        self.high_spin = QSpinBox(self)
-        for spin in (self.low_spin, self.high_spin):
-            spin.setRange(int_min, int_max)
-            spin.setFixedWidth(74)
-            spin.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.low_spin.setValue(low)
-        self.high_spin.setValue(high)
-        self.low_spin.valueChanged.connect(self.on_spin_changed)
-        self.high_spin.valueChanged.connect(self.on_spin_changed)
-
-        self.slider = RangeSlider(self)
-        self.slider.setRange(int_min, int_max)
-        self.slider.setValues(low, high)
-        self.slider.values_changed.connect(self.on_slider_changed)
-
-        threshold_row.addWidget(self.low_spin)
-        threshold_row.addWidget(self.slider, 1)
-        threshold_row.addWidget(self.high_spin)
-        layout.addLayout(threshold_row)
-
+        layout.addLayout(self.build_threshold_row(editor.rois()[index]))
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel,
             parent=self,
@@ -132,12 +85,34 @@ class RoiThresholdDialog(QDialog):
         self.resize(420, 520)
         self.update_preview()
 
+    def build_threshold_row(self, roi: MaskRoi) -> QHBoxLayout:
+        int_min = int(np.floor(self.editor.data_min()))
+        int_max = int(np.ceil(self.editor.data_max()))
+        low = max(int_min, min(int_max, int(round(roi.threshold_low))))
+        high = max(low, min(int_max, int(round(roi.threshold_high))))
+
+        self.low_spin = QSpinBox(self)
+        self.high_spin = QSpinBox(self)
+        for spin, value in ((self.low_spin, low), (self.high_spin, high)):
+            spin.setRange(int_min, int_max)
+            spin.setFixedWidth(74)
+            spin.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            spin.setValue(value)
+            spin.valueChanged.connect(self.on_spin_changed)
+        self.slider = RangeSlider(self)
+        self.slider.setRange(int_min, int_max)
+        self.slider.setValues(low, high)
+        self.slider.values_changed.connect(self.on_slider_changed)
+
+        row = QHBoxLayout()
+        row.addWidget(self.low_spin)
+        row.addWidget(self.slider, 1)
+        row.addWidget(self.high_spin)
+        return row
+
     def values(self) -> tuple[int, int]:
-        low = int(self.low_spin.value())
-        high = int(self.high_spin.value())
-        if high < low:
-            low, high = high, low
-        return low, high
+        low, high = self.low_spin.value(), self.high_spin.value()
+        return (high, low) if high < low else (low, high)
 
     def write_values(self, low: int, high: int) -> None:
         controls = (self.low_spin, self.high_spin, self.slider)
@@ -150,8 +125,7 @@ class RoiThresholdDialog(QDialog):
             control.blockSignals(False)
 
     def on_spin_changed(self, _value: int) -> None:
-        low, high = self.values()
-        self.write_values(low, high)
+        self.write_values(*self.values())
         self.update_preview()
 
     def on_slider_changed(self, low: int, high: int) -> None:
@@ -161,7 +135,8 @@ class RoiThresholdDialog(QDialog):
     def previewed_rois(self) -> list[MaskRoi]:
         low, high = self.values()
         rois = list(self.editor.rois())
-        if 0 <= self.index < len(rois):
+        # A frame of a new shape while the dialog is open clears the ROIs.
+        if self.index < len(rois):
             rois[self.index] = replace(
                 rois[self.index], threshold_low=float(low), threshold_high=float(high)
             )

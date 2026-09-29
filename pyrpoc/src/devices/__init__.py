@@ -1,12 +1,7 @@
-"""Addressable pieces of the instrument: driver and panel in one folder.
+"""Device implementations, one folder each: driver and panel together.
 
-A device has configuration, calibration, a panel and persistence. Two properties
-vary: whether it owns a connection, and whether it is backed by another device
-rather than having one of its own.
-
-Each folder implements ``structs.device.Device``. May import structs/. Qt
-appears only in devices/*/panel.py, imported lazily inside
-Device.panel() so the headless layers stay importable without Qt.
+Qt appears only in ``*/panel.py``, imported inside ``Device.panel()`` so this
+package stays importable without a display.
 """
 
 from __future__ import annotations

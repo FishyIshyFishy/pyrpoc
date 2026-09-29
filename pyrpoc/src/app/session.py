@@ -1,28 +1,14 @@
 """The session: what a saved workbench holds, the file it lives in, and the wiring.
 
-Configuration only: what exists, how it is configured, and the layout -- small,
-JSON, and there so the workbench comes back on relaunch. Acquired data is
-deliberately not here. It is large, lives in TIFF, and exists because it is the
-experimental result; merge them and the session file starts trying to hold
-arrays.
-
-Three parts, top to bottom. The state dataclasses and the store know the file
-format and nothing else -- no Qt, and the path is supplied rather than looked up,
-so they stay testable headless. ``capture``/``apply`` turn the live application
-into a ``SessionState`` and back, which is connection logic. ``Autosave`` is the
-Qt timer that drives it.
-
-``SessionState.views``/``ViewState`` keep their name from before panels/ was
-panels/: it is the on-disk field name, and renaming it would reset every
-saved session's added-panel layout for no functional gain. It holds the
-added panels only -- image_2d, overlay, mask_editor, spectrum -- the same set
-``Application.panels`` does; the three fixed panels are not saved here at all.
+Configuration and layout only, as small JSON; acquired data lives in TIFF. The
+state dataclasses and the store know the file format and no Qt; ``capture`` and
+``apply`` convert the live application; ``Autosave`` is the Qt timer driving it.
 """
 
 from __future__ import annotations
 
-import contextlib
 import json
+import logging
 import os
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -30,23 +16,22 @@ from typing import Any
 
 from PyQt6.QtCore import QObject, QTimer
 
-from pyrpoc.src.structs.panel import panel_registry
+from pyrpoc.src.panels import panel_registry
+from pyrpoc.src.structs.params import ParameterError
 from pyrpoc.src.structs.registries import device_registry
 
 from . import catalog
 from .application import Application
+from .window import MainWindow
 
-# --------------------------------------------------------------------------- #
-# What a saved session holds                                                   #
-# --------------------------------------------------------------------------- #
+log = logging.getLogger(__name__)
 
-# Bumped from 7. Parameters are no longer stored per program: a block is
-# shared by every modality that declares it, so there is one flat state dict
-# keyed by block class name instead of a nested dict keyed by program. A v7
-# file's ``params_by_program`` has no single answer to map onto -- three
-# programs could each hold a different scan block -- so there is no converter
-# and a v7 session loads as defaults, once.
+# Bump when the shape changes. A file of another version loads as defaults,
+# since there is no converter between shapes.
 SCHEMA_VERSION = 8
+
+# What malformed session JSON raises on its way into the application.
+BAD_STATE = (KeyError, TypeError, ValueError, ParameterError)
 
 
 @dataclass
@@ -59,6 +44,9 @@ class DeviceState:
 
 @dataclass
 class ViewState:
+    """One added panel. Named for the on-disk field ``views``, kept so saved
+    layouts still load."""
+
     key: str
     instance_id: str = ""
     user_label: str | None = None
@@ -67,11 +55,6 @@ class ViewState:
 
 @dataclass
 class SaveState:
-    """What acquisitions are called and where they are written.
-
-    One block, not one per program: saving is not something a program decides.
-    """
-
     name: str = "acquisition"
     directory: str = ""
     enabled: bool = False
@@ -83,23 +66,13 @@ class SessionState:
     devices: list[DeviceState] = field(default_factory=list)
     views: list[ViewState] = field(default_factory=list)
     selected_program: str | None = None
-    # Every parameter block, keyed by class name. The state dict: one entry
-    # per block, not one per program, because a block is shared.
+    # Every parameter block, keyed by class name: one entry per block, shared.
     param_blocks: dict[str, dict[str, Any]] = field(default_factory=dict)
     save: SaveState = field(default_factory=SaveState)
     ads_layout: str | None = None
 
-    def is_empty(self) -> bool:
-        return not self.devices and not self.views and not self.param_blocks
-
-
-# --------------------------------------------------------------------------- #
-# Reading and writing the session file                                         #
-# --------------------------------------------------------------------------- #
-
 
 def default_session_path() -> Path:
-    """Where the session lives when the caller does not say."""
     if os.name == "nt":
         root = Path(os.environ.get("APPDATA", Path.home() / "AppData" / "Roaming"))
     else:
@@ -108,41 +81,26 @@ def default_session_path() -> Path:
 
 
 class SessionStore:
-    def __init__(self, path: Path | str | None = None):
-        self.path = Path(path) if path is not None else default_session_path()
-        self.last_load_error: str | None = None
-
-    # -- reading ------------------------------------------------------------ #
+    def __init__(self, path: Path):
+        self.path = path
 
     def load(self) -> SessionState:
-        """Return the saved session, or defaults if there is not a usable one.
-
-        A version mismatch is not an error to report at the user: parameter
-        storage has changed shape twice and an old file simply resets.
-        Anything else that goes wrong is recorded in ``last_load_error``.
-        """
-        self.last_load_error = None
+        """The saved session, or defaults if there is not a usable one. A
+        corrupt file is logged rather than blocking launch."""
         if not self.path.exists():
             return SessionState()
         try:
             raw = json.loads(self.path.read_text(encoding="utf-8"))
-        except Exception as exc:  # noqa: BLE001 - a corrupt file must not block launch
-            self.last_load_error = f"could not read {self.path}: {exc}"
+        except (OSError, ValueError):
+            log.warning("could not read %s; starting fresh", self.path, exc_info=True)
             return SessionState()
-
-        if not isinstance(raw, dict):
-            self.last_load_error = f"{self.path} does not contain a session"
+        if not isinstance(raw, dict) or raw.get("schema_version") != SCHEMA_VERSION:
             return SessionState()
-        if int(raw.get("schema_version", -1)) != SCHEMA_VERSION:
-            return SessionState()
-
         try:
             return decode(raw)
-        except Exception as exc:  # noqa: BLE001
-            self.last_load_error = f"could not decode {self.path}: {exc}"
+        except BAD_STATE:
+            log.warning("could not decode %s; starting fresh", self.path, exc_info=True)
             return SessionState()
-
-    # -- writing ------------------------------------------------------------ #
 
     def save(self, state: SessionState) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -150,6 +108,11 @@ class SessionStore:
         temporary = self.path.with_suffix(self.path.suffix + ".tmp")
         temporary.write_text(payload, encoding="utf-8")
         temporary.replace(self.path)
+
+
+def decode_rows(rows: Any) -> list[dict[str, Any]]:
+    """The entries of a saved list that are objects with a key."""
+    return [row for row in rows if isinstance(row, dict) and row.get("key")]
 
 
 def decode(raw: dict[str, Any]) -> SessionState:
@@ -160,8 +123,7 @@ def decode(raw: dict[str, Any]) -> SessionState:
             user_label=row.get("user_label"),
             state=dict(row.get("state") or {}),
         )
-        for row in raw.get("devices", [])
-        if isinstance(row, dict) and row.get("key")
+        for row in decode_rows(raw.get("devices", []))
     ]
     views = [
         ViewState(
@@ -170,8 +132,7 @@ def decode(raw: dict[str, Any]) -> SessionState:
             user_label=row.get("user_label"),
             state=dict(row.get("state") or {}),
         )
-        for row in raw.get("views", [])
-        if isinstance(row, dict) and row.get("key")
+        for row in decode_rows(raw.get("views", []))
     ]
     blocks = {
         str(key): dict(value)
@@ -180,7 +141,6 @@ def decode(raw: dict[str, Any]) -> SessionState:
     }
     layout = raw.get("ads_layout")
     return SessionState(
-        schema_version=SCHEMA_VERSION,
         devices=devices,
         views=views,
         selected_program=raw.get("selected_program"),
@@ -191,7 +151,6 @@ def decode(raw: dict[str, Any]) -> SessionState:
 
 
 def decode_save(raw: Any) -> SaveState:
-    """The save block, or defaults. Absent in every file written before it."""
     if not isinstance(raw, dict):
         return SaveState()
     default = SaveState()
@@ -202,12 +161,7 @@ def decode_save(raw: Any) -> SaveState:
     )
 
 
-# --------------------------------------------------------------------------- #
-# Live application <-> session                                                 #
-# --------------------------------------------------------------------------- #
-
-
-def capture(app: Application, window=None) -> SessionState:
+def capture(app: Application, window: MainWindow) -> SessionState:
     devices = [
         DeviceState(
             key=device_registry.key_for(type(device)),
@@ -220,8 +174,8 @@ def capture(app: Application, window=None) -> SessionState:
     panels = [
         ViewState(
             key=panel.type_key,
-            instance_id=str(getattr(panel, "instance_id", "")),
-            user_label=getattr(panel, "user_label", None),
+            instance_id=panel.instance_id,
+            user_label=panel.user_label,
             state=panel.export_persistence_state(),
         )
         for panel in app.panels
@@ -231,69 +185,54 @@ def capture(app: Application, window=None) -> SessionState:
         views=panels,
         selected_program=app.selected_program,
         param_blocks=app.params_state(),
-        save=SaveState(
-            name=app.save.name,
-            directory=app.save.directory,
-            enabled=app.save.enabled,
-        ),
-        ads_layout=window.save_dock_layout() if window is not None else None,
+        save=SaveState(name=app.save.name, directory=app.save.directory, enabled=app.save.enabled),
+        ads_layout=window.save_dock_layout(),
     )
 
 
-def apply(state: SessionState, app: Application, window=None) -> None:
-    """Rebuild runtime state from a saved session.
-
-    Anything that cannot be recreated -- a device type that no longer exists, a
-    panel whose class was removed -- is skipped rather than blocking the launch.
-    """
-    app.clear_panels()
-    app.clear_devices()
-
+def restore_devices(state: SessionState, app: Application) -> None:
     for row in state.devices:
         try:
             device = app.add_device(
                 row.key, instance_id=row.instance_id or None, user_label=row.user_label
             )
             device.import_state(row.state)
-        except Exception:
-            continue
+        except BAD_STATE:
+            log.warning("skipping saved device %r", row.key, exc_info=True)
 
+
+def restore_panels(state: SessionState, app: Application) -> None:
     for row in state.views:
         try:
-            panel = panel_registry.get(row.key)()
+            panel = panel_registry.get(row.key)(app.library)
             if row.instance_id:
                 panel.instance_id = row.instance_id
             panel.user_label = row.user_label
             panel.import_persistence_state(row.state)
-            app.add_panel(panel)
-        except Exception:
+        except BAD_STATE:
+            log.warning("skipping saved panel %r", row.key, exc_info=True)
             continue
+        app.add_panel(panel)
 
+
+def apply(state: SessionState, app: Application, window: MainWindow) -> None:
+    """Rebuild runtime state from a saved session. A device or panel type that
+    no longer exists is skipped rather than blocking launch."""
+    app.clear_panels()
+    app.clear_devices()
+    restore_devices(state, app)
+    restore_panels(state, app)
     app.load_params_state(state.param_blocks)
-    app.set_save(
-        name=state.save.name,
-        directory=state.save.directory,
-        enabled=state.save.enabled,
-    )
-
+    app.set_save(name=state.save.name, directory=state.save.directory, enabled=state.save.enabled)
     key = state.selected_program
-    if key not in catalog.keys():
-        key = catalog.CATALOG[0].key if catalog.CATALOG else None
-    if key is not None:
-        app.select_program(key)
-
+    app.select_program(key if key in catalog.keys() else catalog.CATALOG[0].key)
     # Every dock exists now; the saved layout goes on last.
-    if window is not None:
-        window.restore_dock_layout(state.ads_layout)
+    window.restore_dock_layout(state.ads_layout)
 
 
 def seed_defaults(app: Application) -> None:
-    """A fresh workbench needs a card and a galvo, or nothing can run.
-
-    v3.0's confocal required no instruments at all; v3.1's declares
-    ``uses = [Galvo, DAQ]``, so without this the schema-7 reset would leave the
-    user with a dead play button and no obvious cause.
-    """
+    """A fresh workbench gets a DAQ and a galvo, which the imaging programs
+    need; without them the play button is dead with no obvious cause."""
     if app.devices:
         return
     app.add_device("daq")
@@ -303,17 +242,11 @@ def seed_defaults(app: Application) -> None:
 class Autosave(QObject):
     """Debounced save on any state change, plus explicit save/reset actions."""
 
-    def __init__(
-        self,
-        app: Application,
-        window,
-        store: SessionStore | None = None,
-        parent: QObject | None = None,
-    ):
+    def __init__(self, app: Application, window: MainWindow, store: SessionStore, parent: QObject):
         super().__init__(parent)
         self.app = app
         self.window = window
-        self.store = store if store is not None else SessionStore()
+        self.store = store
         self.suspended = False
 
         self.timer = QTimer(self)
@@ -326,16 +259,18 @@ class Autosave(QObject):
         app.devices_changed.connect(self.schedule)
 
     def schedule(self) -> None:
-        if self.suspended:
-            return
-        self.timer.start()
+        if not self.suspended:
+            self.timer.start()
 
     def save_now(self) -> None:
         if self.suspended:
             return
-        # a failed autosave must never interrupt an experiment
-        with contextlib.suppress(Exception):
+        # A file boundary: a failed autosave is logged and must never
+        # interrupt an experiment.
+        try:
             self.store.save(capture(self.app, self.window))
+        except OSError:
+            log.warning("could not save the session to %s", self.store.path, exc_info=True)
 
     def restore(self) -> None:
         self.suspended = True
@@ -354,8 +289,7 @@ class Autosave(QObject):
             self.app.blocks.clear()
             self.app.set_save(name=SaveState().name, directory="", enabled=False)
             seed_defaults(self.app)
-            if catalog.CATALOG:
-                self.app.select_program(catalog.CATALOG[0].key)
+            self.app.select_program(catalog.CATALOG[0].key)
         finally:
             self.suspended = False
         self.save_now()

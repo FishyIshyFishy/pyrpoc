@@ -1,14 +1,9 @@
 """Simulation: frames out of thin air, no instruments required.
 
-``uses = []``, so it runs on any machine: no DAQ, no galvo, no tagger, nothing
-to claim. Everything above the hardware boundary is the real thing -- the
-executor's thread, dataset creation from ``emits``, publishing, the save policy,
-views and their source picker -- so this is how you exercise the software
-itself, and how the UI can be looked at away from the rig.
-
-Deterministic by construction: a pattern is a function of (seed, channel,
-frame_index), so the same parameters give the same frames on every run and a
-test can assert on pixels.
+Everything above the hardware boundary is real (the executor's thread, datasets,
+publishing, saving, the panels), so this exercises the software itself on any
+machine. A plane is a function of (seed, channel, frame index), so the same
+parameters give the same pixels every run.
 """
 
 from __future__ import annotations
@@ -18,11 +13,12 @@ from collections.abc import Sequence
 import numpy as np
 
 from pyrpoc.src.structs.data import Image2D
-from pyrpoc.src.structs.program import Program
+from pyrpoc.src.structs.program import Program, RunContext
 from pyrpoc.src.structs.registries import program_registry
 
 from .components.param_groups import (
     FrameGroup,
+    Mask,
     ModulationGroup,
     PacingGroup,
     SignalGroup,
@@ -33,14 +29,9 @@ from .components.runners import Continuous, Single
 BLOB_COUNT = 14
 
 
-# --------------------------------------------------------------------------- #
-# Plane generators                                                             #
-# --------------------------------------------------------------------------- #
-
-
 def _rng(*parts: int) -> np.random.Generator:
     """A generator keyed by whatever identifies this plane."""
-    return np.random.default_rng([int(part) % (2**32) for part in parts])
+    return np.random.default_rng([part % (2**32) for part in parts])
 
 
 def _axes(y_pixels: int, x_pixels: int) -> tuple[np.ndarray, np.ndarray]:
@@ -55,10 +46,8 @@ def cells_plane(
 ) -> np.ndarray:
     """Gaussian blobs drifting across the field, each channel its own set.
 
-    Separable: the two 1-D exponentials multiply into the 2-D blob, which keeps
-    a 512x512 frame at a few milliseconds instead of a few hundred. Distances
-    wrap, so a blob leaving one edge comes back in the other and a long
-    continuous run never empties the field.
+    Separable exponentials keep a 512x512 frame at milliseconds; distances wrap
+    so a long continuous run never empties the field.
     """
     generator = _rng(seed, channel, 0xB10B)
     centre_y = generator.uniform(0.0, y_pixels, BLOB_COUNT)
@@ -68,7 +57,7 @@ def cells_plane(
     amplitude = generator.uniform(0.4, 1.0, BLOB_COUNT)
     heading = generator.uniform(0.0, 2.0 * np.pi, BLOB_COUNT)
 
-    travelled = float(drift) * float(frame_index)
+    travelled = drift * frame_index
     centre_y = (centre_y + np.sin(heading) * travelled) % y_pixels
     centre_x = (centre_x + np.cos(heading) * travelled) % x_pixels
 
@@ -92,7 +81,7 @@ def rings_plane(
     ys, xs = _axes(y_pixels, x_pixels)
     radius = np.sqrt((ys - y_pixels / 2.0) ** 2 + (xs - x_pixels / 2.0) ** 2)
     period = max(4.0, min(y_pixels, x_pixels) / 12.0)
-    phase = channel * (np.pi / 3.0) + float(drift) * float(frame_index) * 0.25
+    phase = channel * (np.pi / 3.0) + drift * frame_index * 0.25
     return 0.5 * (1.0 + np.sin(2.0 * np.pi * radius / period - phase)).astype(np.float32)
 
 
@@ -100,15 +89,12 @@ def gradient_plane(
     y_pixels: int, x_pixels: int, *, channel: int, seed: int, drift: float, frame_index: int
 ) -> np.ndarray:
     """A linear ramp whose direction differs per channel. Shows orientation.
-
-    It sweeps as a triangle wave rather than wrapping, so the drift never puts a
-    hard seam across the frame that could be read as an artifact.
-    """
+    It sweeps as a triangle wave, so the drift never puts a seam across the frame."""
     del seed
     ys, xs = _axes(y_pixels, x_pixels)
     angle = channel * (np.pi / 3.0)
     ramp = np.cos(angle) * (xs / max(1, x_pixels - 1)) + np.sin(angle) * (ys / max(1, y_pixels - 1))
-    shift = (float(drift) * float(frame_index)) / max(1, max(y_pixels, x_pixels))
+    shift = drift * frame_index / max(y_pixels, x_pixels)
     swept = (ramp + shift) % 2.0
     return np.abs(1.0 - swept).astype(np.float32)
 
@@ -119,7 +105,7 @@ def checkerboard_plane(
     """Hard-edged squares that march diagonally. Shows pixel alignment."""
     del seed
     square = max(2, min(y_pixels, x_pixels) // 8)
-    offset = int(round(float(drift) * float(frame_index))) + channel * (square // 2)
+    offset = int(round(drift * frame_index)) + channel * (square // 2)
     ys, xs = _axes(y_pixels, x_pixels)
     board = (((ys + offset) // square) + ((xs + offset) // square)) % 2.0
     return np.broadcast_to(board, (y_pixels, x_pixels)).astype(np.float32)
@@ -133,6 +119,7 @@ def flat_plane(
     return np.full((y_pixels, x_pixels), 0.5, dtype=np.float32)
 
 
+# Keyed by the choices ``SignalGroup.pattern`` offers.
 PLANES = {
     "cells": cells_plane,
     "rings": rings_plane,
@@ -142,42 +129,25 @@ PLANES = {
 }
 
 
-# --------------------------------------------------------------------------- #
-# Masks                                                                        #
-# --------------------------------------------------------------------------- #
-
-
 def resize_mask_nearest(mask_bool: np.ndarray, target_h: int, target_w: int) -> np.ndarray:
     source_h, source_w = mask_bool.shape
-    if source_h <= 0 or source_w <= 0:
-        return np.zeros((target_h, target_w), dtype=bool)
     y_idx = np.minimum((np.arange(target_h, dtype=np.int64) * source_h) // target_h, source_h - 1)
     x_idx = np.minimum((np.arange(target_w, dtype=np.int64) * source_w) // target_w, source_w - 1)
     return mask_bool[np.ix_(y_idx, x_idx)]
 
 
-def combine_masks(
-    masks: Sequence[np.ndarray], *, y_pixels: int, x_pixels: int
-) -> np.ndarray | None:
-    """Every bound mask resized to the frame and OR-ed into one boolean plane.
-
-    The simulated program has no digital lines, so a mask's port and line are
-    ignored here; what the mask still says is *which pixels are illuminated*,
-    which is the half of optocontrol that can be checked without a DAQ.
-    """
+def combine_masks(masks: Sequence[Mask], frame_shape: FrameGroup) -> np.ndarray | None:
+    """Every bound mask resized to the frame and OR-ed into one plane, or None
+    for no masks. Ports and lines are ignored: there are no digital lines here,
+    but which pixels are illuminated can still be checked."""
     combined: np.ndarray | None = None
     for mask in masks:
-        array = np.asarray(mask)
-        if array.ndim != 2 or array.size == 0:
-            continue
-        resized = resize_mask_nearest(array > 0, target_h=y_pixels, target_w=x_pixels)
+        # Narrows for the type checker: a run's masks are resolved at start.
+        if mask.array is None:
+            raise ValueError(f"mask '{mask.describe()}' was not resolved")
+        resized = resize_mask_nearest(mask.array > 0, frame_shape.y_pixels, frame_shape.x_pixels)
         combined = resized if combined is None else (combined | resized)
     return combined
-
-
-# --------------------------------------------------------------------------- #
-# One frame                                                                    #
-# --------------------------------------------------------------------------- #
 
 
 def synthetic_frame(
@@ -189,78 +159,39 @@ def synthetic_frame(
 ) -> np.ndarray:
     """One ``(C, H, W)`` float32 frame, as a real scan would have returned it.
 
-    Masked pixels are brightened by ``signal.mask_gain``, standing in for the
-    photostimulation the TTL lines would have driven. Noise is added after the
-    mask and the result is clipped at zero, because a detector cannot read
-    negative.
-
-    ``mask`` has no default: the caller says "no mask is bound" by passing
-    ``None`` rather than by leaving the argument off.
+    Masked pixels are brightened by ``mask_gain``, standing in for the
+    stimulation the TTL lines would drive. Noise goes on after the mask and the
+    result is clipped at zero, since a detector cannot read negative.
     """
-    x_pixels, y_pixels, channels = frame_shape.x_pixels, frame_shape.y_pixels, frame_shape.channels
-    pattern = signal.pattern
-    signal_level = signal.signal_level
-    noise_level = signal.noise_level
-    drift_pixels_per_frame = signal.drift_pixels_per_frame
-    mask_gain = signal.mask_gain
-    seed = signal.seed
-
-    if channels <= 0:
-        raise ValueError("channels must be at least 1")
-    if pattern not in PLANES:
-        raise ValueError(f"unknown pattern {pattern!r}; expected one of {list(PLANES)}")
-
-    plane_of = PLANES[pattern]
+    y_pixels, x_pixels = frame_shape.y_pixels, frame_shape.x_pixels
+    plane_of = PLANES[signal.pattern]
     frame = np.stack(
         [
             plane_of(
                 y_pixels,
                 x_pixels,
                 channel=channel,
-                seed=int(seed),
-                drift=float(drift_pixels_per_frame),
-                frame_index=int(frame_index),
+                seed=signal.seed,
+                drift=signal.drift_pixels_per_frame,
+                frame_index=frame_index,
             )
-            for channel in range(channels)
+            for channel in range(frame_shape.channels)
         ]
     ).astype(np.float32)
-    frame *= float(signal_level)
+    frame *= signal.signal_level
 
-    if mask is not None and mask_gain:
-        illuminated = resize_mask_nearest(np.asarray(mask) > 0, y_pixels, x_pixels)
-        frame = frame * (1.0 + float(mask_gain) * illuminated.astype(np.float32))
+    if mask is not None and signal.mask_gain:
+        frame = frame * (1.0 + signal.mask_gain * mask.astype(np.float32))
 
-    if noise_level:
-        generator = _rng(seed, frame_index, 0x0125E)
-        frame = frame + generator.standard_normal(frame.shape).astype(np.float32) * float(
-            noise_level
-        )
+    if signal.noise_level:
+        noise = _rng(signal.seed, frame_index, 0x0125E).standard_normal(frame.shape)
+        frame = frame + noise.astype(np.float32) * signal.noise_level
 
     return np.clip(frame, 0.0, None).astype(np.float32, copy=False)
 
 
-# --------------------------------------------------------------------------- #
-# The program                                                                  #
-# --------------------------------------------------------------------------- #
-
-
 def channel_labels(frame_shape: FrameGroup) -> list[str]:
     return [f"sim{index}" for index in range(frame_shape.channels)]
-
-
-def build_mask(frame_shape: FrameGroup, modulation: ModulationGroup):
-    """Flatten the bound masks onto the frame grid.
-
-    Same shape as confocal's ``build_ttl``: once before the loop. The pixels
-    come with the parameter -- a mask was resolved against the open data when the
-    run started -- so there is nothing to load here.
-    """
-    if not modulation.masks:
-        return None
-    loaded = [mask.array for mask in modulation.masks if mask.array is not None]
-    if not loaded:
-        return None
-    return combine_masks(loaded, y_pixels=frame_shape.y_pixels, x_pixels=frame_shape.x_pixels)
 
 
 @program_registry.register("simulation")
@@ -270,24 +201,21 @@ class Simulation(Program):
     emits = {"intensity": Image2D}
     runners = [Single(), Continuous()]
 
-    def run(self, ctx) -> None:
+    def run(self, ctx: RunContext) -> None:
         frame_shape = ctx.params[FrameGroup]
         signal = ctx.params[SignalGroup]
-        modulation = ctx.params[ModulationGroup]
         num_frames = frame_shape.num_frames
         interval_ms = ctx.params[PacingGroup].frame_interval_ms
 
-        mask = build_mask(frame_shape, modulation)
+        # Built once before the loop; the pixels arrived with the parameter.
+        mask = combine_masks(ctx.params[ModulationGroup].masks, frame_shape)
         labels = channel_labels(frame_shape)
         total = "" if ctx.continuous else f"/{num_frames}"
 
         for index in ctx.frames(num_frames):
             ctx.status(f"frame {index + 1}{total}")
             frame = synthetic_frame(
-                frame_shape=frame_shape,
-                signal=signal,
-                frame_index=index,
-                mask=mask,
+                frame_shape=frame_shape, signal=signal, frame_index=index, mask=mask
             )
             ctx.publish("intensity", frame, channels=labels)
             ctx.sleep(interval_ms / 1000.0)

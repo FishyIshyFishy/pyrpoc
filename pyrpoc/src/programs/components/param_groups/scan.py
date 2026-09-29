@@ -12,14 +12,8 @@ from pyrpoc.src.structs.registries import block
 @block
 @dataclass
 class ScanGroup(Group):
-    """How the beam is scanned, and how many times.
-
-    ``num_frames`` lives here rather than in a block of its own because it
-    decides how the imaging is done, the same as the geometry and the dwell
-    time. Nothing outside a program reads it: a program with no frame concept
-    declares a different block, and then nothing anywhere has to supply a count
-    it does not have.
-    """
+    """How the beam is scanned, and how many times. The frame count is here
+    because it decides how the imaging is done, like the geometry."""
 
     label: ClassVar[str] = "Scan"
 
@@ -51,21 +45,11 @@ class ScanGroup(Group):
     def voltage_at(self, x: int, y: int) -> tuple[float, float]:
         """The (fast, slow) volts at which displayed pixel ``(x, y)`` was sampled.
 
-        The inverse of ``generate_raster_waveform``'s axis construction, and it
-        lives here because this block is what the geometry *is* -- a display
-        reporting a clicked pixel must not have to know what a galvo is.
-
-        The displayed frame is already cropped of overscan by
-        ``extract_kept_samples``, so displayed column ``x`` is total column
-        ``extra_left + x``. ``np.repeat`` holds each pixel at one voltage for
-        its whole dwell, so there is no half-pixel centre to add: this is the
-        voltage that pixel was measured at.
+        The inverse of the raster waveform's axes. Displayed frames are already
+        cropped of overscan, and each pixel is held at one voltage for its whole
+        dwell, so there is no half-pixel centre to add.
         """
-        fast_amp = max(float(self.fast_axis_amplitude), 1e-6)
-        slow_amp = max(float(self.slow_axis_amplitude), 1e-6)
-        fast_step = (2.0 * fast_amp) / float(self.x_pixels)
-        fast_v = float(self.fast_axis_offset) - fast_amp + float(x) * fast_step
-        slow_v = (
-            float(self.slow_axis_offset) + (-1.0 + 2.0 * float(y) / float(self.y_pixels)) * slow_amp
-        )
+        fast_step = 2.0 * self.fast_axis_amplitude / self.x_pixels
+        fast_v = self.fast_axis_offset - self.fast_axis_amplitude + x * fast_step
+        slow_v = self.slow_axis_offset + (-1.0 + 2.0 * y / self.y_pixels) * self.slow_axis_amplitude
         return fast_v, slow_v

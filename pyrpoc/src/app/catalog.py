@@ -1,12 +1,8 @@
-"""Ways to launch a program: label and grouping.
+"""The programs offered in the dropdown, with their labels and grouping.
 
-Presentation data, curated by hand, because what belongs in a dropdown is a
-design decision. Keeping labels here rather than on the program is what lets one
-program be offered more than once later, and keeps Program from growing
-presentation fields.
-
-Adding an experiment is one file in programs/ plus one row here. Deleting one is
-deleting that file and that row.
+Curated by hand, since what belongs in a dropdown is a design decision, and
+kept off the program so a program never grows presentation fields. Adding an
+experiment is one file in programs/ plus one row here.
 """
 
 from __future__ import annotations

@@ -1,26 +1,20 @@
-"""Qt in front of the executor.
+"""Qt in front of the executor: worker-thread events onto the GUI thread.
 
-``executor.py`` is pure Python so it can be tested with no QApplication. That
-leaves one job here: getting worker-thread events onto the GUI thread. This
-does it by subscribing to each dataset the executor creates and re-emitting as Qt
-signals -- emitting from any thread is safe, and Qt queues delivery to receivers
-living in the GUI thread. Same guarantee v3.0's ``data_emitted`` pyqtSignal gave.
-
-This is the only subscriber to a dataset's change notification. No panel
-subscribes directly, because ``Dataset.append`` runs on the worker thread.
+It subscribes to each dataset the executor creates and re-emits as Qt signals,
+which Qt queues to receivers on the GUI thread. It is the only subscriber to a
+dataset, because ``Dataset.append`` runs on the worker thread.
 """
 
 from __future__ import annotations
-
-from typing import Any
 
 from PyQt6.QtCore import QObject, pyqtSignal
 
 from pyrpoc.src.structs.data import Dataset
 from pyrpoc.src.structs.device import Device, MissingDevice
-from pyrpoc.src.structs.params import ParameterError
+from pyrpoc.src.structs.params import BlockStore, ParameterError
+from pyrpoc.src.structs.program import Program
 
-from .executor import Executor
+from .executor import Executor, RunCallbacks
 from .library import DataLibrary
 from .saving import SaveTarget
 
@@ -33,9 +27,9 @@ class RunBridge(QObject):
     run_finished = pyqtSignal()
     run_failed = pyqtSignal(str)
 
-    def __init__(self, library: DataLibrary | None = None, parent: QObject | None = None):
+    def __init__(self, library: DataLibrary, parent: QObject):
         super().__init__(parent)
-        self.library = library if library is not None else DataLibrary()
+        self.library = library
         self.executor = Executor(self.library)
         self._subscribed: list[Dataset] = []
 
@@ -45,33 +39,36 @@ class RunBridge(QObject):
 
     def start(
         self,
-        program: Any,
-        blocks: Any,
+        program: Program,
+        blocks: BlockStore,
         devices: list[Device],
         *,
-        continuous: bool = False,
-        program_key: str | None = None,
-        save: SaveTarget | None = None,
-    ):
-        """Start a run. Raises MissingDevice or ParameterError before anything begins."""
+        continuous: bool,
+        program_key: str,
+        save: SaveTarget,
+    ) -> None:
+        """Start a run. A missing device or a bad parameter is reported through
+        ``run_failed`` rather than raised, since every caller is a Qt slot."""
+        callbacks = RunCallbacks(
+            on_status=self.run_status.emit,
+            on_dataset=self.on_dataset,
+            on_finished=self.run_finished.emit,
+            on_failed=self.run_failed.emit,
+        )
         try:
-            handle = self.executor.start(
+            self.executor.start(
                 program,
                 blocks,
                 devices,
                 continuous=continuous,
                 program_key=program_key,
                 save=save,
-                on_status=self.run_status.emit,
-                on_dataset=self.on_dataset,
-                on_finished=self.run_finished.emit,
-                on_failed=self.run_failed.emit,
+                callbacks=callbacks,
             )
         except (MissingDevice, ParameterError) as exc:
             self.run_failed.emit(str(exc))
-            raise
+            return
         self.run_started.emit()
-        return handle
 
     def stop(self) -> None:
         self.executor.stop()
@@ -90,7 +87,3 @@ class RunBridge(QObject):
         if dataset in self._subscribed:
             self._subscribed.remove(dataset)
         self.library.remove(dataset)
-
-    def release_all(self) -> None:
-        for dataset in list(self._subscribed):
-            self.release(dataset)

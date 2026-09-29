@@ -1,18 +1,13 @@
-"""The NI-DAQ card: which device name, and which analog inputs are wired.
+"""The NI-DAQ card: its device name, and which analog inputs are wired.
 
-``active_ai_channels`` lands here rather than on the galvo. Section 9's table
-lumps "galvo/AI channels" into one row whose point is that they stop being loose
-per-modality parameters; analog input is a property of the card, not the
-scanner, so it is filed with the card. One definition instead of three, which is
-what the row asks for.
-
-``owns_connection`` means the device can verify it exists, not that it holds an
-open handle: an NI task *is* the clock domain, so tasks are created per scan
-inside ``programs/hardware/``.
+Analog inputs are a property of the card, not the scanner, so they live here.
+``owns_connection`` means the card can be verified, not that it holds a
+handle: NI tasks are created per scan by the programs that use them.
 """
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -56,7 +51,7 @@ class DAQ(Device):
         names = {device.name for device in nidaqmx.system.System.local().devices}
         return self.config.device_name in names
 
-    def panel(self, parent: QWidget | None = None, on_change=None) -> QWidget | None:
+    def panel(self, parent: QWidget, on_change: Callable[[], None]) -> QWidget:
         from .panel import DaqPanel
 
-        return DaqPanel(self, parent=parent, on_change=on_change)
+        return DaqPanel(self, parent, on_change)

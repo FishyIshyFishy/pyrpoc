@@ -1,13 +1,7 @@
 """A key -> class map with a registration decorator, and the registries.
 
-Devices, programs and parameter blocks each have one here, and the key belongs
-at the registration site rather than on the class -- which is what lets Program
-keep to the four attributes section 12 allows it. Implementations register
-themselves by importing their registry from here.
-
-Panels have one too, but it lives beside ``Panel`` in ``panel.py``: that base
-is a QWidget, and importing it here would drag Qt into every module that
-registers a device.
+Implementations register themselves by importing their registry from here. The
+panel registry lives in ``panel.py`` so registering a device never imports Qt.
 """
 
 from __future__ import annotations
@@ -21,11 +15,8 @@ from .program import Program
 
 T = TypeVar("T")
 
-# The decorated class itself, so ``@registry.register(...)`` returns the class
-# it was given rather than a bare ``type``. Without this every registered
-# device, view and program is ``Unknown`` downstream: ``daq.config.device_name``
-# type-checks against nothing, which is most of the value of handing whole
-# devices to the hardware layer instead of splatting their config.
+# The decorated class itself, so ``@registry.register(...)`` keeps the class's
+# own type downstream instead of a bare ``type``.
 C = TypeVar("C", bound=type)
 
 
@@ -33,9 +24,7 @@ class Registry(Generic[T]):
     def __init__(self, name: str, base_class: type[T], *, stamp: str | None = "registry_key"):
         self.name = name
         self.base_class = base_class
-        # The class attribute to record the key on, or None to not record it.
-        # None for programs, so a Program subclass keeps to the four
-        # attributes section 12 allows.
+        # The class attribute to record the key on, or None to leave the class alone.
         self.stamp = stamp
         self.entries: dict[str, type[T]] = {}
 
@@ -68,25 +57,17 @@ class Registry(Generic[T]):
         for key, registered in self.entries.items():
             if registered is cls:
                 return key
-        raise KeyError(f"{getattr(cls, '__name__', cls)!r} is not registered in {self.name}")
+        raise KeyError(f"{cls.__name__!r} is not registered in {self.name}")
 
-
-# --------------------------------------------------------------------------- #
-# The registries                                                               #
-# --------------------------------------------------------------------------- #
 
 device_registry: Registry[Device] = Registry("DeviceRegistry", Device)
 
-# stamp=None: a Program subclass must define nothing beyond uses, params,
-# emits and run (section 12), so the key stays at the registration site.
+# Programs keep their key at the registration site, not on the class.
 program_registry: Registry[Program] = Registry("ProgramRegistry", Program, stamp=None)
 
-# Keyed by class name, which is a block's identity everywhere: declaration,
-# form, session file and run metadata.
+# Keyed by class name, a block's identity in the form, session and metadata.
 block_registry: Registry[Group] = Registry("BlockRegistry", Group, stamp=None)
 
-# The decorated class itself, so ``@block`` returns ``type[ScanGroup]`` rather
-# than ``type[Group]``; see ``C`` above.
 B = TypeVar("B", bound=type)
 
 

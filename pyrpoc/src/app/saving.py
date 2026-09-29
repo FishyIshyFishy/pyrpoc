@@ -1,26 +1,11 @@
-"""Saving: one copy of what modalities/*/storage.py did three times.
-
-The on-disk layout:
+"""Saving a run to disk.
 
     <root>_<channel>.tiff   appended float32, one page per published array
     <root>_<output>.npz     data / parameters
     <root>_meta.json        written once when the run starts, once when it ends
 
-Nothing here counts. How much a run produced is recoverable from the data
-itself -- the page count of a TIFF, the leading axis of an npz -- and how much
-was asked for rides in ``parameters`` with the rest of the acquisition
-settings. A saver that tracked a total had to nominate one output of a
-multi-output run as the one worth counting, which is a hierarchy none of these
-files needs.
-
-The auxiliary-payload machinery this replaces -- ``_pending_auxiliary``,
-``append_auxiliary_payload``, ``flush_auxiliary_payloads`` -- existed only
-because split confocal produced a second output and there was no way to declare
-one. Outputs are declared in ``emits`` now, so they all travel the same path.
-
-``<root>`` comes from a ``SaveTarget``, which is also where the acquisition's
-name comes from. It is here rather than in the parameter model because saving
-is a property of a run and not of the program that fills it.
+Nothing here counts frames: a TIFF's page count or an npz's leading axis
+already says how much was produced.
 """
 
 from __future__ import annotations
@@ -28,12 +13,12 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 import numpy as np
 import tifffile
 
-from pyrpoc.src.structs.data import Data, Dataset, Image2D, utc_now
+from pyrpoc.src.structs.data import Data, Dataset, Image2D
 from pyrpoc.src.structs.params import ParameterError
 
 
@@ -41,16 +26,9 @@ from pyrpoc.src.structs.params import ParameterError
 class SaveTarget:
     """What an acquisition is called, where it goes, and whether it goes.
 
-    Not a parameter group. Every program declared an identical ``SaveGroup``
-    and the executor reached past the parameter model to find it, which made
-    saving look like a decision a program makes. It is not: nothing about
-    where bytes land depends on what produced them, so this travels as its own
-    argument to the executor and lives once per session rather than once per
-    program.
-
-    ``name`` is a bare filename and means something with saving off -- it is
-    what the acquisition is called in the data panel, where a full path would
-    be both misleading (nothing was written) and too wide to read.
+    Its own argument to the executor rather than a parameter block, because
+    where bytes land does not depend on which program produced them. ``name``
+    is a bare filename and also names the run in the data panel with saving off.
     """
 
     name: str = "acquisition"
@@ -59,12 +37,9 @@ class SaveTarget:
 
     @property
     def filename(self) -> str:
-        """``name`` as a bare filename: no directory, no TIFF suffix.
-
-        The writers append their own ``_<channel>.tiff``, so a typed ".tiff"
-        would land in the middle of the real filename.
-        """
-        stem = Path((self.name or "").strip()).name
+        """``name`` with no directory and no TIFF suffix; the writers append
+        their own ``_<channel>.tiff``."""
+        stem = Path(self.name.strip()).name
         if stem.lower().endswith((".tif", ".tiff")):
             stem = stem.rsplit(".", 1)[0]
         return stem
@@ -72,20 +47,22 @@ class SaveTarget:
     @property
     def folder(self) -> Path:
         """Where files go. No directory means the working directory."""
-        text = (self.directory or "").strip()
+        text = self.directory.strip()
         return Path(text).expanduser() if text else Path.cwd()
 
     @property
     def root(self) -> Path:
         """The base path the writers hang their suffixes off."""
-        stem = self.filename
-        if not stem:
+        if not self.filename:
             raise ParameterError("Name is required when saving is enabled")
-        return self.folder / stem
+        return self.folder / self.filename
 
 
 class Writer:
-    """Base: puts one output's arrays on disk."""
+    """Puts one output's arrays on disk."""
+
+    # Which metadata entry lists this writer's files.
+    metadata_key: ClassVar[str]
 
     def __init__(self, saver: RunSaver, output: str):
         self.saver = saver
@@ -96,11 +73,13 @@ class Writer:
         raise NotImplementedError
 
     def finalize(self, dataset: Dataset, error: Exception | None) -> None:
-        pass
+        del dataset, error
 
 
 class TiffWriter(Writer):
     """``Image2D``: one appended TIFF per channel, one page per publish."""
+
+    metadata_key = "tiff_paths"
 
     def write(self, dataset: Dataset, array: np.ndarray) -> None:
         channels = [array[index] for index in range(array.shape[0])]
@@ -110,8 +89,7 @@ class TiffWriter(Writer):
             root = self.saver.root
             self.paths = {label: root.with_name(f"{root.name}_{label}.tiff") for label in labels}
             for path in self.paths.values():
-                if path.exists():
-                    path.unlink()
+                path.unlink(missing_ok=True)
 
         if len(channels) != len(self.paths):
             raise ValueError("channel count does not match the configured save layout")
@@ -123,6 +101,8 @@ class TiffWriter(Writer):
 
 class NpzWriter(Writer):
     """Everything that is not ``Image2D``: buffered, written once at finalize."""
+
+    metadata_key = "auxiliary_paths"
 
     def __init__(self, saver: RunSaver, output: str):
         super().__init__(saver, output)
@@ -137,10 +117,9 @@ class NpzWriter(Writer):
         root = self.saver.root
         path = root.with_name(f"{root.name}_{self.output}.npz")
         # Leading axis is one entry per published array, in publish order.
-        payload = np.stack(self._buffer, axis=0)
         np.savez_compressed(
             str(path),
-            data=payload,
+            data=np.stack(self._buffer, axis=0),
             parameters=np.asarray(self.saver.parameters, dtype=object),
         )
         self.paths = {self.output: path}
@@ -151,13 +130,9 @@ def make_writer(saver: RunSaver, output: str, spec: type[Data]) -> Writer:
 
 
 class RunSaver:
-    """Owns one run's output: the per-output writers and the metadata file.
-
-    One metadata file per run rather than per output, so a multi-output run
-    still describes itself in one place. It is written twice -- once from
-    ``prepare`` so the run is on disk before any data is, and once from
-    ``finalize`` once the writers know their paths.
-    """
+    """One run's writers and its single metadata file, written from ``prepare``
+    so the run is on disk before any data, and again from ``finalize`` once the
+    writers know their paths."""
 
     def __init__(
         self,
@@ -165,16 +140,16 @@ class RunSaver:
         root: Path,
         program_key: str,
         parameters: dict[str, Any],
-        devices: dict[str, Any] | None = None,
-        run_id: int = 1,
-        started_at: str | None = None,
+        devices: dict[str, Any],
+        run_id: int,
+        started_at: str,
     ):
-        self.root = Path(root)
+        self.root = root
         self.program_key = program_key
         self.parameters = dict(parameters)
-        self.devices = dict(devices or {})
+        self.devices = dict(devices)
         self.run_id = run_id
-        self.started_at = started_at or utc_now()
+        self.started_at = started_at
 
         self.json_path = self.root.with_name(f"{self.root.name}_meta.json")
         self.writers: dict[str, Writer] = {}
@@ -186,35 +161,20 @@ class RunSaver:
             self.writers[output] = make_writer(self, output, spec)
         self.write_metadata(None)
 
-    def writer_for(self, output: str) -> Writer | None:
-        return self.writers.get(output)
+    def writer_for(self, output: str) -> Writer:
+        return self.writers[output]
 
     def finalize(self, error: Exception | None) -> None:
-        """Rewrite the metadata now that every writer knows its paths.
-
-        ``Executor.worker`` finalizes every dataset before it finalizes the
-        saver, so ``tiff_paths`` and ``auxiliary_paths`` are both complete by
-        the time this runs.
-        """
+        """Rewrite the metadata. The executor finalizes every dataset first, so
+        every writer's paths are complete by now."""
         self.write_metadata(str(error) if error is not None else None)
 
-    # -- metadata ---------------------------------------------------------- #
-
-    def tiff_paths(self) -> dict[str, str]:
-        out: dict[str, str] = {}
-        for writer in self.writers.values():
-            if isinstance(writer, TiffWriter):
-                out.update({label: str(path) for label, path in writer.paths.items()})
-        return out
-
-    def auxiliary_paths(self) -> dict[str, str]:
-        out: dict[str, str] = {}
-        for writer in self.writers.values():
-            if isinstance(writer, NpzWriter):
-                out.update({label: str(path) for label, path in writer.paths.items()})
-        return out
-
     def write_metadata(self, last_error: str | None) -> None:
+        paths: dict[str, dict[str, str]] = {"tiff_paths": {}, "auxiliary_paths": {}}
+        for writer in self.writers.values():
+            paths[writer.metadata_key].update(
+                {label: str(path) for label, path in writer.paths.items()}
+            )
         payload = {
             "run_id": self.run_id,
             "started": self.started_at,
@@ -222,14 +182,9 @@ class RunSaver:
             "save_root_path": str(self.root),
             "save_json_path": str(self.json_path),
             "outputs": sorted(self.writers),
-            "tiff_paths": self.tiff_paths(),
-            "auxiliary_paths": self.auxiliary_paths(),
+            **paths,
             "parameters": self.parameters,
             "devices": self.devices,
             "last_error": last_error,
         }
         self.json_path.write_text(json.dumps(payload, indent=2, default=str), encoding="utf-8")
-
-
-def read_metadata(path: Path) -> dict[str, Any]:
-    return json.loads(Path(path).read_text(encoding="utf-8"))

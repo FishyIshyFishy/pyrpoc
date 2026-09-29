@@ -1,15 +1,11 @@
-"""Qt building blocks shared by more than one panel.
-
-Cards, the range slider, the read-only list table, the channel colour
-palette, the parameter form, channel transforms -- generic widgets and
-helpers, not application logic. Nothing here may import a panel or app/; a
-panel imports what it needs from here, never the other way around.
-"""
+"""Qt building blocks shared by more than one panel. Nothing here imports a
+panel, app/ or programs/."""
 
 from __future__ import annotations
 
 from .cards import BaseCardWidget, RemovableCardWidget
 from .colors import color_for_index
+from .dataset_panel import DatasetPanel, panel_registry
 from .range_slider import RangeSlider
 from .source_picker import SourcePicker
 from .table import ListTable
@@ -18,6 +14,8 @@ __all__ = [
     "BaseCardWidget",
     "RemovableCardWidget",
     "color_for_index",
+    "DatasetPanel",
+    "panel_registry",
     "RangeSlider",
     "SourcePicker",
     "ListTable",

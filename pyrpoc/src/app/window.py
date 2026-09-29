@@ -1,30 +1,27 @@
 """The dock manager: three fixed panels plus one dock per added panel.
 
-Moved from gui/main_gui.py. The ADS handling is carried over as-is, including
-the object-name-before-add ordering that its save/restore lookup depends on and
-the guard that stops restoreState() reshuffling from mutating panel inventory.
-
-Panels are chosen from the menu bar rather than from inside a panel. The three
-fixed ones are toggled there -- unchecking hides the dock, the panel is still
-there -- and the rest are added under Add and destroyed by unchecking. That
-split is why an added panel has no hidden state any more: it exists exactly as
-long as its dock does, whether it goes away by its tab's close button or by its
-menu entry.
+The fixed panels hide when unchecked in the menu; an added panel is destroyed,
+so it exists exactly as long as its dock does.
 """
 
 from __future__ import annotations
 
-import contextlib
+from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum
 
 import PyQt6Ads as qtads
-from PyQt6 import sip
 from PyQt6.QtCore import QByteArray, QTimer, pyqtSignal
 from PyQt6.QtGui import QAction, QCloseEvent
 from PyQt6.QtWidgets import QVBoxLayout, QWidget
 
-from pyrpoc.src.panels import AcquisitionPanel, DataLibraryPanel, DevicesPanel, panel_registry
+from pyrpoc.src.panels import (
+    AcquisitionPanel,
+    DataLibraryPanel,
+    DatasetPanel,
+    DevicesPanel,
+    panel_registry,
+)
 
 from .application import Application
 from .menubar import MainMenuBar
@@ -50,9 +47,7 @@ class DockSpec:
 PANELS = [
     DockSpec(DockKey.ACQUISITION, "Acquisition", "dock.acquisition"),
     DockSpec(DockKey.DEVICES, "Devices", "dock.devices"),
-    # "dock.views" is a historical name, kept because ADS restores by object
-    # name: rename it and every saved layout stops placing this dock, which
-    # reads as the panel having vanished. The title is what the user sees.
+    # ADS restores docks by object name, so renaming this strands saved layouts.
     DockSpec(DockKey.DATA, "Data Library", "dock.views"),
 ]
 
@@ -68,21 +63,15 @@ class MainWindow(QWidget):
 
         self.dock_manager = qtads.CDockManager(self)
         self.dock_manager.setStyleSheet("")
-        # Guards the dock close/toggle handlers while restoreState() reshuffles
-        # docks, so ADS visibility changes during restore don't mutate inventory.
+        # restoreState() and teardown both close docks, and closing an added
+        # panel's dock deletes the panel; these guard the inventory meanwhile.
         self.restoring_layout = False
-        # The same guard for teardown: ADS closes every dock on the way out,
-        # and closing a panel's dock now deletes the panel. Without this the
-        # session would be saved and then emptied.
         self.shutting_down = False
         self.dock_by_key: dict[DockKey, qtads.CDockWidget] = {}
-        self.panel_docks: dict[QWidget, qtads.CDockWidget] = {}
-        self.panel_actions: dict[QWidget, QAction] = {}
-        # Which instance of its type each panel is, so two of the same kind
-        # can be told apart. Held here rather than on the panel: what a panel
-        # is called among its siblings is the window's business, not the
-        # renderer's.
-        self.panel_ordinals: dict[QWidget, int] = {}
+        self.panel_docks: dict[DatasetPanel, qtads.CDockWidget] = {}
+        self.panel_actions: dict[DatasetPanel, QAction] = {}
+        # Which instance of its type each panel is, to tell same-kind docks apart.
+        self.panel_ordinals: dict[DatasetPanel, int] = {}
 
         self.menubar = MainMenuBar(self)
         self.menubar.populate_add_menu(
@@ -97,24 +86,19 @@ class MainWindow(QWidget):
         layout.setMenuBar(self.menubar)
         layout.addWidget(self.dock_manager)
 
-        self.autosave = None
         self.refresh_panels_menu()
         self.menubar.populate_style_menu(self.theme_controller.get_saved_mode())
         self.menubar.style_selected.connect(self.set_style)
 
-    def bind_session(self, autosave) -> None:
-        """Connect the close event to session persistence."""
-        self.autosave = autosave
-        self.closing.connect(autosave.save_now)
-
-    # -- panels -------------------------------------------------------------- #
+    def bind_session(self, save_now: Callable[[], None]) -> None:
+        """Save the session when the window closes."""
+        self.closing.connect(save_now)
 
     def build_panels(self) -> None:
-        self.data_library_panel = DataLibraryPanel(self.app)
         widgets = {
             DockKey.ACQUISITION: AcquisitionPanel(self.app),
             DockKey.DEVICES: DevicesPanel(self.app),
-            DockKey.DATA: self.data_library_panel,
+            DockKey.DATA: DataLibraryPanel(self.app),
         }
         first: qtads.CDockWidget | None = None
         for spec in PANELS:
@@ -128,12 +112,10 @@ class MainWindow(QWidget):
         title: str,
         widget: QWidget,
         object_name: str,
-        tab_with: qtads.CDockWidget | None = None,
+        tab_with: qtads.CDockWidget | None,
     ) -> qtads.CDockWidget:
         dock = qtads.CDockWidget(title)
-        # ADS keys its save/restore lookup map by the object name at
-        # addDockWidget time (falling back to the title if unset), so this MUST
-        # precede the add.
+        # ADS keys save/restore by the object name at add time, so set it first.
         dock.setObjectName(object_name)
         dock.setWidget(widget)
         area = qtads.DockWidgetArea.LeftDockWidgetArea
@@ -145,13 +127,7 @@ class MainWindow(QWidget):
 
     def add_panel_of_type(self, key: str) -> None:
         """Add one, from the menu. The dock follows from panels_changed."""
-        try:
-            panel = panel_registry.get(key)()
-        except Exception:
-            return
-        self.app.add_panel(panel)
-
-    # -- panel docks ----------------------------------------------------------- #
+        self.app.add_panel(panel_registry.get(key)(self.app.library))
 
     def sync_panel_docks(self) -> None:
         for panel in list(self.panel_docks):
@@ -162,53 +138,37 @@ class MainWindow(QWidget):
                 self.add_panel_dock(panel)
         self.refresh_panels_menu()
 
-    def assign_ordinal(self, panel: QWidget) -> int:
-        """The lowest number this type has free.
-
-        Lowest free rather than a running count, so the numbers stay short
-        after panels have been opened and closed a few times. Assigned once and
-        kept: a dock that renumbered itself because an earlier one was closed
-        would be renaming the panel someone is working in.
-        """
-        type_key = getattr(panel, "type_key", "")
+    def assign_ordinal(self, panel: DatasetPanel) -> None:
+        """The lowest number this type has free, assigned once so a dock never
+        renumbers itself when an earlier one closes."""
         taken = {
             number
             for other, number in self.panel_ordinals.items()
-            if getattr(other, "type_key", "") == type_key
+            if other.type_key == panel.type_key
         }
         number = 1
         while number in taken:
             number += 1
         self.panel_ordinals[panel] = number
-        return number
 
-    def panel_title(self, panel: QWidget) -> str:
-        label = getattr(panel, "user_label", None)
-        if label:
-            return label
-        name = getattr(panel, "display_name", "Panel")
-        number = self.panel_ordinals.get(panel, 1)
-        return name if number == 1 else f"{name} {number}"
+    def panel_title(self, panel: DatasetPanel) -> str:
+        if panel.user_label:
+            return panel.user_label
+        number = self.panel_ordinals[panel]
+        return panel.display_name if number == 1 else f"{panel.display_name} {number}"
 
-    def panel_object_name(self, panel: QWidget) -> str:
-        raw = str(getattr(panel, "instance_id", "") or id(panel))
-        safe = "".join(ch if ch.isalnum() or ch in {"_", "-"} else "_" for ch in raw)
-        # "dock.view." rather than "dock.panel.": these prefix every added
-        # panel's object name in a saved layout blob, same reason "dock.views"
-        # above is kept -- renaming it strands every already-saved layout.
+    @staticmethod
+    def panel_object_name(panel: DatasetPanel) -> str:
+        safe = "".join(ch if ch.isalnum() or ch in {"_", "-"} else "_" for ch in panel.instance_id)
+        # Saved layouts name added docks with this prefix; see PANELS above.
         return f"dock.view.{safe}"
 
-    def add_panel_dock(self, panel: QWidget) -> None:
+    def add_panel_dock(self, panel: DatasetPanel) -> None:
         self.assign_ordinal(panel)
         dock = qtads.CDockWidget(self.panel_title(panel))
         dock.setObjectName(self.panel_object_name(panel))
         dock.setWidget(panel)
-        try:
-            self.dock_manager.addDockWidget(qtads.DockWidgetArea.RightDockWidgetArea, dock)
-        except Exception:
-            self.panel_ordinals.pop(panel, None)
-            dock.deleteLater()
-            return
+        self.dock_manager.addDockWidget(qtads.DockWidgetArea.RightDockWidgetArea, dock)
         self.panel_docks[panel] = dock
 
         action = QAction(self.panel_title(panel), self)
@@ -216,42 +176,27 @@ class MainWindow(QWidget):
         action.setChecked(True)
         action.toggled.connect(lambda checked, p=panel: self.on_panel_toggled(p, checked))
         self.panel_actions[panel] = action
+        dock.closed.connect(lambda *_args, p=panel: self.discard_panel(p))
 
-        if hasattr(dock, "closed"):
-            dock.closed.connect(lambda *_args, p=panel: self.on_panel_dock_closed(p))
+    def remove_panel_dock(self, panel: DatasetPanel) -> None:
+        dock = self.panel_docks.pop(panel)
+        action = self.panel_actions.pop(panel)
+        del self.panel_ordinals[panel]
 
-    def remove_panel_dock(self, panel: QWidget) -> None:
-        dock = self.panel_docks.pop(panel, None)
-        action = self.panel_actions.pop(panel, None)
-        self.panel_ordinals.pop(panel, None)
+        self.menubar.panels_menu.removeAction(action)
+        action.deleteLater()
 
-        if action is not None and not sip.isdeleted(action):
-            with contextlib.suppress(Exception):
-                action.toggled.disconnect()
-            with contextlib.suppress(Exception):
-                self.menubar.panels_menu.removeAction(action)
-            action.setParent(None)
-            action.deleteLater()
+        self.dock_manager.removeDockWidget(dock)
+        dock.takeWidget()
+        panel.setParent(None)
+        dock.deleteLater()
 
-        if dock is not None and not sip.isdeleted(dock):
-            with contextlib.suppress(Exception):
-                self.dock_manager.removeDockWidget(dock)
-            try:
-                detached = dock.takeWidget()
-                if detached is not None:
-                    detached.setParent(None)
-            except Exception:
-                pass
-            dock.deleteLater()
+    def discard_panel(self, panel: DatasetPanel) -> None:
+        """Drop an added panel, from its tab's close button or its menu entry.
 
-    def discard_panel(self, panel: QWidget) -> None:
-        """Drop an added panel, from whichever gesture asked for it.
-
-        Deferred, because both callers are inside a signal from the thing this
-        is about to delete -- the dock's own close, or its menu action being
-        unchecked. Idempotent, because a close button press unchecks nothing
-        and an uncheck closes nothing: whichever arrives second finds the panel
-        already gone.
+        Deferred, because both arrive in a signal from the thing about to be
+        deleted. The membership check is because a close and an uncheck can
+        both arrive for one gesture; the second finds the panel already gone.
         """
         if self.restoring_layout or self.shutting_down:
             return
@@ -259,31 +204,13 @@ class MainWindow(QWidget):
             return
         QTimer.singleShot(0, lambda p=panel: self.app.remove_panel(p))
 
-    def on_panel_toggled(self, panel: QWidget, visible: bool) -> None:
-        """Unchecking an added panel deletes it. There is nothing to re-check.
-
-        The fixed three hide instead, and that difference is the whole reason
-        the menu draws a rule between them.
-        """
-        if visible:
-            return
-        self.discard_panel(panel)
-
-    def on_panel_dock_closed(self, panel: QWidget) -> None:
-        """The tab's close button means what unchecking it means.
-
-        The data it was showing is untouched: that lives in the library, and
-        adding the panel back binds to it again.
-        """
-        self.discard_panel(panel)
-
-    # -- layout, menu, theme -------------------------------------------------- #
+    def on_panel_toggled(self, panel: DatasetPanel, visible: bool) -> None:
+        """Unchecking an added panel deletes it; there is nothing to re-check."""
+        if not visible:
+            self.discard_panel(panel)
 
     def save_dock_layout(self) -> str | None:
-        try:
-            state = self.dock_manager.saveState()
-        except Exception:
-            return None
+        state = self.dock_manager.saveState()
         if state.isEmpty():
             return None
         return state.toBase64().data().decode("ascii")
@@ -297,25 +224,19 @@ class MainWindow(QWidget):
         self.restoring_layout = True
         try:
             self.dock_manager.restoreState(data)
-        except Exception:
-            pass
         finally:
             self.restoring_layout = False
         self.refresh_panels_menu()
 
     def refresh_panels_menu(self) -> None:
-        for panel in list(self.panel_actions):
-            action = self.panel_actions.get(panel)
-            if action is None or sip.isdeleted(action):
-                self.panel_actions.pop(panel, None)
         self.menubar.populate_panels_menu(
             list(self.dock_by_key.values()), list(self.panel_actions.values())
         )
 
     def set_style(self, theme_mode: str) -> None:
-        self.menubar.set_active_style(self.theme_controller.apply(theme_mode))
+        self.menubar.set_active_style(self.theme_controller.apply(theme_mode, persist=True))
 
-    def closeEvent(self, event: QCloseEvent) -> None:
+    def closeEvent(self, event: QCloseEvent | None) -> None:
         self.shutting_down = True
         self.closing.emit()
         super().closeEvent(event)

@@ -104,7 +104,6 @@ layers = ["app", "panels | programs", "devices", "structs"]
 ignore_imports = [
   "pyrpoc.src.panels.acquisition.panel -> pyrpoc.src.app.catalog",
   "pyrpoc.src.panels.** -> pyrpoc.src.app.application",
-  "pyrpoc.src.panels.** -> pyrpoc.src.app.library",
 ]
 
 [[tool.importlinter.contracts]]

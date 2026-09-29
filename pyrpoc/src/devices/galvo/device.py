@@ -1,14 +1,7 @@
-"""The scanner: two AO channels on someone else's card.
+"""The scanner: two AO channels on the DAQ's card.
 
-No driver and no connection -- it is mirrors moved by voltages, so it is
-``backed_by`` the DAQ and claiming it claims the DAQ. What it does have is a
-wiring configuration you set up once and reuse, which is why it needs identity,
-a panel and persistence.
-
-Two fields, both read by ``raster_scan``. Section 4 also mentions per-axis
-limits; nothing would clamp against them in v3.1, and an unused field is exactly
-the accumulation section 3 warns about. They are a field plus a clamp when
-something needs them.
+It has no connection of its own, so it is ``backed_by`` the DAQ and claiming it
+claims the card. Its wiring is still configuration worth persisting.
 """
 
 from __future__ import annotations

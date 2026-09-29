@@ -1,22 +1,9 @@
 """Pinpoint Raman: park the galvos at one point and take a spectrum there.
 
-The first program configured by clicking rather than typing. That changes
-nothing about ``run``: it declares ``PointGroup`` the way confocal declares
-``ScanGroup``, reads volts out of it, and has no idea a display exists. The
-click arrives through ``runners``: an ``ArmAndRun`` requests a ``PixelPick``,
-``aim_at_pick`` turns the one it receives into volts, and then the run starts.
-Where the pixel came from is not this program's concern.
-
-The spectrometer is synthetic for now and the parking is a documented stub, so
-this runs on a laptop with no card in it. What is real is everything above the
-hardware boundary: claims over the galvo, the executor's thread, dataset creation
-from ``emits``, publishing, the save policy and the spectrum view.
-
-Deterministic by construction, like ``simulation.py``: a spectrum is a function
-of (seed, point, frame index), so clicking the same pixel twice gives the same
-trace and two different pixels visibly differ. That is what makes the fake data
-worth looking at -- a picker that returned noise would not show you whether the
-point actually changed.
+The point comes from ``PointGroup``, typed or set by an ``ArmAndRun`` runner
+from a clicked pixel; ``run`` does not know a display exists. The spectrometer
+is synthetic and the parking a stub, so this runs with no card. A spectrum is a
+function of (seed, point, frame index), so re-clicking a pixel reproduces it.
 """
 
 from __future__ import annotations
@@ -28,7 +15,7 @@ from pyrpoc.src.devices.galvo.device import Galvo
 from pyrpoc.src.structs.data import Spectrum1D
 from pyrpoc.src.structs.params import BlockMap
 from pyrpoc.src.structs.picks import Pick, PixelPick
-from pyrpoc.src.structs.program import Program
+from pyrpoc.src.structs.program import Program, RunContext
 from pyrpoc.src.structs.registries import program_registry
 
 from .components.param_groups import Point, PointGroup, SpectrumGroup
@@ -42,17 +29,9 @@ NOISE_STREAM = 0x5EED
 def park_galvos(daq: DAQ, galvo: Galvo, point: Point) -> None:
     """Hold the galvos at one position. Not implemented yet.
 
-    When the DAQ logic lands this writes two AO samples -- ``point.fast_v`` on
-    ``galvo.config.fast_ao`` and ``point.slow_v`` on ``galvo.config.slow_ao`` --
-    on an un-clocked task and leaves them asserted for the duration of the
-    spectrum, then returns the mirrors to their resting position.
-
-    It is a real function with its real signature rather than an inline comment
-    because the seam is the interesting part: it is the only place in this file
-    that will ever touch hardware, and the synthetic detector below does not
-    care whether it did. Both devices are bound even though ``uses`` names only
-    the galvo, since claims propagate along ``backed_by`` and the mirrors are
-    voltages on the card's AO channels.
+    It will write ``point.fast_v``/``slow_v`` on the galvo's AO channels as an
+    un-clocked task, held for the spectrum. It exists with its real signature
+    because it is the one place in this file that will touch hardware.
     """
     del daq, galvo, point
 
@@ -60,44 +39,38 @@ def park_galvos(daq: DAQ, galvo: Galvo, point: Point) -> None:
 def synthetic_spectrum(spec: SpectrumGroup, point: Point, *, frame_index: int) -> np.ndarray:
     """A ``(1, n_points)`` spectrum of gaussian bands, keyed to the position.
 
-    The position enters the seed quantised to 0.1 mV, so that a re-click on the
-    same pixel reproduces the trace exactly while a click one pixel over does
-    not. Band centres, widths and heights are drawn once from that seed; only
-    the noise varies per frame, which is what makes a continuous run at one spot
-    look like a detector integrating rather than a new sample each time.
+    The position enters the seed quantised to 0.1 mV, so a re-click reproduces
+    the trace and a click one pixel over does not. Only the noise varies per
+    frame, so a continuous run looks like a detector integrating.
     """
-    n_points = int(spec.n_points)
     bands = np.random.default_rng(
         [
-            int(spec.seed) % (2**32),
-            int(round(point.fast_v * 1e4)) % (2**32),
-            int(round(point.slow_v * 1e4)) % (2**32),
+            spec.seed % (2**32),
+            round(point.fast_v * 1e4) % (2**32),
+            round(point.slow_v * 1e4) % (2**32),
         ]
     )
-    xs = np.arange(n_points, dtype=np.float32)
-
-    spectrum = np.zeros(n_points, dtype=np.float32)
-    peaks = int(spec.n_peaks)
-    if peaks > 0:
-        centres = bands.uniform(0.05, 0.95, peaks) * n_points
-        widths = bands.uniform(0.004, 0.02, peaks) * n_points
-        heights = bands.uniform(0.2, 1.0, peaks)
-        for centre, width, height in zip(centres, widths, heights, strict=True):
-            spectrum += height * np.exp(-((xs - centre) ** 2) / (2.0 * width**2))
+    xs = np.arange(spec.n_points, dtype=np.float32)
+    spectrum = np.zeros(spec.n_points, dtype=np.float32)
+    centres = bands.uniform(0.05, 0.95, spec.n_peaks) * spec.n_points
+    widths = bands.uniform(0.004, 0.02, spec.n_peaks) * spec.n_points
+    heights = bands.uniform(0.2, 1.0, spec.n_peaks)
+    for centre, width, height in zip(centres, widths, heights, strict=True):
+        spectrum += height * np.exp(-((xs - centre) ** 2) / (2.0 * width**2))
 
     # A broad fluorescence background, so the bands sit on something.
-    spectrum += 0.12 * np.exp(-xs / (0.6 * n_points))
+    spectrum += 0.12 * np.exp(-xs / (0.6 * spec.n_points))
 
-    noise = np.random.default_rng(
-        [int(spec.seed) % (2**32), int(frame_index) % (2**32), NOISE_STREAM]
-    )
-    spectrum = spectrum + noise.normal(0.0, max(float(spec.noise_level), 0.0), n_points)
+    noise = np.random.default_rng([spec.seed % (2**32), frame_index % (2**32), NOISE_STREAM])
+    spectrum = spectrum + noise.normal(0.0, spec.noise_level, spec.n_points)
     return np.clip(spectrum, 0.0, None).astype(np.float32)[np.newaxis]
 
 
 def aim_at_pick(pick: Pick, params: BlockMap) -> None:
     """Point the galvos at the picked pixel: its volts become the target."""
-    assert isinstance(pick, PixelPick)
+    # Narrows for the type checker: the runner asks for a PixelPick.
+    if not isinstance(pick, PixelPick):
+        raise TypeError(f"expected a PixelPick, got {type(pick).__name__}")
     params[PointGroup].target = Point.from_pixel(pick.dataset, pick.x, pick.y)
 
 
@@ -109,18 +82,23 @@ class PinpointRaman(Program):
     runners = [
         Single(),
         Continuous(),
-        ArmAndRun(PixelPick, aim_at_pick, label="Acquire at point…"),
+        ArmAndRun(
+            PixelPick,
+            aim_at_pick,
+            label="Acquire at point…",
+            icon=None,
+            tooltip="Arm, then provide what this run needs to start it",
+        ),
     ]
 
-    def run(self, ctx) -> None:
+    def run(self, ctx: RunContext) -> None:
         point = ctx.params[PointGroup].target
         spec = ctx.params[SpectrumGroup]
 
-        daq: DAQ = ctx.devices[DAQ]
-        galvo: Galvo = ctx.devices[Galvo]
-
         ctx.status(f"parking at {point.fast_v:.3f} / {point.slow_v:.3f} V")
-        park_galvos(daq, galvo, point)
+        # Both devices are bound though ``uses`` names only the galvo: claims
+        # follow ``backed_by``, and the mirrors are voltages on the card.
+        park_galvos(ctx.devices[DAQ], ctx.devices[Galvo], point)
 
         total = "" if ctx.continuous else f"/{spec.num_frames}"
         for index in ctx.frames(spec.num_frames):

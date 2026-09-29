@@ -1,16 +1,4 @@
-"""A read-only, skimmable list table.
-
-Pulled out of the data library panel, whose table made four decisions that
-have nothing to do with what a run library specifically needs: no grid, no
-in-place editing, alternating rows, one row selected at a time. The next panel
-that lists records rather than editing them starts from those decisions
-instead of re-making them -- columns, resize modes and cell content stay the
-caller's.
-
-Not what the acquisition form's mask table is built from: that table is
-edited in place, with a combo box and two spin boxes live in every row, which
-is a different kind of table doing a different job.
-"""
+"""A read-only, skimmable list table, and typed access to table headers."""
 
 from __future__ import annotations
 
@@ -44,15 +32,13 @@ def vertical_header(table: QTableView) -> QHeaderView:
 class ListTable(QTableWidget):
     """A ``QTableWidget`` preconfigured as a read-only, single-selection list."""
 
-    def __init__(self, columns: list[str], parent: QWidget | None = None):
+    def __init__(self, columns: list[str], parent: QWidget):
         super().__init__(0, len(columns), parent)
         self.setHorizontalHeaderLabels(columns)
         self.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        # Grid lines and row numbers draw a box around every cell in a table
-        # whose whole job is to be skimmed. Alternating bands separate the
-        # rows with no ink of their own.
+        # A table to skim: alternating bands separate rows with no grid ink.
         self.setShowGrid(False)
         self.setAlternatingRowColors(True)
         self.setWordWrap(False)

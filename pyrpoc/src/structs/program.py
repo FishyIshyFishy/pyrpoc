@@ -1,13 +1,9 @@
 """What a program is, and the service surface it gets while running.
 
-A program is something with a ``run()`` that drives hardware and emits data over
-time. ``uses``, ``params`` and ``emits`` are not a declaration format; they are
-the three things the executor must know in order to start it. ``runners`` is
-the fourth attribute and the one about the outside: the ways it can be started
--- Start, Continuous, "acquire where I click" -- because which entry points make
-sense depends on the program. They are Qt-free declarations the app hosts
-without knowing what they do. Nothing about labels or menus -- a program should
-not know it is in a dropdown.
+``uses``, ``params`` and ``emits`` are what the executor must know to start a
+program; ``runners`` are the ways it can be started, which depend on the
+program. Nothing about labels or menus: a program does not know it is in a
+dropdown.
 """
 
 from __future__ import annotations
@@ -26,28 +22,20 @@ D = TypeVar("D", bound=Device)
 
 
 class Cancelled(Exception):
-    """Raised inside a running program when the run has been stopped.
-
-    Propagates out through ``Program.run``, which is what makes a program's
-    ``finally`` blocks the teardown mechanism for a cancelled run.
-    """
+    """Raised inside a running program when the run has been stopped, so a
+    program's ``finally`` blocks are its teardown."""
 
 
 class DeviceMap(Mapping[type[Device], Device]):
-    """The devices resolved for one run, keyed by class.
+    """The devices resolved for one run, keyed by class, so ``ctx.devices[DAQ]``
+    is typed as a ``DAQ``."""
 
-    A plain ``dict[type[Device], Device]`` makes ``ctx.devices[DAQ]`` a
-    ``Device``, so every program's ``daq: DAQ = ctx.devices[DAQ]`` was an
-    assertion the type checker took on trust -- and ``daq.config.device_name``
-    was checked against nothing. Keying the return to the class asked for is
-    what makes the hardware layer's ``daq: DAQ`` parameter mean something.
-    """
-
-    def __init__(self, devices: Mapping[type[Device], Device] | None = None):
-        self._devices: dict[type[Device], Device] = dict(devices or {})
+    def __init__(self, devices: Mapping[type[Device], Device]):
+        self._devices: dict[type[Device], Device] = dict(devices)
 
     def __getitem__(self, key: type[D]) -> D:
         device = self._devices[key]
+        # Narrows for the type checker: devices are keyed by their own class.
         if not isinstance(device, key):
             raise TypeError(f"{device!r} is stored under {key.__name__} but is not one")
         return device
@@ -63,24 +51,19 @@ class DeviceMap(Mapping[type[Device], Device]):
 
 
 class Program:
-    """Subclasses define ``uses``, ``params``, ``emits`` and ``run``, and may
-    override ``runners``."""
+    """Subclasses define ``uses``, ``params``, ``emits``, ``runners`` and ``run``."""
 
     # Device classes to claim. Claims propagate along ``backed_by``.
     uses: list[type[Device]] = []
 
-    # The parameter blocks this program is configured with, in form order.
-    # Declaring a block is what shares it: two programs naming ``ScanGroup``
-    # are handed the same instance.
+    # Parameter blocks, in form order. Declaring a block shares it with every
+    # other program that declares it.
     params: list[type] = []
 
     # Named outputs, and the kind of ``Data`` each one carries.
     emits: dict[str, type[Data]] = {}
 
-    # The ways this program can be started, in the order their controls are
-    # drawn. Shared declarations: attaching is what builds per-program state.
-    # Empty by default -- the runners are implementations, in
-    # ``programs/components/runners/``, and every program names its own.
+    # The ways this program can be started, in the order their controls are drawn.
     runners: list[Runner] = []
 
     def run(self, ctx: RunContext) -> None:
@@ -88,12 +71,8 @@ class Program:
 
 
 class RunContext:
-    """The service surface handed to a running program.
-
-    One concrete class, written once and never subclassed. Programs call it;
-    they never implement it. It is the same idea as v3.0's five loose
-    ``acquire_continuous`` arguments, given a name and one place to live.
-    """
+    """The service surface handed to a running program. Programs call it;
+    they never implement it."""
 
     def __init__(
         self,
@@ -102,8 +81,8 @@ class RunContext:
         devices: Mapping[type[Device], Device],
         datasets: dict[str, Dataset],
         cancel: threading.Event,
-        continuous: bool = False,
-        on_status: Callable[[str], None] | None = None,
+        continuous: bool,
+        on_status: Callable[[str], None],
     ):
         self.params = params
         self.devices = DeviceMap(devices)
@@ -112,65 +91,40 @@ class RunContext:
         self._cancel = cancel
         self._on_status = on_status
 
-    # -- output ------------------------------------------------------------ #
-
-    def publish(self, output: str, data: np.ndarray, *, channels=None) -> None:
-        """Write one array into one of this run's datasets.
-
-        The output name is declared in ``emits``, so a view binding exists
-        before the run starts rather than being inferred from a tag mid-flight.
-        """
-        dataset = self.datasets.get(output)
-        if dataset is None:
+    def dataset_for(self, output: str) -> Dataset:
+        if output not in self.datasets:
             raise KeyError(
                 f"{output!r} is not declared in emits; this program declares "
                 f"{sorted(self.datasets)}"
             )
+        return self.datasets[output]
+
+    def publish(self, output: str, data: np.ndarray, *, channels=None) -> None:
+        """Write one array into one of this run's datasets."""
+        dataset = self.dataset_for(output)
         if channels and not dataset.channel_labels:
             dataset.channel_labels = list(channels)
         dataset.append(data)
 
     def describe(self, output: str, **metadata: Any) -> None:
-        """Record metadata on one of this run's datasets.
-
-        FLIM uses it for laser_period_ps / binwidth_ps / n_bins, which v3.0
-        attached to every AcquiredData it emitted. Per output and set once, not
-        per frame.
-        """
-        dataset = self.datasets.get(output)
-        if dataset is None:
-            raise KeyError(f"{output!r} is not declared in emits")
-        dataset.metadata.update(metadata)
+        """Record per-output metadata, set once rather than per frame."""
+        self.dataset_for(output).metadata.update(metadata)
 
     def status(self, text: str) -> None:
-        if self._on_status is not None:
-            self._on_status(text)
-
-    # -- control flow ------------------------------------------------------- #
+        self._on_status(text)
 
     def check_cancel(self) -> None:
         if self._cancel.is_set():
             raise Cancelled("run stopped")
 
-    def cancelled(self) -> bool:
-        return self._cancel.is_set()
+    def frames(self, count: int) -> Iterator[int]:
+        """Frame indices, checking for cancellation before each one.
 
-    def frames(self, count: int | None = None) -> Iterator[int]:
-        """Iterate frame indices, checking for cancellation before each one.
-
-        How many frames is an imaging parameter, so ``count`` comes out of
-        whichever block describes the imaging -- ``ScanGroup`` on a real rig,
-        ``FrameGroup`` under simulation. This is a loop with a cancellation
-        check in it and nothing else: the number passes through and is not
-        recorded, so no layer above a program has a frame concept.
-
-        ``count`` is ignored when the run was started in continuous mode, which
-        is how the Continuous button survives without the program's body
-        changing and without overwriting the user's stored frame count.
+        ``count`` is ignored in continuous mode, so the Continuous button works
+        without the program changing and without overwriting the stored count.
         """
         index = 0
-        limit = None if self.continuous else count
-        while limit is None or index < limit:
+        while self.continuous or index < count:
             self.check_cancel()
             yield index
             index += 1

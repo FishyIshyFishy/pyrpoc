@@ -1,19 +1,12 @@
 """The Swabian TimeTagger: its SDK handle, its wiring, and the Flim measurement.
 
-Driver moved from ``instruments/time_tagger.py``; its panel moved from
-``instruments/instrument_widgets/time_tagger_widget.py``. They changed together
-constantly and lived in different folders, which is the case section 6.1 is
-built on.
-
-Channel numbers and trigger voltages move out of the FLIM parameter form and
-into this device's configuration: they describe how the tagger is cabled and
-thresholded, which is calibration, not a per-run choice. Laser frequency,
-histogram bins and bin width stay run parameters.
+Channel numbers and trigger voltages are configuration rather than run
+parameters because they describe how the tagger is cabled and thresholded.
 """
 
 from __future__ import annotations
 
-import contextlib
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Protocol
 
@@ -30,8 +23,8 @@ class TaggerError(DeviceError):
 
 
 class FlimMeasurement(Protocol):
-    """The part of the SDK's ``Flim`` measurement this code calls. Declared
-    here because the Swabian SDK ships no type information."""
+    """The part of the SDK's ``Flim`` this code calls, so programs can type it
+    without importing the SDK."""
 
     def stop(self) -> None: ...
 
@@ -88,35 +81,27 @@ class TimeTagger(Device):
             return "Connection: not tested"
         return "Connection: OK" if self.last_test_ok else "Connection: FAILED"
 
-    # -- connection -------------------------------------------------------- #
-
     def check_reachable(self) -> bool:
         self.create_tagger()
         self.free_tagger()
         return True
 
     def create_tagger(self) -> None:
-        """Create a TimeTagger and store it as self.tagger."""
         from Swabian import TimeTagger as sdk
 
         self.tagger = sdk.createTimeTagger()
 
     def free_tagger(self) -> None:
-        """Free self.tagger and clear the reference."""
-        if self.tagger is not None:
-            try:
-                from Swabian import TimeTagger as sdk
+        if self.tagger is None:
+            return
+        from Swabian import TimeTagger as sdk
 
-                sdk.freeTimeTagger(self.tagger)
-            except Exception:
-                pass
-            self.tagger = None
-
-    # -- FLIM -------------------------------------------------------------- #
+        sdk.freeTimeTagger(self.tagger)
+        self.tagger = None
 
     def configure_for_flim(self) -> None:
-        """Set per-channel trigger levels and the laser input delay used to
-        slide the decay curve into the histogram window."""
+        """Set per-channel trigger levels, and the laser delay that slides the
+        decay curve into the histogram window."""
         if self.tagger is None:
             raise TaggerError("create_tagger() must be called before configure_for_flim()")
         c = self.config
@@ -130,15 +115,9 @@ class TimeTagger(Device):
     def start_flim_measurement(
         self, *, n_pixels: int, n_bins: int, binwidth_ps: int
     ) -> FlimMeasurement:
-        """Create the hardware Flim measurement that histograms laser-to-photon
-        delays into per-pixel decay curves.
-
-        Binning happens on the FPGA and only the (n_pixels x n_bins) histogram
-        crosses USB, so the 80 MHz laser stream is never transferred and the
-        device cannot overflow the way raw TimeTagStream acquisition does. The
-        pixel/frame channels carry the DAQ scan markers that assign photons to
-        pixels.
-        """
+        """Start the hardware Flim measurement. Binning happens on the FPGA and
+        only the (n_pixels x n_bins) histogram crosses USB, so the laser stream
+        cannot overflow the link the way raw time-tag streaming does."""
         if self.tagger is None:
             raise TaggerError("create_tagger() must be called before start_flim_measurement()")
         from Swabian import TimeTagger as sdk
@@ -156,17 +135,12 @@ class TimeTagger(Device):
             n_frame_average=1,
         )
 
-    def stop_flim_measurement(self, flim: FlimMeasurement | None) -> None:
-        """Stop the measurement and free the tagger. Called once per run, from
-        the program's ``finally`` -- not once per frame as v3.0 did."""
-        if flim is not None:
-            with contextlib.suppress(Exception):
-                flim.stop()
+    def stop_flim_measurement(self, flim: FlimMeasurement) -> None:
+        """Stop the measurement and free the tagger, once per run."""
+        flim.stop()
         self.free_tagger()
 
-    # -- panel ------------------------------------------------------------- #
-
-    def panel(self, parent: QWidget | None = None, on_change=None) -> QWidget | None:
+    def panel(self, parent: QWidget, on_change: Callable[[], None]) -> QWidget:
         from .panel import TimeTaggerPanel
 
-        return TimeTaggerPanel(self, parent=parent, on_change=on_change)
+        return TimeTaggerPanel(self, parent, on_change)

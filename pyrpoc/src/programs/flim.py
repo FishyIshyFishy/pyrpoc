@@ -1,18 +1,10 @@
 """FLIM: scan the galvo emitting tagger markers, read back a histogram cube.
 
-The clearest demonstration of "the program owns the loop". In v3.0
-``FlimModality.acquire_once`` called ``setup_tagger()`` at the top and
-``teardown_tagger()`` in a ``finally`` -- **per frame** -- because
-``acquire_once`` had to be self-contained and there was nowhere else for per-run
-setup to go. A ten-frame run created and freed the TimeTagger ten times.
-
-Here setup is simply outside the loop, and the ``finally`` runs on a stop
-because cancellation is an exception raised out through ``run()``.
-
-The waveform arithmetic is duplicated from ``confocal.py`` rather than shared,
-and is meant to stay identical to it. What is genuinely FLIM's is the
-counter-derived pixel clock, the exported start trigger, and the fact that no
-analog input is read at all -- the image comes from the photon stream.
+The tagger is set up once per run, outside the frame loop, and torn down in a
+``finally`` that also runs on a stop. The waveform arithmetic is a copy of
+``confocal.py``'s and must stay identical. What is FLIM's own is the
+counter-derived pixel clock, the exported start trigger, and reading no analog
+input: the image comes from the photon stream.
 """
 
 from __future__ import annotations
@@ -23,7 +15,7 @@ from nidaqmx.constants import AcquisitionType, Signal
 
 from pyrpoc.src.devices import DAQ, DaqError, FlimMeasurement, Galvo, TimeTagger
 from pyrpoc.src.structs.data import Cube3D, Image2D
-from pyrpoc.src.structs.program import Program
+from pyrpoc.src.structs.program import Program, RunContext
 from pyrpoc.src.structs.registries import program_registry
 
 from .components.param_groups import (
@@ -34,18 +26,10 @@ from .components.param_groups import (
 )
 from .components.runners import Continuous, Single
 
-# --------------------------------------------------------------------------- #
-# Waveform arithmetic                                                          #
-# --------------------------------------------------------------------------- #
-
 
 def pixel_samples(dwell_time_us: float, sample_rate_hz: float) -> int:
-    """Samples per pixel for a FLIM scan.
-
-    Rounds, floor 2 -- the counter needs at least one high tick and one low
-    tick. The raster path truncates and has a floor of 1. The two formulas
-    genuinely differ -- do not unify them.
-    """
+    """Samples per pixel: rounding, floor 2, since the counter needs a high and
+    a low tick. The raster path truncates with floor 1; do not unify them."""
     return max(2, int(round(dwell_time_us * 1e-6 * sample_rate_hz)))
 
 
@@ -60,17 +44,16 @@ def generate_raster_waveform(
     slow_axis_offset: float,
     slow_axis_amplitude: float,
 ) -> np.ndarray:
+    """The (fast, slow) AO waveform for one frame: the fast axis sweeps the
+    overscan-padded width each line, holding ``pixel_samples`` per pixel."""
     total_x = extra_left + x_pixels + extra_right
-    fast_amp = max(float(fast_axis_amplitude), 1e-6)
-    slow_amp = max(float(slow_axis_amplitude), 1e-6)
-    fast_step = (2.0 * fast_amp) / float(x_pixels)
-    fast_start = -fast_amp - (float(extra_left) * fast_step)
-    fast_axis = (
-        fast_start + (np.arange(total_x, dtype=np.float32) * fast_step) + float(fast_axis_offset)
+    fast_step = 2.0 * fast_axis_amplitude / x_pixels
+    fast_start = -fast_axis_amplitude - extra_left * fast_step
+    fast_axis = fast_start + np.arange(total_x, dtype=np.float32) * fast_step + fast_axis_offset
+    slow_axis = (
+        np.linspace(-1.0, 1.0, y_pixels, endpoint=False, dtype=np.float32) * slow_axis_amplitude
+        + slow_axis_offset
     )
-    slow_axis = np.linspace(
-        -1.0, 1.0, y_pixels, endpoint=False, dtype=np.float32
-    ) * slow_amp + float(slow_axis_offset)
     fast_raster = np.tile(np.repeat(fast_axis, pixel_samples), y_pixels)
     slow_raster = np.repeat(slow_axis, total_x * pixel_samples)
     return np.vstack((fast_raster, slow_raster)).astype(np.float64)
@@ -88,11 +71,6 @@ def waveform_for_scan(scan: ScanGroup, pixel_samples: int) -> np.ndarray:
         slow_axis_offset=scan.slow_axis_offset,
         slow_axis_amplitude=scan.slow_axis_amplitude,
     )
-
-
-# --------------------------------------------------------------------------- #
-# The scan                                                                     #
-# --------------------------------------------------------------------------- #
 
 
 def run_flim_scan(
@@ -162,11 +140,8 @@ def flim_scan(
     sample_rate_hz: float,
     triggers: TriggerGroup,
 ) -> None:
-    """Build the raster waveform and run one FLIM scan.
-
-    Takes the DAQ for its device name only. FLIM reads no analog input, so it
-    does not ask for any.
-    """
+    """Build the raster waveform and run one FLIM scan. The DAQ supplies only
+    its device name: FLIM reads no analog input."""
     samples_per_pixel = pixel_samples(scan.dwell_time_us, sample_rate_hz)
     n_pixels = scan.total_x * scan.y_pixels
 
@@ -182,11 +157,6 @@ def flim_scan(
         pixel_clock_ctr=triggers.pixel_clock_ctr,
         pixel_clock_pfi=triggers.pixel_clock_pfi,
     )
-
-
-# --------------------------------------------------------------------------- #
-# Reading a frame back                                                         #
-# --------------------------------------------------------------------------- #
 
 
 def reshape_flim_frame(
@@ -210,25 +180,12 @@ def flim_intensity(hist_frame: np.ndarray) -> np.ndarray:
     return np.asarray(hist_frame, dtype=np.float32).sum(axis=2)
 
 
-def read_flim_frame(
-    flim_measurement: FlimMeasurement,
-    n_bins: int,
-    y_pixels: int,
-    total_x_pixels: int,
-    extra_left: int,
-    x_pixels: int,
-) -> np.ndarray:
-    """Read the current (just-scanned) Flim frame and return its clipped
-    ``(y_pixels, x_pixels, n_bins)`` histogram cube."""
-    frame = flim_measurement.getCurrentFrameEx()
+def read_flim_frame(flim: FlimMeasurement, n_bins: int, scan: ScanGroup) -> np.ndarray:
+    """The just-scanned Flim frame as a clipped ``(H, W, n_bins)`` cube."""
+    histograms = flim.getCurrentFrameEx().getHistograms()
     return reshape_flim_frame(
-        frame.getHistograms(), n_bins, y_pixels, total_x_pixels, extra_left, x_pixels
+        histograms, n_bins, scan.y_pixels, scan.total_x, scan.extra_left, scan.x_pixels
     )
-
-
-# --------------------------------------------------------------------------- #
-# The program                                                                  #
-# --------------------------------------------------------------------------- #
 
 
 @program_registry.register("flim")
@@ -238,18 +195,10 @@ class FLIM(Program):
     emits = {"intensity": Image2D, "histogram": Cube3D}
     runners = [Single(), Continuous()]
 
-    def run(self, ctx) -> None:
+    def run(self, ctx: RunContext) -> None:
         scan = ctx.params[ScanGroup]
-        daq_params = ctx.params[DaqGroup]
-        triggers = ctx.params[TriggerGroup]
         histogram = ctx.params[HistogramGroup]
-        num_frames = scan.num_frames
-
-        daq: DAQ = ctx.devices[DAQ]
-        galvo: Galvo = ctx.devices[Galvo]
-        tagger: TimeTagger = ctx.devices[TimeTagger]
-
-        total_x = scan.total_x
+        tagger = ctx.devices[TimeTagger]
         ctx.describe(
             "histogram",
             laser_period_ps=histogram.laser_period_ps,
@@ -261,35 +210,30 @@ class FLIM(Program):
         tagger.create_tagger()
         tagger.configure_for_flim()
         flim = tagger.start_flim_measurement(
-            n_pixels=total_x * scan.y_pixels,
+            n_pixels=scan.total_x * scan.y_pixels,
             n_bins=histogram.histogram_bins,
             binwidth_ps=histogram.histogram_binwidth_ps,
         )
         try:
-            total = "" if ctx.continuous else f"/{num_frames}"
-            for index in ctx.frames(num_frames):
+            total = "" if ctx.continuous else f"/{scan.num_frames}"
+            for index in ctx.frames(scan.num_frames):
                 ctx.status(f"frame {index + 1}{total}")
-                flim_scan(
-                    daq=daq,
-                    galvo=galvo,
-                    scan=scan,
-                    sample_rate_hz=daq_params.sample_rate_hz,
-                    triggers=triggers,
-                )
-                ctx.sleep(histogram.frame_settle_s)
-                cube = read_flim_frame(
-                    flim,
-                    n_bins=histogram.histogram_bins,
-                    y_pixels=scan.y_pixels,
-                    total_x_pixels=total_x,
-                    extra_left=scan.extra_left,
-                    x_pixels=scan.x_pixels,
-                )
-                ctx.publish("histogram", cube)
-                ctx.publish(
-                    "intensity",
-                    flim_intensity(cube)[np.newaxis],
-                    channels=["intensity"],
-                )
+                self.acquire_frame(ctx, flim)
         finally:
             tagger.stop_flim_measurement(flim)
+
+    @staticmethod
+    def acquire_frame(ctx: RunContext, flim: FlimMeasurement) -> None:
+        scan = ctx.params[ScanGroup]
+        histogram = ctx.params[HistogramGroup]
+        flim_scan(
+            daq=ctx.devices[DAQ],
+            galvo=ctx.devices[Galvo],
+            scan=scan,
+            sample_rate_hz=ctx.params[DaqGroup].sample_rate_hz,
+            triggers=ctx.params[TriggerGroup],
+        )
+        ctx.sleep(histogram.frame_settle_s)
+        cube = read_flim_frame(flim, histogram.histogram_bins, scan)
+        ctx.publish("histogram", cube)
+        ctx.publish("intensity", flim_intensity(cube)[np.newaxis], channels=["intensity"])

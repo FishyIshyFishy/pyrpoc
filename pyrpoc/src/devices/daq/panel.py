@@ -1,9 +1,4 @@
-"""Device-specific controls for the DAQ, beneath its generated form.
-
-The form itself is generated from ``DaqConfig`` by ``panels/devices/panel.py``,
-so adding a field to the config adds its row with no edit here. What lives in
-this file is what a generated form cannot produce: the reachability check.
-"""
+"""The DAQ's reachability check, beneath the form generated from ``DaqConfig``."""
 
 from __future__ import annotations
 
@@ -17,12 +12,7 @@ if TYPE_CHECKING:  # pragma: no cover
 
 
 class DaqPanel(QWidget):
-    def __init__(
-        self,
-        device: DAQ,
-        parent: QWidget | None = None,
-        on_change: Callable[[], None] | None = None,
-    ) -> None:
+    def __init__(self, device: DAQ, parent: QWidget, on_change: Callable[[], None]) -> None:
         super().__init__(parent)
         self.device = device
         self.on_change = on_change
@@ -53,5 +43,4 @@ class DaqPanel(QWidget):
         self.device.test_connection()
         self.refresh_from_model()
         self.test_btn.setEnabled(True)
-        if self.on_change is not None:
-            self.on_change()
+        self.on_change()
