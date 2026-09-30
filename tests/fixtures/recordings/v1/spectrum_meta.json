@@ -1,0 +1,36 @@
+{
+  "format": "pyrpoc-recording",
+  "format_version": 1,
+  "pyrpoc_version": "3.1.3",
+  "program_key": "spectrum_fixture",
+  "name": "spectrum",
+  "started_at": "2026-09-30T18:40:54.517370+00:00",
+  "ended_at": "2026-09-30T18:40:54.527481+00:00",
+  "last_error": null,
+  "runs": [
+    {
+      "run_id": 2,
+      "started_at": "2026-09-30T18:40:54.517370+00:00",
+      "ended_at": "2026-09-30T18:40:54.527458+00:00",
+      "error": null
+    }
+  ],
+  "parameters": {},
+  "devices": {},
+  "outputs": {
+    "spectrum": {
+      "kind": "Spectrum1D",
+      "channels": [
+        "ccd"
+      ],
+      "frames": 3,
+      "files": {
+        "spectrum": "spectrum_spectrum.npz"
+      },
+      "metadata": {
+        "units": "counts"
+      },
+      "notes": ""
+    }
+  }
+}

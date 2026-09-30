@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import numpy as np
 import tifffile
 
@@ -12,8 +14,6 @@ from pyrpoc.structs.registries import writer_registry
 @writer_registry.register(Image2D.name)
 class TiffWriter(Writer):
     """``<root>_<channel>.tiff``, appended float32, readable while the run goes."""
-
-    metadata_key = "tiff_paths"
 
     def write(self, dataset: Dataset, array: np.ndarray) -> None:
         channels = [array[index] for index in range(array.shape[0])]
@@ -31,3 +31,16 @@ class TiffWriter(Writer):
         for path, channel_plane in zip(self.paths.values(), channels, strict=True):
             with tifffile.TiffWriter(str(path), append=True) as writer:
                 writer.write(np.asarray(channel_plane, dtype=np.float32))
+
+    @classmethod
+    def read(cls, files: dict[str, Path]) -> list[np.ndarray]:
+        """``(C, H, W)`` frames, a channel per file. Every publish appended its
+        own page, so pages are read one by one rather than as one series."""
+        per_channel = []
+        for path in files.values():
+            with tifffile.TiffFile(str(path)) as tif:
+                per_channel.append([page.asarray() for page in tif.pages])
+        counts = {len(pages) for pages in per_channel}
+        if len(counts) != 1:
+            raise ValueError(f"channel files hold different frame counts: {sorted(counts)}")
+        return [np.stack(planes) for planes in zip(*per_channel, strict=True)]

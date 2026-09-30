@@ -19,7 +19,8 @@ from pyrpoc.structs.program import Program
 
 from .claims import DeviceBusy
 from .executor import Executor, Run, RunCallbacks
-from .library import DataLibrary
+from .library import DataLibrary, LibraryFull
+from .recording import Series
 
 
 class Runs(QObject):
@@ -29,13 +30,13 @@ class Runs(QObject):
     run_status = pyqtSignal(object, str)
     run_failed = pyqtSignal(object, str)
     run_finished = pyqtSignal(object)
-    # Refused before any run existed: a missing or busy device, a bad parameter.
+    # Refused before any run existed: a missing or busy device, a bad parameter,
+    # or a full library.
     start_refused = pyqtSignal(str)
     dataset_changed = pyqtSignal(object)
 
     def __init__(self, library: DataLibrary, parent: QObject):
         super().__init__(parent)
-        self.library = library
         self.executor = Executor(
             library,
             RunCallbacks(
@@ -53,6 +54,7 @@ class Runs(QObject):
         blocks: BlockStore,
         devices: list[Device],
         save: SaveTarget,
+        series: Series | None,
         claim: Callable[[Run], None],
     ) -> None:
         """Start ``program``, or report why not. Reported rather than raised,
@@ -60,8 +62,10 @@ class Runs(QObject):
         ``run_started`` announces it, so whoever started it has already
         recorded it by the time anyone asks."""
         try:
-            run = self.executor.start(program, blocks, devices, program_key=key, save=save)
-        except (MissingDevice, DeviceBusy, ParameterError) as exc:
+            run = self.executor.start(
+                program, blocks, devices, program_key=key, save=save, series=series
+            )
+        except (MissingDevice, DeviceBusy, ParameterError, LibraryFull) as exc:
             self.start_refused.emit(str(exc))
             return
         claim(run)
@@ -74,6 +78,8 @@ class Runs(QObject):
         """Called on the worker thread. The signal hops to the GUI thread."""
         self.dataset_changed.emit(dataset)
 
-    def release(self, dataset: Dataset) -> None:
+    def end_series(self, series: Series) -> None:
+        self.executor.end_series(series)
+
+    def stop_relaying(self, dataset: Dataset) -> None:
         dataset.unsubscribe(self.on_dataset_changed)
-        self.library.remove(dataset)

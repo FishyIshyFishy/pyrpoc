@@ -35,7 +35,15 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
 )
 
-from pyrpoc.structs.data import Dataset, Image2D, Library, Mask2D, Provenance, utc_now
+from pyrpoc.structs.data import (
+    Dataset,
+    Image2D,
+    Library,
+    Mask2D,
+    Origin,
+    Provenance,
+    utc_now,
+)
 
 from ..components.dataset_panel import DatasetPanel, panel_registry
 from ..components.range_slider import RangeSlider
@@ -409,8 +417,7 @@ class MaskEditorPanel(DatasetPanel):
         dlg.exec()
 
     def add_to_library(self) -> None:
-        """File the drawn mask as a ``Mask2D`` dataset: how a mask gets used.
-        Its ``run_id`` of 0 is what says no run produced it."""
+        """File the drawn mask as a ``Mask2D`` dataset: how a mask gets used."""
         mask = self.generate_mask(self._rois)
         if mask is None:
             QMessageBox.warning(self, "No ROI", "Draw at least one ROI before adding.")
@@ -423,6 +430,7 @@ class MaskEditorPanel(DatasetPanel):
                 started_at=utc_now(),
                 name=self.name_edit.text().strip(),
             ),
+            origin=Origin.AUTHORED,
         )
         dataset.append(mask)
         self.library.add(dataset)

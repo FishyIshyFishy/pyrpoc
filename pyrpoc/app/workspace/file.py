@@ -53,6 +53,11 @@ class SaveState:
 
 
 @dataclass
+class LibraryState:
+    auto_purge: bool = False
+
+
+@dataclass
 class WorkspaceState:
     schema_version: int = SCHEMA_VERSION
     devices: list[DeviceState] = field(default_factory=list)
@@ -61,6 +66,8 @@ class WorkspaceState:
     # Every parameter block, keyed by class name: one entry per block, shared.
     param_blocks: dict[str, dict[str, Any]] = field(default_factory=dict)
     save: SaveState = field(default_factory=SaveState)
+    # Optional in the file, so adding it needed no schema bump.
+    library: LibraryState = field(default_factory=LibraryState)
     ads_layout: str | None = None
 
 
@@ -139,8 +146,15 @@ def decode(raw: dict[str, Any]) -> WorkspaceState:
         selected_program=raw.get("selected_program"),
         param_blocks=blocks,
         save=decode_save(raw.get("save")),
+        library=decode_library(raw.get("library")),
         ads_layout=layout if isinstance(layout, str) else None,
     )
+
+
+def decode_library(raw: Any) -> LibraryState:
+    if not isinstance(raw, dict):
+        return LibraryState()
+    return LibraryState(auto_purge=bool(raw.get("auto_purge", False)))
 
 
 def decode_save(raw: Any) -> SaveState:

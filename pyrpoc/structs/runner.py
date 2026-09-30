@@ -113,6 +113,17 @@ class RunnerContext(ABC):
         ``execute`` returns."""
 
     @abstractmethod
+    def open_series(self) -> None:
+        """From now until ``close_series``, each run this context starts adds
+        to the previous run's library entries and files, unless something the
+        data depends on (parameters, devices, where it saves) changed."""
+
+    @abstractmethod
+    def close_series(self) -> None:
+        """End the series. Its entries stay open; its files are finalized once
+        its last run has ended."""
+
+    @abstractmethod
     def on_run_ended(self, callback: Callable[[bool], None]) -> None:
         """Call ``callback(completed)`` as each run this context started ends;
         ``completed`` is False when it was stopped or failed."""

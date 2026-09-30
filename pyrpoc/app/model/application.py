@@ -19,8 +19,9 @@ from pyrpoc.structs.device import Device, DeviceError
 from pyrpoc.structs.registries import block_registry
 
 from ..runtime import claims
-from ..runtime.library import DataLibrary
+from ..runtime.library import LIBRARY_LIMIT_BYTES, DataLibrary
 from ..runtime.runs import Runs
+from .library import LibraryModel
 from .runners import Runners
 
 log = logging.getLogger(__name__)
@@ -49,7 +50,7 @@ class Application(QObject):
     def __init__(self) -> None:
         super().__init__()
         self.devices: list[Device] = []
-        self.library = DataLibrary()
+        store = DataLibrary(LIBRARY_LIMIT_BYTES)
 
         self.selected_program: str | None = None
         # One instance per block class, shared by every program declaring it,
@@ -58,10 +59,12 @@ class Application(QObject):
         # One save target for the workspace: where a run goes does not depend
         # on which program runs.
         self.save = SaveTarget()
-        self.runs = Runs(self.library, self)
+        self.runs = Runs(store, self)
+        self.library = LibraryModel(store, self.runs, self)
         self.runners = Runners(self)
 
         self.runs.run_started.connect(lambda _run: self.state_changed.emit())
+        self.library.auto_purge_changed.connect(lambda _on: self.state_changed.emit())
 
     def select_program(self, key: str) -> None:
         self.selected_program = key

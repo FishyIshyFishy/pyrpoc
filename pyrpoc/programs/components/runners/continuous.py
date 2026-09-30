@@ -10,7 +10,8 @@ from pyrpoc.structs.runner import Runner, RunnerContext, Toggle
 @dataclass(frozen=True)
 class Continuous(Runner):
     """Start a new run each time one completes, until a run is stopped, fails,
-    or is refused. The toggle stays down for as long as it keeps going."""
+    or is refused. The toggle stays down for as long as it keeps going, and the
+    runs form one series, so they add to one library entry per output."""
 
     def attach(self, ctx: RunnerContext) -> None:
         started = False
@@ -21,11 +22,18 @@ class Continuous(Runner):
             ctx.execute()
             # execute reports a refusal itself; all that is left is to let go.
             if not started:
-                toggle.set(False)
+                finish()
+
+        def finish() -> None:
+            toggle.set(False)
+            ctx.close_series()
 
         def on_change(checked: bool) -> None:
             if checked:
+                ctx.open_series()
                 start()
+            else:
+                ctx.close_series()
 
         def on_run_started() -> None:
             nonlocal started
@@ -37,7 +45,7 @@ class Continuous(Runner):
             if completed:
                 start()
             else:
-                toggle.set(False)
+                finish()
 
         toggle = Toggle("Continuous", on_change, icon="continuous", tooltip="Run until stopped")
         ctx.on_run_started(on_run_started)

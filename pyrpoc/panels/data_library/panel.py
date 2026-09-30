@@ -1,20 +1,35 @@
 """The data library panel: every dataset this session has open.
 
-Size is shown because a dataset keeps every frame, so a long continuous run is
-what can exhaust a machine; this makes that visible while it happens.
+Size is shown against the library's limit because a dataset keeps every
+frame, so a long continuous run is what can exhaust a machine. Past the limit,
+auto-purge closes the oldest finished entries; with it off, new acquisitions
+are refused until entries are closed.
 """
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import TYPE_CHECKING
 
-from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QHBoxLayout, QHeaderView, QLabel, QPushButton, QVBoxLayout
+from PyQt6.QtCore import QPoint, Qt, QUrl
+from PyQt6.QtGui import QAction, QDesktopServices
+from PyQt6.QtWidgets import (
+    QCheckBox,
+    QFileDialog,
+    QHBoxLayout,
+    QHeaderView,
+    QLabel,
+    QMenu,
+    QMessageBox,
+    QPushButton,
+    QVBoxLayout,
+)
 
 from pyrpoc.structs.data import Dataset
 from pyrpoc.structs.panel import Panel
 
-from ..components.table import ListTable, horizontal_header
+from ..components.table import ListTable, horizontal_header, viewport_of
+from .details import DetailsDialog
 
 if TYPE_CHECKING:  # pragma: no cover
     from pyrpoc.app.model.application import Application
@@ -52,7 +67,11 @@ class DataLibraryPanel(Panel):
         root = QVBoxLayout(self)
         root.setContentsMargins(8, 4, 8, 8)
         root.setSpacing(6)
-        self.empty_label = QLabel("No acquisitions yet. Data appears here as it arrives.", self)
+        self.empty_label = QLabel(
+            "Nothing open. Acquired data appears here as it arrives; Open… loads a saved "
+            "recording.",
+            self,
+        )
         self.empty_label.setStyleSheet("color: palette(mid); font-style: italic;")
         self.empty_label.setWordWrap(True)
         # Nothing expands once the table is hidden, so pin the label to the top.
@@ -68,7 +87,12 @@ class DataLibraryPanel(Panel):
         root.addLayout(self.build_actions_row())
 
         self.table.itemSelectionChanged.connect(self.refresh_actions)
+        self.table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.table.customContextMenuRequested.connect(self.show_row_menu)
+        self.table.cellDoubleClicked.connect(lambda row, _column: self.show_details(self.rows[row]))
         self.app.library.subscribe(self.rebuild)
+        self.app.library.auto_purge_changed.connect(self.auto_purge_check.setChecked)
+        self.app.library.load_failed.connect(self.show_load_error)
         self.app.runs.dataset_changed.connect(self.on_dataset_changed)
         self.rebuild()
 
@@ -76,10 +100,21 @@ class DataLibraryPanel(Panel):
         row = QHBoxLayout()
         row.setContentsMargins(0, 0, 0, 0)
         self.total_label = QLabel("", self)
-        self.total_label.setToolTip("Memory held by every open acquisition together.")
-        self.total_label.setStyleSheet("color: palette(mid);")
+        self.total_label.setToolTip("Memory held by every open entry, against the library's limit.")
         row.addWidget(self.total_label)
+        self.auto_purge_check = QCheckBox("Auto-purge oldest", self)
+        self.auto_purge_check.setToolTip(
+            "Over the limit, close the oldest finished entries until back under it. "
+            "Entries still recording and masks you drew are never closed."
+        )
+        self.auto_purge_check.setChecked(self.app.library.auto_purge)
+        self.auto_purge_check.toggled.connect(self.app.library.set_auto_purge)
+        row.addWidget(self.auto_purge_check)
         row.addStretch(1)
+        open_btn = QPushButton("Open…", self)
+        open_btn.setToolTip("Load a saved recording by its _meta.json file.")
+        open_btn.clicked.connect(self.choose_recording)
+        row.addWidget(open_btn)
         self.close_btn = QPushButton("Close", self)
         self.close_btn.setToolTip(
             "Drop the selected acquisition from memory. Files already saved stay on disk."
@@ -97,7 +132,8 @@ class DataLibraryPanel(Panel):
         for row, dataset in enumerate(self.rows):
             self.table.set_cell(row, TIME, dataset.started_time)
             name = self.table.set_cell(row, NAME, dataset.name)
-            name.setToolTip(f"{dataset.name} · {dataset.spec.name}")
+            tooltip = f"{dataset.name} · {dataset.spec.name}"
+            name.setToolTip(f"{tooltip}\n\n{dataset.notes}" if dataset.notes else tooltip)
             self.table.set_cell(row, OUTPUT, dataset.output)
             self.table.set_cell(row, SIZE, format_size(dataset.nbytes), right=True)
 
@@ -116,8 +152,13 @@ class DataLibraryPanel(Panel):
             self.refresh_total()
 
     def refresh_total(self) -> None:
-        total = sum(dataset.nbytes for dataset in self.rows)
-        self.total_label.setText(f"{format_size(total)} in memory" if total else "")
+        library = self.app.library
+        self.total_label.setText(
+            f"{format_size(library.nbytes)} of {format_size(library.limit_bytes)}"
+        )
+        # The accent, so the warning follows the theme like everything else.
+        warning = "color: palette(highlight); font-weight: bold;"
+        self.total_label.setStyleSheet(warning if library.over_limit else "color: palette(mid);")
 
     def selected_dataset(self) -> Dataset | None:
         rows = {index.row() for index in self.table.selectedIndexes()}
@@ -126,10 +167,52 @@ class DataLibraryPanel(Panel):
     def close_selected(self) -> None:
         dataset = self.selected_dataset()
         if dataset is not None:
-            self.app.runs.release(dataset)
+            self.app.library.close(dataset)
+
+    def show_row_menu(self, position: QPoint) -> None:
+        row = self.table.rowAt(position.y())
+        if row < 0:
+            return
+        self.table.selectRow(row)
+        dataset = self.rows[row]
+        menu = QMenu(self)
+        menu.addAction("Details…", lambda: self.show_details(dataset))
+        folder = QAction("Show in folder", menu)
+        folder.setEnabled(dataset.meta_path is not None)
+        folder.triggered.connect(lambda: self.show_in_folder(dataset))
+        menu.addAction(folder)
+        menu.addSeparator()
+        menu.addAction("Close", lambda: self.app.library.close(dataset))
+        menu.exec(viewport_of(self.table).mapToGlobal(position))
+
+    def show_details(self, dataset: Dataset) -> None:
+        dialog = DetailsDialog(
+            dataset, lambda notes: self.app.library.set_notes(dataset, notes), self
+        )
+        if dialog.exec() and dataset in self.rows:
+            # The notes show in the name's tooltip.
+            self.rebuild()
+
+    def show_in_folder(self, dataset: Dataset) -> None:
+        if dataset.meta_path is not None:
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(dataset.meta_path.parent)))
+
+    def choose_recording(self) -> None:
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Open recording",
+            str(self.app.save.folder),
+            "pyrpoc recordings (*_meta.json)",
+        )
+        if path:
+            self.app.library.load(Path(path))
+
+    def show_load_error(self, message: str) -> None:
+        QMessageBox.warning(self, "Could Not Open Recording", message)
 
     def refresh_actions(self) -> None:
-        """An empty panel shows only the hint, with no button to grey out."""
+        """An empty panel shows the hint and what can fill it, with no Close
+        button to grey out."""
         self.refresh_total()
         self.total_label.setVisible(bool(self.rows))
         self.close_btn.setVisible(bool(self.rows))

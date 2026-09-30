@@ -29,6 +29,13 @@ def vertical_header(table: QTableView) -> QHeaderView:
     return header
 
 
+def viewport_of(view: QAbstractItemView) -> QWidget:
+    viewport = view.viewport()
+    if viewport is None:
+        raise RuntimeError("view has no viewport")
+    return viewport
+
+
 class ListTable(QTableWidget):
     """A ``QTableWidget`` preconfigured as a read-only, single-selection list."""
 

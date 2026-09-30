@@ -11,7 +11,7 @@ from pyrpoc.programs import program_registry
 
 from ..gui.window import MainWindow
 from ..model.application import Application
-from .file import BAD_STATE, DeviceState, SaveState, ViewState, WorkspaceState
+from .file import BAD_STATE, DeviceState, LibraryState, SaveState, ViewState, WorkspaceState
 
 log = logging.getLogger(__name__)
 
@@ -41,6 +41,7 @@ def capture(app: Application, window: MainWindow) -> WorkspaceState:
         selected_program=app.selected_program,
         param_blocks=app.params_state(),
         save=SaveState(name=app.save.name, directory=app.save.directory, enabled=app.save.enabled),
+        library=LibraryState(auto_purge=app.library.auto_purge),
         ads_layout=window.save_dock_layout(),
     )
 
@@ -79,6 +80,7 @@ def apply(state: WorkspaceState, app: Application, window: MainWindow) -> None:
     restore_panels(state, app, window)
     app.load_params_state(state.param_blocks)
     app.set_save(name=state.save.name, directory=state.save.directory, enabled=state.save.enabled)
+    app.library.set_auto_purge(state.library.auto_purge)
     key = state.selected_program
     app.select_program(key if key in program_registry.entries else program_registry.keys()[0])
     # Every dock exists now; the saved layout goes on last.

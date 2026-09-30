@@ -46,3 +46,11 @@ repos:
         entry: uv run lint-imports
         types: [python]
         pass_filenames: false
+      # Includes loading every committed recording fixture, so a change that
+      # breaks reading saved data fails here.
+      - id: pytest
+        name: pytest
+        language: system
+        entry: uv run pytest -q
+        always_run: true
+        pass_filenames: false
