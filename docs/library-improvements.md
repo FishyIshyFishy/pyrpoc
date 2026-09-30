@@ -1,8 +1,24 @@
 # Data library improvements: phased plan
 
-Status as of 2026-09-30, on `feat/library-improvements`. This is a plan, not
-yet built. Each phase is its own commit (or a few), and the app works at the
-end of every phase.
+Status as of 2026-09-30, on `feat/library-improvements`: **built**, one
+commit per phase. The plan is kept below as the record of the design.
+
+Where the build differs from the plan:
+
+- **The model class is `LibraryModel`, not `Library`.** `Library` was already
+  the name of the protocol in `structs/data.py`. `LibraryModel` satisfies that
+  protocol, so panels that take a `Library` get the model unchanged.
+- **Open… is only in the Data Library panel.** There is no File menu to add it
+  to, and making one for a single action was out of scope.
+- **Close stays a button, and is also in the right-click menu.**
+- **The Details dialog doesn't list the recording's runs.** A dataset doesn't
+  carry them, and the panel can't read the metadata file itself. The runs
+  are in `_meta.json`.
+- **The limit check is "already over the limit".** A start is refused only
+  once the library is past 1 GiB, so the run that crosses the limit is
+  allowed.
+- **Tests.** Tests run the real executor with no Qt (`tests/helpers.py`), and
+  `pytest` runs in pre-commit.
 
 ## Scope
 

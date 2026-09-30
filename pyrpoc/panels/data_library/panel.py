@@ -11,13 +11,15 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import QPoint, Qt, QUrl
+from PyQt6.QtGui import QAction, QDesktopServices
 from PyQt6.QtWidgets import (
     QCheckBox,
     QFileDialog,
     QHBoxLayout,
     QHeaderView,
     QLabel,
+    QMenu,
     QMessageBox,
     QPushButton,
     QVBoxLayout,
@@ -26,7 +28,8 @@ from PyQt6.QtWidgets import (
 from pyrpoc.structs.data import Dataset
 from pyrpoc.structs.panel import Panel
 
-from ..components.table import ListTable, horizontal_header
+from ..components.table import ListTable, horizontal_header, viewport_of
+from .details import DetailsDialog
 
 if TYPE_CHECKING:  # pragma: no cover
     from pyrpoc.app.model.application import Application
@@ -84,6 +87,9 @@ class DataLibraryPanel(Panel):
         root.addLayout(self.build_actions_row())
 
         self.table.itemSelectionChanged.connect(self.refresh_actions)
+        self.table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.table.customContextMenuRequested.connect(self.show_row_menu)
+        self.table.cellDoubleClicked.connect(lambda row, _column: self.show_details(self.rows[row]))
         self.app.library.subscribe(self.rebuild)
         self.app.library.auto_purge_changed.connect(self.auto_purge_check.setChecked)
         self.app.library.load_failed.connect(self.show_load_error)
@@ -126,7 +132,8 @@ class DataLibraryPanel(Panel):
         for row, dataset in enumerate(self.rows):
             self.table.set_cell(row, TIME, dataset.started_time)
             name = self.table.set_cell(row, NAME, dataset.name)
-            name.setToolTip(f"{dataset.name} · {dataset.spec.name}")
+            tooltip = f"{dataset.name} · {dataset.spec.name}"
+            name.setToolTip(f"{tooltip}\n\n{dataset.notes}" if dataset.notes else tooltip)
             self.table.set_cell(row, OUTPUT, dataset.output)
             self.table.set_cell(row, SIZE, format_size(dataset.nbytes), right=True)
 
@@ -161,6 +168,34 @@ class DataLibraryPanel(Panel):
         dataset = self.selected_dataset()
         if dataset is not None:
             self.app.library.close(dataset)
+
+    def show_row_menu(self, position: QPoint) -> None:
+        row = self.table.rowAt(position.y())
+        if row < 0:
+            return
+        self.table.selectRow(row)
+        dataset = self.rows[row]
+        menu = QMenu(self)
+        menu.addAction("Details…", lambda: self.show_details(dataset))
+        folder = QAction("Show in folder", menu)
+        folder.setEnabled(dataset.meta_path is not None)
+        folder.triggered.connect(lambda: self.show_in_folder(dataset))
+        menu.addAction(folder)
+        menu.addSeparator()
+        menu.addAction("Close", lambda: self.app.library.close(dataset))
+        menu.exec(viewport_of(self.table).mapToGlobal(position))
+
+    def show_details(self, dataset: Dataset) -> None:
+        dialog = DetailsDialog(
+            dataset, lambda notes: self.app.library.set_notes(dataset, notes), self
+        )
+        if dialog.exec() and dataset in self.rows:
+            # The notes show in the name's tooltip.
+            self.rebuild()
+
+    def show_in_folder(self, dataset: Dataset) -> None:
+        if dataset.meta_path is not None:
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(dataset.meta_path.parent)))
 
     def choose_recording(self) -> None:
         path, _ = QFileDialog.getOpenFileName(

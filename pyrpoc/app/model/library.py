@@ -16,7 +16,7 @@ from PyQt6.QtCore import QObject, QTimer, pyqtSignal
 from pyrpoc.structs.data import Data, Dataset
 
 from ..runtime.library import DataLibrary, LibraryFull
-from ..runtime.recording_format import RecordingError, load_recording
+from ..runtime.recording_format import RecordingError, load_recording, write_notes
 from ..runtime.runs import Runs
 
 
@@ -92,6 +92,20 @@ class LibraryModel(QObject):
             return
         for dataset in datasets:
             self.store.add(dataset)
+
+    def set_notes(self, dataset: Dataset, notes: str) -> str | None:
+        """Set ``dataset``'s notes, and write them into its recording if that
+        is on disk and finished; a recording still going writes them itself
+        the next time it updates its metadata. Returns why the file could not
+        be updated, or None; the notes are kept in memory either way."""
+        dataset.notes = notes
+        if dataset.meta_path is None or not dataset.finished:
+            return None
+        try:
+            write_notes(dataset.meta_path, dataset.output, notes)
+        except (RecordingError, OSError) as exc:
+            return str(exc)
+        return None
 
     def close(self, dataset: Dataset) -> None:
         """Drop ``dataset`` from memory. Files already saved stay on disk."""
