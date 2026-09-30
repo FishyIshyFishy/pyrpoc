@@ -9,6 +9,7 @@ import numpy as np
 
 from pyrpoc.app.runtime.executor import Executor, Run, RunCallbacks
 from pyrpoc.app.runtime.library import DataLibrary
+from pyrpoc.app.runtime.recording import Series
 from pyrpoc.programs.components.param_groups import FrameGroup, PacingGroup
 from pyrpoc.structs.data import Dataset, SaveTarget, Spectrum1D
 from pyrpoc.structs.params import BlockStore
@@ -73,7 +74,19 @@ class Recorder:
         self, program: Program, key: str, blocks: BlockStore, directory: Path, name: str
     ) -> list[Dataset]:
         """Run ``program`` to the end, saving as ``name`` into ``directory``."""
-        save = SaveTarget(name=name, directory=str(directory), enabled=True)
-        run = self.executor.start(program, blocks, [], program_key=key, save=save)
+        run = self.start(program, key, blocks, directory, name, series=None)
         self.wait(run)
         return list(run.datasets.values())
+
+    def start(
+        self,
+        program: Program,
+        key: str,
+        blocks: BlockStore,
+        directory: Path,
+        name: str,
+        *,
+        series: Series | None,
+    ) -> Run:
+        save = SaveTarget(name=name, directory=str(directory), enabled=True)
+        return self.executor.start(program, blocks, [], program_key=key, save=save, series=series)

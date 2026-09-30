@@ -20,6 +20,7 @@ from pyrpoc.structs.program import Program
 from .claims import DeviceBusy
 from .executor import Executor, Run, RunCallbacks
 from .library import DataLibrary
+from .recording import Series
 
 
 class Runs(QObject):
@@ -52,6 +53,7 @@ class Runs(QObject):
         blocks: BlockStore,
         devices: list[Device],
         save: SaveTarget,
+        series: Series | None,
         claim: Callable[[Run], None],
     ) -> None:
         """Start ``program``, or report why not. Reported rather than raised,
@@ -59,7 +61,9 @@ class Runs(QObject):
         ``run_started`` announces it, so whoever started it has already
         recorded it by the time anyone asks."""
         try:
-            run = self.executor.start(program, blocks, devices, program_key=key, save=save)
+            run = self.executor.start(
+                program, blocks, devices, program_key=key, save=save, series=series
+            )
         except (MissingDevice, DeviceBusy, ParameterError) as exc:
             self.start_refused.emit(str(exc))
             return
@@ -72,6 +76,9 @@ class Runs(QObject):
     def on_dataset_changed(self, dataset: Dataset) -> None:
         """Called on the worker thread. The signal hops to the GUI thread."""
         self.dataset_changed.emit(dataset)
+
+    def end_series(self, series: Series) -> None:
+        self.executor.end_series(series)
 
     def stop_relaying(self, dataset: Dataset) -> None:
         dataset.unsubscribe(self.on_dataset_changed)

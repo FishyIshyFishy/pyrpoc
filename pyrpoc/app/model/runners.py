@@ -22,6 +22,7 @@ from pyrpoc.structs.program import Program
 from pyrpoc.structs.runner import Control, RunnerContext
 
 from ..runtime.executor import Run
+from ..runtime.recording import Series
 
 if TYPE_CHECKING:  # pragma: no cover
     from .application import Application
@@ -43,6 +44,7 @@ class Slot(RunnerContext):
         self.ended: list[Callable[[bool], None]] = []
         self.runs: list[Run] = []
         self.failed: set[Run] = set()
+        self.series: Series | None = None
         self.closed = False
 
     @property
@@ -55,6 +57,15 @@ class Slot(RunnerContext):
 
     def on_run_started(self, callback: Callable[[], None]) -> None:
         self.started.append(callback)
+
+    def open_series(self) -> None:
+        if not self.closed:
+            self.series = Series()
+
+    def close_series(self) -> None:
+        series, self.series = self.series, None
+        if series is not None:
+            self.host.app.runs.end_series(series)
 
     def on_run_ended(self, callback: Callable[[bool], None]) -> None:
         self.ended.append(callback)
@@ -162,12 +173,15 @@ class Runners(QObject):
         # Nothing else can reach these runs to stop them once the slot is gone.
         for run in slot.runs:
             run.stop()
+        slot.close_series()
         self.controls_changed.emit()
 
     def start(self, slot: Slot) -> None:
         """Start ``slot``'s program with what the workbench holds right now."""
         app = self.app
-        app.runs.start(slot.program(), slot.key, app.blocks, app.devices, app.save, slot.claim)
+        app.runs.start(
+            slot.program(), slot.key, app.blocks, app.devices, app.save, slot.series, slot.claim
+        )
 
     def stop(self) -> None:
         """Stop every run the selected program's runners started."""

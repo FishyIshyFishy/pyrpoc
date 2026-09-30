@@ -77,6 +77,8 @@ class RecordingSaver:
         run = next(run for run in self.runs if run.run_id == run_id)
         run.ended_at = utc_now()
         run.error = str(error) if error is not None else None
+        # A series can run for hours; the file should list every run so far.
+        self.write_metadata(ended_at=None, last_error=None)
 
     def finalize(self, error: Exception | None) -> None:
         """Rewrite the metadata. The datasets are finalized first, so every
