@@ -23,8 +23,8 @@ from pyrpoc.app.theme.manager import ThemeController
 from pyrpoc.data_library.panel import DataLibraryPanel
 from pyrpoc.device_inventory.panel import DevicesPanel
 from pyrpoc.plugins.data_panels import data_panel_registry
-from pyrpoc.structs.dataset import Dataset
-from pyrpoc.structs.panel import DataPanel
+from pyrpoc.structs.data_library.dataset import Dataset
+from pyrpoc.structs.plugins.data_panels import DataPanel
 
 qtads.CDockManager.setConfigFlag(qtads.CDockManager.eConfigFlag.DisableTabTextEliding, True)
 qtads.CDockManager.setConfigFlag(qtads.CDockManager.eConfigFlag.OpaqueSplitterResize, False)

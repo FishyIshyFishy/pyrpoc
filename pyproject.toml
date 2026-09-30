@@ -126,24 +126,19 @@ source_modules = ["pyrpoc.acquisition", "pyrpoc.data_library", "pyrpoc.device_in
 forbidden_modules = ["pyrpoc.plugins"]
 
 [[tool.importlinter.contracts]]
-name = "structs is Qt-free, except panel.py"
+name = "structs is Qt-free, except plugins/data_panels.py"
 type = "forbidden"
 source_modules = [
-  "pyrpoc.structs.data",
-  "pyrpoc.structs.dataset",
-  "pyrpoc.structs.device",
-  "pyrpoc.structs.library",
-  "pyrpoc.structs.params",
-  "pyrpoc.structs.picks",
-  "pyrpoc.structs.program",
   "pyrpoc.structs.registry",
-  "pyrpoc.structs.runner",
-  "pyrpoc.structs.saving",
+  "pyrpoc.structs.data_library",
+  "pyrpoc.structs.plugins.devices",
+  "pyrpoc.structs.plugins.params",
+  "pyrpoc.structs.plugins.programs",
 ]
 forbidden_modules = ["PyQt6", "pyqtgraph"]
 ignore_imports = [
   # A type-only import, for the return type of Device.panel().
-  "pyrpoc.structs.device -> PyQt6",
+  "pyrpoc.structs.plugins.devices -> PyQt6",
 ]
 
 [[tool.importlinter.contracts]]
@@ -159,7 +154,7 @@ source_modules = [
   "pyrpoc.app.session.file",
 ]
 forbidden_modules = ["PyQt6"]
-# Direct imports only: structs.device's type-only Qt import is already on the
+# Direct imports only: structs.plugins.devices' type-only Qt import is already on the
 # structs ledger above, and reaches these through structs, not through them.
 allow_indirect_imports = true
 

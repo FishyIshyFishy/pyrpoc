@@ -5,9 +5,9 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from pyrpoc.structs.params import BlockMap, ParameterError
-from pyrpoc.structs.picks import Pick
-from pyrpoc.structs.runner import Runner, RunnerContext, Toggle
+from pyrpoc.structs.plugins.params import BlockMap, ParameterError
+from pyrpoc.structs.plugins.programs.picks import Pick
+from pyrpoc.structs.plugins.programs.runner import Runner, RunnerContext, Toggle
 
 
 @dataclass(frozen=True)

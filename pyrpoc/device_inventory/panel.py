@@ -10,9 +10,9 @@ from PyQt6.QtWidgets import QComboBox, QHBoxLayout, QPushButton, QScrollArea, QV
 
 from pyrpoc.qt_components.cards import RemovableCardWidget
 from pyrpoc.qt_components.param_form import ParamForm
-from pyrpoc.structs.device import Device, device_registry
-from pyrpoc.structs.panel import Panel
-from pyrpoc.structs.params import FieldContext
+from pyrpoc.structs.plugins.data_panels import Panel
+from pyrpoc.structs.plugins.devices import Device, device_registry
+from pyrpoc.structs.plugins.params import FieldContext
 
 from .inventory import DeviceInventory
 

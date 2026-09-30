@@ -14,12 +14,13 @@ import numpy as np
 from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtWidgets import QComboBox, QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
-from .data import Data
-from .dataset import Dataset
-from .device import make_instance_id
-from .library import Library
-from .picks import Pick
-from .registry import Registry
+from pyrpoc.structs.data_library.data import Data
+from pyrpoc.structs.data_library.dataset import Dataset
+from pyrpoc.structs.data_library.library import Library
+from pyrpoc.structs.plugins.programs.picks import Pick
+from pyrpoc.structs.registry import Registry
+
+from .devices import make_instance_id
 
 
 class Panel(QWidget):

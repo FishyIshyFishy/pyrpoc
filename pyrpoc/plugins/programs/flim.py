@@ -14,8 +14,8 @@ import numpy as np
 from nidaqmx.constants import AcquisitionType, Signal
 
 from pyrpoc.plugins.devices import DAQ, DaqError, FlimMeasurement, Galvo, TimeTagger
-from pyrpoc.structs.data import Cube3D, Image2D
-from pyrpoc.structs.program import Program, RunContext, program_registry
+from pyrpoc.structs.data_library.data import Cube3D, Image2D
+from pyrpoc.structs.plugins.programs.program import Program, RunContext, program_registry
 
 from .components.param_groups import (
     DaqGroup,

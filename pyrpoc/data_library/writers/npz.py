@@ -7,9 +7,9 @@ from typing import Any
 
 import numpy as np
 
-from pyrpoc.structs.data import Cube3D, Samples4D, Spectrum1D
-from pyrpoc.structs.dataset import Dataset
-from pyrpoc.structs.saving import Writer, writer_registry
+from pyrpoc.structs.data_library.data import Cube3D, Samples4D, Spectrum1D
+from pyrpoc.structs.data_library.dataset import Dataset
+from pyrpoc.structs.data_library.saving import Writer, writer_registry
 
 
 @writer_registry.register(Cube3D.name)

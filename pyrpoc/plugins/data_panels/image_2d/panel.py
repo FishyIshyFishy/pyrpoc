@@ -20,11 +20,11 @@ from PyQt6.QtWidgets import (
 )
 
 from pyrpoc.qt_components.levels import autoscale_levels, mono_levels
-from pyrpoc.structs.data import Image2D
-from pyrpoc.structs.dataset import Dataset
-from pyrpoc.structs.library import Library
-from pyrpoc.structs.panel import DataPanel, data_panel_registry
-from pyrpoc.structs.picks import Pick, PixelPick
+from pyrpoc.structs.data_library.data import Image2D
+from pyrpoc.structs.data_library.dataset import Dataset
+from pyrpoc.structs.data_library.library import Library
+from pyrpoc.structs.plugins.data_panels import DataPanel, data_panel_registry
+from pyrpoc.structs.plugins.programs.picks import Pick, PixelPick
 
 LUT = pg.ColorMap(
     pos=np.array([0.0, 0.999, 1.0], dtype=float),

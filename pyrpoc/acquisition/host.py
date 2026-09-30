@@ -18,10 +18,10 @@ from PyQt6.QtCore import QObject, pyqtSignal
 
 from pyrpoc.acquisition.executor import Run
 from pyrpoc.acquisition.recording import Series
-from pyrpoc.structs.params import BlockMap
-from pyrpoc.structs.picks import Pick
-from pyrpoc.structs.program import Program
-from pyrpoc.structs.runner import Control, RunnerContext
+from pyrpoc.structs.plugins.params import BlockMap
+from pyrpoc.structs.plugins.programs.picks import Pick
+from pyrpoc.structs.plugins.programs.program import Program
+from pyrpoc.structs.plugins.programs.runner import Control, RunnerContext
 
 if TYPE_CHECKING:  # pragma: no cover
     from .model import Acquisition

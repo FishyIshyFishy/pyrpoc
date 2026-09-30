@@ -13,10 +13,11 @@ from typing import Any, TypeVar
 
 import numpy as np
 
-from .data import Data
-from .dataset import Dataset
-from .device import Device
-from .registry import Registry
+from pyrpoc.structs.data_library.data import Data
+from pyrpoc.structs.data_library.dataset import Dataset
+from pyrpoc.structs.plugins.devices import Device
+from pyrpoc.structs.registry import Registry
+
 from .runner import Runner
 
 D = TypeVar("D", bound=Device)

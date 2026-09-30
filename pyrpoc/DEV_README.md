@@ -1,60 +1,35 @@
 # pyrpoc dev refresher
 
-The full explanation is `docs/architecture.md`. This page is the quick lookup.
+Where things live, by idea rather than by file. The long version is `docs/architecture.md`.
 
 ## Commands
 
 ```
 uv run pyrpoc          launch
-uv run pytest          tests (tests/)
+uv run pytest          tests
 uv run lint-imports    folder rules
-git commit             runs everything via pre-commit (ruff, pyright, lint-imports, pytest)
+git commit             pre-commit runs ruff, pyright, lint-imports and pytest
 ```
 
-## Where things are
+## The four kinds of folder
 
-```
-main.py               starts the app
-structs/              the shared nouns, one per file
-  registry.py           Registry: how plugins are found by key
-  data.py               kinds of data (Image2D, Spectrum1D, Mask2D, ...)
-  dataset.py            Dataset, Provenance, Origin
-  library.py            Library: read access to open datasets
-  saving.py             SaveTarget, Writer, writer_registry
-  params.py             parameter fields, Group, BlockStore, block_registry
-  device.py             Device, device_registry
-  program.py            Program, RunContext, program_registry
-  runner.py             Runner, RunnerContext, Button/Toggle controls
-  picks.py              Pick, PixelPick (runner asks, data panel answers)
-  panel.py              Panel, DataPanel, SourcePicker, data_panel_registry (the only Qt file)
-qt_components/        generic widgets: table, cards, param_form, icons, colors, levels
-plugins/
-  devices/              daq, galvo, prior_stage, time_tagger
-  programs/             confocal, flim, split_confocal, pinpoint_raman, simulation
-    components/           param_groups/, runners/ (single, arm_and_run, continuous), editors
-  data_panels/          image_2d, overlay, spectrum, mask_editor
-device_inventory/     inventory.py (added devices, sessions), panel.py (Devices panel)
-data_library/
-  store.py              LibraryStore: open datasets, 1 GiB limit, auto-purge
-  model.py              LibraryModel: Qt signals, load, notes, purge
-  format.py             recording format (_meta.json, DECODERS by version)
-  saving.py             RecordingSaver
-  writers/              tiff, npz
-  panel.py, details.py  Data Library panel, Details dialog
-acquisition/
-  model.py              Acquisition: selected program, params, save target, blockers
-  host.py               RunnerHost, RunnerSession: runs a program's runners
-  events.py             RunEvents: run started/finished, series
-  executor.py           runs a program on a worker thread
-  claims.py             which devices a program needs
-  recording.py          Recording, RecordingKey, Series
-  panel.py              Acquisition panel
-app/
-  application.py        builds and connects the three subsystems
-  window.py, menubar.py, theme/
-  session/              file.py, restore.py, autosave.py (session.json)
-assets/               svg icons, sdk dlls
-```
+- **`structs/`: the vocabulary.** The types every other part talks through, and the
+  registries plugins sign up in. It mirrors the rest of the package: the nouns
+  implemented in `pyrpoc/X/` are defined in `structs/X/`. Working on a device?
+  Its contract is under `structs/plugins/`. Working on the library? Under
+  `structs/data_library/`.
+- **`plugins/`: things you add more of.** Hardware (`devices/`), experiments and
+  the pieces they are built from (`programs/`), and ways to look at one dataset
+  (`data_panels/`). Each registers itself; nothing keeps a list.
+- **Subsystems: the app's own jobs.** Each folder holds its plain-Python logic,
+  a Qt model (commands in, signals out) and its panel.
+  - `device_inventory/`: the devices you've added and their connections.
+  - `data_library/`: open data, recordings on disk, file formats, loading, limits.
+  - `acquisition/`: choosing, setting up and running programs; runners, series.
+- **`app/`: wiring.** Builds the subsystems and connects them, plus the window,
+  menus, theme and the session that remembers your setup.
+
+`qt_components/` holds generic widgets that know no feature.
 
 ## Import order
 
@@ -65,22 +40,23 @@ app > acquisition > data_library | device_inventory > plugins > qt_components > 
 ```
 
 - Subsystems never import plugins; they look them up in registries.
-- `programs/` may import `devices/`; `programs/` and `data_panels/` never meet.
-- Subsystem models (`model.py`, `host.py`, `events.py`, `inventory.py`) hold no widgets.
+- Programs may use devices. Programs and data panels never meet; they talk
+  through types in `structs/`.
+- Subsystem models hold no widgets. Panels use models, not the reverse.
 
-## Adding things
+## Where a feature goes
 
-| New... | Goes in |
+| Adding... | Goes in |
 |---|---|
-| instrument | `plugins/devices/<name>/`, register in `device_registry` |
-| experiment | `plugins/programs/<name>.py`, register in `program_registry` |
-| runner | `plugins/programs/components/runners/` |
-| data view | `plugins/data_panels/<name>/`, register in `data_panel_registry` |
-| data kind | `structs/data.py`, plus a writer and a data panel |
-| file format | `data_library/writers/`, register in `writer_registry` |
-| whole new capability | new top-level subsystem folder, wired in `app/application.py`, layered in `pyproject.toml` |
+| an instrument, experiment or data view | its folder under `plugins/`, registered in the registry from its `structs/plugins/` contract |
+| a way to start a program, or a parameter group | the programs' shared components under `plugins/programs/` |
+| a kind of data or a file format | its contract under `structs/data_library/`, the format's writer under `data_library/`, and a data panel to show it |
+| a feature of storing or browsing data | `data_library/` |
+| a feature of running | `acquisition/` |
+| a whole new capability | a new subsystem folder, wired in `app/`, given a layer in `pyproject.toml`, with any shared nouns in `structs/<subsystem>/` |
 
 ## Don't break on disk
 
-- Sessions store registry keys, not paths.
-- Recordings follow `docs/data-format.md`. A format change means a new version plus a decoder, and a fixture in `tests/fixtures/recordings/`.
+- Sessions store registry keys, not module paths, so moving code is safe.
+- Recordings follow `docs/data-format.md`. Changing the format means a new
+  version, a decoder for it, and a fixture under `tests/fixtures/recordings/`.

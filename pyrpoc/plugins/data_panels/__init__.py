@@ -1,10 +1,10 @@
 """Displays of one open dataset, added from the Panels menu. Each subclasses
-``structs.panel.DataPanel`` and registers in ``data_panel_registry``; importing
+``structs.plugins.data_panels.DataPanel`` and registers in ``data_panel_registry``; importing
 this package registers them all."""
 
 from __future__ import annotations
 
-from pyrpoc.structs.panel import data_panel_registry
+from pyrpoc.structs.plugins.data_panels import data_panel_registry
 
 from .image_2d.panel import Image2DPanel
 from .mask_editor.panel import MaskEditorPanel

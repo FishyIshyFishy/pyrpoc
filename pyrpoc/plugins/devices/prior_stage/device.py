@@ -13,8 +13,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal
 
-from pyrpoc.structs import params as P
-from pyrpoc.structs.device import Device, device_registry
+from pyrpoc.structs.plugins import params as P
+from pyrpoc.structs.plugins.devices import Device, device_registry
 
 from .sdk import PriorError, PriorSession
 

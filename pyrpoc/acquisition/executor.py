@@ -17,11 +17,11 @@ from typing import Any
 from pyrpoc.acquisition.recording import Recording, RecordingKey, Series
 from pyrpoc.data_library.saving import RecordingSaver
 from pyrpoc.data_library.store import LibraryStore
-from pyrpoc.structs import params as P
-from pyrpoc.structs.dataset import Dataset, Origin, Provenance, utc_now
-from pyrpoc.structs.device import Device
-from pyrpoc.structs.program import Cancelled, Program, RunContext
-from pyrpoc.structs.saving import SaveTarget
+from pyrpoc.structs.data_library.dataset import Dataset, Origin, Provenance, utc_now
+from pyrpoc.structs.data_library.saving import SaveTarget
+from pyrpoc.structs.plugins import params as P
+from pyrpoc.structs.plugins.devices import Device
+from pyrpoc.structs.plugins.programs.program import Cancelled, Program, RunContext
 
 from . import claims
 

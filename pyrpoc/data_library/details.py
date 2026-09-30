@@ -19,7 +19,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from pyrpoc.structs.dataset import Dataset
+from pyrpoc.structs.data_library.dataset import Dataset
 
 
 def local_time(iso: str) -> str:

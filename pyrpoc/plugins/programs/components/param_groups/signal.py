@@ -5,12 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import ClassVar
 
-from pyrpoc.structs.params import (
-    Group,
-    block,
-    choice_field,
-    float_field,
-)
+from pyrpoc.structs.plugins.params import Group, block, choice_field, float_field
 
 # Pattern names offered by the simulated program, in menu order.
 PATTERNS = ("cells", "rings", "gradient", "checkerboard", "flat")

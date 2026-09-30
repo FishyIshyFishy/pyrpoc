@@ -11,10 +11,10 @@ import pyqtgraph as pg
 from PyQt6.QtWidgets import QVBoxLayout
 
 from pyrpoc.qt_components.colors import color_for_index
-from pyrpoc.structs.data import Spectrum1D
-from pyrpoc.structs.dataset import Dataset
-from pyrpoc.structs.library import Library
-from pyrpoc.structs.panel import DataPanel, data_panel_registry
+from pyrpoc.structs.data_library.data import Spectrum1D
+from pyrpoc.structs.data_library.dataset import Dataset
+from pyrpoc.structs.data_library.library import Library
+from pyrpoc.structs.plugins.data_panels import DataPanel, data_panel_registry
 
 
 @data_panel_registry.register("spectrum")

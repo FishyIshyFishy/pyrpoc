@@ -12,10 +12,10 @@ from dataclasses import dataclass, fields, replace
 from dataclasses import field as dc_field
 from typing import TYPE_CHECKING, Any, ClassVar, TypeVar
 
-from .registry import Registry
+from pyrpoc.structs.registry import Registry
 
 if TYPE_CHECKING:  # pragma: no cover
-    from .library import Library
+    from pyrpoc.structs.data_library.library import Library
 
 
 class ParameterError(Exception):

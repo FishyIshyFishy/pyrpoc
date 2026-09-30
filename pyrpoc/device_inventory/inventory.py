@@ -7,7 +7,7 @@ import logging
 
 from PyQt6.QtCore import QObject, pyqtSignal
 
-from pyrpoc.structs.device import Device, DeviceError, device_registry
+from pyrpoc.structs.plugins.devices import Device, DeviceError, device_registry
 
 log = logging.getLogger(__name__)
 

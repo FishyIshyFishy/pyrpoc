@@ -12,7 +12,7 @@ import functools
 import threading
 from pathlib import Path
 
-from pyrpoc.structs.device import DeviceError
+from pyrpoc.structs.plugins.devices import DeviceError
 
 # ``pyrpoc/assets/sdks``, two levels up from ``pyrpoc/devices/prior_stage``.
 DLL_PATH = Path(__file__).resolve().parents[2] / "assets" / "sdks" / "PriorScientificSDK.dll"

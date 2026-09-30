@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import ClassVar
 
-from pyrpoc.structs.params import Group, block, int_field
+from pyrpoc.structs.plugins.params import Group, block, int_field
 
 
 @block

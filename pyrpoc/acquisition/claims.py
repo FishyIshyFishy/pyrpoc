@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 
-from pyrpoc.structs.device import Device, DeviceError, MissingDevice
+from pyrpoc.structs.plugins.devices import Device, DeviceError, MissingDevice
 
 
 class DeviceBusy(DeviceError):

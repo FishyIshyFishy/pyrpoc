@@ -9,8 +9,8 @@ from typing import Any
 
 import numpy as np
 
-from pyrpoc.structs.library import Library
-from pyrpoc.structs.params import Editor, Field, FieldContext, ParameterError, spec_field
+from pyrpoc.structs.data_library.library import Library
+from pyrpoc.structs.plugins.params import Editor, Field, FieldContext, ParameterError, spec_field
 
 
 @dataclass(frozen=True)

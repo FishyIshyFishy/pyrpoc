@@ -21,9 +21,9 @@ from pyrpoc.data_library.format import (
     pyrpoc_version,
     write_record,
 )
-from pyrpoc.structs.data import Data
-from pyrpoc.structs.dataset import Dataset, utc_now
-from pyrpoc.structs.saving import Writer, writer_registry
+from pyrpoc.structs.data_library.data import Data
+from pyrpoc.structs.data_library.dataset import Dataset, utc_now
+from pyrpoc.structs.data_library.saving import Writer, writer_registry
 
 
 class RecordingSaver:

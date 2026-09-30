@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from .dataset import Dataset
+from pyrpoc.structs.data_library.dataset import Dataset
 
 
 @dataclass(frozen=True)

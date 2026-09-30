@@ -12,9 +12,9 @@ from pyrpoc.acquisition.recording import Series
 from pyrpoc.data_library.format import META_SUFFIX, load_recording
 from pyrpoc.plugins.programs.components.param_groups import FrameGroup
 from pyrpoc.plugins.programs.simulation import Simulation
-from pyrpoc.structs.data import Spectrum1D
-from pyrpoc.structs.params import BlockStore
-from pyrpoc.structs.program import Program, RunContext
+from pyrpoc.structs.data_library.data import Spectrum1D
+from pyrpoc.structs.plugins.params import BlockStore
+from pyrpoc.structs.plugins.programs.program import Program, RunContext
 
 from .helpers import Recorder, small_simulation_blocks
 

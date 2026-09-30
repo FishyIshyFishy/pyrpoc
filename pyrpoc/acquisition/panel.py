@@ -26,10 +26,10 @@ from PyQt6.QtWidgets import (
 
 from pyrpoc.qt_components.icons import asset_icon
 from pyrpoc.qt_components.param_form import ParamForm
-from pyrpoc.structs.panel import Panel
-from pyrpoc.structs.params import FieldContext
-from pyrpoc.structs.program import program_registry
-from pyrpoc.structs.runner import Control
+from pyrpoc.structs.plugins.data_panels import Panel
+from pyrpoc.structs.plugins.params import FieldContext
+from pyrpoc.structs.plugins.programs.program import program_registry
+from pyrpoc.structs.plugins.programs.runner import Control
 
 from .model import Acquisition
 

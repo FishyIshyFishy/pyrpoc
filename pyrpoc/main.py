@@ -15,7 +15,7 @@ from pyrpoc.app.session.autosave import Autosave
 from pyrpoc.app.session.file import SessionFile, default_session_path
 from pyrpoc.app.theme.manager import ThemeController
 from pyrpoc.app.window import MainWindow
-from pyrpoc.structs.device import Device
+from pyrpoc.structs.plugins.devices import Device
 
 log = logging.getLogger("pyrpoc")
 

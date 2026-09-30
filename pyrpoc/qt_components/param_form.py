@@ -28,8 +28,8 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from pyrpoc.structs import params as P
-from pyrpoc.structs.params import ParameterError
+from pyrpoc.structs.plugins import params as P
+from pyrpoc.structs.plugins.params import ParameterError
 
 from .cards import BaseCardWidget
 

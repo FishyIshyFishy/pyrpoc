@@ -18,8 +18,8 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from pyrpoc.data_library.saving import RecordingSaver
-from pyrpoc.structs.dataset import Dataset
-from pyrpoc.structs.saving import SaveTarget
+from pyrpoc.structs.data_library.dataset import Dataset
+from pyrpoc.structs.data_library.saving import SaveTarget
 
 if TYPE_CHECKING:  # pragma: no cover
     from pyrpoc.acquisition.executor import Run

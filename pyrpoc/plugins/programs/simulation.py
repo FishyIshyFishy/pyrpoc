@@ -12,8 +12,8 @@ from collections.abc import Sequence
 
 import numpy as np
 
-from pyrpoc.structs.data import Image2D
-from pyrpoc.structs.program import Program, RunContext, program_registry
+from pyrpoc.structs.data_library.data import Image2D
+from pyrpoc.structs.plugins.programs.program import Program, RunContext, program_registry
 
 from .components.param_groups import (
     FrameGroup,

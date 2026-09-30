@@ -16,10 +16,10 @@ import numpy as np
 
 from pyrpoc.plugins.devices.daq.device import DAQ, DaqError
 from pyrpoc.plugins.devices.galvo.device import Galvo
-from pyrpoc.structs.data import Spectrum1D
-from pyrpoc.structs.params import BlockMap
-from pyrpoc.structs.picks import Pick, PixelPick
-from pyrpoc.structs.program import Program, RunContext, program_registry
+from pyrpoc.structs.data_library.data import Spectrum1D
+from pyrpoc.structs.plugins.params import BlockMap
+from pyrpoc.structs.plugins.programs.picks import Pick, PixelPick
+from pyrpoc.structs.plugins.programs.program import Program, RunContext, program_registry
 
 from .components.param_groups import Point, PointGroup, SpectrumGroup
 from .components.runners import ArmAndRun, Continuous, Single

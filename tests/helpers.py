@@ -11,11 +11,11 @@ from pyrpoc.acquisition.executor import Executor, Run, RunCallbacks
 from pyrpoc.acquisition.recording import Series
 from pyrpoc.data_library.store import LIBRARY_LIMIT_BYTES, LibraryStore
 from pyrpoc.plugins.programs.components.param_groups import FrameGroup, PacingGroup
-from pyrpoc.structs.data import Spectrum1D
-from pyrpoc.structs.dataset import Dataset
-from pyrpoc.structs.params import BlockStore
-from pyrpoc.structs.program import Program, RunContext
-from pyrpoc.structs.saving import SaveTarget
+from pyrpoc.structs.data_library.data import Spectrum1D
+from pyrpoc.structs.data_library.dataset import Dataset
+from pyrpoc.structs.data_library.saving import SaveTarget
+from pyrpoc.structs.plugins.params import BlockStore
+from pyrpoc.structs.plugins.programs.program import Program, RunContext
 
 
 class SpectrumProgram(Program):

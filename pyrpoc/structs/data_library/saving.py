@@ -9,8 +9,8 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
-from .params import ParameterError
-from .registry import Registry
+from pyrpoc.structs.plugins.params import ParameterError
+from pyrpoc.structs.registry import Registry
 
 if TYPE_CHECKING:  # pragma: no cover
     from .dataset import Dataset

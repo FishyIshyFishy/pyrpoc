@@ -27,7 +27,11 @@ There are four kinds of folder:
 - **The vocabulary: `structs/`.** Every file is one noun, like `Dataset`,
   `Device`, `Program` or `DataPanel`. When two parts of pyrpoc need to talk,
   they talk through a noun defined here. It imports nothing else from pyrpoc.
-  Its `__init__.py` lists every file and what it holds.
+  - **It mirrors the package.** A noun lives at the same path as the code that
+    implements it: `Device` is in `structs/plugins/devices.py` because devices
+    are written in `plugins/devices/`, and `Dataset` is in
+    `structs/data_library/` because the library holds datasets.
+  - Its `__init__.py` lists every file and what it holds.
 - **Plugins: `plugins/`.** You add more of these over time: a new instrument, a
   new experiment, a new way to look at data.
   - Each plugin subclasses a base class from `structs/` and registers itself in
@@ -78,7 +82,7 @@ Plus three rules:
 | A new experiment | `plugins/programs/<name>.py`: a `Program` subclass registered in `program_registry` |
 | A new way to start a program (like Continuous) | `plugins/programs/components/runners/` |
 | A new way to look at data | `plugins/data_panels/<name>/`: a `DataPanel` subclass registered in `data_panel_registry` |
-| A new kind of data (like a 3-D volume) | a class in `structs/data.py`, then a writer for it and a data panel that shows it |
+| A new kind of data (like a 3-D volume) | a class in `structs/data_library/data.py`, then a writer for it and a data panel that shows it |
 | A new file format | `data_library/writers/`: a `Writer` registered in `writer_registry` |
 | A feature of the data library (search, tags, streaming off RAM) | `data_library/` |
 | A feature of running (queues, run history, parallel runs) | `acquisition/` |
@@ -94,7 +98,7 @@ its own top-level folder, shaped like the other subsystems:
 2. **A Qt model** (`model.py`): the commands the screen calls, and the signals
    it listens to.
 3. **Its panel** (`panel.py`), if it has one.
-4. **New shared nouns go in `structs/`,** if other parts need to talk to it.
+4. **New shared nouns go in `structs/<subsystem>/`,** if other parts need to talk to it.
 5. **It is built and connected in `app/application.py`.** Its panel is added in
    `app/window.py`.
 6. **Its settings are remembered through `app/session/`,** if it has any.

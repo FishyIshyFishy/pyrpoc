@@ -10,8 +10,9 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
+from pyrpoc.structs.registry import Registry
+
 from . import params as P
-from .registry import Registry
 
 if TYPE_CHECKING:  # pragma: no cover - import only for type checkers
     from PyQt6.QtWidgets import QWidget

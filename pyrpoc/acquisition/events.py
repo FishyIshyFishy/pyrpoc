@@ -16,10 +16,10 @@ from pyrpoc.acquisition.claims import DeviceBusy
 from pyrpoc.acquisition.executor import Executor, Run, RunCallbacks
 from pyrpoc.acquisition.recording import Series
 from pyrpoc.data_library.store import LibraryFull, LibraryStore
-from pyrpoc.structs.device import Device, MissingDevice
-from pyrpoc.structs.params import BlockStore, ParameterError
-from pyrpoc.structs.program import Program
-from pyrpoc.structs.saving import SaveTarget
+from pyrpoc.structs.data_library.saving import SaveTarget
+from pyrpoc.structs.plugins.devices import Device, MissingDevice
+from pyrpoc.structs.plugins.params import BlockStore, ParameterError
+from pyrpoc.structs.plugins.programs.program import Program
 
 
 class RunEvents(QObject):

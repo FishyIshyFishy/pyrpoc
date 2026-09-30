@@ -23,8 +23,8 @@ before then.
 | `RunEvents` | `acquisition/events.py` | The only Qt adapter for runs. It starts them, re-emits run events on the GUI thread with each signal carrying its `Run`, and subscribes to datasets. It knows nothing of the selected program. |
 | `RunnerHost` | `acquisition/host.py` | Attaches the selected program's runners, holds their controls, and routes picks through `pick_mode_changed`. |
 | `RunnerSession` | `acquisition/host.py` | The `RunnerContext` that one program's runners were attached with. It also tracks the runs those runners started. |
-| `Runner` / `RunnerContext` | `structs/runner.py` | A frozen declaration on a program, and the host-side surface it gets. That surface is `execute()`, params, controls, status, blockers and `request` for a `Pick`. |
-| `RunContext` | `structs/program.py` | The surface a *running* program gets: params, devices, `publish`, `status`, `check_cancel` and `sleep`. |
+| `Runner` / `RunnerContext` | `structs/plugins/programs/runner.py` | A frozen declaration on a program, and the host-side surface it gets. That surface is `execute()`, params, controls, status, blockers and `request` for a `Pick`. |
+| `RunContext` | `structs/plugins/programs/program.py` | The surface a *running* program gets: params, devices, `publish`, `status`, `check_cancel` and `sleep`. |
 
 Changes in this round:
 

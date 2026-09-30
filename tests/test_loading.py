@@ -9,7 +9,7 @@ from PyQt6.QtCore import QObject
 from pyrpoc.data_library.format import META_SUFFIX
 from pyrpoc.data_library.model import LibraryModel
 from pyrpoc.data_library.store import LIBRARY_LIMIT_BYTES, LibraryStore
-from pyrpoc.structs.dataset import Origin
+from pyrpoc.structs.data_library.dataset import Origin
 
 FIXTURE = Path(__file__).parent / "fixtures" / "recordings" / "v1" / f"simulation{META_SUFFIX}"
 

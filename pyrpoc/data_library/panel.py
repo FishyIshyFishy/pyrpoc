@@ -26,8 +26,8 @@ from PyQt6.QtWidgets import (
 )
 
 from pyrpoc.qt_components.table import ListTable, horizontal_header, viewport_of
-from pyrpoc.structs.dataset import Dataset
-from pyrpoc.structs.panel import Panel
+from pyrpoc.structs.data_library.dataset import Dataset
+from pyrpoc.structs.plugins.data_panels import Panel
 
 from .details import DetailsDialog
 from .model import LibraryModel

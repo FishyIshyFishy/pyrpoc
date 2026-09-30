@@ -15,7 +15,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import ClassVar
 
-from .params import BlockMap
+from pyrpoc.structs.plugins.params import BlockMap
+
 from .picks import Pick
 
 

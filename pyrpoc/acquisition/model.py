@@ -8,10 +8,10 @@ from PyQt6.QtCore import QObject, pyqtSignal
 
 from pyrpoc.data_library.model import LibraryModel
 from pyrpoc.device_inventory.inventory import DeviceInventory
-from pyrpoc.structs import params as P
-from pyrpoc.structs.params import block_registry
-from pyrpoc.structs.program import program_registry
-from pyrpoc.structs.saving import SaveTarget
+from pyrpoc.structs.data_library.saving import SaveTarget
+from pyrpoc.structs.plugins import params as P
+from pyrpoc.structs.plugins.params import block_registry
+from pyrpoc.structs.plugins.programs.program import program_registry
 
 from . import claims
 from .events import RunEvents
