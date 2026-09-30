@@ -116,7 +116,7 @@ class DataLibraryPanel(Panel):
             self.refresh_total()
 
     def refresh_total(self) -> None:
-        total = sum(dataset.nbytes for dataset in self.rows)
+        total = self.app.library.nbytes
         self.total_label.setText(f"{format_size(total)} in memory" if total else "")
 
     def selected_dataset(self) -> Dataset | None:
@@ -126,7 +126,7 @@ class DataLibraryPanel(Panel):
     def close_selected(self) -> None:
         dataset = self.selected_dataset()
         if dataset is not None:
-            self.app.runs.release(dataset)
+            self.app.library.close(dataset)
 
     def refresh_actions(self) -> None:
         """An empty panel shows only the hint, with no button to grey out."""

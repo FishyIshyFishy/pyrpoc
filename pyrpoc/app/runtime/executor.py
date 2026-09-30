@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from pyrpoc.structs import params as P
-from pyrpoc.structs.data import Dataset, Provenance, SaveTarget, utc_now
+from pyrpoc.structs.data import Dataset, Origin, Provenance, SaveTarget, utc_now
 from pyrpoc.structs.device import Device
 from pyrpoc.structs.program import Cancelled, Program, RunContext
 
@@ -140,6 +140,7 @@ class Executor:
                 output=output,
                 spec=spec,
                 provenance=provenance,
+                origin=Origin.ACQUIRED,
                 writer=saver.writer_for(output) if saver is not None else None,
             )
             for output, spec in program.emits.items()

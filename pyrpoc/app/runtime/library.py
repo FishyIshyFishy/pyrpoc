@@ -2,7 +2,7 @@
 
 Authored data is filed here too: a mask from the mask editor is a ``Mask2D``
 entry, so a parameter can select it by kind without either side naming the
-other. Authored entries have ``run_id == 0``, since no run produced them.
+other. ``Dataset.origin`` says which kind of entry each one is.
 """
 
 from __future__ import annotations
@@ -57,6 +57,12 @@ class DataLibrary:
             listeners = list(self._subscribers)
         for callback in listeners:
             callback()
+
+    @property
+    def nbytes(self) -> int:
+        """Memory held by every entry together."""
+        with self._lock:
+            return sum(dataset.nbytes for dataset in self._datasets)
 
     def __len__(self) -> int:
         with self._lock:

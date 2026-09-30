@@ -2,7 +2,9 @@
 
 Status as of 2026-09-30. This is a plan, not yet built. It builds on the
 `Continuous` runner and the display fix that keeps panels from resetting
-between runs.
+between runs. It is phase 3 of
+[library-improvements.md](library-improvements.md), which moves the metadata
+and file-naming parts into its phase 2.
 
 ## The problem
 

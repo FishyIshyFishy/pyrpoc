@@ -35,7 +35,6 @@ class Runs(QObject):
 
     def __init__(self, library: DataLibrary, parent: QObject):
         super().__init__(parent)
-        self.library = library
         self.executor = Executor(
             library,
             RunCallbacks(
@@ -74,6 +73,5 @@ class Runs(QObject):
         """Called on the worker thread. The signal hops to the GUI thread."""
         self.dataset_changed.emit(dataset)
 
-    def release(self, dataset: Dataset) -> None:
+    def stop_relaying(self, dataset: Dataset) -> None:
         dataset.unsubscribe(self.on_dataset_changed)
-        self.library.remove(dataset)

@@ -11,6 +11,7 @@ import threading
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from enum import Enum
 from pathlib import Path
 from typing import Any, ClassVar, Protocol
 from uuid import uuid4
@@ -190,8 +191,17 @@ class Writer:
         del dataset, error
 
 
+class Origin(Enum):
+    """Where a dataset came from, which decides what may be done with it."""
+
+    ACQUIRED = "acquired"
+    LOADED = "loaded"
+    # Drawn by the user, like a mask: work that exists nowhere else.
+    AUTHORED = "authored"
+
+
 class Dataset:
-    """One named output of one run: frames of one kind of ``Data``."""
+    """One named output of one recording: frames of one kind of ``Data``."""
 
     def __init__(
         self,
@@ -199,12 +209,16 @@ class Dataset:
         output: str,
         spec: type[Data],
         provenance: Provenance,
+        origin: Origin,
         writer: Writer | None = None,
     ):
         self.id = f"{output}-{uuid4().hex[:12]}"
         self.output = output
         self.spec = spec
         self.provenance = provenance
+        self.origin = origin
+        # No more frames will arrive. Only an acquisition is still being written.
+        self.finished = origin is not Origin.ACQUIRED
         self.channel_labels: list[str] = []
         self.metadata: dict[str, Any] = {}
         self.writer = writer
@@ -287,6 +301,7 @@ class Dataset:
             callback(self)
 
     def finalize(self, error: Exception | None) -> None:
+        self.finished = True
         if self.writer is not None:
             self.writer.finalize(self, error)
 
