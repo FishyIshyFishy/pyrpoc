@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator
 from pathlib import Path
 
 import numpy as np
 import pytest
-from PyQt6.QtCore import QCoreApplication, QObject
+from PyQt6.QtCore import QObject
 
 from pyrpoc.app.model.library import LibraryModel
 from pyrpoc.app.runtime.library import DataLibrary, LibraryFull
@@ -71,15 +70,6 @@ def test_purgeable_skips_live_and_drawn_entries(tmp_path: Path) -> None:
 
     assert [dataset.name for dataset in recorder.library.purgeable()] == ["done"]
     recorder.executor.end_series(series)
-
-
-@pytest.fixture
-def qt_parent() -> Iterator[QObject]:
-    app = QCoreApplication.instance() or QCoreApplication([])
-    parent = QObject()
-    yield parent
-    parent.deleteLater()
-    del app
 
 
 def acquired(name: str, size: int) -> Dataset:

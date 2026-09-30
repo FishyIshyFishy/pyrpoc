@@ -9,17 +9,22 @@ reads, so everything that reaches the library goes through one object.
 from __future__ import annotations
 
 from collections.abc import Callable
+from pathlib import Path
 
 from PyQt6.QtCore import QObject, QTimer, pyqtSignal
 
 from pyrpoc.structs.data import Data, Dataset
 
-from ..runtime.library import DataLibrary
+from ..runtime.library import DataLibrary, LibraryFull
+from ..runtime.recording_format import RecordingError, load_recording
 from ..runtime.runs import Runs
 
 
 class LibraryModel(QObject):
     auto_purge_changed = pyqtSignal(bool)
+    # Why a recording could not be loaded. Reported, not raised: every caller
+    # is a Qt slot.
+    load_failed = pyqtSignal(str)
 
     def __init__(self, store: DataLibrary, runs: Runs, parent: QObject):
         super().__init__(parent)
@@ -75,6 +80,18 @@ class LibraryModel(QObject):
         self.store.auto_purge = enabled
         self.auto_purge_changed.emit(enabled)
         self.schedule_purge()
+
+    def load(self, meta_path: Path) -> None:
+        """Open a saved recording: every output becomes an entry. Refused while
+        the library is full, as a new acquisition would be."""
+        try:
+            self.store.check_room()
+            datasets = load_recording(meta_path)
+        except (LibraryFull, RecordingError) as exc:
+            self.load_failed.emit(str(exc))
+            return
+        for dataset in datasets:
+            self.store.add(dataset)
 
     def close(self, dataset: Dataset) -> None:
         """Drop ``dataset`` from memory. Files already saved stay on disk."""

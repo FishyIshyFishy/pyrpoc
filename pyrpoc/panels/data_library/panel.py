@@ -8,14 +8,17 @@ are refused until entries are closed.
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QCheckBox,
+    QFileDialog,
     QHBoxLayout,
     QHeaderView,
     QLabel,
+    QMessageBox,
     QPushButton,
     QVBoxLayout,
 )
@@ -61,7 +64,11 @@ class DataLibraryPanel(Panel):
         root = QVBoxLayout(self)
         root.setContentsMargins(8, 4, 8, 8)
         root.setSpacing(6)
-        self.empty_label = QLabel("No acquisitions yet. Data appears here as it arrives.", self)
+        self.empty_label = QLabel(
+            "Nothing open. Acquired data appears here as it arrives; Open… loads a saved "
+            "recording.",
+            self,
+        )
         self.empty_label.setStyleSheet("color: palette(mid); font-style: italic;")
         self.empty_label.setWordWrap(True)
         # Nothing expands once the table is hidden, so pin the label to the top.
@@ -79,6 +86,7 @@ class DataLibraryPanel(Panel):
         self.table.itemSelectionChanged.connect(self.refresh_actions)
         self.app.library.subscribe(self.rebuild)
         self.app.library.auto_purge_changed.connect(self.auto_purge_check.setChecked)
+        self.app.library.load_failed.connect(self.show_load_error)
         self.app.runs.dataset_changed.connect(self.on_dataset_changed)
         self.rebuild()
 
@@ -97,6 +105,10 @@ class DataLibraryPanel(Panel):
         self.auto_purge_check.toggled.connect(self.app.library.set_auto_purge)
         row.addWidget(self.auto_purge_check)
         row.addStretch(1)
+        open_btn = QPushButton("Open…", self)
+        open_btn.setToolTip("Load a saved recording by its _meta.json file.")
+        open_btn.clicked.connect(self.choose_recording)
+        row.addWidget(open_btn)
         self.close_btn = QPushButton("Close", self)
         self.close_btn.setToolTip(
             "Drop the selected acquisition from memory. Files already saved stay on disk."
@@ -150,8 +162,22 @@ class DataLibraryPanel(Panel):
         if dataset is not None:
             self.app.library.close(dataset)
 
+    def choose_recording(self) -> None:
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Open recording",
+            str(self.app.save.folder),
+            "pyrpoc recordings (*_meta.json)",
+        )
+        if path:
+            self.app.library.load(Path(path))
+
+    def show_load_error(self, message: str) -> None:
+        QMessageBox.warning(self, "Could Not Open Recording", message)
+
     def refresh_actions(self) -> None:
-        """An empty panel shows only the hint, with no button to grey out."""
+        """An empty panel shows the hint and what can fill it, with no Close
+        button to grey out."""
         self.refresh_total()
         self.total_label.setVisible(bool(self.rows))
         self.close_btn.setVisible(bool(self.rows))
