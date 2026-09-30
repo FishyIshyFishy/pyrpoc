@@ -1,22 +1,22 @@
-"""Converting between the live application and a ``WorkspaceState``: capture
+"""Converting between the live application and a ``SessionState``: capture
 it to save, apply it back at launch, and the defaults a first launch gets."""
 
 from __future__ import annotations
 
 import logging
 
+from pyrpoc.app.application import Application
+from pyrpoc.app.window import MainWindow
 from pyrpoc.plugins.data_panels import data_panel_registry
 from pyrpoc.plugins.devices import device_registry
 from pyrpoc.plugins.programs import program_registry
 
-from ..gui.window import MainWindow
-from ..model.application import Application
-from .file import BAD_STATE, DeviceState, LibraryState, SaveState, ViewState, WorkspaceState
+from .file import BAD_STATE, DeviceState, LibraryState, SaveState, SessionState, ViewState
 
 log = logging.getLogger(__name__)
 
 
-def capture(app: Application, window: MainWindow) -> WorkspaceState:
+def capture(app: Application, window: MainWindow) -> SessionState:
     devices = [
         DeviceState(
             key=device_registry.key_for(type(device)),
@@ -35,7 +35,7 @@ def capture(app: Application, window: MainWindow) -> WorkspaceState:
         )
         for panel in window.panels
     ]
-    return WorkspaceState(
+    return SessionState(
         devices=devices,
         views=panels,
         selected_program=app.acquisition.selected_program,
@@ -50,7 +50,7 @@ def capture(app: Application, window: MainWindow) -> WorkspaceState:
     )
 
 
-def restore_devices(state: WorkspaceState, app: Application) -> None:
+def restore_devices(state: SessionState, app: Application) -> None:
     for row in state.devices:
         try:
             device = app.inventory.add(
@@ -61,7 +61,7 @@ def restore_devices(state: WorkspaceState, app: Application) -> None:
             log.warning("skipping saved device %r", row.key, exc_info=True)
 
 
-def restore_panels(state: WorkspaceState, app: Application, window: MainWindow) -> None:
+def restore_panels(state: SessionState, app: Application, window: MainWindow) -> None:
     for row in state.views:
         try:
             panel = data_panel_registry.get(row.key)(app.library)
@@ -75,8 +75,8 @@ def restore_panels(state: WorkspaceState, app: Application, window: MainWindow) 
         window.add_panel(panel)
 
 
-def apply(state: WorkspaceState, app: Application, window: MainWindow) -> None:
-    """Rebuild the live application from a saved workspace. A device or panel
+def apply(state: SessionState, app: Application, window: MainWindow) -> None:
+    """Rebuild the live application from a saved session. A device or panel
     type that no longer exists is skipped rather than blocking launch."""
     window.clear_panels()
     app.inventory.clear()

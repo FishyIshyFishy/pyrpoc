@@ -46,7 +46,7 @@ class ChannelTile:
 
 @dataclass
 class TileState:
-    """One tile's saved settings, parsed from the workspace."""
+    """One tile's saved settings, parsed from the session."""
 
     index: int
     name: str
@@ -263,7 +263,7 @@ class Image2DPanel(DataPanel):
         }
 
     def import_persistence_state(self, state: dict[str, Any]) -> None:
-        """Parse saved tile settings from workspace JSON, a boundary: malformed
+        """Parse saved tile settings from session JSON, a boundary: malformed
         rows are skipped. Applied once tiles exist, since none do yet."""
         channels = state.get("channels", [])
         if not isinstance(channels, list):

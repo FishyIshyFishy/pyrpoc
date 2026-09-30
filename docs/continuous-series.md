@@ -8,6 +8,18 @@ between runs. It is phase 3 of
 [library-improvements.md](library-improvements.md), which moves the metadata
 and file-naming parts into its phase 2.
 
+> **Where this lives now.** Since the reorganization in
+> [architecture.md](architecture.md), the files named below have moved:
+> `app/runtime/{executor,claims,recording}.py` are in `acquisition/`,
+> `app/runtime/runs.py` is `acquisition/events.py` (`Runs` is now `RunEvents`),
+> `app/model/runners.py` is `acquisition/host.py` (`Runners` is now
+> `RunnerHost` and `Slot` is `RunnerSession`),
+> `app/runtime/{library,saving,recording_format}.py` are
+> `data_library/{store,saving,format}.py` (`DataLibrary` is now
+> `LibraryStore`), `app/model/library.py` is `data_library/model.py`,
+> `panels/data_library/` is `data_library/`, and the writers are in
+> `data_library/writers/`.
+
 ## The problem
 
 Each run opens its own `Dataset` for every output, along with its own

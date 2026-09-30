@@ -1,4 +1,4 @@
-"""Saving the workspace shortly after anything changes, and the explicit
+"""Saving the session shortly after anything changes, and the explicit
 restore and reset actions."""
 
 from __future__ import annotations
@@ -7,11 +7,11 @@ import logging
 
 from PyQt6.QtCore import QObject, QTimer
 
+from pyrpoc.app.application import Application
+from pyrpoc.app.window import MainWindow
 from pyrpoc.plugins.programs import program_registry
 
-from ..gui.window import MainWindow
-from ..model.application import Application
-from .file import SaveState, WorkspaceFile
+from .file import SaveState, SessionFile
 from .restore import apply, capture, seed_defaults
 
 log = logging.getLogger(__name__)
@@ -20,7 +20,7 @@ log = logging.getLogger(__name__)
 class Autosave(QObject):
     """Debounced save on any state change, plus explicit save/reset actions."""
 
-    def __init__(self, app: Application, window: MainWindow, store: WorkspaceFile, parent: QObject):
+    def __init__(self, app: Application, window: MainWindow, store: SessionFile, parent: QObject):
         super().__init__(parent)
         self.app = app
         self.window = window
@@ -48,7 +48,7 @@ class Autosave(QObject):
         try:
             self.store.save(capture(self.app, self.window))
         except OSError:
-            log.warning("could not save the workspace to %s", self.store.path, exc_info=True)
+            log.warning("could not save the session to %s", self.store.path, exc_info=True)
 
     def restore(self) -> None:
         self.suspended = True

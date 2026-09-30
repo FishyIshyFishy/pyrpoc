@@ -5,7 +5,7 @@ from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtGui import QAction, QActionGroup
 from PyQt6.QtWidgets import QMenu, QMenuBar, QWidget
 
-from .theme.manager import available_breeze_themes
+from pyrpoc.app.theme.manager import available_breeze_themes
 
 _STYLE_COLOR_GROUPS = ["blue", "red", "green", "purple", "cyan", "pink"]
 _STYLE_VARIANTS = [

@@ -3,6 +3,18 @@
 Status as of 2026-09-30, on `feat/library-improvements`: **built**, one
 commit per phase. The plan is kept below as the record of the design.
 
+> **Where this lives now.** Since the reorganization in
+> [architecture.md](architecture.md), the files named below have moved:
+> `app/runtime/{executor,claims,recording}.py` are in `acquisition/`,
+> `app/runtime/runs.py` is `acquisition/events.py` (`Runs` is now `RunEvents`),
+> `app/model/runners.py` is `acquisition/host.py` (`Runners` is now
+> `RunnerHost` and `Slot` is `RunnerSession`),
+> `app/runtime/{library,saving,recording_format}.py` are
+> `data_library/{store,saving,format}.py` (`DataLibrary` is now
+> `LibraryStore`), `app/model/library.py` is `data_library/model.py`,
+> `panels/data_library/` is `data_library/`, and the writers are in
+> `data_library/writers/`.
+
 Where the build differs from the plan:
 
 - **The model class is `LibraryModel`, not `Library`.** `Library` was already

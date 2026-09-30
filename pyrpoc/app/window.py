@@ -17,15 +17,14 @@ from PyQt6.QtGui import QAction, QCloseEvent
 from PyQt6.QtWidgets import QVBoxLayout, QWidget
 
 from pyrpoc.acquisition.panel import AcquisitionPanel
+from pyrpoc.app.application import Application
+from pyrpoc.app.menubar import MainMenuBar
+from pyrpoc.app.theme.manager import ThemeController
 from pyrpoc.data_library.panel import DataLibraryPanel
 from pyrpoc.device_inventory.panel import DevicesPanel
 from pyrpoc.plugins.data_panels import data_panel_registry
 from pyrpoc.structs.dataset import Dataset
 from pyrpoc.structs.panel import DataPanel
-
-from ..model.application import Application
-from .menubar import MainMenuBar
-from .theme.manager import ThemeController
 
 qtads.CDockManager.setConfigFlag(qtads.CDockManager.eConfigFlag.DisableTabTextEliding, True)
 qtads.CDockManager.setConfigFlag(qtads.CDockManager.eConfigFlag.OpaqueSplitterResize, False)
@@ -92,8 +91,8 @@ class MainWindow(QWidget):
         self.menubar.populate_style_menu(self.theme_controller.get_saved_mode())
         self.menubar.style_selected.connect(self.set_style)
 
-    def bind_workspace(self, save_now: Callable[[], None]) -> None:
-        """Save the workspace when the window closes."""
+    def bind_session(self, save_now: Callable[[], None]) -> None:
+        """Save the session when the window closes."""
         self.closing.connect(save_now)
 
     def build_panels(self) -> None:

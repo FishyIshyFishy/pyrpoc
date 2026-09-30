@@ -21,7 +21,7 @@ class Mask:
     because an id means nothing in metadata read months later. ``array`` is
     filled only in a run's copy, by ``MasksField.resolve``: a program has no
     library, so the pixels arrive with its parameters while the shared block
-    and workspace keep only the reference. ``compare=False`` because comparing
+    and session keep only the reference. ``compare=False`` because comparing
     arrays in a frozen dataclass's ``__eq__`` raises.
     """
 

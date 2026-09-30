@@ -5,7 +5,7 @@ one's, each through its own ``RunnerSession``; detaching drops the session, so i
 and callbacks go with it, a pending pick is cancelled, and the runs it started
 are stopped. A runner's request for a ``Pick`` goes out as ``pick_mode_changed``
 to whatever displays are listening, and the first matching ``on_picked``
-answers it. Pick state never reaches the saved workspace: a relaunch that came
+answers it. Pick state never reaches the saved session: a relaunch that came
 back armed would point a hardware trigger at the next stray click.
 """
 

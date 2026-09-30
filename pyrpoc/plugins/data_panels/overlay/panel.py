@@ -47,7 +47,7 @@ class ChannelControl:
 
 @dataclass
 class ControlState:
-    """One channel's saved settings, parsed from the workspace."""
+    """One channel's saved settings, parsed from the session."""
 
     index: int
     autoscale: bool
@@ -235,7 +235,7 @@ class OverlayPanel(DataPanel):
         }
 
     def import_persistence_state(self, state: dict[str, Any]) -> None:
-        """Parse saved settings from workspace JSON, a boundary: malformed rows
+        """Parse saved settings from session JSON, a boundary: malformed rows
         are skipped. Applied once controls exist, since none do yet."""
         channels = state.get("channels", [])
         if not isinstance(channels, list):

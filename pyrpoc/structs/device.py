@@ -123,7 +123,7 @@ class Device:
         return {"config": P.encode_block(self.config), "last_test_ok": self.last_test_ok}
 
     def import_state(self, raw: dict[str, Any]) -> None:
-        """Restore from workspace JSON, which is a boundary: a malformed entry
+        """Restore from session JSON, which is a boundary: a malformed entry
         leaves that part at its default."""
         config = raw.get("config")
         if isinstance(config, dict):

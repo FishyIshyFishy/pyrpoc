@@ -1,6 +1,6 @@
 """Every parameter block a program can be built from, one per file, plus the
 field types that are this instrument's own. Importing this package registers
-every block, so a workspace can name any of them.
+every block, so a session can name any of them.
 """
 
 from __future__ import annotations

@@ -102,7 +102,7 @@ class Executor:
             self._run_id += 1
             key = RecordingKey(
                 program_key=program_key,
-                # One encoding, shared by the recording and the workspace file.
+                # One encoding, shared by the recording and the session file.
                 parameters=blocks.to_dict(list(program.params)),
                 devices=device_state(devices),
                 # A copy: the app edits its save target in place.

@@ -1,4 +1,4 @@
-"""What the saved workspace holds, and reading and writing the file it lives in.
+"""What the saved session holds, and reading and writing the file it lives in.
 
 Configuration and layout only, as small JSON; acquired data lives in the run's
 own files. Nothing here knows the live application or Qt; ``restore.py``
@@ -22,7 +22,7 @@ log = logging.getLogger(__name__)
 # since there is no converter between shapes.
 SCHEMA_VERSION = 8
 
-# What malformed workspace JSON raises on its way into the application.
+# What malformed session JSON raises on its way into the application.
 BAD_STATE = (KeyError, TypeError, ValueError, ParameterError)
 
 
@@ -58,7 +58,7 @@ class LibraryState:
 
 
 @dataclass
-class WorkspaceState:
+class SessionState:
     schema_version: int = SCHEMA_VERSION
     devices: list[DeviceState] = field(default_factory=list)
     views: list[ViewState] = field(default_factory=list)
@@ -71,38 +71,37 @@ class WorkspaceState:
     ads_layout: str | None = None
 
 
-def default_workspace_path() -> Path:
+def default_session_path() -> Path:
     if os.name == "nt":
         root = Path(os.environ.get("APPDATA", Path.home() / "AppData" / "Roaming"))
     else:
         root = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config"))
-    # The file's old name, kept so existing workspaces still load.
     return root / "pyrpoc" / "session.json"
 
 
-class WorkspaceFile:
+class SessionFile:
     def __init__(self, path: Path):
         self.path = path
 
-    def load(self) -> WorkspaceState:
-        """The saved workspace, or defaults if there is not a usable one. A
+    def load(self) -> SessionState:
+        """The saved session, or defaults if there is not a usable one. A
         corrupt file is logged rather than blocking launch."""
         if not self.path.exists():
-            return WorkspaceState()
+            return SessionState()
         try:
             raw = json.loads(self.path.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             log.warning("could not read %s; starting fresh", self.path, exc_info=True)
-            return WorkspaceState()
+            return SessionState()
         if not isinstance(raw, dict) or raw.get("schema_version") != SCHEMA_VERSION:
-            return WorkspaceState()
+            return SessionState()
         try:
             return decode(raw)
         except BAD_STATE:
             log.warning("could not decode %s; starting fresh", self.path, exc_info=True)
-            return WorkspaceState()
+            return SessionState()
 
-    def save(self, state: WorkspaceState) -> None:
+    def save(self, state: SessionState) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         payload = json.dumps(asdict(state), indent=2, default=str)
         temporary = self.path.with_suffix(self.path.suffix + ".tmp")
@@ -115,7 +114,7 @@ def decode_rows(rows: Any) -> list[dict[str, Any]]:
     return [row for row in rows if isinstance(row, dict) and row.get("key")]
 
 
-def decode(raw: dict[str, Any]) -> WorkspaceState:
+def decode(raw: dict[str, Any]) -> SessionState:
     devices = [
         DeviceState(
             key=str(row["key"]),
@@ -140,7 +139,7 @@ def decode(raw: dict[str, Any]) -> WorkspaceState:
         if isinstance(value, dict)
     }
     layout = raw.get("ads_layout")
-    return WorkspaceState(
+    return SessionState(
         devices=devices,
         views=views,
         selected_program=raw.get("selected_program"),

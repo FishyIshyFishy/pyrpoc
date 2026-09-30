@@ -2,7 +2,7 @@
 
 A block is a dataclass whose fields carry their spec in ``metadata``, so one
 declaration gives the value, default, form row and validation. The block class
-is its identity everywhere: declaration, form, workspace and run metadata.
+is its identity everywhere: declaration, form, session and run metadata.
 """
 
 from __future__ import annotations
@@ -278,7 +278,7 @@ class BlockStore:
 
     def load_dict(self, raw: Mapping[str, dict[str, Any]], registry: Mapping[str, type]) -> None:
         """Fill the store from a saved state dict. An unknown name is skipped,
-        so deleting a block does not strand a workspace; a block that fails
+        so deleting a block does not strand a session; a block that fails
         coercion falls back to defaults, so one bad number costs only itself."""
         for name, values in raw.items():
             cls = registry.get(name)

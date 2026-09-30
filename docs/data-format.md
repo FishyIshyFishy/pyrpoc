@@ -5,8 +5,8 @@ format with a compatibility promise: every recording saved in format 1 or later
 must load in every later version of pyrpoc. Recordings saved before format 1
 are not supported.
 
-The code is in `pyrpoc/app/runtime/recording_format.py`, and the readers and
-writers for data files are in `pyrpoc/programs/components/writers/`.
+The code is in `pyrpoc/data_library/format.py`, and the readers and writers
+for data files are in `pyrpoc/data_library/writers/`.
 
 ## Layout
 
@@ -40,7 +40,7 @@ A recording is one metadata file plus data files, all in the same folder:
 | `started_at`, `ended_at` | ISO 8601 UTC string; `ended_at` is `null` while recording | When it started and ended. |
 | `last_error` | string or `null` | Why the recording ended badly, if it did. |
 | `runs` | list of `{run_id, started_at, ended_at, error}` | The runs that wrote into it. A continuous series has several. |
-| `parameters` | object | The program's parameter blocks, encoded as the workspace file encodes them. |
+| `parameters` | object | The program's parameter blocks, encoded as the session file encodes them. |
 | `devices` | object | Each device's configuration, keyed by device class. |
 | `outputs` | object: output name → output | One entry per output the program emits. |
 

@@ -1,6 +1,6 @@
 # Runs and runners: where they stand, and how they grow
 
-Status as of 2026-09-29. This is a plan, not a spec: each section below says
+Status as of 2026-09-29; paths updated for the reorganization in [architecture.md](architecture.md). This is a plan, not a spec: each section below says
 what to build when a feature first needs it, and nothing here should be built
 before then.
 
@@ -17,12 +17,12 @@ before then.
 
 | Piece | File | What it is |
 |---|---|---|
-| `Run` | `app/runtime/executor.py` | One execution of one program. It is the handle that everything outside the program uses to reach it. It holds its datasets, devices, cancel event and `running` flag. `stop()` asks the program to stop. |
-| `Executor` | `app/runtime/executor.py` | Starts runs, each on its own worker thread, and has no Qt. It opens datasets, sets up saving, and hands each run a **copy** of its params. Runs may overlap as long as they don't share a device. |
-| `Leases` / `DeviceBusy` | `app/runtime/claims.py` | Record which run holds each device. A start that needs a held device is refused before anything opens. |
-| `Runs` | `app/runtime/runs.py` | The only Qt adapter for runs. It starts them, re-emits run events on the GUI thread with each signal carrying its `Run`, and subscribes to datasets. It knows nothing of the selected program. |
-| `Runners` | `app/model/runners.py` | Attaches the selected program's runners, holds their controls, and routes picks through `pick_mode_changed`. |
-| `Slot` | `app/model/runners.py` | The `RunnerContext` that one program's runners were attached with. It also tracks the runs those runners started. |
+| `Run` | `acquisition/executor.py` | One execution of one program. It is the handle that everything outside the program uses to reach it. It holds its datasets, devices, cancel event and `running` flag. `stop()` asks the program to stop. |
+| `Executor` | `acquisition/executor.py` | Starts runs, each on its own worker thread, and has no Qt. It opens datasets, sets up saving, and hands each run a **copy** of its params. Runs may overlap as long as they don't share a device. |
+| `Leases` / `DeviceBusy` | `acquisition/claims.py` | Record which run holds each device. A start that needs a held device is refused before anything opens. |
+| `RunEvents` | `acquisition/events.py` | The only Qt adapter for runs. It starts them, re-emits run events on the GUI thread with each signal carrying its `Run`, and subscribes to datasets. It knows nothing of the selected program. |
+| `RunnerHost` | `acquisition/host.py` | Attaches the selected program's runners, holds their controls, and routes picks through `pick_mode_changed`. |
+| `RunnerSession` | `acquisition/host.py` | The `RunnerContext` that one program's runners were attached with. It also tracks the runs those runners started. |
 | `Runner` / `RunnerContext` | `structs/runner.py` | A frozen declaration on a program, and the host-side surface it gets. That surface is `execute()`, params, controls, status, blockers and `request` for a `Pick`. |
 | `RunContext` | `structs/program.py` | The surface a *running* program gets: params, devices, `publish`, `status`, `check_cancel` and `sleep`. |
 
@@ -42,7 +42,7 @@ Each of these limits is a place a later feature will change:
    Its Stop button stops only the runs those runners started.
 2. **Switching programs stops the old slot's runs.** Once a run's slot is gone, no UI can reach it to stop it. This stays until a runs panel exists (see A).
 3. **Busy devices are not blockers.** A start that hits a held device is refused with a message. It isn't greyed out in advance, and it isn't queued.
-4. **One `SaveTarget` per workspace.** Every run saves under the same name and folder.
+4. **One `SaveTarget` per session.** Every run saves under the same name and folder.
 5. **Status is unscoped.** The acquisition panel shows the status of any run, including one from a previous selection that is still winding down.
 6. **No live parameter edits.** Changing a field mid-run no longer affects that run. The inbox (C) is the supported replacement.
 7. **A pick is one-shot and happens before the run.** `request` is answered once, by a dataset panel, before `execute`.
@@ -53,7 +53,7 @@ The features are ordered by how much they need. Each one names the smallest chan
 
 ### A. See and stop every run (runs panel)
 
-**Needs:** `Runs` to keep a list of active runs, and a panel that lists them and has a Stop button for each. All the events a panel needs already carry the `Run`.
+**Needs:** `RunEvents` to keep a list of active runs, and a panel that lists them and has a Stop button for each. All the events a panel needs already carry the `Run`.
 
 **Unblocks:** removing limit 2 (switching programs no longer has to stop anything) and limit 5 (each row shows its own run's status).
 
@@ -70,10 +70,10 @@ A runner is a *policy that drives runs*, not just "a way to start the selected p
 **Needs:**
 - `RunnerContext.start(program, params) -> RunHandle`. `RunHandle` is an abstract type in `structs/`, and `app.runtime.executor.Run` implements it. `structs/` can't import `app/`, and runners only need `id`, `running`, `stop()`, `datasets` and `on_finished`. `execute()` then becomes shorthand for starting the attached program.
 - `RunHandle.on_finished(callback)`, so a runner can chain runs. This is what a time-lapse needs.
-- A way to declare runners that belong to no program. Register "experiments" through `structs/registries.py`, with the same `Runner` type, and let the GUI offer them next to programs. `program.runners` stays as the runners offered when a program is selected.
+- A way to declare runners that belong to no program. Register "experiments" through a registry in `structs/`, with the same `Runner` type, and let the GUI offer them next to programs. `program.runners` stays as the runners offered when a program is selected.
 - The runner's params are not the program's params. An experiment declares its own blocks, such as interval, repeats or thresholds, the same way a program does.
 
-**Rule to keep:** a runner never touches Qt. Its callbacks arrive on one thread (the GUI thread today, via `Runs`), so runner code needs no locks.
+**Rule to keep:** a runner never touches Qt. Its callbacks arrive on one thread (the GUI thread today, via `RunEvents`), so runner code needs no locks.
 
 ### C. Talking to a running program (inbox)
 
@@ -99,7 +99,7 @@ These build on what exists and need no redesign.
 | Box, line or ROI | A new `Pick` subclass, plus a drag interaction on the panel that can answer it. |
 | Pick on a spectrum | A new subclass, plus `set_pick_mode` on the spectrum panel. |
 | Pick N points, then run | `request(kind, callback, count)`, or a runner that re-requests. Add a "done" gesture on the display so picking mode doesn't flicker between points. |
-| Cancel from the display (Esc or right-click) | A `cancelled` signal on `DatasetPanel`, routed like `picked`. |
+| Cancel from the display (Esc or right-click) | A `cancelled` signal on `DataPanel`, routed like `picked`. |
 | Show the picked point afterwards | Params-to-display: a panel draws markers from any block field of a known kind (such as `Point`) in the selected program's params. |
 | Pick without a display (typed, stage readout) | Loosen `Pick.dataset` into a subclass concern, and let a non-panel source answer requests. |
 | Refuse unsuitable data before the click | Give a `Pick` kind a `accepts(dataset) -> bool` that the panel asks before it arms. |
@@ -107,7 +107,7 @@ These build on what exists and need no redesign.
 
 ### E. Queuing and scheduling
 
-**Needs:** a queue in `Executor` or `Runs` that holds a start refused with `DeviceBusy`, and retries when a lease is released (`finalize` already releases leases under the executor lock). Show held devices in the device panel.
+**Needs:** a queue in `Executor` or `RunEvents` that holds a start refused with `DeviceBusy`, and retries when a lease is released (`finalize` already releases leases under the executor lock). Show held devices in the device panel.
 
 **Unblocks:** limit 3. It also lets an autonomous loop queue its next step behind a side program instead of failing.
 
@@ -121,7 +121,7 @@ These build on what exists and need no redesign.
 
 ### G. Headless and long-lived operation
 
-**Needs:** a `RunnerContext` implementation without Qt, a sibling of `Slot` that dispatches callbacks on a plain event queue. `Executor` already needs no Qt, and after B, experiments don't either.
+**Needs:** a `RunnerContext` implementation without Qt, a sibling of `RunnerSession` that dispatches callbacks on a plain event queue. `Executor` already needs no Qt, and after B, experiments don't either.
 
 **Unblocks:** scripting, remote control, and loops that survive the GUI being closed or restarted. It also allows resuming after a crash later: persist the experiment's state and the ids of runs in flight.
 

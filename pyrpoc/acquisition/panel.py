@@ -224,7 +224,7 @@ class AcquisitionPanel(Panel):
 
     def on_save_changed(self) -> None:
         """Pull the widgets back in line with the save target, for when a
-        restored workspace moved it. Unchanged values are skipped so typing in
+        restored session moved it. Unchanged values are skipped so typing in
         the name field keeps its cursor."""
         save = self.acquisition.save
         if self.name_edit.text() != save.name:
