@@ -101,12 +101,16 @@ root_package = "pyrpoc"
 include_external_packages = true
 
 [[tool.importlinter.contracts]]
-name = "Layers: app > panels > data_library | device_inventory > plugins > qt_components > structs"
+name = "Layers: app > acquisition > data_library | device_inventory > plugins > qt_components > structs"
 type = "layers"
 containers = ["pyrpoc"]
-layers = ["app", "panels", "data_library | device_inventory", "plugins", "qt_components", "structs"]
-ignore_imports = [
-  "pyrpoc.panels.** -> pyrpoc.app.model.application",
+layers = [
+  "app",
+  "acquisition",
+  "data_library | device_inventory",
+  "plugins",
+  "qt_components",
+  "structs",
 ]
 
 [[tool.importlinter.contracts]]
@@ -114,6 +118,12 @@ name = "Inside plugins: programs may use devices; programs and data panels never
 type = "layers"
 containers = ["pyrpoc.plugins"]
 layers = ["programs | data_panels", "devices"]
+
+[[tool.importlinter.contracts]]
+name = "Subsystems never name a plugin; they find plugins through registries"
+type = "forbidden"
+source_modules = ["pyrpoc.acquisition", "pyrpoc.data_library", "pyrpoc.device_inventory"]
+forbidden_modules = ["pyrpoc.plugins"]
 
 [[tool.importlinter.contracts]]
 name = "structs is Qt-free, except panel.py"
@@ -137,35 +147,12 @@ ignore_imports = [
 ]
 
 [[tool.importlinter.contracts]]
-name = "Inside app: workspace > gui > model > runtime"
-type = "layers"
-containers = ["pyrpoc.app"]
-layers = ["workspace", "gui", "model", "runtime"]
-
-[[tool.importlinter.contracts]]
-name = "Subsystems never name a plugin; they find plugins through registries"
-type = "forbidden"
-source_modules = ["pyrpoc.data_library", "pyrpoc.device_inventory"]
-forbidden_modules = ["pyrpoc.plugins"]
-
-[[tool.importlinter.contracts]]
-name = "runtime knows only structs and the data library"
-type = "forbidden"
-source_modules = ["pyrpoc.app.runtime"]
-forbidden_modules = [
-  "pyrpoc.panels",
-  "pyrpoc.plugins",
-  "pyrpoc.qt_components",
-  "pyqtgraph",
-]
-
-[[tool.importlinter.contracts]]
 name = "The cores are Qt-free: running, the library's store and files, the workspace file"
 type = "forbidden"
 source_modules = [
-  "pyrpoc.app.runtime.claims",
-  "pyrpoc.app.runtime.executor",
-  "pyrpoc.app.runtime.recording",
+  "pyrpoc.acquisition.claims",
+  "pyrpoc.acquisition.executor",
+  "pyrpoc.acquisition.recording",
   "pyrpoc.data_library.store",
   "pyrpoc.data_library.saving",
   "pyrpoc.data_library.format",
@@ -176,8 +163,29 @@ forbidden_modules = ["PyQt6"]
 # structs ledger above, and reaches these through structs, not through them.
 allow_indirect_imports = true
 
+# The application itself is left out: it is the composition root, and importing
+# every plugin, display panels included, is how it registers them.
 [[tool.importlinter.contracts]]
-name = "The model holds no widgets"
+name = "Subsystem models hold no widgets: they never import a panel or a widget"
 type = "forbidden"
-source_modules = ["pyrpoc.app.model"]
-forbidden_modules = ["pyrpoc.panels", "pyrpoc.qt_components", "pyqtgraph"]
+source_modules = [
+  "pyrpoc.acquisition.model",
+  "pyrpoc.acquisition.host",
+  "pyrpoc.acquisition.events",
+  "pyrpoc.data_library.model",
+  "pyrpoc.device_inventory.inventory",
+]
+forbidden_modules = [
+  "pyrpoc.acquisition.panel",
+  "pyrpoc.data_library.panel",
+  "pyrpoc.data_library.details",
+  "pyrpoc.device_inventory.panel",
+  "pyrpoc.qt_components",
+  "pyqtgraph",
+]
+
+[[tool.importlinter.contracts]]
+name = "Inside app: workspace > gui > model"
+type = "layers"
+containers = ["pyrpoc.app"]
+layers = ["workspace", "gui", "model"]

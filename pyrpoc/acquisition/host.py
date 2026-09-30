@@ -1,7 +1,7 @@
 """The selected program's runners, as the screen sees them.
 
 Selecting a program detaches the previous one's runners and attaches the new
-one's, each through its own ``Slot``; detaching drops the slot, so its controls
+one's, each through its own ``RunnerSession``; detaching drops the session, so its controls
 and callbacks go with it, a pending pick is cancelled, and the runs it started
 are stopped. A runner's request for a ``Pick`` goes out as ``pick_mode_changed``
 to whatever displays are listening, and the first matching ``on_picked``
@@ -16,26 +16,25 @@ from typing import TYPE_CHECKING
 
 from PyQt6.QtCore import QObject, pyqtSignal
 
+from pyrpoc.acquisition.executor import Run
+from pyrpoc.acquisition.recording import Series
 from pyrpoc.structs.params import BlockMap
 from pyrpoc.structs.picks import Pick
 from pyrpoc.structs.program import Program
 from pyrpoc.structs.runner import Control, RunnerContext
 
-from ..runtime.executor import Run
-from ..runtime.recording import Series
-
 if TYPE_CHECKING:  # pragma: no cover
-    from .application import Application
+    from .model import Acquisition
 
 PickCallback = Callable[[Pick | None], None]
 
 
-class Slot(RunnerContext):
+class RunnerSession(RunnerContext):
     """The context one program's runners were attached with, and the runs they
     started. ``closed`` is set before the host lets go of it, so a runner
     holding a stale slot finds every request refused."""
 
-    def __init__(self, host: Runners, key: str, program: type[Program]):
+    def __init__(self, host: RunnerHost, key: str, program: type[Program]):
         self.host = host
         self.key = key
         self.program = program
@@ -65,19 +64,19 @@ class Slot(RunnerContext):
     def close_series(self) -> None:
         series, self.series = self.series, None
         if series is not None:
-            self.host.app.runs.end_series(series)
+            self.host.acquisition.events.end_series(series)
 
     def on_run_ended(self, callback: Callable[[bool], None]) -> None:
         self.ended.append(callback)
 
     @property
     def params(self) -> BlockMap:
-        return self.host.app.blocks.for_program(self.program.params)
+        return self.host.acquisition.blocks.for_program(self.program.params)
 
     def params_written(self) -> None:
         if not self.closed:
-            self.host.app.params_written.emit()
-            self.host.app.state_changed.emit()
+            self.host.acquisition.params_written.emit()
+            self.host.acquisition.edited.emit()
 
     def request(self, kind: type[Pick], callback: PickCallback) -> None:
         if self.closed:
@@ -98,7 +97,7 @@ class Slot(RunnerContext):
         self.host.status.emit(text)
 
     def blockers(self) -> list[str]:
-        return self.host.app.blockers()
+        return self.host.acquisition.blockers()
 
     def claim(self, run: Run) -> None:
         """Record a run this slot started, then tell its runners."""
@@ -115,7 +114,7 @@ class Slot(RunnerContext):
             callback(completed)
 
 
-class Runners(QObject):
+class RunnerHost(QObject):
     """Attaches the selected program's runners and routes what they ask for."""
 
     # The control list changed; the view re-renders from ``controls``.
@@ -126,16 +125,16 @@ class Runners(QObject):
     # The kind of pick wanted, or None; displays offer it or stop offering.
     pick_mode_changed = pyqtSignal(object)
 
-    def __init__(self, app: Application):
-        super().__init__(app)
-        self.app = app
-        self.slot: Slot | None = None
+    def __init__(self, acquisition: Acquisition):
+        super().__init__(acquisition)
+        self.acquisition = acquisition
+        self.slot: RunnerSession | None = None
         self._pick: tuple[type[Pick], PickCallback] | None = None
 
-        app.runs.run_failed.connect(self.note_failure)
-        app.runs.run_finished.connect(self.forget)
-        app.inventory.changed.connect(self.check_pick_blockers)
-        app.save_changed.connect(self.check_pick_blockers)
+        acquisition.events.run_failed.connect(self.note_failure)
+        acquisition.events.run_finished.connect(self.forget)
+        acquisition.inventory.changed.connect(self.check_pick_blockers)
+        acquisition.save_changed.connect(self.check_pick_blockers)
 
     @property
     def controls(self) -> list[Control]:
@@ -158,7 +157,7 @@ class Runners(QObject):
     def attach(self, key: str, program: type[Program]) -> None:
         """Replace whatever is attached with ``program``'s runners."""
         self.detach()
-        slot = Slot(self, key, program)
+        slot = RunnerSession(self, key, program)
         self.slot = slot
         for runner in program.runners:
             runner.attach(slot)
@@ -176,15 +175,15 @@ class Runners(QObject):
         slot.close_series()
         self.controls_changed.emit()
 
-    def start(self, slot: Slot) -> None:
+    def start(self, slot: RunnerSession) -> None:
         """Start ``slot``'s program with what the workbench holds right now."""
-        app = self.app
-        app.runs.start(
+        acquisition = self.acquisition
+        acquisition.events.start(
             slot.program(),
             slot.key,
-            app.blocks,
-            app.inventory.devices,
-            app.save,
+            acquisition.blocks,
+            acquisition.inventory.devices,
+            acquisition.save,
             slot.series,
             slot.claim,
         )
@@ -241,7 +240,7 @@ class Runners(QObject):
         """A pending pick starts a run, so it cannot outlive what the run needs."""
         if self._pick is None:
             return
-        missing = self.app.blockers()
+        missing = self.acquisition.blockers()
         if missing:
             self.cancel_pick()
             self.status.emit("needs " + ", ".join(missing))

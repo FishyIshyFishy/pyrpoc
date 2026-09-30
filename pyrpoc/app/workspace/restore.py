@@ -38,9 +38,13 @@ def capture(app: Application, window: MainWindow) -> WorkspaceState:
     return WorkspaceState(
         devices=devices,
         views=panels,
-        selected_program=app.selected_program,
-        param_blocks=app.params_state(),
-        save=SaveState(name=app.save.name, directory=app.save.directory, enabled=app.save.enabled),
+        selected_program=app.acquisition.selected_program,
+        param_blocks=app.acquisition.params_state(),
+        save=SaveState(
+            name=app.acquisition.save.name,
+            directory=app.acquisition.save.directory,
+            enabled=app.acquisition.save.enabled,
+        ),
         library=LibraryState(auto_purge=app.library.auto_purge),
         ads_layout=window.save_dock_layout(),
     )
@@ -78,11 +82,15 @@ def apply(state: WorkspaceState, app: Application, window: MainWindow) -> None:
     app.inventory.clear()
     restore_devices(state, app)
     restore_panels(state, app, window)
-    app.load_params_state(state.param_blocks)
-    app.set_save(name=state.save.name, directory=state.save.directory, enabled=state.save.enabled)
+    app.acquisition.load_params_state(state.param_blocks)
+    app.acquisition.set_save(
+        name=state.save.name, directory=state.save.directory, enabled=state.save.enabled
+    )
     app.library.set_auto_purge(state.library.auto_purge)
     key = state.selected_program
-    app.select_program(key if key in program_registry.entries else program_registry.keys()[0])
+    app.acquisition.select_program(
+        key if key in program_registry.entries else program_registry.keys()[0]
+    )
     # Every dock exists now; the saved layout goes on last.
     window.restore_dock_layout(state.ads_layout)
 

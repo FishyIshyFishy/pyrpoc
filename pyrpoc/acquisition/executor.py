@@ -14,6 +14,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, replace
 from typing import Any
 
+from pyrpoc.acquisition.recording import Recording, RecordingKey, Series
 from pyrpoc.data_library.saving import RecordingSaver
 from pyrpoc.data_library.store import LibraryStore
 from pyrpoc.structs import params as P
@@ -23,7 +24,6 @@ from pyrpoc.structs.program import Cancelled, Program, RunContext
 from pyrpoc.structs.saving import SaveTarget
 
 from . import claims
-from .recording import Recording, RecordingKey, Series
 
 
 class Run:

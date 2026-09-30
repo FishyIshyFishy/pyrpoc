@@ -7,8 +7,8 @@ from pathlib import Path
 
 import numpy as np
 
-from pyrpoc.app.runtime.executor import Executor, Run, RunCallbacks
-from pyrpoc.app.runtime.recording import Series
+from pyrpoc.acquisition.executor import Executor, Run, RunCallbacks
+from pyrpoc.acquisition.recording import Series
 from pyrpoc.data_library.store import LIBRARY_LIMIT_BYTES, LibraryStore
 from pyrpoc.plugins.programs.components.param_groups import FrameGroup, PacingGroup
 from pyrpoc.structs.data import Spectrum1D

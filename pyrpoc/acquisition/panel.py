@@ -8,7 +8,6 @@ there rather than in the form because they are not parameters of any program.
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import TYPE_CHECKING
 
 from PyQt6.QtWidgets import (
     QCheckBox,
@@ -32,16 +31,15 @@ from pyrpoc.structs.params import FieldContext
 from pyrpoc.structs.program import program_registry
 from pyrpoc.structs.runner import Control
 
-if TYPE_CHECKING:  # pragma: no cover
-    from pyrpoc.app.model.application import Application
+from .model import Acquisition
 
 
 class AcquisitionPanel(Panel):
     display_name = "Acquisition"
 
-    def __init__(self, app: Application):
+    def __init__(self, acquisition: Acquisition):
         super().__init__()
-        self.app = app
+        self.acquisition = acquisition
         self.form: ParamForm | None = None
         # Each rendered control, its button, and the watcher keeping them in line.
         self.control_buttons: list[tuple[Control, QPushButton, Callable[[], None]]] = []
@@ -61,10 +59,10 @@ class AcquisitionPanel(Panel):
         self.render_controls()
         self.set_running_ui(False)
         self.on_save_changed()
-        if self.app.selected_program is None:
-            self.app.select_program(program_registry.keys()[0])
+        if self.acquisition.selected_program is None:
+            self.acquisition.select_program(program_registry.keys()[0])
         else:
-            self.on_program_selected(self.app.selected_program)
+            self.on_program_selected(self.acquisition.selected_program)
 
     def build_program_row(self) -> QHBoxLayout:
         row = QHBoxLayout()
@@ -110,20 +108,20 @@ class AcquisitionPanel(Panel):
 
     def connect_signals(self) -> None:
         self.program_combo.currentIndexChanged.connect(self.on_program_chosen)
-        self.stop_btn.clicked.connect(self.app.runners.stop)
-        self.save_check.toggled.connect(lambda checked: self.app.set_save(enabled=checked))
-        self.name_edit.textChanged.connect(lambda text: self.app.set_save(name=text))
+        self.stop_btn.clicked.connect(self.acquisition.host.stop)
+        self.save_check.toggled.connect(lambda checked: self.acquisition.set_save(enabled=checked))
+        self.name_edit.textChanged.connect(lambda text: self.acquisition.set_save(name=text))
         self.dir_btn.clicked.connect(self.choose_directory)
 
-        self.app.program_selected.connect(self.on_program_selected)
-        self.app.inventory.changed.connect(self.refresh_readiness)
-        self.app.save_changed.connect(self.on_save_changed)
-        self.app.params_written.connect(self.on_params_written)
-        runners = self.app.runners
+        self.acquisition.program_selected.connect(self.on_program_selected)
+        self.acquisition.inventory.changed.connect(self.refresh_readiness)
+        self.acquisition.save_changed.connect(self.on_save_changed)
+        self.acquisition.params_written.connect(self.on_params_written)
+        runners = self.acquisition.host
         runners.controls_changed.connect(self.render_controls)
         runners.status.connect(self.show_status)
         runners.picking_changed.connect(self.on_picking_changed)
-        runs = self.app.runs
+        runs = self.acquisition.events
         runs.run_started.connect(lambda _run: self.on_run_started())
         runs.run_status.connect(lambda _run, text: self.show_status(text))
         runs.run_finished.connect(lambda _run: self.on_run_finished())
@@ -132,8 +130,8 @@ class AcquisitionPanel(Panel):
 
     def on_program_chosen(self, index: int) -> None:
         key = self.program_combo.itemData(index)
-        if key != self.app.selected_program:
-            self.app.select_program(key)
+        if key != self.acquisition.selected_program:
+            self.acquisition.select_program(key)
 
     def on_program_selected(self, key: str) -> None:
         index = self.program_combo.findData(key)
@@ -142,12 +140,12 @@ class AcquisitionPanel(Panel):
             self.program_combo.setCurrentIndex(index)
             self.program_combo.blockSignals(False)
         self.form = ParamForm(
-            self.app.params_for(key),
+            self.acquisition.params_for(key),
             self,
             cards=True,
-            context=FieldContext(library=self.app.library),
+            context=FieldContext(library=self.acquisition.library),
         )
-        self.form.changed.connect(self.app.state_changed.emit)
+        self.form.changed.connect(self.acquisition.mark_edited)
         self.form.invalid.connect(self.show_status)
         self.scroll_area.setWidget(self.form)
         self.refresh_readiness()
@@ -161,11 +159,11 @@ class AcquisitionPanel(Panel):
         """Enable or disable the controls and say what is missing, if anything.
         ``announce`` is off when a run has just ended, so its outcome is not
         immediately overwritten with "ready"."""
-        missing = self.app.blockers()
+        missing = self.acquisition.blockers()
         self.apply_enabled()
         if missing:
             self.show_status("needs " + ", ".join(missing))
-        elif announce and not self.app.runners.running and not self.app.runners.picking:
+        elif announce and not self.acquisition.host.running and not self.acquisition.host.picking:
             self.show_status("ready")
 
     def show_status(self, text: str) -> None:
@@ -181,7 +179,7 @@ class AcquisitionPanel(Panel):
             button.deleteLater()
         self.control_buttons = []
 
-        for control in self.app.runners.controls:
+        for control in self.acquisition.host.controls:
             button = QPushButton(self)
             if control.icon is not None:
                 button.setIcon(asset_icon(control.icon))
@@ -210,25 +208,25 @@ class AcquisitionPanel(Panel):
     def apply_enabled(self) -> None:
         """Off while something is missing or a run is in progress, and off
         whenever the control's runner says so."""
-        ready = not self.app.blockers() and not self.app.runners.running
+        ready = not self.acquisition.blockers() and not self.acquisition.host.running
         for control, button, _ in self.control_buttons:
             button.setEnabled(ready and control.enabled)
 
     def on_picking_changed(self, active: bool) -> None:
-        if not active and not self.app.runners.running:
+        if not active and not self.acquisition.host.running:
             self.refresh_readiness()
 
     def choose_directory(self) -> None:
-        start = str(self.app.save.folder)
+        start = str(self.acquisition.save.folder)
         chosen = QFileDialog.getExistingDirectory(self, "Save acquisitions to", start)
         if chosen:
-            self.app.set_save(directory=chosen)
+            self.acquisition.set_save(directory=chosen)
 
     def on_save_changed(self) -> None:
         """Pull the widgets back in line with the save target, for when a
         restored workspace moved it. Unchanged values are skipped so typing in
         the name field keeps its cursor."""
-        save = self.app.save
+        save = self.acquisition.save
         if self.name_edit.text() != save.name:
             self.name_edit.setText(save.name)
         if self.save_check.isChecked() != save.enabled:
@@ -246,7 +244,7 @@ class AcquisitionPanel(Panel):
     def folder_name(self) -> str:
         """The destination folder's name, readable without hovering: no folder
         chosen means the working directory, which is easy to not expect."""
-        folder = self.app.save.folder
+        folder = self.acquisition.save.folder
         name = folder.name or str(folder)
         return name if len(name) <= 16 else name[:15] + "…"
 
@@ -255,7 +253,7 @@ class AcquisitionPanel(Panel):
         self.set_running_ui(True)
 
     def on_run_finished(self) -> None:
-        running = self.app.runners.running
+        running = self.acquisition.host.running
         self.set_running_ui(running)
         # A runner may already have started the next run from this same finish.
         if not running:
@@ -264,7 +262,7 @@ class AcquisitionPanel(Panel):
 
     def on_run_failed(self, message: str) -> None:
         self.show_status(f"error - {message}")
-        self.set_running_ui(self.app.runners.running)
+        self.set_running_ui(self.acquisition.host.running)
         QMessageBox.critical(self, "Acquisition Error", message)
 
     def set_running_ui(self, running: bool) -> None:

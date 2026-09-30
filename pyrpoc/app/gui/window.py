@@ -16,7 +16,9 @@ from PyQt6.QtCore import QByteArray, QTimer, pyqtSignal
 from PyQt6.QtGui import QAction, QCloseEvent
 from PyQt6.QtWidgets import QVBoxLayout, QWidget
 
-from pyrpoc.panels import AcquisitionPanel, DataLibraryPanel, DevicesPanel
+from pyrpoc.acquisition.panel import AcquisitionPanel
+from pyrpoc.data_library.panel import DataLibraryPanel
+from pyrpoc.device_inventory.panel import DevicesPanel
 from pyrpoc.plugins.data_panels import data_panel_registry
 from pyrpoc.structs.dataset import Dataset
 from pyrpoc.structs.panel import DataPanel
@@ -96,9 +98,11 @@ class MainWindow(QWidget):
 
     def build_panels(self) -> None:
         widgets = {
-            DockKey.ACQUISITION: AcquisitionPanel(self.app),
+            DockKey.ACQUISITION: AcquisitionPanel(self.app.acquisition),
             DockKey.DEVICES: DevicesPanel(self.app.inventory),
-            DockKey.DATA: DataLibraryPanel(self.app.library, lambda: self.app.save.folder),
+            DockKey.DATA: DataLibraryPanel(
+                self.app.library, lambda: self.app.acquisition.save.folder
+            ),
         }
         first: qtads.CDockWidget | None = None
         for spec in PANELS:
@@ -154,13 +158,13 @@ class MainWindow(QWidget):
     def connect_panel(self, panel: DataPanel) -> None:
         """Let ``panel`` answer pick requests, starting in whatever mode a
         pending request has already set."""
-        runners = self.app.runners
+        runners = self.app.acquisition.host
         runners.pick_mode_changed.connect(panel.set_pick_mode)
         panel.picked.connect(runners.on_picked)
         panel.set_pick_mode(runners.pick_mode)
 
     def disconnect_panel(self, panel: DataPanel) -> None:
-        runners = self.app.runners
+        runners = self.app.acquisition.host
         runners.pick_mode_changed.disconnect(panel.set_pick_mode)
         panel.picked.disconnect(runners.on_picked)
 

@@ -8,7 +8,7 @@ from pathlib import Path
 
 import numpy as np
 
-from pyrpoc.app.runtime.recording import Series
+from pyrpoc.acquisition.recording import Series
 from pyrpoc.data_library.format import META_SUFFIX, load_recording
 from pyrpoc.plugins.programs.components.param_groups import FrameGroup
 from pyrpoc.plugins.programs.simulation import Simulation

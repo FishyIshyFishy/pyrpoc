@@ -22,7 +22,7 @@ from pyrpoc.structs.dataset import Dataset
 from pyrpoc.structs.saving import SaveTarget
 
 if TYPE_CHECKING:  # pragma: no cover
-    from .executor import Run
+    from pyrpoc.acquisition.executor import Run
 
 
 @dataclass(frozen=True)

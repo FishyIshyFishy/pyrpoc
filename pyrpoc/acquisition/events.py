@@ -12,18 +12,17 @@ from collections.abc import Callable
 
 from PyQt6.QtCore import QObject, pyqtSignal
 
+from pyrpoc.acquisition.claims import DeviceBusy
+from pyrpoc.acquisition.executor import Executor, Run, RunCallbacks
+from pyrpoc.acquisition.recording import Series
 from pyrpoc.data_library.store import LibraryFull, LibraryStore
 from pyrpoc.structs.device import Device, MissingDevice
 from pyrpoc.structs.params import BlockStore, ParameterError
 from pyrpoc.structs.program import Program
 from pyrpoc.structs.saving import SaveTarget
 
-from .claims import DeviceBusy
-from .executor import Executor, Run, RunCallbacks
-from .recording import Series
 
-
-class Runs(QObject):
+class RunEvents(QObject):
     """Starts runs and reports them. Each signal carries its ``Run``."""
 
     run_started = pyqtSignal(object)

@@ -8,7 +8,7 @@ import numpy as np
 import pytest
 from PyQt6.QtCore import QObject
 
-from pyrpoc.app.runtime.recording import Series
+from pyrpoc.acquisition.recording import Series
 from pyrpoc.data_library.model import LibraryModel
 from pyrpoc.data_library.store import LibraryFull, LibraryStore
 from pyrpoc.plugins.programs.simulation import Simulation

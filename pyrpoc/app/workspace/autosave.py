@@ -64,10 +64,10 @@ class Autosave(QObject):
         try:
             self.window.clear_panels()
             self.app.inventory.clear()
-            self.app.blocks.clear()
-            self.app.set_save(name=SaveState().name, directory="", enabled=False)
+            self.app.acquisition.blocks.clear()
+            self.app.acquisition.set_save(name=SaveState().name, directory="", enabled=False)
             seed_defaults(self.app)
-            self.app.select_program(program_registry.keys()[0])
+            self.app.acquisition.select_program(program_registry.keys()[0])
         finally:
             self.suspended = False
         self.save_now()
