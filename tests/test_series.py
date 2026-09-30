@@ -10,8 +10,8 @@ import numpy as np
 
 from pyrpoc.app.runtime.recording import Series
 from pyrpoc.app.runtime.recording_format import META_SUFFIX, load_recording
-from pyrpoc.programs.components.param_groups import FrameGroup
-from pyrpoc.programs.simulation import Simulation
+from pyrpoc.plugins.programs.components.param_groups import FrameGroup
+from pyrpoc.plugins.programs.simulation import Simulation
 from pyrpoc.structs.data import Spectrum1D
 from pyrpoc.structs.params import BlockStore
 from pyrpoc.structs.program import Program, RunContext

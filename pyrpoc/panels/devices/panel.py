@@ -10,12 +10,11 @@ from typing import TYPE_CHECKING
 
 from PyQt6.QtWidgets import QComboBox, QHBoxLayout, QPushButton, QScrollArea, QVBoxLayout, QWidget
 
+from pyrpoc.qt_components.cards import RemovableCardWidget
+from pyrpoc.qt_components.param_form import ParamForm
 from pyrpoc.structs.device import Device, device_registry
 from pyrpoc.structs.panel import Panel
 from pyrpoc.structs.params import FieldContext
-
-from ..components.cards import RemovableCardWidget
-from ..components.param_form import ParamForm
 
 if TYPE_CHECKING:  # pragma: no cover
     from pyrpoc.app.model.application import Application

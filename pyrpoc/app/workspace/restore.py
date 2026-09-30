@@ -5,9 +5,9 @@ from __future__ import annotations
 
 import logging
 
-from pyrpoc.devices import device_registry
-from pyrpoc.panels import data_panel_registry
-from pyrpoc.programs import program_registry
+from pyrpoc.plugins.data_panels import data_panel_registry
+from pyrpoc.plugins.devices import device_registry
+from pyrpoc.plugins.programs import program_registry
 
 from ..gui.window import MainWindow
 from ..model.application import Application

@@ -14,8 +14,8 @@ import nidaqmx as nx
 import nidaqmx.errors
 import numpy as np
 
-from pyrpoc.devices.daq.device import DAQ, DaqError
-from pyrpoc.devices.galvo.device import Galvo
+from pyrpoc.plugins.devices.daq.device import DAQ, DaqError
+from pyrpoc.plugins.devices.galvo.device import Galvo
 from pyrpoc.structs.data import Spectrum1D
 from pyrpoc.structs.params import BlockMap
 from pyrpoc.structs.picks import Pick, PixelPick

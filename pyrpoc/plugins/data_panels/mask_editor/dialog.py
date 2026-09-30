@@ -19,7 +19,8 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from ..components.range_slider import RangeSlider
+from pyrpoc.plugins.data_panels.mask_editor.range_slider import RangeSlider
+
 from .canvas import MaskRoi
 
 if TYPE_CHECKING:  # pragma: no cover

@@ -7,7 +7,7 @@ import logging
 
 from PyQt6.QtCore import QObject, QTimer
 
-from pyrpoc.programs import program_registry
+from pyrpoc.plugins.programs import program_registry
 
 from ..gui.window import MainWindow
 from ..model.application import Application

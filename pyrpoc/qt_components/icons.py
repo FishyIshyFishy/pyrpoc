@@ -13,8 +13,8 @@ from PyQt6.QtCore import QByteArray, QPoint, QRect, QRectF, QSize, Qt
 from PyQt6.QtGui import QGuiApplication, QIcon, QIconEngine, QPainter, QPalette, QPixmap
 from PyQt6.QtSvg import QSvgRenderer
 
-# ``pyrpoc/assets``, two levels up from ``pyrpoc/panels/components``.
-ASSETS = Path(__file__).resolve().parents[2] / "assets"
+# ``pyrpoc/assets``, beside this package.
+ASSETS = Path(__file__).resolve().parents[1] / "assets"
 
 
 class PaletteSvgEngine(QIconEngine):

@@ -16,7 +16,7 @@ import numpy as np
 from nidaqmx.constants import AcquisitionType
 from nidaqmx.stream_readers import AnalogMultiChannelReader
 
-from pyrpoc.devices import DAQ, DaqError, Galvo
+from pyrpoc.plugins.devices import DAQ, DaqError, Galvo
 from pyrpoc.structs.data import Image2D, Samples4D
 from pyrpoc.structs.program import Program, program_registry
 

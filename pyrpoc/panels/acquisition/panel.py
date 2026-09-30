@@ -25,13 +25,12 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
 )
 
+from pyrpoc.qt_components.icons import asset_icon
+from pyrpoc.qt_components.param_form import ParamForm
 from pyrpoc.structs.panel import Panel
 from pyrpoc.structs.params import FieldContext
 from pyrpoc.structs.program import program_registry
 from pyrpoc.structs.runner import Control
-
-from ..components.icons import asset_icon
-from ..components.param_form import ParamForm
 
 if TYPE_CHECKING:  # pragma: no cover
     from pyrpoc.app.model.application import Application

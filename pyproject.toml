@@ -101,13 +101,19 @@ root_package = "pyrpoc"
 include_external_packages = true
 
 [[tool.importlinter.contracts]]
-name = "Layers: app > panels | programs > devices > structs"
+name = "Layers: app > panels > plugins > qt_components > structs"
 type = "layers"
 containers = ["pyrpoc"]
-layers = ["app", "panels | programs", "devices", "structs"]
+layers = ["app", "panels", "plugins", "qt_components", "structs"]
 ignore_imports = [
   "pyrpoc.panels.** -> pyrpoc.app.model.application",
 ]
+
+[[tool.importlinter.contracts]]
+name = "Inside plugins: programs may use devices; programs and data panels never meet"
+type = "layers"
+containers = ["pyrpoc.plugins"]
+layers = ["programs | data_panels", "devices"]
 
 [[tool.importlinter.contracts]]
 name = "structs is Qt-free, except panel.py"
@@ -142,8 +148,8 @@ type = "forbidden"
 source_modules = ["pyrpoc.app.runtime"]
 forbidden_modules = [
   "pyrpoc.panels",
-  "pyrpoc.programs",
-  "pyrpoc.devices",
+  "pyrpoc.plugins",
+  "pyrpoc.qt_components",
   "pyqtgraph",
 ]
 
@@ -166,4 +172,4 @@ allow_indirect_imports = true
 name = "The model holds no widgets"
 type = "forbidden"
 source_modules = ["pyrpoc.app.model"]
-forbidden_modules = ["pyrpoc.panels", "pyqtgraph"]
+forbidden_modules = ["pyrpoc.panels", "pyrpoc.qt_components", "pyqtgraph"]

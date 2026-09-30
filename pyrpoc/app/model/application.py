@@ -11,8 +11,8 @@ import logging
 
 from PyQt6.QtCore import QObject, pyqtSignal
 
-from pyrpoc.devices import device_registry
-from pyrpoc.programs import program_registry
+from pyrpoc.plugins.devices import device_registry
+from pyrpoc.plugins.programs import program_registry
 from pyrpoc.structs import params as P
 from pyrpoc.structs.device import Device, DeviceError
 from pyrpoc.structs.params import block_registry

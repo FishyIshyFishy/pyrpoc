@@ -12,7 +12,7 @@ from pyrpoc.app.model.library import LibraryModel
 from pyrpoc.app.runtime.library import DataLibrary, LibraryFull
 from pyrpoc.app.runtime.recording import Series
 from pyrpoc.app.runtime.runs import Runs
-from pyrpoc.programs.simulation import Simulation
+from pyrpoc.plugins.programs.simulation import Simulation
 from pyrpoc.structs.data import Mask2D
 from pyrpoc.structs.dataset import Dataset, Origin, Provenance, utc_now
 

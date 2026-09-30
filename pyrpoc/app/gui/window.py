@@ -16,14 +16,10 @@ from PyQt6.QtCore import QByteArray, QTimer, pyqtSignal
 from PyQt6.QtGui import QAction, QCloseEvent
 from PyQt6.QtWidgets import QVBoxLayout, QWidget
 
-from pyrpoc.panels import (
-    AcquisitionPanel,
-    DataLibraryPanel,
-    DataPanel,
-    DevicesPanel,
-    data_panel_registry,
-)
+from pyrpoc.panels import AcquisitionPanel, DataLibraryPanel, DevicesPanel
+from pyrpoc.plugins.data_panels import data_panel_registry
 from pyrpoc.structs.dataset import Dataset
+from pyrpoc.structs.panel import DataPanel
 
 from ..model.application import Application
 from .menubar import MainMenuBar

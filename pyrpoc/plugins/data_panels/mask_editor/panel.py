@@ -35,14 +35,14 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
 )
 
+from pyrpoc.plugins.data_panels.mask_editor.range_slider import RangeSlider
+from pyrpoc.plugins.data_panels.mask_editor.transforms import normalize_channels
+from pyrpoc.qt_components.table import horizontal_header, vertical_header
 from pyrpoc.structs.data import Image2D, Mask2D
 from pyrpoc.structs.dataset import Dataset, Origin, Provenance, utc_now
 from pyrpoc.structs.library import Library
 from pyrpoc.structs.panel import DataPanel, data_panel_registry
 
-from ..components.range_slider import RangeSlider
-from ..components.table import horizontal_header, vertical_header
-from ..components.transforms import normalize_channels
 from .canvas import MaskImageView, MaskRoi
 from .dialog import RoiThresholdDialog
 

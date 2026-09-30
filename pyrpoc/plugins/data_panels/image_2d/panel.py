@@ -19,13 +19,12 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from pyrpoc.qt_components.levels import autoscale_levels, mono_levels
 from pyrpoc.structs.data import Image2D
 from pyrpoc.structs.dataset import Dataset
 from pyrpoc.structs.library import Library
 from pyrpoc.structs.panel import DataPanel, data_panel_registry
 from pyrpoc.structs.picks import Pick, PixelPick
-
-from ..components.levels import autoscale_levels, mono_levels
 
 LUT = pg.ColorMap(
     pos=np.array([0.0, 0.999, 1.0], dtype=float),

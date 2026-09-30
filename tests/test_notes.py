@@ -11,7 +11,7 @@ from pyrpoc.app.model.library import LibraryModel
 from pyrpoc.app.runtime.recording import Series
 from pyrpoc.app.runtime.recording_format import META_SUFFIX, load_recording
 from pyrpoc.app.runtime.runs import Runs
-from pyrpoc.programs.simulation import Simulation
+from pyrpoc.plugins.programs.simulation import Simulation
 
 from .helpers import Recorder, small_simulation_blocks
 

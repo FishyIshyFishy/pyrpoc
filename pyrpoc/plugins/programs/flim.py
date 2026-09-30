@@ -13,7 +13,7 @@ import nidaqmx as nx
 import numpy as np
 from nidaqmx.constants import AcquisitionType, Signal
 
-from pyrpoc.devices import DAQ, DaqError, FlimMeasurement, Galvo, TimeTagger
+from pyrpoc.plugins.devices import DAQ, DaqError, FlimMeasurement, Galvo, TimeTagger
 from pyrpoc.structs.data import Cube3D, Image2D
 from pyrpoc.structs.program import Program, RunContext, program_registry
 
