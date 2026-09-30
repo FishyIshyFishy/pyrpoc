@@ -27,7 +27,7 @@ from PyQt6.QtWidgets import (
 
 from pyrpoc.structs.panel import Panel
 from pyrpoc.structs.params import FieldContext
-from pyrpoc.structs.registries import program_registry
+from pyrpoc.structs.program import program_registry
 from pyrpoc.structs.runner import Control
 
 from ..components.icons import asset_icon

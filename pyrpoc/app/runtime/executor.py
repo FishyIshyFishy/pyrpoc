@@ -15,9 +15,10 @@ from dataclasses import dataclass, replace
 from typing import Any
 
 from pyrpoc.structs import params as P
-from pyrpoc.structs.data import Dataset, Origin, Provenance, SaveTarget, utc_now
+from pyrpoc.structs.dataset import Dataset, Origin, Provenance, utc_now
 from pyrpoc.structs.device import Device
 from pyrpoc.structs.program import Cancelled, Program, RunContext
+from pyrpoc.structs.saving import SaveTarget
 
 from . import claims
 from .library import DataLibrary

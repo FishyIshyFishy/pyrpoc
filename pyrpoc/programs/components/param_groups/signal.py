@@ -7,10 +7,10 @@ from typing import ClassVar
 
 from pyrpoc.structs.params import (
     Group,
+    block,
     choice_field,
     float_field,
 )
-from pyrpoc.structs.registries import block
 
 # Pattern names offered by the simulated program, in menu order.
 PATTERNS = ("cells", "rings", "gradient", "checkerboard", "flat")

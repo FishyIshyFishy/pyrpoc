@@ -13,8 +13,7 @@ from collections.abc import Sequence
 import numpy as np
 
 from pyrpoc.structs.data import Image2D
-from pyrpoc.structs.program import Program, RunContext
-from pyrpoc.structs.registries import program_registry
+from pyrpoc.structs.program import Program, RunContext, program_registry
 
 from .components.param_groups import (
     FrameGroup,

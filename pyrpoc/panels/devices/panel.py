@@ -10,10 +10,9 @@ from typing import TYPE_CHECKING
 
 from PyQt6.QtWidgets import QComboBox, QHBoxLayout, QPushButton, QScrollArea, QVBoxLayout, QWidget
 
-from pyrpoc.structs.device import Device
+from pyrpoc.structs.device import Device, device_registry
 from pyrpoc.structs.panel import Panel
 from pyrpoc.structs.params import FieldContext
-from pyrpoc.structs.registries import device_registry
 
 from ..components.cards import RemovableCardWidget
 from ..components.param_form import ParamForm

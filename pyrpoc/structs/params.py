@@ -12,8 +12,10 @@ from dataclasses import dataclass, fields, replace
 from dataclasses import field as dc_field
 from typing import TYPE_CHECKING, Any, ClassVar, TypeVar
 
+from .registry import Registry
+
 if TYPE_CHECKING:  # pragma: no cover
-    from .data import Library
+    from .library import Library
 
 
 class ParameterError(Exception):
@@ -386,3 +388,14 @@ def resolve_block(block: B, library: Library) -> B:
         if resolved is not value:
             changes[name] = resolved
     return replace(block, **changes)
+
+
+# Keyed by class name, a block's identity in the form, session and metadata.
+block_registry: Registry[Group] = Registry("BlockRegistry", Group, stamp=None)
+
+R = TypeVar("R", bound=type)
+
+
+def block(cls: R) -> R:
+    """Register a parameter block under its class name."""
+    return block_registry.register(cls.__name__)(cls)

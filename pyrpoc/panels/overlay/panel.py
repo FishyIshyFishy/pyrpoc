@@ -18,10 +18,12 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from pyrpoc.structs.data import Dataset, Image2D, Library
+from pyrpoc.structs.data import Image2D
+from pyrpoc.structs.dataset import Dataset
+from pyrpoc.structs.library import Library
+from pyrpoc.structs.panel import DataPanel, data_panel_registry
 
 from ..components.colors import color_for_index
-from ..components.dataset_panel import DatasetPanel, panel_registry
 from ..components.levels import autoscale_levels, mono_levels
 
 
@@ -54,8 +56,8 @@ class ControlState:
     max_val: float
 
 
-@panel_registry.register("overlay")
-class OverlayPanel(DatasetPanel):
+@data_panel_registry.register("overlay")
+class OverlayPanel(DataPanel):
     display_name = "2D Overlaid"
     renders = [Image2D]
 

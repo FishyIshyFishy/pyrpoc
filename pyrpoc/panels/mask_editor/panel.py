@@ -35,17 +35,11 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
 )
 
-from pyrpoc.structs.data import (
-    Dataset,
-    Image2D,
-    Library,
-    Mask2D,
-    Origin,
-    Provenance,
-    utc_now,
-)
+from pyrpoc.structs.data import Image2D, Mask2D
+from pyrpoc.structs.dataset import Dataset, Origin, Provenance, utc_now
+from pyrpoc.structs.library import Library
+from pyrpoc.structs.panel import DataPanel, data_panel_registry
 
-from ..components.dataset_panel import DatasetPanel, panel_registry
 from ..components.range_slider import RangeSlider
 from ..components.table import horizontal_header, vertical_header
 from ..components.transforms import normalize_channels
@@ -76,8 +70,8 @@ def write_mask(path: str, mask: np.ndarray) -> Path:
     return resolved
 
 
-@panel_registry.register("mask_editor")
-class MaskEditorPanel(DatasetPanel):
+@data_panel_registry.register("mask_editor")
+class MaskEditorPanel(DataPanel):
     """Draw thresholded polygon ROIs over an acquired image and file the mask."""
 
     display_name = "Mask Editor"

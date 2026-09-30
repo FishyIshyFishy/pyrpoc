@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from .data import Dataset
+from .dataset import Dataset
 
 
 @dataclass(frozen=True)

@@ -17,8 +17,7 @@ from nidaqmx.stream_readers import AnalogMultiChannelReader
 
 from pyrpoc.devices import DAQ, DaqError, Galvo
 from pyrpoc.structs.data import Image2D
-from pyrpoc.structs.program import Program
-from pyrpoc.structs.registries import program_registry
+from pyrpoc.structs.program import Program, program_registry
 
 from .components.param_groups import (
     DaqGroup,

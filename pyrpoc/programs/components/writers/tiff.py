@@ -7,8 +7,9 @@ from pathlib import Path
 import numpy as np
 import tifffile
 
-from pyrpoc.structs.data import Dataset, Image2D, Writer
-from pyrpoc.structs.registries import writer_registry
+from pyrpoc.structs.data import Image2D
+from pyrpoc.structs.dataset import Dataset
+from pyrpoc.structs.saving import Writer, writer_registry
 
 
 @writer_registry.register(Image2D.name)

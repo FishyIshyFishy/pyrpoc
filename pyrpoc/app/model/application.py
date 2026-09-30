@@ -14,9 +14,9 @@ from PyQt6.QtCore import QObject, pyqtSignal
 from pyrpoc.devices import device_registry
 from pyrpoc.programs import program_registry
 from pyrpoc.structs import params as P
-from pyrpoc.structs.data import SaveTarget
 from pyrpoc.structs.device import Device, DeviceError
-from pyrpoc.structs.registries import block_registry
+from pyrpoc.structs.params import block_registry
+from pyrpoc.structs.saving import SaveTarget
 
 from ..runtime import claims
 from ..runtime.library import LIBRARY_LIMIT_BYTES, DataLibrary

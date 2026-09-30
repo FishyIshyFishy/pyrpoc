@@ -19,10 +19,12 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from pyrpoc.structs.data import Dataset, Image2D, Library
+from pyrpoc.structs.data import Image2D
+from pyrpoc.structs.dataset import Dataset
+from pyrpoc.structs.library import Library
+from pyrpoc.structs.panel import DataPanel, data_panel_registry
 from pyrpoc.structs.picks import Pick, PixelPick
 
-from ..components.dataset_panel import DatasetPanel, panel_registry
 from ..components.levels import autoscale_levels, mono_levels
 
 LUT = pg.ColorMap(
@@ -54,8 +56,8 @@ class TileState:
     max_val: float
 
 
-@panel_registry.register("image_2d")
-class Image2DPanel(DatasetPanel):
+@data_panel_registry.register("image_2d")
+class Image2DPanel(DataPanel):
     display_name = "2D Tiled"
     renders = [Image2D]
 

@@ -25,7 +25,7 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
 )
 
-from pyrpoc.structs.data import Dataset
+from pyrpoc.structs.dataset import Dataset
 from pyrpoc.structs.panel import Panel
 
 from ..components.table import ListTable, horizontal_header, viewport_of

@@ -20,8 +20,9 @@ from typing import Any
 
 import numpy as np
 
-from pyrpoc.structs.data import DATA_KINDS, Dataset, Origin, Provenance
-from pyrpoc.structs.registries import writer_registry
+from pyrpoc.structs.data import DATA_KINDS
+from pyrpoc.structs.dataset import Dataset, Origin, Provenance
+from pyrpoc.structs.saving import writer_registry
 
 FORMAT = "pyrpoc-recording"
 FORMAT_VERSION = 1

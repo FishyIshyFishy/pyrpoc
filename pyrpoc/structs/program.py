@@ -13,8 +13,10 @@ from typing import Any, TypeVar
 
 import numpy as np
 
-from .data import Data, Dataset
+from .data import Data
+from .dataset import Dataset
 from .device import Device
+from .registry import Registry
 from .runner import Runner
 
 D = TypeVar("D", bound=Device)
@@ -124,3 +126,7 @@ class RunContext:
             return
         if self._cancel.wait(seconds):
             raise Cancelled("run stopped")
+
+
+# Programs keep their key at the registration site, not on the class.
+program_registry: Registry[Program] = Registry("ProgramRegistry", Program, stamp=None)

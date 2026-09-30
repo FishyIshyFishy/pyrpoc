@@ -11,9 +11,11 @@ from pyrpoc.app.runtime.executor import Executor, Run, RunCallbacks
 from pyrpoc.app.runtime.library import LIBRARY_LIMIT_BYTES, DataLibrary
 from pyrpoc.app.runtime.recording import Series
 from pyrpoc.programs.components.param_groups import FrameGroup, PacingGroup
-from pyrpoc.structs.data import Dataset, SaveTarget, Spectrum1D
+from pyrpoc.structs.data import Spectrum1D
+from pyrpoc.structs.dataset import Dataset
 from pyrpoc.structs.params import BlockStore
 from pyrpoc.structs.program import Program, RunContext
+from pyrpoc.structs.saving import SaveTarget
 
 
 class SpectrumProgram(Program):

@@ -22,7 +22,8 @@ from pyrpoc.app.runtime.recording_format import (
     write_notes,
 )
 from pyrpoc.programs.simulation import Simulation
-from pyrpoc.structs.data import Data, Image2D, Origin, Spectrum1D
+from pyrpoc.structs.data import Data, Image2D, Spectrum1D
+from pyrpoc.structs.dataset import Origin
 from pyrpoc.structs.params import BlockStore
 
 from .helpers import Recorder, SpectrumProgram, small_simulation_blocks

@@ -12,8 +12,9 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from pyrpoc.structs.data import Data, Dataset, Writer, utc_now
-from pyrpoc.structs.registries import writer_registry
+from pyrpoc.structs.data import Data
+from pyrpoc.structs.dataset import Dataset, utc_now
+from pyrpoc.structs.saving import Writer, writer_registry
 
 from .recording_format import (
     OutputRecord,

@@ -10,7 +10,7 @@ from pyrpoc.app.model.library import LibraryModel
 from pyrpoc.app.runtime.library import LIBRARY_LIMIT_BYTES, DataLibrary
 from pyrpoc.app.runtime.recording_format import META_SUFFIX
 from pyrpoc.app.runtime.runs import Runs
-from pyrpoc.structs.data import Origin
+from pyrpoc.structs.dataset import Origin
 
 FIXTURE = Path(__file__).parent / "fixtures" / "recordings" / "v1" / f"simulation{META_SUFFIX}"
 

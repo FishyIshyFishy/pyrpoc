@@ -19,8 +19,7 @@ from pyrpoc.devices.galvo.device import Galvo
 from pyrpoc.structs.data import Spectrum1D
 from pyrpoc.structs.params import BlockMap
 from pyrpoc.structs.picks import Pick, PixelPick
-from pyrpoc.structs.program import Program, RunContext
-from pyrpoc.structs.registries import program_registry
+from pyrpoc.structs.program import Program, RunContext, program_registry
 
 from .components.param_groups import Point, PointGroup, SpectrumGroup
 from .components.runners import ArmAndRun, Continuous, Single

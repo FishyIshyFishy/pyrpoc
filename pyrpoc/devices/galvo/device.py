@@ -9,8 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from pyrpoc.structs import params as P
-from pyrpoc.structs.device import Device
-from pyrpoc.structs.registries import device_registry
+from pyrpoc.structs.device import Device, device_registry
 
 from ..daq.device import DAQ
 

@@ -114,12 +114,15 @@ name = "structs is Qt-free, except panel.py"
 type = "forbidden"
 source_modules = [
   "pyrpoc.structs.data",
+  "pyrpoc.structs.dataset",
   "pyrpoc.structs.device",
+  "pyrpoc.structs.library",
   "pyrpoc.structs.params",
   "pyrpoc.structs.picks",
   "pyrpoc.structs.program",
-  "pyrpoc.structs.registries",
+  "pyrpoc.structs.registry",
   "pyrpoc.structs.runner",
+  "pyrpoc.structs.saving",
 ]
 forbidden_modules = ["PyQt6", "pyqtgraph"]
 ignore_imports = [

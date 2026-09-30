@@ -10,7 +10,8 @@ from __future__ import annotations
 import threading
 from collections.abc import Callable
 
-from pyrpoc.structs.data import Data, Dataset, Origin
+from pyrpoc.structs.data import Data
+from pyrpoc.structs.dataset import Dataset, Origin
 
 # Everything open together, in bytes. Big enough for hours of typical imaging,
 # small enough to leave a lab PC's RAM for the rest of the session.

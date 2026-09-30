@@ -20,7 +20,9 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from pyrpoc.structs.data import Dataset, Library, Mask2D
+from pyrpoc.structs.data import Mask2D
+from pyrpoc.structs.dataset import Dataset
+from pyrpoc.structs.library import Library
 from pyrpoc.structs.params import Editor, FieldContext
 
 from .param_groups import Mask, MasksField, Point, PointField

@@ -19,11 +19,11 @@ from PyQt6.QtWidgets import QVBoxLayout, QWidget
 from pyrpoc.panels import (
     AcquisitionPanel,
     DataLibraryPanel,
-    DatasetPanel,
+    DataPanel,
     DevicesPanel,
-    panel_registry,
+    data_panel_registry,
 )
-from pyrpoc.structs.data import Dataset
+from pyrpoc.structs.dataset import Dataset
 
 from ..model.application import Application
 from .menubar import MainMenuBar
@@ -72,14 +72,14 @@ class MainWindow(QWidget):
         self.restoring_layout = False
         self.shutting_down = False
         self.dock_by_key: dict[DockKey, qtads.CDockWidget] = {}
-        self.panel_docks: dict[DatasetPanel, qtads.CDockWidget] = {}
-        self.panel_actions: dict[DatasetPanel, QAction] = {}
+        self.panel_docks: dict[DataPanel, qtads.CDockWidget] = {}
+        self.panel_actions: dict[DataPanel, QAction] = {}
         # Which instance of its type each panel is, to tell same-kind docks apart.
-        self.panel_ordinals: dict[DatasetPanel, int] = {}
+        self.panel_ordinals: dict[DataPanel, int] = {}
 
         self.menubar = MainMenuBar(self)
         self.menubar.populate_add_menu(
-            [(key, panel_registry.get(key).display_name) for key in panel_registry.keys()]
+            [(key, data_panel_registry.get(key).display_name) for key in data_panel_registry.keys()]
         )
         self.menubar.panel_requested.connect(self.add_panel_of_type)
         self.build_panels()
@@ -130,21 +130,21 @@ class MainWindow(QWidget):
         return dock
 
     @property
-    def panels(self) -> list[DatasetPanel]:
+    def panels(self) -> list[DataPanel]:
         """The added panels, in the order they were added."""
         return list(self.panel_docks)
 
     def add_panel_of_type(self, key: str) -> None:
         """Add one, from the menu."""
-        self.add_panel(panel_registry.get(key)(self.app.library))
+        self.add_panel(data_panel_registry.get(key)(self.app.library))
 
-    def add_panel(self, panel: DatasetPanel) -> None:
+    def add_panel(self, panel: DataPanel) -> None:
         self.add_panel_dock(panel)
         self.connect_panel(panel)
         self.refresh_panels_menu()
         self.panels_changed.emit()
 
-    def remove_panel(self, panel: DatasetPanel) -> None:
+    def remove_panel(self, panel: DataPanel) -> None:
         self.disconnect_panel(panel)
         panel.detach()
         self.remove_panel_dock(panel)
@@ -155,7 +155,7 @@ class MainWindow(QWidget):
         for panel in self.panels:
             self.remove_panel(panel)
 
-    def connect_panel(self, panel: DatasetPanel) -> None:
+    def connect_panel(self, panel: DataPanel) -> None:
         """Let ``panel`` answer pick requests, starting in whatever mode a
         pending request has already set."""
         runners = self.app.runners
@@ -163,7 +163,7 @@ class MainWindow(QWidget):
         panel.picked.connect(runners.on_picked)
         panel.set_pick_mode(runners.pick_mode)
 
-    def disconnect_panel(self, panel: DatasetPanel) -> None:
+    def disconnect_panel(self, panel: DataPanel) -> None:
         runners = self.app.runners
         runners.pick_mode_changed.disconnect(panel.set_pick_mode)
         panel.picked.disconnect(runners.on_picked)
@@ -175,7 +175,7 @@ class MainWindow(QWidget):
             if panel.dataset() is dataset:
                 panel.refresh()
 
-    def assign_ordinal(self, panel: DatasetPanel) -> None:
+    def assign_ordinal(self, panel: DataPanel) -> None:
         """The lowest number this type has free, assigned once so a dock never
         renumbers itself when an earlier one closes."""
         taken = {
@@ -188,19 +188,19 @@ class MainWindow(QWidget):
             number += 1
         self.panel_ordinals[panel] = number
 
-    def panel_title(self, panel: DatasetPanel) -> str:
+    def panel_title(self, panel: DataPanel) -> str:
         if panel.user_label:
             return panel.user_label
         number = self.panel_ordinals[panel]
         return panel.display_name if number == 1 else f"{panel.display_name} {number}"
 
     @staticmethod
-    def panel_object_name(panel: DatasetPanel) -> str:
+    def panel_object_name(panel: DataPanel) -> str:
         safe = "".join(ch if ch.isalnum() or ch in {"_", "-"} else "_" for ch in panel.instance_id)
         # Saved layouts name added docks with this prefix; see PANELS above.
         return f"dock.view.{safe}"
 
-    def add_panel_dock(self, panel: DatasetPanel) -> None:
+    def add_panel_dock(self, panel: DataPanel) -> None:
         self.assign_ordinal(panel)
         dock = qtads.CDockWidget(self.panel_title(panel))
         dock.setObjectName(self.panel_object_name(panel))
@@ -215,7 +215,7 @@ class MainWindow(QWidget):
         self.panel_actions[panel] = action
         dock.closed.connect(lambda *_args, p=panel: self.discard_panel(p))
 
-    def remove_panel_dock(self, panel: DatasetPanel) -> None:
+    def remove_panel_dock(self, panel: DataPanel) -> None:
         dock = self.panel_docks.pop(panel)
         action = self.panel_actions.pop(panel)
         del self.panel_ordinals[panel]
@@ -228,7 +228,7 @@ class MainWindow(QWidget):
         panel.setParent(None)
         dock.deleteLater()
 
-    def discard_panel(self, panel: DatasetPanel) -> None:
+    def discard_panel(self, panel: DataPanel) -> None:
         """Drop an added panel, from its tab's close button or its menu entry.
 
         Deferred, because both arrive in a signal from the thing about to be
@@ -241,7 +241,7 @@ class MainWindow(QWidget):
             return
         QTimer.singleShot(0, lambda p=panel: self.remove_panel(p))
 
-    def on_panel_toggled(self, panel: DatasetPanel, visible: bool) -> None:
+    def on_panel_toggled(self, panel: DataPanel, visible: bool) -> None:
         """Unchecking an added panel deletes it; there is nothing to re-check."""
         if not visible:
             self.discard_panel(panel)

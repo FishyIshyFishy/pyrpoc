@@ -6,8 +6,7 @@ package stays importable without a display.
 
 from __future__ import annotations
 
-from pyrpoc.structs.device import Device
-from pyrpoc.structs.registries import device_registry
+from pyrpoc.structs.device import Device, device_registry
 
 from .daq.device import DAQ, DaqError
 from .galvo.device import Galvo

@@ -1,18 +1,11 @@
-"""A key -> class map with a registration decorator, and the registries.
-
-Implementations register themselves by importing their registry from here. The
-panel registry lives in ``panel.py`` so registering a device never imports Qt.
-"""
+"""A key -> class map with a registration decorator: how every plugin kind
+is found. Each kind's registry lives in the structs file that defines the kind,
+next to the base class it collects."""
 
 from __future__ import annotations
 
 from collections.abc import Callable
 from typing import Generic, TypeVar
-
-from .data import Writer
-from .device import Device
-from .params import Group
-from .program import Program
 
 T = TypeVar("T")
 
@@ -59,22 +52,3 @@ class Registry(Generic[T]):
             if registered is cls:
                 return key
         raise KeyError(f"{cls.__name__!r} is not registered in {self.name}")
-
-
-device_registry: Registry[Device] = Registry("DeviceRegistry", Device)
-
-# Programs keep their key at the registration site, not on the class.
-program_registry: Registry[Program] = Registry("ProgramRegistry", Program, stamp=None)
-
-# Keyed by the name of the kind of ``Data`` saved; one writer may take several.
-writer_registry: Registry[Writer] = Registry("WriterRegistry", Writer, stamp=None)
-
-# Keyed by class name, a block's identity in the form, workspace and metadata.
-block_registry: Registry[Group] = Registry("BlockRegistry", Group, stamp=None)
-
-B = TypeVar("B", bound=type)
-
-
-def block(cls: B) -> B:
-    """Register a parameter block under its class name."""
-    return block_registry.register(cls.__name__)(cls)

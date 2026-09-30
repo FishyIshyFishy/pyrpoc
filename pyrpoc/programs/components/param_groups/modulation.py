@@ -5,8 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import ClassVar
 
-from pyrpoc.structs.params import Group
-from pyrpoc.structs.registries import block
+from pyrpoc.structs.params import Group, block
 
 from .mask_field import Mask, masks_field
 

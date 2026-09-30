@@ -12,10 +12,11 @@ from collections.abc import Callable
 
 from PyQt6.QtCore import QObject, pyqtSignal
 
-from pyrpoc.structs.data import Dataset, SaveTarget
+from pyrpoc.structs.dataset import Dataset
 from pyrpoc.structs.device import Device, MissingDevice
 from pyrpoc.structs.params import BlockStore, ParameterError
 from pyrpoc.structs.program import Program
+from pyrpoc.structs.saving import SaveTarget
 
 from .claims import DeviceBusy
 from .executor import Executor, Run, RunCallbacks

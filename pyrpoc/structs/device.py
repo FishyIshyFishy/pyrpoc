@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
 from . import params as P
+from .registry import Registry
 
 if TYPE_CHECKING:  # pragma: no cover - import only for type checkers
     from PyQt6.QtWidgets import QWidget
@@ -132,3 +133,6 @@ class Device:
 
     def __repr__(self) -> str:  # pragma: no cover - debugging aid
         return f"<{type(self).__name__} {self.instance_id}>"
+
+
+device_registry: Registry[Device] = Registry("DeviceRegistry", Device)

@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from pyrpoc.structs.data import Dataset
+from pyrpoc.structs.dataset import Dataset
 from pyrpoc.structs.params import (
     Editor,
     Field,

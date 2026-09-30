@@ -12,8 +12,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from pyrpoc.structs import params as P
-from pyrpoc.structs.device import Device, DeviceError
-from pyrpoc.structs.registries import device_registry
+from pyrpoc.structs.device import Device, DeviceError, device_registry
 
 if TYPE_CHECKING:  # pragma: no cover
     from PyQt6.QtWidgets import QWidget

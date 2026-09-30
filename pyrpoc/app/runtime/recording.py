@@ -17,7 +17,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-from pyrpoc.structs.data import Dataset, SaveTarget
+from pyrpoc.structs.dataset import Dataset
+from pyrpoc.structs.saving import SaveTarget
 
 from .saving import RecordingSaver
 

@@ -13,7 +13,8 @@ from pathlib import Path
 
 from PyQt6.QtCore import QObject, QTimer, pyqtSignal
 
-from pyrpoc.structs.data import Data, Dataset
+from pyrpoc.structs.data import Data
+from pyrpoc.structs.dataset import Dataset
 
 from ..runtime.library import DataLibrary, LibraryFull
 from ..runtime.recording_format import RecordingError, load_recording, write_notes

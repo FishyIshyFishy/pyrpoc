@@ -7,7 +7,7 @@ arithmetic that are meant to stay identical: change one, change the others.
 
 from __future__ import annotations
 
-from pyrpoc.structs.registries import program_registry
+from pyrpoc.structs.program import program_registry
 
 from .components.writers import NpzWriter, TiffWriter
 from .confocal import Confocal

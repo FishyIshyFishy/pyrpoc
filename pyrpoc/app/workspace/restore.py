@@ -6,7 +6,7 @@ from __future__ import annotations
 import logging
 
 from pyrpoc.devices import device_registry
-from pyrpoc.panels import panel_registry
+from pyrpoc.panels import data_panel_registry
 from pyrpoc.programs import program_registry
 
 from ..gui.window import MainWindow
@@ -60,7 +60,7 @@ def restore_devices(state: WorkspaceState, app: Application) -> None:
 def restore_panels(state: WorkspaceState, app: Application, window: MainWindow) -> None:
     for row in state.views:
         try:
-            panel = panel_registry.get(row.key)(app.library)
+            panel = data_panel_registry.get(row.key)(app.library)
             if row.instance_id:
                 panel.instance_id = row.instance_id
             panel.user_label = row.user_label
