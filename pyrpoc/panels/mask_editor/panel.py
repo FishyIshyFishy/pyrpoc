@@ -221,15 +221,22 @@ class MaskEditorPanel(DatasetPanel):
             control.blockSignals(False)
         self.write_thresholds(*self.default_thresholds())
 
-    def refresh(self) -> None:
-        """Re-read the bound dataset. ROIs survive a same-shape frame, so the
-        editor stays usable during a live run; a new shape resets it."""
-        latest = self.latest()
-        scaled = None if latest is None else normalize_channels(latest) * 255.0
-        if scaled is not None and self._data.shape == scaled.shape:
+    def show_frame(self, dataset: Dataset, frame: np.ndarray) -> None:
+        """ROIs survive a same-shape frame, so the editor stays usable during a
+        live run and across runs; a new shape resets it."""
+        del dataset
+        scaled = normalize_channels(frame) * 255.0
+        if self._data.shape == scaled.shape:
             self.apply_new_data(scaled)
             self.update_view_image()
             return
+        self.reset_to(scaled)
+
+    def clear(self) -> None:
+        self.reset_to(None)
+
+    def reset_to(self, scaled: np.ndarray | None) -> None:
+        """Start over on ``scaled``: no ROIs, fresh channels and thresholds."""
         self.apply_new_data(scaled)
         self._rois.clear()
         self.sync_rois()

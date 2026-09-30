@@ -26,7 +26,7 @@ from .components.param_groups import (
     ModulationGroup,
     ScanGroup,
 )
-from .components.runners import Single
+from .components.runners import Continuous, Single
 
 
 def pixel_samples(dwell_time_us: float, sample_rate_hz: float) -> int:
@@ -323,7 +323,7 @@ class Confocal(Program):
     uses = [Galvo, DAQ]
     params = [ScanGroup, DaqGroup, ModulationGroup]
     emits = {"intensity": Image2D}
-    runners = [Single()]
+    runners = [Single(), Continuous()]
 
     def run(self, ctx) -> None:
         scan = ctx.params[ScanGroup]

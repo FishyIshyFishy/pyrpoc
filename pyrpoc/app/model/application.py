@@ -7,19 +7,34 @@ packages here is what registers every device and program.
 
 from __future__ import annotations
 
+import logging
+
 from PyQt6.QtCore import QObject, pyqtSignal
 
 from pyrpoc.devices import device_registry
 from pyrpoc.programs import program_registry
 from pyrpoc.structs import params as P
 from pyrpoc.structs.data import SaveTarget
-from pyrpoc.structs.device import Device
+from pyrpoc.structs.device import Device, DeviceError
 from pyrpoc.structs.registries import block_registry
 
 from ..runtime import claims
 from ..runtime.library import DataLibrary
 from ..runtime.runs import Runs
 from .runners import Runners
+
+log = logging.getLogger(__name__)
+
+
+def close_if_open(device: Device) -> None:
+    """Close a device's session. A fault while disconnecting is logged, never
+    raised: removing a card or quitting must not depend on the hardware."""
+    if not device.session_open:
+        return
+    try:
+        device.close_session()
+    except DeviceError:
+        log.warning("could not cleanly disconnect %s", device.name, exc_info=True)
 
 
 class Application(QObject):
@@ -100,13 +115,30 @@ class Application(QObject):
         return device
 
     def remove_device(self, device: Device) -> None:
+        close_if_open(device)
         self.devices.remove(device)
         self.devices_changed.emit()
         self.state_changed.emit()
 
     def clear_devices(self) -> None:
+        self.close_sessions()
         self.devices.clear()
         self.devices_changed.emit()
+
+    def open_sessions(self) -> list[Device]:
+        """Connect every device that keeps a session, returning the ones that
+        failed; they stay in the inventory, disconnected, with ``last_error``."""
+        failed = [
+            device
+            for device in self.devices
+            if device.holds_session and not device.session_open and not device.try_open_session()
+        ]
+        self.devices_changed.emit()
+        return failed
+
+    def close_sessions(self) -> None:
+        for device in self.devices:
+            close_if_open(device)
 
     def params_state(self) -> dict[str, dict]:
         """The block store as a flat state dict, keyed by block class name."""

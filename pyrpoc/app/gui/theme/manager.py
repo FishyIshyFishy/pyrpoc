@@ -81,6 +81,8 @@ def _derive_palette(qss_text: str, qss_path: str) -> QPalette:
     border = _parse_qss_color(
         _require(r"border:\s*[^;]*solid\s+([^;\s]+);", lineedit_block, qss_path)
     )
+    disabled_block = _require(r"QWidget:disabled\s*\{([^}]*)\}", qss_text, qss_path)
+    disabled_fg = _parse_qss_color(_require(r"(?<!-)color:\s*([^;]+);", disabled_block, qss_path))
 
     palette = QPalette()
     palette.setColor(QPalette.ColorRole.Window, window_bg)
@@ -93,6 +95,10 @@ def _derive_palette(qss_text: str, qss_path: str) -> QPalette:
     palette.setColor(QPalette.ColorRole.Midlight, border)
     palette.setColor(QPalette.ColorRole.Highlight, highlight)
     palette.setColor(QPalette.ColorRole.HighlightedText, highlighted_text)
+    # Icons drawn from the palette dim with their button only if this is set.
+    disabled = QPalette.ColorGroup.Disabled
+    for role in (QPalette.ColorRole.WindowText, QPalette.ColorRole.ButtonText):
+        palette.setColor(disabled, role, disabled_fg)
     return palette
 
 

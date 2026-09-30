@@ -10,7 +10,7 @@ import numpy as np
 import pyqtgraph as pg
 from PyQt6.QtWidgets import QVBoxLayout
 
-from pyrpoc.structs.data import Library, Spectrum1D
+from pyrpoc.structs.data import Dataset, Library, Spectrum1D
 
 from ..components.colors import color_for_index
 from ..components.dataset_panel import DatasetPanel, panel_registry
@@ -24,6 +24,7 @@ class SpectrumPanel(DatasetPanel):
     def __init__(self, library: Library):
         super().__init__(library)
         self._curves: list[pg.PlotDataItem] = []
+        self._legend_labels: list[str] = []
 
         body_root = QVBoxLayout(self.body)
         body_root.setContentsMargins(6, 6, 6, 6)
@@ -36,21 +37,23 @@ class SpectrumPanel(DatasetPanel):
         body_root.addWidget(self._plot, 1)
         self.connect_source()
 
-    def refresh(self) -> None:
-        dataset = self.dataset()
-        latest = dataset.latest() if dataset is not None else None
-        if dataset is None or latest is None:
-            self.sync_curves(0, [])
-            return
-        arr = np.asarray(latest, dtype=np.float32)
+    def show_frame(self, dataset: Dataset, frame: np.ndarray) -> None:
+        arr = np.asarray(frame, dtype=np.float32)
         self.sync_curves(arr.shape[0], dataset.resolved_channel_labels(arr.shape[0]))
         xs = np.arange(arr.shape[1], dtype=np.float32)
         for index, curve in enumerate(self._curves):
             curve.setData(xs, arr[index])
 
+    def clear(self) -> None:
+        self.sync_curves(0, [])
+
     def sync_curves(self, count: int, labels: list[str]) -> None:
         """One curve per channel. The legend is refilled rather than diffed: a
-        stale row outlives its curve and would label the wrong trace."""
+        stale row outlives its curve and would label the wrong trace. Same
+        labels mean the same curves, so nothing is touched."""
+        if labels == self._legend_labels and len(self._curves) == count:
+            return
+        self._legend_labels = list(labels)
         while len(self._curves) > count:
             self._plot.removeItem(self._curves.pop())
         while len(self._curves) < count:

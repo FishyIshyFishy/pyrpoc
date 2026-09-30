@@ -11,6 +11,8 @@ from pyrpoc.structs.registries import device_registry
 
 from .daq.device import DAQ, DaqError
 from .galvo.device import Galvo
+from .prior_stage.device import PriorStage
+from .prior_stage.sdk import PriorError
 from .time_tagger.device import FlimMeasurement, TaggerError, TimeTagger
 
 __all__ = [
@@ -20,6 +22,8 @@ __all__ = [
     "DaqError",
     "FlimMeasurement",
     "Galvo",
+    "PriorError",
+    "PriorStage",
     "TaggerError",
     "TimeTagger",
 ]

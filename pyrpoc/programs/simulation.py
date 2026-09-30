@@ -2,8 +2,8 @@
 
 Everything above the hardware boundary is real (the executor's thread, datasets,
 publishing, saving, the panels), so this exercises the software itself on any
-machine. A plane is a function of (seed, channel, frame index), so the same
-parameters give the same pixels every run.
+machine. A plane is a function of (seed, channel, frame index). Each run draws
+its own seed, so repeated runs show a different sample rather than a replay.
 """
 
 from __future__ import annotations
@@ -23,7 +23,7 @@ from .components.param_groups import (
     PacingGroup,
     SignalGroup,
 )
-from .components.runners import Single
+from .components.runners import Continuous, Single
 
 # Blobs per channel in the "cells" pattern.
 BLOB_COUNT = 14
@@ -154,6 +154,7 @@ def synthetic_frame(
     *,
     frame_shape: FrameGroup,
     signal: SignalGroup,
+    seed: int,
     frame_index: int,
     mask: np.ndarray | None,
 ) -> np.ndarray:
@@ -171,7 +172,7 @@ def synthetic_frame(
                 y_pixels,
                 x_pixels,
                 channel=channel,
-                seed=signal.seed,
+                seed=seed,
                 drift=signal.drift_pixels_per_frame,
                 frame_index=frame_index,
             )
@@ -184,7 +185,7 @@ def synthetic_frame(
         frame = frame * (1.0 + signal.mask_gain * mask.astype(np.float32))
 
     if signal.noise_level:
-        noise = _rng(signal.seed, frame_index, 0x0125E).standard_normal(frame.shape)
+        noise = _rng(seed, frame_index, 0x0125E).standard_normal(frame.shape)
         frame = frame + noise.astype(np.float32) * signal.noise_level
 
     return np.clip(frame, 0.0, None).astype(np.float32, copy=False)
@@ -200,7 +201,7 @@ class Simulation(Program):
     uses = []
     params = [FrameGroup, SignalGroup, ModulationGroup, PacingGroup]
     emits = {"intensity": Image2D}
-    runners = [Single()]
+    runners = [Single(), Continuous()]
 
     def run(self, ctx: RunContext) -> None:
         frame_shape = ctx.params[FrameGroup]
@@ -211,12 +212,14 @@ class Simulation(Program):
         # Built once before the loop; the pixels arrived with the parameter.
         mask = combine_masks(ctx.params[ModulationGroup].masks, frame_shape)
         labels = channel_labels(frame_shape)
+        # Fixed for the run so its frames stay one drifting sample.
+        seed = int(np.random.default_rng().integers(2**32))
 
         for index in range(num_frames):
             ctx.check_cancel()
             ctx.status(f"frame {index + 1}/{num_frames}")
             frame = synthetic_frame(
-                frame_shape=frame_shape, signal=signal, frame_index=index, mask=mask
+                frame_shape=frame_shape, signal=signal, seed=seed, frame_index=index, mask=mask
             )
             ctx.publish("intensity", frame, channels=labels)
             ctx.sleep(interval_ms / 1000.0)

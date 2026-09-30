@@ -108,7 +108,14 @@ class RunnerContext(ABC):
         """Start a run of the program. Failures are reported, not raised."""
 
     @abstractmethod
-    def on_run_started(self, callback: Callable[[], None]) -> None: ...
+    def on_run_started(self, callback: Callable[[], None]) -> None:
+        """Call ``callback`` as each run this context started begins, before
+        ``execute`` returns."""
+
+    @abstractmethod
+    def on_run_ended(self, callback: Callable[[bool], None]) -> None:
+        """Call ``callback(completed)`` as each run this context started ends;
+        ``completed`` is False when it was stopped or failed."""
 
     @property
     @abstractmethod

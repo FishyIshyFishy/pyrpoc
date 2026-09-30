@@ -19,7 +19,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from pyrpoc.structs.data import Image2D, Library
+from pyrpoc.structs.data import Dataset, Image2D, Library
 from pyrpoc.structs.picks import Pick, PixelPick
 
 from ..components.dataset_panel import DatasetPanel, panel_registry
@@ -82,12 +82,7 @@ class Image2DPanel(DatasetPanel):
         scroll.setWidget(self._content)
         self.connect_source()
 
-    def refresh(self) -> None:
-        dataset = self.dataset()
-        frame = dataset.latest() if dataset is not None else None
-        if dataset is None or frame is None:
-            self.sync_channel_tiles(0)
-            return
+    def show_frame(self, dataset: Dataset, frame: np.ndarray) -> None:
         arr = np.asarray(frame, dtype=np.float32)
         self.sync_channel_tiles(arr.shape[0])
         self.apply_channel_names(dataset.channel_labels)
@@ -102,10 +97,19 @@ class Image2DPanel(DatasetPanel):
                 tile.name_edit.setText(label)
                 tile.name_edit.blockSignals(False)
 
+    def clear(self) -> None:
+        self.sync_channel_tiles(0)
+
     def sync_channel_tiles(self, count: int) -> None:
+        """Add or drop tiles to match ``count``. Tiles that stay keep their
+        name, levels and zoom; an unchanged count touches nothing."""
+        if len(self._tiles) == count:
+            return
         while len(self._tiles) > count:
             tile = self._tiles.pop()
-            tile.root.setParent(None)
+            # Hidden, not unparented: a show the layout queued when it was added
+            # would otherwise open it as a top-level window before deletion.
+            tile.root.hide()
             tile.root.deleteLater()
         while len(self._tiles) < count:
             self._tiles.append(self.build_tile(len(self._tiles)))
@@ -180,8 +184,8 @@ class Image2DPanel(DatasetPanel):
         and an out-of-range index would park the galvos outside the scan."""
         if not self._picking or event.button() != Qt.MouseButton.LeftButton:
             return
-        dataset = self.dataset()
-        frame = dataset.latest() if dataset is not None else None
+        # What is on screen, which is what the user clicked on.
+        dataset, frame = self.shown_dataset, self.shown_frame
         if dataset is None or frame is None:
             return
         point = image_item.mapFromScene(event.scenePos())
@@ -192,7 +196,7 @@ class Image2DPanel(DatasetPanel):
         self.picked.emit(PixelPick(dataset, x, y))
 
     def on_autoscale_toggled(self, index: int) -> None:
-        frame = self.latest()
+        frame = self.shown_frame
         if frame is not None:
             self.update_channel_image(index, np.asarray(frame[index], dtype=np.float32))
 

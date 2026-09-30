@@ -18,7 +18,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from pyrpoc.structs.data import Image2D, Library
+from pyrpoc.structs.data import Dataset, Image2D, Library
 
 from ..components.colors import color_for_index
 from ..components.dataset_panel import DatasetPanel, panel_registry
@@ -103,26 +103,33 @@ class OverlayPanel(DatasetPanel):
         return scroll
 
     def frame(self) -> np.ndarray | None:
-        latest = self.latest()
-        return None if latest is None else np.asarray(latest, dtype=np.float32)
+        shown = self.shown_frame
+        return None if shown is None else np.asarray(shown, dtype=np.float32)
 
-    def refresh(self) -> None:
-        arr = self.frame()
-        if arr is None:
-            self._overlay_item.setImage(
-                np.zeros((1, 1, 3), dtype=np.float32), autoLevels=False, levels=(0.0, 1.0)
-            )
-            self.sync_controls(0)
-            return
+    def show_frame(self, dataset: Dataset, frame: np.ndarray) -> None:
+        del dataset
+        arr = np.asarray(frame, dtype=np.float32)
         self.sync_controls(arr.shape[0])
         for index in range(arr.shape[0]):
             self.update_channel(index, arr[index])
         self.update_overlay()
 
+    def clear(self) -> None:
+        self._overlay_item.setImage(
+            np.zeros((1, 1, 3), dtype=np.float32), autoLevels=False, levels=(0.0, 1.0)
+        )
+        self.sync_controls(0)
+
     def sync_controls(self, count: int) -> None:
+        """Add or drop controls to match ``count``. Controls that stay keep
+        their levels; an unchanged count touches nothing."""
+        if len(self._controls) == count:
+            return
         while len(self._controls) > count:
             control = self._controls.pop()
-            control.root.setParent(None)
+            # Hidden, not unparented: a show the layout queued when it was added
+            # would otherwise open it as a top-level window before deletion.
+            control.root.hide()
             control.root.deleteLater()
         while len(self._controls) < count:
             self._controls.append(self.build_control(len(self._controls)))

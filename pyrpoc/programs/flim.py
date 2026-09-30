@@ -24,7 +24,7 @@ from .components.param_groups import (
     ScanGroup,
     TriggerGroup,
 )
-from .components.runners import Single
+from .components.runners import Continuous, Single
 
 
 def pixel_samples(dwell_time_us: float, sample_rate_hz: float) -> int:
@@ -194,7 +194,7 @@ class FLIM(Program):
     uses = [Galvo, DAQ, TimeTagger]
     params = [ScanGroup, DaqGroup, TriggerGroup, HistogramGroup]
     emits = {"intensity": Image2D, "histogram": Cube3D}
-    runners = [Single()]
+    runners = [Single(), Continuous()]
 
     def run(self, ctx: RunContext) -> None:
         scan = ctx.params[ScanGroup]
