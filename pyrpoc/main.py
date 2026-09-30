@@ -10,12 +10,12 @@ from types import TracebackType
 from PyQt6.QtGui import QGuiApplication
 from PyQt6.QtWidgets import QApplication, QMessageBox, QWidget
 
-from pyrpoc.app.gui.theme.manager import ThemeController
-from pyrpoc.app.gui.window import MainWindow
-from pyrpoc.app.model.application import Application
-from pyrpoc.app.workspace.autosave import Autosave
-from pyrpoc.app.workspace.file import WorkspaceFile, default_workspace_path
-from pyrpoc.structs.device import Device
+from pyrpoc.app.application import Application
+from pyrpoc.app.session.autosave import Autosave
+from pyrpoc.app.session.file import SessionFile, default_session_path
+from pyrpoc.app.theme.manager import ThemeController
+from pyrpoc.app.window import MainWindow
+from pyrpoc.structs.plugins.devices import Device
 
 log = logging.getLogger("pyrpoc")
 
@@ -72,15 +72,15 @@ def fit_to_available_screen(
 
 
 def build(
-    theme_controller: ThemeController, workspace_path: Path
+    theme_controller: ThemeController, session_path: Path
 ) -> tuple[Application, MainWindow, Autosave]:
     """Build the application, its window and its autosave."""
     app = Application()
     window = MainWindow(app, theme_controller)
-    autosave = Autosave(app, window, WorkspaceFile(workspace_path), parent=app)
-    window.bind_workspace(autosave.save_now)
-    # Connected after the save, so the workspace is captured before closing.
-    window.closing.connect(app.close_sessions)
+    autosave = Autosave(app, window, SessionFile(session_path), parent=app)
+    window.bind_session(autosave.save_now)
+    # Connected after the save, so the session is captured before closing.
+    window.closing.connect(app.inventory.close_sessions)
     return app, window, autosave
 
 
@@ -103,12 +103,12 @@ def main() -> int:
     theme_controller = ThemeController(qt_app)
     theme_controller.apply_saved_or_default()
 
-    app, window, autosave = build(theme_controller, default_workspace_path())
+    app, window, autosave = build(theme_controller, default_session_path())
 
     fit_to_available_screen(window, 1400, 850)
     window.show()
     autosave.restore()
-    warn_unconnected(window, app.open_sessions())
+    warn_unconnected(window, app.inventory.open_sessions())
     fit_to_available_screen(window)
     return qt_app.exec()
 

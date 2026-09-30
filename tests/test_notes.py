@@ -7,11 +7,10 @@ from pathlib import Path
 
 from PyQt6.QtCore import QObject
 
-from pyrpoc.app.model.library import LibraryModel
-from pyrpoc.app.runtime.recording import Series
-from pyrpoc.app.runtime.recording_format import META_SUFFIX, load_recording
-from pyrpoc.app.runtime.runs import Runs
-from pyrpoc.programs.simulation import Simulation
+from pyrpoc.acquisition.recording import Series
+from pyrpoc.data_library.format import META_SUFFIX, load_recording
+from pyrpoc.data_library.model import LibraryModel
+from pyrpoc.plugins.programs.simulation import Simulation
 
 from .helpers import Recorder, small_simulation_blocks
 
@@ -19,7 +18,7 @@ FIXTURES = Path(__file__).parent / "fixtures" / "recordings" / "v1"
 
 
 def model_for(recorder: Recorder, parent: QObject) -> LibraryModel:
-    return LibraryModel(recorder.library, Runs(recorder.library, parent), parent)
+    return LibraryModel(recorder.library, parent)
 
 
 def test_notes_on_a_loaded_recording_are_written(qt_parent: QObject, tmp_path: Path) -> None:

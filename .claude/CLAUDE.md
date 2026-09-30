@@ -1,12 +1,14 @@
 # pyrpoc
 
-## Architecture (enforced by `uv run lint-imports`)
-- `structs/`: the abstract vocabulary, which should import nothing else from pyrpoc.
-- `devices/`, `programs/`, `panels/`: implementations. 
-  - `programs/` may import `devices/`
-  - `panels/` and `programs/` never import each other.
-- `app/`: the composition root, which is the only place that knows about everything.
-- New implementations register through `structs/registries.py`. Nothing else lists them.
+## Architecture (enforced by `uv run lint-imports`; the map is `docs/architecture.md`)
+- `structs/`: the vocabulary, one noun per file, mirroring the package: nouns implemented in `pyrpoc/X/` live in `structs/X/`. Imports nothing else from pyrpoc; Qt only in `plugins/data_panels.py`.
+- `plugins/{devices,programs,data_panels}/`: things you add more of. Each knows only `structs/` and `qt_components/`.
+  - `programs/` may import `devices/`; `programs/` and `data_panels/` never import each other.
+- `qt_components/`: generic widgets that know no feature.
+- Subsystems `acquisition/` > `data_library/` | `device_inventory/`: each holds its no-Qt logic, its Qt model and its panel. They never import a plugin.
+- `app/`: the composition root (`application.py` wires the subsystems; window, menus, theme, `session/`). The only place that knows about everything.
+- New implementations register through the registry in the `structs/` file that defines their kind. Nothing else lists them.
+- A whole new capability is a new subsystem folder, wired in `app/application.py`.
 
 ## Checks
 Never silence a check (`noqa`, `ignore_imports`, `type: ignore`, `pyright: ignore`, config changes); stop and ask instead. Pre-commit (incl. slow pyright) runs only on `git commit`; never run it after ordinary edits. Fix every failure it reports. 

@@ -7,13 +7,15 @@ from pathlib import Path
 
 import numpy as np
 
-from pyrpoc.app.runtime.executor import Executor, Run, RunCallbacks
-from pyrpoc.app.runtime.library import LIBRARY_LIMIT_BYTES, DataLibrary
-from pyrpoc.app.runtime.recording import Series
-from pyrpoc.programs.components.param_groups import FrameGroup, PacingGroup
-from pyrpoc.structs.data import Dataset, SaveTarget, Spectrum1D
-from pyrpoc.structs.params import BlockStore
-from pyrpoc.structs.program import Program, RunContext
+from pyrpoc.acquisition.executor import Executor, Run, RunCallbacks
+from pyrpoc.acquisition.recording import Series
+from pyrpoc.data_library.store import LIBRARY_LIMIT_BYTES, LibraryStore
+from pyrpoc.plugins.programs.components.param_groups import FrameGroup, PacingGroup
+from pyrpoc.structs.data_library.data import Spectrum1D
+from pyrpoc.structs.data_library.dataset import Dataset
+from pyrpoc.structs.data_library.saving import SaveTarget
+from pyrpoc.structs.plugins.params import BlockStore
+from pyrpoc.structs.plugins.programs.program import Program, RunContext
 
 
 class SpectrumProgram(Program):
@@ -45,14 +47,13 @@ class Recorder:
     """An executor with a library, whose runs can be waited for."""
 
     def __init__(self, limit_bytes: int = LIBRARY_LIMIT_BYTES) -> None:
-        self.library = DataLibrary(limit_bytes)
+        self.library = LibraryStore(limit_bytes)
         self.failures: list[str] = []
         self.finished: list[Run] = []
         self._done = threading.Condition()
         self.executor = Executor(
             self.library,
             RunCallbacks(
-                on_dataset=lambda _dataset: None,
                 on_status=lambda _run, _text: None,
                 on_failed=lambda _run, message: self.failures.append(message),
                 on_finished=self.on_finished,

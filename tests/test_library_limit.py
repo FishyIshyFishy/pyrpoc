@@ -8,12 +8,12 @@ import numpy as np
 import pytest
 from PyQt6.QtCore import QObject
 
-from pyrpoc.app.model.library import LibraryModel
-from pyrpoc.app.runtime.library import DataLibrary, LibraryFull
-from pyrpoc.app.runtime.recording import Series
-from pyrpoc.app.runtime.runs import Runs
-from pyrpoc.programs.simulation import Simulation
-from pyrpoc.structs.data import Dataset, Mask2D, Origin, Provenance, utc_now
+from pyrpoc.acquisition.recording import Series
+from pyrpoc.data_library.model import LibraryModel
+from pyrpoc.data_library.store import LibraryFull, LibraryStore
+from pyrpoc.plugins.programs.simulation import Simulation
+from pyrpoc.structs.data_library.data import Mask2D
+from pyrpoc.structs.data_library.dataset import Dataset, Origin, Provenance, utc_now
 
 from .helpers import Recorder, small_simulation_blocks
 
@@ -85,8 +85,8 @@ def acquired(name: str, size: int) -> Dataset:
 
 
 def test_purge_closes_oldest_first_until_under_the_limit(qt_parent: QObject) -> None:
-    store = DataLibrary(250)
-    model = LibraryModel(store, Runs(store, qt_parent), qt_parent)
+    store = LibraryStore(250)
+    model = LibraryModel(store, qt_parent)
     for name in ("oldest", "middle", "newest"):
         store.add(acquired(name, 100))
     store.add(mask("drawn"))

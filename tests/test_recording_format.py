@@ -15,15 +15,11 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from pyrpoc.app.runtime.recording_format import (
-    META_SUFFIX,
-    RecordingError,
-    load_recording,
-    write_notes,
-)
-from pyrpoc.programs.simulation import Simulation
-from pyrpoc.structs.data import Data, Image2D, Origin, Spectrum1D
-from pyrpoc.structs.params import BlockStore
+from pyrpoc.data_library.format import META_SUFFIX, RecordingError, load_recording, write_notes
+from pyrpoc.plugins.programs.simulation import Simulation
+from pyrpoc.structs.data_library.data import Data, Image2D, Spectrum1D
+from pyrpoc.structs.data_library.dataset import Origin
+from pyrpoc.structs.plugins.params import BlockStore
 
 from .helpers import Recorder, SpectrumProgram, small_simulation_blocks
 

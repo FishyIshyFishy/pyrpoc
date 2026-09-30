@@ -1,11 +1,13 @@
-"""The composition root: builds every part and connects them. The only package
-that may import everything, so it is obvious when it grows.
+"""The composition root: builds every part, connects them, and shows the window.
+The only package that may import everything, so it is obvious when it grows.
 
-    model/       the live state the screen shows, and the commands that change it
-    runtime/     everything about running programs; knows nothing of the screen
-    workspace/   remembers your setup between launches
-    gui/         the window that arranges the panels, its menus, and the theme
+    application.py   Application: builds the device inventory, the data library
+                     and acquisition, and connects them
+    window.py        the main window: docks for the built-in panels and added data panels
+    menubar.py       the menus
+    theme/           the Breeze stylesheets and the palette derived from them
+    session/         remembers your setup between launches
 
-Each folder imports only the ones below it in this order: workspace, gui,
-model, runtime. Panels are not here; they live in ``panels/``.
+Inside, each imports only what is below it: session, window, menubar, then
+theme and application.
 """
