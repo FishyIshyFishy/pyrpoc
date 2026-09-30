@@ -18,8 +18,6 @@ class NpzWriter(Writer):
     """``<root>_<output>.npz`` holding ``data`` and ``parameters``. The leading
     axis of ``data`` is one entry per published array, in publish order."""
 
-    metadata_key = "auxiliary_paths"
-
     def __init__(self, root: Path, output: str, parameters: dict[str, Any]):
         super().__init__(root, output, parameters)
         self._buffer: list[np.ndarray] = []
@@ -37,3 +35,11 @@ class NpzWriter(Writer):
             parameters=np.asarray(self.parameters, dtype=object),
         )
         self.paths = {self.output: path}
+
+    @classmethod
+    def read(cls, files: dict[str, Path]) -> list[np.ndarray]:
+        """One file per output; ``parameters`` is not read, since the recording's
+        metadata file holds them, and reading it would unpickle."""
+        (path,) = files.values()
+        with np.load(str(path)) as archive:
+            return list(archive["data"])

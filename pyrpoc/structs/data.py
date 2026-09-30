@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
-from typing import Any, ClassVar, Protocol
+from typing import Any, Protocol
 from uuid import uuid4
 
 import numpy as np
@@ -96,6 +96,12 @@ class Mask2D(Data):
     dtype = np.uint8
 
 
+# Every kind a saved recording can name, so a file's kind string finds its class.
+DATA_KINDS: dict[str, type[Data]] = {
+    kind.name: kind for kind in (Image2D, Cube3D, Samples4D, Spectrum1D, Mask2D)
+}
+
+
 def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -167,21 +173,19 @@ class Library(Protocol):
 
 
 class Writer:
-    """Puts one output's arrays on disk as they arrive: one file format, and
-    registered in ``writer_registry`` for each kind of ``Data`` it saves.
+    """Puts one output's arrays on disk as they arrive, and reads them back:
+    one file format, registered in ``writer_registry`` for each kind of
+    ``Data`` it saves.
 
     ``root`` is the base path every file of the run hangs its suffix off, and
     ``parameters`` the run's encoded blocks, for formats that carry them.
     """
 
-    # Which metadata entry lists this writer's files.
-    metadata_key: ClassVar[str]
-
     def __init__(self, root: Path, output: str, parameters: dict[str, Any]):
         self.root = root
         self.output = output
         self.parameters = parameters
-        # What was written, by label, for the run's metadata file.
+        # What was written, keyed as ``read`` expects them back.
         self.paths: dict[str, Path] = {}
 
     def write(self, dataset: Dataset, array: np.ndarray) -> None:
@@ -189,6 +193,12 @@ class Writer:
 
     def finalize(self, dataset: Dataset, error: Exception | None) -> None:
         del dataset, error
+
+    @classmethod
+    def read(cls, files: dict[str, Path]) -> list[np.ndarray]:
+        """Every frame ``paths`` named, in publish order. ``files`` has the same
+        keys ``paths`` had when the recording was written."""
+        raise NotImplementedError
 
 
 class Origin(Enum):
@@ -219,6 +229,9 @@ class Dataset:
         self.origin = origin
         # No more frames will arrive. Only an acquisition is still being written.
         self.finished = origin is not Origin.ACQUIRED
+        # The recording's metadata file, once it is on disk.
+        self.meta_path: Path | None = None
+        self.notes = ""
         self.channel_labels: list[str] = []
         self.metadata: dict[str, Any] = {}
         self.writer = writer
@@ -283,6 +296,11 @@ class Dataset:
     def latest(self) -> np.ndarray | None:
         with self._lock:
             return self._frames[-1] if self._frames else None
+
+    def frames(self) -> list[np.ndarray]:
+        """Every frame so far, oldest first."""
+        with self._lock:
+            return list(self._frames)
 
     def subscribe(self, callback: Callable[[Dataset], None]) -> None:
         with self._lock:

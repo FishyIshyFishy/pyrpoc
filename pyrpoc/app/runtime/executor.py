@@ -20,7 +20,7 @@ from pyrpoc.structs.program import Cancelled, Program, RunContext
 
 from . import claims
 from .library import DataLibrary
-from .saving import RunSaver
+from .saving import RecordingSaver
 
 
 class Run:
@@ -102,6 +102,9 @@ class Executor:
             )
             saver = self.build_saver(program, provenance, save)
             datasets = self.open_datasets(program, provenance, saver)
+            if saver is not None:
+                saver.begin(datasets)
+                saver.add_run(provenance.run_id, provenance.started_at)
             run = Run(program, provenance, devices, datasets)
             self.leases.take(run.id, devices.values())
             self.launch(run, params, saver)
@@ -117,23 +120,25 @@ class Executor:
         return P.BlockMap({cls: P.resolve_block(block, self.library) for cls, block in resolved})
 
     @staticmethod
-    def build_saver(program: Program, provenance: Provenance, save: SaveTarget) -> RunSaver | None:
+    def build_saver(
+        program: Program, provenance: Provenance, save: SaveTarget
+    ) -> RecordingSaver | None:
         """The saver for this run, or None when saving is off."""
         if not save.enabled:
             return None
-        saver = RunSaver(
+        saver = RecordingSaver(
             root=save.root,
             program_key=provenance.program_key,
+            name=provenance.name,
             parameters=provenance.parameters,
             devices=provenance.devices,
-            run_id=provenance.run_id,
             started_at=provenance.started_at,
         )
         saver.prepare(dict(program.emits))
         return saver
 
     def open_datasets(
-        self, program: Program, provenance: Provenance, saver: RunSaver | None
+        self, program: Program, provenance: Provenance, saver: RecordingSaver | None
     ) -> dict[str, Dataset]:
         datasets = {
             output: Dataset(
@@ -150,7 +155,7 @@ class Executor:
             self.callbacks.on_dataset(dataset)
         return datasets
 
-    def launch(self, run: Run, params: P.BlockMap, saver: RunSaver | None) -> None:
+    def launch(self, run: Run, params: P.BlockMap, saver: RecordingSaver | None) -> None:
         ctx = RunContext(
             params=params,
             devices=run.devices,
@@ -166,7 +171,7 @@ class Executor:
         )
         thread.start()
 
-    def worker(self, run: Run, ctx: RunContext, saver: RunSaver | None) -> None:
+    def worker(self, run: Run, ctx: RunContext, saver: RecordingSaver | None) -> None:
         # The run boundary: whatever a program raises becomes a reported failure.
         error: Exception | None = None
         try:
@@ -179,7 +184,7 @@ class Executor:
         finally:
             self.finalize(run, saver, error)
 
-    def finalize(self, run: Run, saver: RunSaver | None, error: Exception | None) -> None:
+    def finalize(self, run: Run, saver: RecordingSaver | None, error: Exception | None) -> None:
         """Close every writer, reporting rather than raising: this runs on the
         worker thread after the program, and a failed save is still a failure.
         The devices are let go last, once nothing of the run touches them."""
@@ -187,6 +192,7 @@ class Executor:
             lambda d=dataset: d.finalize(error) for dataset in run.datasets.values()
         ]
         if saver is not None:
+            closers.append(lambda: saver.end_run(run.id, error))
             closers.append(lambda: saver.finalize(error))
         for close in closers:
             try:

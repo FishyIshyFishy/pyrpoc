@@ -1,0 +1,56 @@
+{
+  "format": "pyrpoc-recording",
+  "format_version": 1,
+  "pyrpoc_version": "3.1.3",
+  "program_key": "simulation",
+  "name": "simulation",
+  "started_at": "2026-09-30T18:40:54.371075+00:00",
+  "ended_at": "2026-09-30T18:40:54.509592+00:00",
+  "last_error": null,
+  "runs": [
+    {
+      "run_id": 1,
+      "started_at": "2026-09-30T18:40:54.371075+00:00",
+      "ended_at": "2026-09-30T18:40:54.509567+00:00",
+      "error": null
+    }
+  ],
+  "parameters": {
+    "FrameGroup": {
+      "num_frames": 3,
+      "x_pixels": 8,
+      "y_pixels": 8,
+      "channels": 2
+    },
+    "SignalGroup": {
+      "pattern": "cells",
+      "signal_level": 1.0,
+      "noise_level": 0.03,
+      "drift_pixels_per_frame": 1.5,
+      "mask_gain": 0.5
+    },
+    "ModulationGroup": {
+      "masks": []
+    },
+    "PacingGroup": {
+      "frame_interval_ms": 0
+    }
+  },
+  "devices": {},
+  "outputs": {
+    "intensity": {
+      "kind": "Image2D",
+      "channels": [
+        "sim0",
+        "sim1"
+      ],
+      "frames": 3,
+      "files": {
+        "sim0": "simulation_sim0.tiff",
+        "sim1": "simulation_sim1.tiff"
+      },
+      "metadata": {},
+      "notes": ""
+    }
+  }
+}
