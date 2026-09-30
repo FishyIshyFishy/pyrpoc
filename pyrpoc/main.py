@@ -15,6 +15,7 @@ from pyrpoc.app.gui.window import MainWindow
 from pyrpoc.app.model.application import Application
 from pyrpoc.app.workspace.autosave import Autosave
 from pyrpoc.app.workspace.file import WorkspaceFile, default_workspace_path
+from pyrpoc.structs.device import Device
 
 log = logging.getLogger("pyrpoc")
 
@@ -78,7 +79,20 @@ def build(
     window = MainWindow(app, theme_controller)
     autosave = Autosave(app, window, WorkspaceFile(workspace_path), parent=app)
     window.bind_workspace(autosave.save_now)
+    # Connected after the save, so the workspace is captured before closing.
+    window.closing.connect(app.close_sessions)
     return app, window, autosave
+
+
+def warn_unconnected(window: QWidget, failed: list[Device]) -> None:
+    """Say which saved devices could not connect at launch. They stay in the
+    inventory, so connecting later is one click in the Devices panel."""
+    if not failed:
+        return
+    lines = "\n".join(f"{device.name}: {device.last_error}" for device in failed)
+    QMessageBox.warning(
+        window, "Devices Not Connected", f"These devices could not connect:\n\n{lines}"
+    )
 
 
 def main() -> int:
@@ -89,11 +103,12 @@ def main() -> int:
     theme_controller = ThemeController(qt_app)
     theme_controller.apply_saved_or_default()
 
-    _app, window, autosave = build(theme_controller, default_workspace_path())
+    app, window, autosave = build(theme_controller, default_workspace_path())
 
     fit_to_available_screen(window, 1400, 850)
     window.show()
     autosave.restore()
+    warn_unconnected(window, app.open_sessions())
     fit_to_available_screen(window)
     return qt_app.exec()
 

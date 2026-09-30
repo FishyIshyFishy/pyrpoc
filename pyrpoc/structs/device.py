@@ -42,6 +42,10 @@ class Device:
     # True when this device holds a resource that can be opened and verified.
     owns_connection: bool = False
 
+    # True when this device keeps a connection open between runs: the app
+    # opens it at launch and closes it on exit.
+    holds_session: bool = False
+
     # Set when this device has no connection of its own. Claims propagate up
     # this link, so claiming the galvo claims its DAQ.
     backed_by: type[Device] | None = None
@@ -81,6 +85,30 @@ class Device:
 
     def check_reachable(self) -> bool:
         """Subclass hook: raise or return False when the device is not there."""
+        return True
+
+    @property
+    def session_open(self) -> bool:
+        return False
+
+    def open_session(self) -> None:
+        """Subclass hook for a ``holds_session`` device."""
+        raise NotImplementedError
+
+    def close_session(self) -> None:
+        """Subclass hook for a ``holds_session`` device."""
+        raise NotImplementedError
+
+    def try_open_session(self) -> bool:
+        """Open the session, recording why it failed instead of raising, so a
+        device that is switched off cannot stop the app from starting."""
+        # A hardware boundary: the SDK raises whatever it raises.
+        try:
+            self.open_session()
+        except Exception as exc:
+            self.last_error = str(exc)
+            return False
+        self.last_error = None
         return True
 
     def panel(self, parent: QWidget, on_change: Callable[[], None]) -> QWidget | None:
