@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from PyQt6.QtCore import QObject
+from PyQt6.QtCore import QObject, QTimer, pyqtSignal
 
 from pyrpoc.structs.data import Data, Dataset
 
@@ -19,10 +19,21 @@ from ..runtime.runs import Runs
 
 
 class LibraryModel(QObject):
+    auto_purge_changed = pyqtSignal(bool)
+
     def __init__(self, store: DataLibrary, runs: Runs, parent: QObject):
         super().__init__(parent)
         self.store = store
         self.runs = runs
+        # Purging closes entries, which redraws panels, so it runs on the GUI
+        # thread; coalesced so a burst of frames checks once. Runs never wait
+        # on this thread, so it cannot stall acquisition.
+        self._purge_timer = QTimer(self)
+        self._purge_timer.setSingleShot(True)
+        self._purge_timer.setInterval(0)
+        self._purge_timer.timeout.connect(self.purge)
+        runs.dataset_changed.connect(lambda _dataset: self.schedule_purge())
+        store.subscribe(self.schedule_purge)
 
     def add(self, dataset: Dataset) -> Dataset:
         return self.store.add(dataset)
@@ -46,7 +57,39 @@ class LibraryModel(QObject):
     def nbytes(self) -> int:
         return self.store.nbytes
 
+    @property
+    def limit_bytes(self) -> int:
+        return self.store.limit_bytes
+
+    @property
+    def over_limit(self) -> bool:
+        return self.store.over_limit
+
+    @property
+    def auto_purge(self) -> bool:
+        return self.store.auto_purge
+
+    def set_auto_purge(self, enabled: bool) -> None:
+        if enabled == self.store.auto_purge:
+            return
+        self.store.auto_purge = enabled
+        self.auto_purge_changed.emit(enabled)
+        self.schedule_purge()
+
     def close(self, dataset: Dataset) -> None:
         """Drop ``dataset`` from memory. Files already saved stay on disk."""
         self.runs.stop_relaying(dataset)
         self.store.remove(dataset)
+
+    def schedule_purge(self) -> None:
+        if self.store.auto_purge and not self._purge_timer.isActive():
+            self._purge_timer.start()
+
+    def purge(self) -> None:
+        """Close the oldest purgeable entries, one at a time, until under the
+        limit. Stops early when only live or drawn entries are left."""
+        while self.store.auto_purge and self.store.over_limit:
+            candidates = self.store.purgeable()
+            if not candidates:
+                return
+            self.close(candidates[0])

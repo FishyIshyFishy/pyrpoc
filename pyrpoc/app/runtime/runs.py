@@ -19,7 +19,7 @@ from pyrpoc.structs.program import Program
 
 from .claims import DeviceBusy
 from .executor import Executor, Run, RunCallbacks
-from .library import DataLibrary
+from .library import DataLibrary, LibraryFull
 from .recording import Series
 
 
@@ -30,7 +30,8 @@ class Runs(QObject):
     run_status = pyqtSignal(object, str)
     run_failed = pyqtSignal(object, str)
     run_finished = pyqtSignal(object)
-    # Refused before any run existed: a missing or busy device, a bad parameter.
+    # Refused before any run existed: a missing or busy device, a bad parameter,
+    # or a full library.
     start_refused = pyqtSignal(str)
     dataset_changed = pyqtSignal(object)
 
@@ -64,7 +65,7 @@ class Runs(QObject):
             run = self.executor.start(
                 program, blocks, devices, program_key=key, save=save, series=series
             )
-        except (MissingDevice, DeviceBusy, ParameterError) as exc:
+        except (MissingDevice, DeviceBusy, ParameterError, LibraryFull) as exc:
             self.start_refused.emit(str(exc))
             return
         claim(run)

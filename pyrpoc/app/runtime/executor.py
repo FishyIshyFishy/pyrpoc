@@ -94,8 +94,8 @@ class Executor:
     ) -> Run:
         """Start ``program`` on a worker thread of its own, continuing the
         recording of ``series`` if nothing it depends on changed. Raises
-        ``MissingDevice``, ``DeviceBusy`` or ``ParameterError`` before
-        anything starts."""
+        ``MissingDevice``, ``DeviceBusy``, ``ParameterError`` or, for a new
+        recording, ``LibraryFull`` before anything starts."""
         with self._lock:
             devices = claims.resolve(list(program.uses), inventory)
             self.leases.check(devices.values())
@@ -137,6 +137,7 @@ class Executor:
         current = series.recording if series is not None else None
         if current is not None and current.key == key:
             return current, None
+        self.library.check_room()
         recording = self.open_recording(program, key, provenance)
         if series is None:
             return recording, None

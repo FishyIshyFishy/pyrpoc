@@ -1,7 +1,9 @@
 """The data library panel: every dataset this session has open.
 
-Size is shown because a dataset keeps every frame, so a long continuous run is
-what can exhaust a machine; this makes that visible while it happens.
+Size is shown against the library's limit because a dataset keeps every
+frame, so a long continuous run is what can exhaust a machine. Past the limit,
+auto-purge closes the oldest finished entries; with it off, new acquisitions
+are refused until entries are closed.
 """
 
 from __future__ import annotations
@@ -9,7 +11,14 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QHBoxLayout, QHeaderView, QLabel, QPushButton, QVBoxLayout
+from PyQt6.QtWidgets import (
+    QCheckBox,
+    QHBoxLayout,
+    QHeaderView,
+    QLabel,
+    QPushButton,
+    QVBoxLayout,
+)
 
 from pyrpoc.structs.data import Dataset
 from pyrpoc.structs.panel import Panel
@@ -69,6 +78,7 @@ class DataLibraryPanel(Panel):
 
         self.table.itemSelectionChanged.connect(self.refresh_actions)
         self.app.library.subscribe(self.rebuild)
+        self.app.library.auto_purge_changed.connect(self.auto_purge_check.setChecked)
         self.app.runs.dataset_changed.connect(self.on_dataset_changed)
         self.rebuild()
 
@@ -76,9 +86,16 @@ class DataLibraryPanel(Panel):
         row = QHBoxLayout()
         row.setContentsMargins(0, 0, 0, 0)
         self.total_label = QLabel("", self)
-        self.total_label.setToolTip("Memory held by every open acquisition together.")
-        self.total_label.setStyleSheet("color: palette(mid);")
+        self.total_label.setToolTip("Memory held by every open entry, against the library's limit.")
         row.addWidget(self.total_label)
+        self.auto_purge_check = QCheckBox("Auto-purge oldest", self)
+        self.auto_purge_check.setToolTip(
+            "Over the limit, close the oldest finished entries until back under it. "
+            "Entries still recording and masks you drew are never closed."
+        )
+        self.auto_purge_check.setChecked(self.app.library.auto_purge)
+        self.auto_purge_check.toggled.connect(self.app.library.set_auto_purge)
+        row.addWidget(self.auto_purge_check)
         row.addStretch(1)
         self.close_btn = QPushButton("Close", self)
         self.close_btn.setToolTip(
@@ -116,8 +133,13 @@ class DataLibraryPanel(Panel):
             self.refresh_total()
 
     def refresh_total(self) -> None:
-        total = self.app.library.nbytes
-        self.total_label.setText(f"{format_size(total)} in memory" if total else "")
+        library = self.app.library
+        self.total_label.setText(
+            f"{format_size(library.nbytes)} of {format_size(library.limit_bytes)}"
+        )
+        # The accent, so the warning follows the theme like everything else.
+        warning = "color: palette(highlight); font-weight: bold;"
+        self.total_label.setStyleSheet(warning if library.over_limit else "color: palette(mid);")
 
     def selected_dataset(self) -> Dataset | None:
         rows = {index.row() for index in self.table.selectedIndexes()}
