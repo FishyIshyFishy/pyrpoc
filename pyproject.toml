@@ -101,10 +101,10 @@ root_package = "pyrpoc"
 include_external_packages = true
 
 [[tool.importlinter.contracts]]
-name = "Layers: app > panels > data_library > plugins > qt_components > structs"
+name = "Layers: app > panels > data_library | device_inventory > plugins > qt_components > structs"
 type = "layers"
 containers = ["pyrpoc"]
-layers = ["app", "panels", "data_library", "plugins", "qt_components", "structs"]
+layers = ["app", "panels", "data_library | device_inventory", "plugins", "qt_components", "structs"]
 ignore_imports = [
   "pyrpoc.panels.** -> pyrpoc.app.model.application",
 ]
@@ -145,7 +145,7 @@ layers = ["workspace", "gui", "model", "runtime"]
 [[tool.importlinter.contracts]]
 name = "Subsystems never name a plugin; they find plugins through registries"
 type = "forbidden"
-source_modules = ["pyrpoc.data_library"]
+source_modules = ["pyrpoc.data_library", "pyrpoc.device_inventory"]
 forbidden_modules = ["pyrpoc.plugins"]
 
 [[tool.importlinter.contracts]]

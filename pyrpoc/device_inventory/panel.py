@@ -6,8 +6,6 @@ controls the device supplies, so a new config field needs no edit here.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
 from PyQt6.QtWidgets import QComboBox, QHBoxLayout, QPushButton, QScrollArea, QVBoxLayout, QWidget
 
 from pyrpoc.qt_components.cards import RemovableCardWidget
@@ -16,16 +14,15 @@ from pyrpoc.structs.device import Device, device_registry
 from pyrpoc.structs.panel import Panel
 from pyrpoc.structs.params import FieldContext
 
-if TYPE_CHECKING:  # pragma: no cover
-    from pyrpoc.app.model.application import Application
+from .inventory import DeviceInventory
 
 
 class DevicesPanel(Panel):
     display_name = "Devices"
 
-    def __init__(self, app: Application):
+    def __init__(self, inventory: DeviceInventory):
         super().__init__()
-        self.app = app
+        self.inventory = inventory
 
         root = QVBoxLayout(self)
         root.setContentsMargins(8, 8, 8, 8)
@@ -36,7 +33,7 @@ class DevicesPanel(Panel):
         for key in device_registry.keys():
             self.type_combo.addItem(device_registry.get(key).display_name, key)
         add_btn = QPushButton("Add", self)
-        add_btn.clicked.connect(lambda: self.app.add_device(self.type_combo.currentData()))
+        add_btn.clicked.connect(lambda: self.inventory.add(self.type_combo.currentData()))
         top.addWidget(self.type_combo, 1)
         top.addWidget(add_btn)
         root.addLayout(top)
@@ -50,7 +47,7 @@ class DevicesPanel(Panel):
         scroll_area.setWidget(self.content)
         root.addWidget(scroll_area, 1)
 
-        self.app.devices_changed.connect(self.refresh)
+        self.inventory.changed.connect(self.refresh)
         self.refresh()
 
     def refresh(self) -> None:
@@ -59,14 +56,14 @@ class DevicesPanel(Panel):
             if widget is not None:
                 widget.setParent(None)
                 widget.deleteLater()
-        for device in self.app.devices:
+        for device in self.inventory.devices:
             self.instances_layout.addWidget(self.build_card(device))
         self.instances_layout.addStretch(1)
 
     def build_card(self, device: Device) -> RemovableCardWidget:
         card = RemovableCardWidget(device.name, self.content)
         card.set_description(device.summary())
-        card.remove_requested.connect(lambda d=device: self.app.remove_device(d))
+        card.remove_requested.connect(lambda d=device: self.inventory.remove(d))
 
         body = QWidget(card)
         layout = QVBoxLayout(body)
@@ -85,4 +82,4 @@ class DevicesPanel(Panel):
     def on_config_changed(self, device: Device, card: RemovableCardWidget) -> None:
         card.set_description(device.summary())
         card.title_label.setText(device.name)
-        self.app.state_changed.emit()
+        self.inventory.mark_edited()

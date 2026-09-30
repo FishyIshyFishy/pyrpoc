@@ -7,16 +7,13 @@ packages here is what registers every device and program.
 
 from __future__ import annotations
 
-import logging
-
 from PyQt6.QtCore import QObject, pyqtSignal
 
 from pyrpoc.data_library.model import LibraryModel
 from pyrpoc.data_library.store import LIBRARY_LIMIT_BYTES, LibraryStore
-from pyrpoc.plugins.devices import device_registry
+from pyrpoc.device_inventory.inventory import DeviceInventory
 from pyrpoc.plugins.programs import program_registry
 from pyrpoc.structs import params as P
-from pyrpoc.structs.device import Device, DeviceError
 from pyrpoc.structs.params import block_registry
 from pyrpoc.structs.saving import SaveTarget
 
@@ -24,24 +21,10 @@ from ..runtime import claims
 from ..runtime.runs import Runs
 from .runners import Runners
 
-log = logging.getLogger(__name__)
-
-
-def close_if_open(device: Device) -> None:
-    """Close a device's session. A fault while disconnecting is logged, never
-    raised: removing a card or quitting must not depend on the hardware."""
-    if not device.session_open:
-        return
-    try:
-        device.close_session()
-    except DeviceError:
-        log.warning("could not cleanly disconnect %s", device.name, exc_info=True)
-
 
 class Application(QObject):
     """What exists, how it is configured, and what is running."""
 
-    devices_changed = pyqtSignal()
     program_selected = pyqtSignal(str)
     save_changed = pyqtSignal()
     params_written = pyqtSignal()  # blocks changed outside the form
@@ -49,7 +32,7 @@ class Application(QObject):
 
     def __init__(self) -> None:
         super().__init__()
-        self.devices: list[Device] = []
+        self.inventory = DeviceInventory(self)
         store = LibraryStore(LIBRARY_LIMIT_BYTES)
 
         self.selected_program: str | None = None
@@ -65,6 +48,7 @@ class Application(QObject):
 
         self.runs.run_started.connect(lambda _run: self.state_changed.emit())
         self.library.auto_purge_changed.connect(lambda _on: self.state_changed.emit())
+        self.inventory.edited.connect(self.state_changed.emit)
 
     def select_program(self, key: str) -> None:
         self.selected_program = key
@@ -85,7 +69,7 @@ class Application(QObject):
         missing: list[str] = []
         if self.selected_program is not None:
             uses = list(program_registry.get(self.selected_program).uses)
-            missing = [cls.display_name for cls in claims.missing(uses, self.devices)]
+            missing = [cls.display_name for cls in claims.missing(uses, self.inventory.devices)]
         if self.save.enabled and not self.save.filename:
             missing.append("a name to save under")
         return missing
@@ -107,41 +91,6 @@ class Application(QObject):
             self.save.enabled = enabled
         self.save_changed.emit()
         self.state_changed.emit()
-
-    def add_device(
-        self, key: str, instance_id: str | None = None, user_label: str | None = None
-    ) -> Device:
-        device = device_registry.get(key)(instance_id=instance_id, user_label=user_label)
-        self.devices.append(device)
-        self.devices_changed.emit()
-        self.state_changed.emit()
-        return device
-
-    def remove_device(self, device: Device) -> None:
-        close_if_open(device)
-        self.devices.remove(device)
-        self.devices_changed.emit()
-        self.state_changed.emit()
-
-    def clear_devices(self) -> None:
-        self.close_sessions()
-        self.devices.clear()
-        self.devices_changed.emit()
-
-    def open_sessions(self) -> list[Device]:
-        """Connect every device that keeps a session, returning the ones that
-        failed; they stay in the inventory, disconnected, with ``last_error``."""
-        failed = [
-            device
-            for device in self.devices
-            if device.holds_session and not device.session_open and not device.try_open_session()
-        ]
-        self.devices_changed.emit()
-        return failed
-
-    def close_sessions(self) -> None:
-        for device in self.devices:
-            close_if_open(device)
 
     def params_state(self) -> dict[str, dict]:
         """The block store as a flat state dict, keyed by block class name."""

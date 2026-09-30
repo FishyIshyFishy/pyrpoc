@@ -134,7 +134,7 @@ class Runners(QObject):
 
         app.runs.run_failed.connect(self.note_failure)
         app.runs.run_finished.connect(self.forget)
-        app.devices_changed.connect(self.check_pick_blockers)
+        app.inventory.changed.connect(self.check_pick_blockers)
         app.save_changed.connect(self.check_pick_blockers)
 
     @property
@@ -180,7 +180,13 @@ class Runners(QObject):
         """Start ``slot``'s program with what the workbench holds right now."""
         app = self.app
         app.runs.start(
-            slot.program(), slot.key, app.blocks, app.devices, app.save, slot.series, slot.claim
+            slot.program(),
+            slot.key,
+            app.blocks,
+            app.inventory.devices,
+            app.save,
+            slot.series,
+            slot.claim,
         )
 
     def stop(self) -> None:

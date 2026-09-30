@@ -97,7 +97,7 @@ class MainWindow(QWidget):
     def build_panels(self) -> None:
         widgets = {
             DockKey.ACQUISITION: AcquisitionPanel(self.app),
-            DockKey.DEVICES: DevicesPanel(self.app),
+            DockKey.DEVICES: DevicesPanel(self.app.inventory),
             DockKey.DATA: DataLibraryPanel(self.app.library, lambda: self.app.save.folder),
         }
         first: qtads.CDockWidget | None = None

@@ -24,7 +24,7 @@ def capture(app: Application, window: MainWindow) -> WorkspaceState:
             user_label=device.user_label,
             state=device.export_state(),
         )
-        for device in app.devices
+        for device in app.inventory.devices
     ]
     panels = [
         ViewState(
@@ -49,7 +49,7 @@ def capture(app: Application, window: MainWindow) -> WorkspaceState:
 def restore_devices(state: WorkspaceState, app: Application) -> None:
     for row in state.devices:
         try:
-            device = app.add_device(
+            device = app.inventory.add(
                 row.key, instance_id=row.instance_id or None, user_label=row.user_label
             )
             device.import_state(row.state)
@@ -75,7 +75,7 @@ def apply(state: WorkspaceState, app: Application, window: MainWindow) -> None:
     """Rebuild the live application from a saved workspace. A device or panel
     type that no longer exists is skipped rather than blocking launch."""
     window.clear_panels()
-    app.clear_devices()
+    app.inventory.clear()
     restore_devices(state, app)
     restore_panels(state, app, window)
     app.load_params_state(state.param_blocks)
@@ -90,7 +90,7 @@ def apply(state: WorkspaceState, app: Application, window: MainWindow) -> None:
 def seed_defaults(app: Application) -> None:
     """A fresh workbench gets a DAQ and a galvo, which the imaging programs
     need; without them the play button is dead with no obvious cause."""
-    if app.devices:
+    if app.inventory.devices:
         return
-    app.add_device("daq")
-    app.add_device("galvo")
+    app.inventory.add("daq")
+    app.inventory.add("galvo")

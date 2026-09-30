@@ -80,7 +80,7 @@ def build(
     autosave = Autosave(app, window, WorkspaceFile(workspace_path), parent=app)
     window.bind_workspace(autosave.save_now)
     # Connected after the save, so the workspace is captured before closing.
-    window.closing.connect(app.close_sessions)
+    window.closing.connect(app.inventory.close_sessions)
     return app, window, autosave
 
 
@@ -108,7 +108,7 @@ def main() -> int:
     fit_to_available_screen(window, 1400, 850)
     window.show()
     autosave.restore()
-    warn_unconnected(window, app.open_sessions())
+    warn_unconnected(window, app.inventory.open_sessions())
     fit_to_available_screen(window)
     return qt_app.exec()
 

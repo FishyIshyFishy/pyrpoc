@@ -116,7 +116,7 @@ class AcquisitionPanel(Panel):
         self.dir_btn.clicked.connect(self.choose_directory)
 
         self.app.program_selected.connect(self.on_program_selected)
-        self.app.devices_changed.connect(self.refresh_readiness)
+        self.app.inventory.changed.connect(self.refresh_readiness)
         self.app.save_changed.connect(self.on_save_changed)
         self.app.params_written.connect(self.on_params_written)
         runners = self.app.runners

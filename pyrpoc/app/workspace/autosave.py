@@ -34,7 +34,7 @@ class Autosave(QObject):
 
         app.state_changed.connect(self.schedule)
         window.panels_changed.connect(self.schedule)
-        app.devices_changed.connect(self.schedule)
+        app.inventory.changed.connect(self.schedule)
 
     def schedule(self) -> None:
         if not self.suspended:
@@ -63,7 +63,7 @@ class Autosave(QObject):
         self.suspended = True
         try:
             self.window.clear_panels()
-            self.app.clear_devices()
+            self.app.inventory.clear()
             self.app.blocks.clear()
             self.app.set_save(name=SaveState().name, directory="", enabled=False)
             seed_defaults(self.app)
