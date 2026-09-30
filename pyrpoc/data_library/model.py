@@ -1,9 +1,10 @@
 """The data library as the screen sees it: what is open, and the commands on it.
 
-The runtime ``DataLibrary`` holds the entries; this is where the Data Library
-panel's actions land, so the panel draws and forwards and keeps no bookkeeping
-of its own. It is also the ``Library`` every dataset panel and parameter editor
-reads, so everything that reaches the library goes through one object.
+The ``LibraryStore`` holds the entries; this is where the Data Library panel's
+actions land, so the panel draws and forwards and keeps no bookkeeping of its
+own. It is also the ``Library`` every data panel and parameter editor reads,
+and it relays each dataset's new frames to the GUI thread, so everything that
+reaches the library goes through one object.
 """
 
 from __future__ import annotations
@@ -16,21 +17,22 @@ from PyQt6.QtCore import QObject, QTimer, pyqtSignal
 from pyrpoc.structs.data import Data
 from pyrpoc.structs.dataset import Dataset
 
-from ..runtime.library import DataLibrary, LibraryFull
-from ..runtime.recording_format import RecordingError, load_recording, write_notes
-from ..runtime.runs import Runs
+from .format import RecordingError, load_recording, write_notes
+from .store import LibraryFull, LibraryStore
 
 
 class LibraryModel(QObject):
+    # A dataset gained frames. Emitted from the thread that appended; Qt
+    # delivers it on the GUI thread, which is the only one panels may touch.
+    dataset_changed = pyqtSignal(object)
     auto_purge_changed = pyqtSignal(bool)
     # Why a recording could not be loaded. Reported, not raised: every caller
     # is a Qt slot.
     load_failed = pyqtSignal(str)
 
-    def __init__(self, store: DataLibrary, runs: Runs, parent: QObject):
+    def __init__(self, store: LibraryStore, parent: QObject):
         super().__init__(parent)
         self.store = store
-        self.runs = runs
         # Purging closes entries, which redraws panels, so it runs on the GUI
         # thread; coalesced so a burst of frames checks once. Runs never wait
         # on this thread, so it cannot stall acquisition.
@@ -38,8 +40,15 @@ class LibraryModel(QObject):
         self._purge_timer.setSingleShot(True)
         self._purge_timer.setInterval(0)
         self._purge_timer.timeout.connect(self.purge)
-        runs.dataset_changed.connect(lambda _dataset: self.schedule_purge())
+        self.dataset_changed.connect(lambda _dataset: self.schedule_purge())
+        store.subscribe(self.relay_new_datasets)
         store.subscribe(self.schedule_purge)
+
+    def relay_new_datasets(self) -> None:
+        """Follow every open dataset. Subscribing twice is a no-op, so this
+        need not know which one was just added."""
+        for dataset in self.store.all():
+            dataset.subscribe(self.dataset_changed.emit)
 
     def add(self, dataset: Dataset) -> Dataset:
         return self.store.add(dataset)
@@ -110,7 +119,7 @@ class LibraryModel(QObject):
 
     def close(self, dataset: Dataset) -> None:
         """Drop ``dataset`` from memory. Files already saved stay on disk."""
-        self.runs.stop_relaying(dataset)
+        dataset.unsubscribe(self.dataset_changed.emit)
         self.store.remove(dataset)
 
     def schedule_purge(self) -> None:

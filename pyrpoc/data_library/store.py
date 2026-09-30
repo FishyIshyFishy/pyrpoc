@@ -26,7 +26,7 @@ def gib(nbytes: int) -> str:
     return f"{nbytes / (1 << 30):.2f} GiB"
 
 
-class DataLibrary:
+class LibraryStore:
     def __init__(self, limit_bytes: int) -> None:
         self.limit_bytes = limit_bytes
         # Close the oldest finished entries whenever the total is over the limit.

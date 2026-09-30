@@ -80,7 +80,7 @@ class MainWindow(QWidget):
         self.menubar.panel_requested.connect(self.add_panel_of_type)
         self.build_panels()
 
-        self.app.runs.dataset_changed.connect(self.on_dataset_changed)
+        self.app.library.dataset_changed.connect(self.on_dataset_changed)
 
         layout = QVBoxLayout(self)
         layout.setMenuBar(self.menubar)
@@ -98,7 +98,7 @@ class MainWindow(QWidget):
         widgets = {
             DockKey.ACQUISITION: AcquisitionPanel(self.app),
             DockKey.DEVICES: DevicesPanel(self.app),
-            DockKey.DATA: DataLibraryPanel(self.app),
+            DockKey.DATA: DataLibraryPanel(self.app.library, lambda: self.app.save.folder),
         }
         first: qtads.CDockWidget | None = None
         for spec in PANELS:

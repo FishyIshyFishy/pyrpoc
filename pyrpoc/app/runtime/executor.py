@@ -14,6 +14,8 @@ from collections.abc import Callable
 from dataclasses import dataclass, replace
 from typing import Any
 
+from pyrpoc.data_library.saving import RecordingSaver
+from pyrpoc.data_library.store import LibraryStore
 from pyrpoc.structs import params as P
 from pyrpoc.structs.dataset import Dataset, Origin, Provenance, utc_now
 from pyrpoc.structs.device import Device
@@ -21,9 +23,7 @@ from pyrpoc.structs.program import Cancelled, Program, RunContext
 from pyrpoc.structs.saving import SaveTarget
 
 from . import claims
-from .library import DataLibrary
 from .recording import Recording, RecordingKey, Series
-from .saving import RecordingSaver
 
 
 class Run:
@@ -62,10 +62,8 @@ class Run:
 
 @dataclass(frozen=True)
 class RunCallbacks:
-    """How runs report back. ``on_dataset`` is called while a run starts, on
-    the starting thread; the rest on that run's worker thread."""
+    """How runs report back, each called on that run's worker thread."""
 
-    on_dataset: Callable[[Dataset], None]
     on_status: Callable[[Run, str], None]
     on_failed: Callable[[Run, str], None]
     on_finished: Callable[[Run], None]
@@ -76,7 +74,7 @@ def device_state(devices: dict[type[Device], Device]) -> dict[str, Any]:
 
 
 class Executor:
-    def __init__(self, library: DataLibrary, callbacks: RunCallbacks):
+    def __init__(self, library: LibraryStore, callbacks: RunCallbacks):
         self.library = library
         self.callbacks = callbacks
         self.leases = claims.Leases()
@@ -222,7 +220,6 @@ class Executor:
         }
         for dataset in datasets.values():
             self.library.add(dataset)
-            self.callbacks.on_dataset(dataset)
         return datasets
 
     def launch(self, run: Run, params: P.BlockMap) -> None:

@@ -8,8 +8,8 @@ are refused until entries are closed.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 from PyQt6.QtCore import QPoint, Qt, QUrl
 from PyQt6.QtGui import QAction, QDesktopServices
@@ -30,9 +30,7 @@ from pyrpoc.structs.dataset import Dataset
 from pyrpoc.structs.panel import Panel
 
 from .details import DetailsDialog
-
-if TYPE_CHECKING:  # pragma: no cover
-    from pyrpoc.app.model.application import Application
+from .model import LibraryModel
 
 TIME, NAME, OUTPUT, SIZE = range(4)
 COLUMNS = ["Time", "Name", "Output", "Size"]
@@ -58,9 +56,11 @@ def format_size(nbytes: int) -> str:
 class DataLibraryPanel(Panel):
     display_name = "Data Library"
 
-    def __init__(self, app: Application):
+    def __init__(self, library: LibraryModel, save_folder: Callable[[], Path]):
+        """``save_folder`` is where Open… starts: the current save folder."""
         super().__init__()
-        self.app = app
+        self.library = library
+        self.save_folder = save_folder
         # Datasets in table order, so a row number maps back to a dataset.
         self.rows: list[Dataset] = []
 
@@ -90,10 +90,10 @@ class DataLibraryPanel(Panel):
         self.table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.table.customContextMenuRequested.connect(self.show_row_menu)
         self.table.cellDoubleClicked.connect(lambda row, _column: self.show_details(self.rows[row]))
-        self.app.library.subscribe(self.rebuild)
-        self.app.library.auto_purge_changed.connect(self.auto_purge_check.setChecked)
-        self.app.library.load_failed.connect(self.show_load_error)
-        self.app.runs.dataset_changed.connect(self.on_dataset_changed)
+        self.library.subscribe(self.rebuild)
+        self.library.auto_purge_changed.connect(self.auto_purge_check.setChecked)
+        self.library.load_failed.connect(self.show_load_error)
+        self.library.dataset_changed.connect(self.on_dataset_changed)
         self.rebuild()
 
     def build_actions_row(self) -> QHBoxLayout:
@@ -107,8 +107,8 @@ class DataLibraryPanel(Panel):
             "Over the limit, close the oldest finished entries until back under it. "
             "Entries still recording and masks you drew are never closed."
         )
-        self.auto_purge_check.setChecked(self.app.library.auto_purge)
-        self.auto_purge_check.toggled.connect(self.app.library.set_auto_purge)
+        self.auto_purge_check.setChecked(self.library.auto_purge)
+        self.auto_purge_check.toggled.connect(self.library.set_auto_purge)
         row.addWidget(self.auto_purge_check)
         row.addStretch(1)
         open_btn = QPushButton("Open…", self)
@@ -127,7 +127,7 @@ class DataLibraryPanel(Panel):
         """Redraw every row, keeping the selection where the row survives.
         Membership changes are rare enough for a full rebuild."""
         chosen = self.selected_dataset()
-        self.rows = list(reversed(self.app.library.all()))
+        self.rows = list(reversed(self.library.all()))
         self.table.setRowCount(len(self.rows))
         for row, dataset in enumerate(self.rows):
             self.table.set_cell(row, TIME, dataset.started_time)
@@ -152,7 +152,7 @@ class DataLibraryPanel(Panel):
             self.refresh_total()
 
     def refresh_total(self) -> None:
-        library = self.app.library
+        library = self.library
         self.total_label.setText(
             f"{format_size(library.nbytes)} of {format_size(library.limit_bytes)}"
         )
@@ -167,7 +167,7 @@ class DataLibraryPanel(Panel):
     def close_selected(self) -> None:
         dataset = self.selected_dataset()
         if dataset is not None:
-            self.app.library.close(dataset)
+            self.library.close(dataset)
 
     def show_row_menu(self, position: QPoint) -> None:
         row = self.table.rowAt(position.y())
@@ -182,13 +182,11 @@ class DataLibraryPanel(Panel):
         folder.triggered.connect(lambda: self.show_in_folder(dataset))
         menu.addAction(folder)
         menu.addSeparator()
-        menu.addAction("Close", lambda: self.app.library.close(dataset))
+        menu.addAction("Close", lambda: self.library.close(dataset))
         menu.exec(viewport_of(self.table).mapToGlobal(position))
 
     def show_details(self, dataset: Dataset) -> None:
-        dialog = DetailsDialog(
-            dataset, lambda notes: self.app.library.set_notes(dataset, notes), self
-        )
+        dialog = DetailsDialog(dataset, lambda notes: self.library.set_notes(dataset, notes), self)
         if dialog.exec() and dataset in self.rows:
             # The notes show in the name's tooltip.
             self.rebuild()
@@ -201,11 +199,11 @@ class DataLibraryPanel(Panel):
         path, _ = QFileDialog.getOpenFileName(
             self,
             "Open recording",
-            str(self.app.save.folder),
+            str(self.save_folder()),
             "pyrpoc recordings (*_meta.json)",
         )
         if path:
-            self.app.library.load(Path(path))
+            self.library.load(Path(path))
 
     def show_load_error(self, message: str) -> None:
         QMessageBox.warning(self, "Could Not Open Recording", message)

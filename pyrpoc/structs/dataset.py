@@ -106,7 +106,7 @@ class Dataset:
 
     def append(self, array: np.ndarray) -> None:
         """Validate, store, save, then notify. Runs on the worker thread, so
-        subscribers must not touch Qt; ``app/run_host.py`` re-emits for them."""
+        subscribers must not touch Qt; the data library's model re-emits for them."""
         frame = self.spec.coerce(array)
         with self._lock:
             self._frames.append(frame)

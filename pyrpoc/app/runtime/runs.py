@@ -12,7 +12,7 @@ from collections.abc import Callable
 
 from PyQt6.QtCore import QObject, pyqtSignal
 
-from pyrpoc.structs.dataset import Dataset
+from pyrpoc.data_library.store import LibraryFull, LibraryStore
 from pyrpoc.structs.device import Device, MissingDevice
 from pyrpoc.structs.params import BlockStore, ParameterError
 from pyrpoc.structs.program import Program
@@ -20,7 +20,6 @@ from pyrpoc.structs.saving import SaveTarget
 
 from .claims import DeviceBusy
 from .executor import Executor, Run, RunCallbacks
-from .library import DataLibrary, LibraryFull
 from .recording import Series
 
 
@@ -34,14 +33,12 @@ class Runs(QObject):
     # Refused before any run existed: a missing or busy device, a bad parameter,
     # or a full library.
     start_refused = pyqtSignal(str)
-    dataset_changed = pyqtSignal(object)
 
-    def __init__(self, library: DataLibrary, parent: QObject):
+    def __init__(self, library: LibraryStore, parent: QObject):
         super().__init__(parent)
         self.executor = Executor(
             library,
             RunCallbacks(
-                on_dataset=self.on_dataset,
                 on_status=self.run_status.emit,
                 on_failed=self.run_failed.emit,
                 on_finished=self.run_finished.emit,
@@ -72,15 +69,5 @@ class Runs(QObject):
         claim(run)
         self.run_started.emit(run)
 
-    def on_dataset(self, dataset: Dataset) -> None:
-        dataset.subscribe(self.on_dataset_changed)
-
-    def on_dataset_changed(self, dataset: Dataset) -> None:
-        """Called on the worker thread. The signal hops to the GUI thread."""
-        self.dataset_changed.emit(dataset)
-
     def end_series(self, series: Series) -> None:
         self.executor.end_series(series)
-
-    def stop_relaying(self, dataset: Dataset) -> None:
-        dataset.unsubscribe(self.on_dataset_changed)

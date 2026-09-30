@@ -17,10 +17,9 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
+from pyrpoc.data_library.saving import RecordingSaver
 from pyrpoc.structs.dataset import Dataset
 from pyrpoc.structs.saving import SaveTarget
-
-from .saving import RecordingSaver
 
 if TYPE_CHECKING:  # pragma: no cover
     from .executor import Run

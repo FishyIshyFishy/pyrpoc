@@ -12,11 +12,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from pyrpoc.structs.data import Data
-from pyrpoc.structs.dataset import Dataset, utc_now
-from pyrpoc.structs.saving import Writer, writer_registry
-
-from .recording_format import (
+from pyrpoc.data_library.format import (
     OutputRecord,
     RecordingRecord,
     RunRecord,
@@ -25,6 +21,9 @@ from .recording_format import (
     pyrpoc_version,
     write_record,
 )
+from pyrpoc.structs.data import Data
+from pyrpoc.structs.dataset import Dataset, utc_now
+from pyrpoc.structs.saving import Writer, writer_registry
 
 
 class RecordingSaver:

@@ -11,6 +11,8 @@ import logging
 
 from PyQt6.QtCore import QObject, pyqtSignal
 
+from pyrpoc.data_library.model import LibraryModel
+from pyrpoc.data_library.store import LIBRARY_LIMIT_BYTES, LibraryStore
 from pyrpoc.plugins.devices import device_registry
 from pyrpoc.plugins.programs import program_registry
 from pyrpoc.structs import params as P
@@ -19,9 +21,7 @@ from pyrpoc.structs.params import block_registry
 from pyrpoc.structs.saving import SaveTarget
 
 from ..runtime import claims
-from ..runtime.library import LIBRARY_LIMIT_BYTES, DataLibrary
 from ..runtime.runs import Runs
-from .library import LibraryModel
 from .runners import Runners
 
 log = logging.getLogger(__name__)
@@ -50,7 +50,7 @@ class Application(QObject):
     def __init__(self) -> None:
         super().__init__()
         self.devices: list[Device] = []
-        store = DataLibrary(LIBRARY_LIMIT_BYTES)
+        store = LibraryStore(LIBRARY_LIMIT_BYTES)
 
         self.selected_program: str | None = None
         # One instance per block class, shared by every program declaring it,
@@ -60,7 +60,7 @@ class Application(QObject):
         # on which program runs.
         self.save = SaveTarget()
         self.runs = Runs(store, self)
-        self.library = LibraryModel(store, self.runs, self)
+        self.library = LibraryModel(store, self)
         self.runners = Runners(self)
 
         self.runs.run_started.connect(lambda _run: self.state_changed.emit())

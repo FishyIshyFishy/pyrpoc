@@ -101,10 +101,10 @@ root_package = "pyrpoc"
 include_external_packages = true
 
 [[tool.importlinter.contracts]]
-name = "Layers: app > panels > plugins > qt_components > structs"
+name = "Layers: app > panels > data_library > plugins > qt_components > structs"
 type = "layers"
 containers = ["pyrpoc"]
-layers = ["app", "panels", "plugins", "qt_components", "structs"]
+layers = ["app", "panels", "data_library", "plugins", "qt_components", "structs"]
 ignore_imports = [
   "pyrpoc.panels.** -> pyrpoc.app.model.application",
 ]
@@ -143,7 +143,13 @@ containers = ["pyrpoc.app"]
 layers = ["workspace", "gui", "model", "runtime"]
 
 [[tool.importlinter.contracts]]
-name = "runtime knows only structs"
+name = "Subsystems never name a plugin; they find plugins through registries"
+type = "forbidden"
+source_modules = ["pyrpoc.data_library"]
+forbidden_modules = ["pyrpoc.plugins"]
+
+[[tool.importlinter.contracts]]
+name = "runtime knows only structs and the data library"
 type = "forbidden"
 source_modules = ["pyrpoc.app.runtime"]
 forbidden_modules = [
@@ -154,13 +160,15 @@ forbidden_modules = [
 ]
 
 [[tool.importlinter.contracts]]
-name = "runtime is Qt-free, except runs.py; the workspace file format is Qt-free"
+name = "The cores are Qt-free: running, the library's store and files, the workspace file"
 type = "forbidden"
 source_modules = [
   "pyrpoc.app.runtime.claims",
   "pyrpoc.app.runtime.executor",
-  "pyrpoc.app.runtime.library",
-  "pyrpoc.app.runtime.saving",
+  "pyrpoc.app.runtime.recording",
+  "pyrpoc.data_library.store",
+  "pyrpoc.data_library.saving",
+  "pyrpoc.data_library.format",
   "pyrpoc.app.workspace.file",
 ]
 forbidden_modules = ["PyQt6"]
