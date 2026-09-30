@@ -28,7 +28,7 @@ from .components.param_groups import (
     ScanGroup,
     SplitGroup,
 )
-from .components.runners import Single
+from .components.runners import Continuous, Single
 
 
 def pixel_samples(dwell_time_us: float, sample_rate_hz: float) -> int:
@@ -378,7 +378,7 @@ class SplitConfocal(Program):
     uses = [Galvo, DAQ]
     params = [ScanGroup, DaqGroup, SplitGroup, ModulationGroup]
     emits = {"intensity": Image2D, "raw_pixel_stream": Samples4D}
-    runners = [Single()]
+    runners = [Single(), Continuous()]
 
     def run(self, ctx) -> None:
         scan = ctx.params[ScanGroup]

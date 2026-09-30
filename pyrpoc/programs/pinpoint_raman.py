@@ -23,7 +23,7 @@ from pyrpoc.structs.program import Program, RunContext
 from pyrpoc.structs.registries import program_registry
 
 from .components.param_groups import Point, PointGroup, SpectrumGroup
-from .components.runners import ArmAndRun, Single
+from .components.runners import ArmAndRun, Continuous, Single
 
 # Keeps the noise generator off the band generator's stream, so changing the
 # frame index cannot shift a band centre.
@@ -94,6 +94,7 @@ class PinpointRaman(Program):
     emits = {"spectrum": Spectrum1D}
     runners = [
         Single(),
+        Continuous(),
         ArmAndRun(
             PixelPick,
             aim_at_pick,

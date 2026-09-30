@@ -122,7 +122,9 @@ class OverlayPanel(DatasetPanel):
     def sync_controls(self, count: int) -> None:
         while len(self._controls) > count:
             control = self._controls.pop()
-            control.root.setParent(None)
+            # Hidden, not unparented: a show the layout queued when it was added
+            # would otherwise open it as a top-level window before deletion.
+            control.root.hide()
             control.root.deleteLater()
         while len(self._controls) < count:
             self._controls.append(self.build_control(len(self._controls)))

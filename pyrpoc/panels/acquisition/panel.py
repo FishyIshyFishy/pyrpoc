@@ -256,9 +256,12 @@ class AcquisitionPanel(Panel):
         self.set_running_ui(True)
 
     def on_run_finished(self) -> None:
-        self.set_running_ui(self.app.runners.running)
-        self.refresh_readiness(announce=False)
-        self.show_status("stopped")
+        running = self.app.runners.running
+        self.set_running_ui(running)
+        # A runner may already have started the next run from this same finish.
+        if not running:
+            self.refresh_readiness(announce=False)
+            self.show_status("stopped")
 
     def on_run_failed(self, message: str) -> None:
         self.show_status(f"error - {message}")

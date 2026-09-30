@@ -23,7 +23,7 @@ from .components.param_groups import (
     PacingGroup,
     SignalGroup,
 )
-from .components.runners import Single
+from .components.runners import Continuous, Single
 
 # Blobs per channel in the "cells" pattern.
 BLOB_COUNT = 14
@@ -200,7 +200,7 @@ class Simulation(Program):
     uses = []
     params = [FrameGroup, SignalGroup, ModulationGroup, PacingGroup]
     emits = {"intensity": Image2D}
-    runners = [Single()]
+    runners = [Single(), Continuous()]
 
     def run(self, ctx: RunContext) -> None:
         frame_shape = ctx.params[FrameGroup]

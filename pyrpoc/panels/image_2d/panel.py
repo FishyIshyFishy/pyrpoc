@@ -105,7 +105,9 @@ class Image2DPanel(DatasetPanel):
     def sync_channel_tiles(self, count: int) -> None:
         while len(self._tiles) > count:
             tile = self._tiles.pop()
-            tile.root.setParent(None)
+            # Hidden, not unparented: a show the layout queued when it was added
+            # would otherwise open it as a top-level window before deletion.
+            tile.root.hide()
             tile.root.deleteLater()
         while len(self._tiles) < count:
             self._tiles.append(self.build_tile(len(self._tiles)))

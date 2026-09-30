@@ -40,7 +40,9 @@ class Slot(RunnerContext):
         self.program = program
         self.controls: list[Control] = []
         self.started: list[Callable[[], None]] = []
+        self.ended: list[Callable[[bool], None]] = []
         self.runs: list[Run] = []
+        self.failed: set[Run] = set()
         self.closed = False
 
     @property
@@ -53,6 +55,9 @@ class Slot(RunnerContext):
 
     def on_run_started(self, callback: Callable[[], None]) -> None:
         self.started.append(callback)
+
+    def on_run_ended(self, callback: Callable[[bool], None]) -> None:
+        self.ended.append(callback)
 
     @property
     def params(self) -> BlockMap:
@@ -90,6 +95,14 @@ class Slot(RunnerContext):
         for callback in list(self.started):
             callback()
 
+    def release(self, run: Run) -> None:
+        """Drop a run that has ended, then tell its runners how it went."""
+        self.runs.remove(run)
+        completed = not run.cancel.is_set() and run not in self.failed
+        self.failed.discard(run)
+        for callback in list(self.ended):
+            callback(completed)
+
 
 class Runners(QObject):
     """Attaches the selected program's runners and routes what they ask for."""
@@ -108,6 +121,7 @@ class Runners(QObject):
         self.slot: Slot | None = None
         self._pick: tuple[type[Pick], PickCallback] | None = None
 
+        app.runs.run_failed.connect(self.note_failure)
         app.runs.run_finished.connect(self.forget)
         app.devices_changed.connect(self.check_pick_blockers)
         app.save_changed.connect(self.check_pick_blockers)
@@ -161,10 +175,15 @@ class Runners(QObject):
             for run in self.slot.runs:
                 run.stop()
 
+    def note_failure(self, run: Run, message: str) -> None:
+        del message
+        if self.slot is not None and run in self.slot.runs:
+            self.slot.failed.add(run)
+
     def forget(self, run: Run) -> None:
         """Drop a finished run, so closing its datasets frees them."""
         if self.slot is not None and run in self.slot.runs:
-            self.slot.runs.remove(run)
+            self.slot.release(run)
 
     def request_pick(self, kind: type[Pick], callback: PickCallback) -> None:
         self.cancel_pick()
