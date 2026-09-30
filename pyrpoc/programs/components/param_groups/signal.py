@@ -9,7 +9,6 @@ from pyrpoc.structs.params import (
     Group,
     choice_field,
     float_field,
-    int_field,
 )
 from pyrpoc.structs.registries import block
 
@@ -44,7 +43,4 @@ class SignalGroup(Group):
         0.5,
         minimum=0.0,
         tooltip="Extra brightness inside bound masks, standing in for stimulation",
-    )
-    seed: int = int_field(
-        "Seed", 1234, minimum=0, tooltip="Same seed and frame index give the same pixels"
     )

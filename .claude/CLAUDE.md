@@ -8,8 +8,8 @@
 - `app/`: the composition root, which is the only place that knows about everything.
 - New implementations register through `structs/registries.py`. Nothing else lists them.
 
-## Before saying you are done
-Run `uv run pre-commit run --all-files --config .github/pre-commit.yaml` and fix every failure. Never silence a check (`noqa`, `ignore_imports`, `type: ignore`, `pyright: ignore`, config changes) to make it pass. Stop and ask instead.
+## Checks
+Never silence a check (`noqa`, `ignore_imports`, `type: ignore`, `pyright: ignore`, config changes); stop and ask instead. Pre-commit (incl. slow pyright) runs only on `git commit`; never run it after ordinary edits. Fix every failure it reports. 
 
 ## Code style
 - Comments explain why, in one or two lines. No history or narration of what the code plainly does.
