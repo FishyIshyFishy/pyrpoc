@@ -19,6 +19,7 @@ from pyrpoc.structs.plugins.programs.program import Program, RunContext, program
 
 from .components.param_groups import (
     DaqGroup,
+    FrameCountGroup,
     HistogramGroup,
     ScanGroup,
     TriggerGroup,
@@ -191,12 +192,13 @@ def read_flim_frame(flim: FlimMeasurement, n_bins: int, scan: ScanGroup) -> np.n
 class FLIM(Program):
     display_name = "FLIM"
     uses = [Galvo, DAQ, TimeTagger]
-    params = [ScanGroup, DaqGroup, TriggerGroup, HistogramGroup]
+    params = [ScanGroup, FrameCountGroup, DaqGroup, TriggerGroup, HistogramGroup]
     emits = {"intensity": Image2D, "histogram": Cube3D}
     runners = [Single(), Continuous()]
 
     def run(self, ctx: RunContext) -> None:
         scan = ctx.params[ScanGroup]
+        num_frames = ctx.params[FrameCountGroup].num_frames
         histogram = ctx.params[HistogramGroup]
         tagger = ctx.devices[TimeTagger]
         ctx.describe(
@@ -215,9 +217,9 @@ class FLIM(Program):
             binwidth_ps=histogram.histogram_binwidth_ps,
         )
         try:
-            for index in range(scan.num_frames):
+            for index in range(num_frames):
                 ctx.check_cancel()
-                ctx.status(f"frame {index + 1}/{scan.num_frames}")
+                ctx.status(f"frame {index + 1}/{num_frames}")
                 self.acquire_frame(ctx, flim)
         finally:
             tagger.stop_flim_measurement(flim)

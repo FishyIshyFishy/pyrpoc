@@ -5,6 +5,12 @@ from __future__ import annotations
 import numpy as np
 import pyqtgraph as pg
 
+# Grey, with the very top in red so saturated pixels stand out.
+SATURATION_LUT = pg.ColorMap(
+    pos=np.array([0.0, 0.999, 1.0], dtype=float),
+    color=np.array([[0, 0, 0, 255], [255, 255, 255, 255], [255, 0, 0, 255]], dtype=np.ubyte),
+)
+
 
 def mono_levels(hist_widget: pg.HistogramLUTWidget) -> tuple[float, float]:
     """The (min, max) levels of a mono-mode histogram. pyqtgraph's
