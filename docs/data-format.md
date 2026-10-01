@@ -55,6 +55,32 @@ Each output has these fields:
 | `metadata` | object | What the program recorded with `ctx.describe`. |
 | `notes` | string | Free text the user added in the Data Library panel. |
 
+## Conventions inside an output's `metadata`
+
+Some programs write structured metadata that a display relies on. These keys
+fall under the same promise as the fields above.
+
+### `mosaic`: a tiled acquisition
+
+Written by the Mosaic and Mosaic Simulation programs on their `Image2D` output.
+Frame `i` of the output (page `i` of each channel's TIFF) is the tile whose
+`index` is `i`. The frames are ordinary images, so any viewer can open them;
+this key is what lets the Mosaic panel place them. It is written by
+`MosaicGroup.layout_metadata` (`plugins/programs/components/param_groups/mosaic.py`)
+and read by `plugins/data_panels/mosaic/layout.py`. The program and the panel
+share nothing but this table.
+
+| Field | Type | Meaning |
+|---|---|---|
+| `path` | string | How the stage walked the grid. `"snake"`: row 0 left to right, row 1 right to left, and so on. |
+| `x_tiles`, `y_tiles` | int | Tiles along the stage's x and y. |
+| `spacing_um` | number | Stage step between neighbouring tiles, the same in x and y. |
+| `tiles` | list of `{index, row, col, x_um, y_um}` | Every tile in acquisition order: its grid cell (`row` along stage y, `col` along stage x) and the stage position it was imaged at. |
+
+Tiles carry their own `row` and `col`, so a reader never re-derives the path
+from its name. Pixel size is not recorded: the Mosaic panel finds the overlap
+from the images themselves.
+
 ## Compatibility rules
 
 1. **Within a version, fields may be added but never renamed, removed, or

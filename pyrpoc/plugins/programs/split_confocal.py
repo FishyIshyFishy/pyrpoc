@@ -22,6 +22,7 @@ from pyrpoc.structs.plugins.programs.program import Program, program_registry
 
 from .components.param_groups import (
     DaqGroup,
+    FrameCountGroup,
     Mask,
     ModulationGroup,
     ScanGroup,
@@ -375,7 +376,7 @@ def build_ttl(
 class SplitConfocal(Program):
     display_name = "Split Confocal"
     uses = [Galvo, DAQ]
-    params = [ScanGroup, DaqGroup, SplitGroup, ModulationGroup]
+    params = [ScanGroup, FrameCountGroup, DaqGroup, SplitGroup, ModulationGroup]
     emits = {"intensity": Image2D, "raw_pixel_stream": Samples4D}
     runners = [Single(), Continuous()]
 
@@ -384,7 +385,7 @@ class SplitConfocal(Program):
         daq_params = ctx.params[DaqGroup]
         split = ctx.params[SplitGroup]
         modulation = ctx.params[ModulationGroup]
-        num_frames = scan.num_frames
+        num_frames = ctx.params[FrameCountGroup].num_frames
 
         daq: DAQ = ctx.devices[DAQ]
         galvo: Galvo = ctx.devices[Galvo]

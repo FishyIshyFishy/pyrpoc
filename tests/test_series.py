@@ -10,7 +10,7 @@ import numpy as np
 
 from pyrpoc.acquisition.recording import Series
 from pyrpoc.data_library.format import META_SUFFIX, load_recording
-from pyrpoc.plugins.programs.components.param_groups import FrameGroup
+from pyrpoc.plugins.programs.components.param_groups import FrameCountGroup
 from pyrpoc.plugins.programs.simulation import Simulation
 from pyrpoc.structs.data_library.data import Spectrum1D
 from pyrpoc.structs.plugins.params import BlockStore
@@ -50,7 +50,7 @@ def test_changed_parameters_start_a_new_recording(tmp_path: Path) -> None:
     recorder, series = Recorder(), Series()
     blocks = small_simulation_blocks()
     run_in_series(recorder, blocks, tmp_path, series, count=2)
-    blocks.get(FrameGroup).num_frames = 1
+    blocks.get(FrameCountGroup).num_frames = 1
     run_in_series(recorder, blocks, tmp_path, series, count=2)
     recorder.executor.end_series(series)
 

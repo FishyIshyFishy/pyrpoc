@@ -1,8 +1,9 @@
-"""Confocal: raster the galvo, read the analog inputs, publish a frame.
+"""Mosaic: a confocal frame at each stop of a stage grid, walked as a snake.
 
-This is the canonical copy of the waveform arithmetic; ``split_confocal.py``,
-``flim.py`` and ``mosaic.py`` carry the same functions and must stay identical.
-The NI task setup only fails on the instrument, so change it with a rig to test on.
+The waveform arithmetic, NI task setup and mask TTL below are copies of
+``confocal.py``'s and must stay identical to them: each tile is a confocal
+frame. What differs is at the bottom: the stage moves between frames, and the
+grid is recorded with the output so a display can place each frame.
 """
 
 from __future__ import annotations
@@ -15,18 +16,24 @@ import numpy as np
 from nidaqmx.constants import AcquisitionType
 from nidaqmx.stream_readers import AnalogMultiChannelReader
 
-from pyrpoc.plugins.devices import DAQ, DaqError, Galvo
+from pyrpoc.plugins.devices import DAQ, DaqError, Galvo, PriorStage
 from pyrpoc.structs.data_library.data import Image2D
-from pyrpoc.structs.plugins.programs.program import Program, program_registry
+from pyrpoc.structs.plugins.programs.program import (
+    Cancelled,
+    Program,
+    RunContext,
+    program_registry,
+)
 
 from .components.param_groups import (
     DaqGroup,
-    FrameCountGroup,
     Mask,
     ModulationGroup,
+    MosaicGroup,
     ScanGroup,
+    Tile,
 )
-from .components.runners import Continuous, Single
+from .components.runners import Single
 
 
 def pixel_samples(dwell_time_us: float, sample_rate_hz: float) -> int:
@@ -317,29 +324,53 @@ def build_ttl(
     )
 
 
-@program_registry.register("confocal")
-class Confocal(Program):
-    display_name = "Confocal"
-    uses = [Galvo, DAQ]
-    params = [ScanGroup, FrameCountGroup, DaqGroup, ModulationGroup]
-    emits = {"intensity": Image2D}
-    runners = [Single(), Continuous()]
+def move_stage(ctx: RunContext, stage: PriorStage, x_um: float, y_um: float) -> None:
+    """Move and wait for the stage to stop; a stopped run interrupts the wait."""
+    stage.move_xy_to(x_um, y_um)
+    stage.wait_until_stopped("xy", ctx.sleep)
 
-    def run(self, ctx) -> None:
+
+@program_registry.register("mosaic")
+class Mosaic(Program):
+    display_name = "Mosaic"
+    uses = [Galvo, DAQ, PriorStage]
+    params = [ScanGroup, DaqGroup, ModulationGroup, MosaicGroup]
+    emits = {"intensity": Image2D}
+    # Once only: a mosaic is one pass over the grid, never repeated or looped.
+    runners = [Single()]
+
+    def run(self, ctx: RunContext) -> None:
+        grid = ctx.params[MosaicGroup]
+        stage = ctx.devices[PriorStage]
+        origin = stage.xy_position()
+        tiles = grid.snake(origin)
+        # Before the first tile, so a recording cut short still says where its tiles are.
+        ctx.describe("intensity", mosaic=grid.layout_metadata(tiles))
+
+        try:
+            self.image_tiles(ctx, stage, tiles)
+        except Cancelled:
+            stage.stop_smoothly()
+            raise
+        # Back where it started, so a repeat run images the same area.
+        ctx.status("returning to the start position")
+        move_stage(ctx, stage, *origin)
+
+    @staticmethod
+    def image_tiles(ctx: RunContext, stage: PriorStage, tiles: list[Tile]) -> None:
         scan = ctx.params[ScanGroup]
         daq_params = ctx.params[DaqGroup]
-        modulation = ctx.params[ModulationGroup]
-        num_frames = ctx.params[FrameCountGroup].num_frames
-
-        daq: DAQ = ctx.devices[DAQ]
-        galvo: Galvo = ctx.devices[Galvo]
-
-        ttl = build_ttl(scan, modulation, daq_params, daq)
+        daq = ctx.devices[DAQ]
+        galvo = ctx.devices[Galvo]
+        ttl = build_ttl(scan, ctx.params[ModulationGroup], daq_params, daq)
         labels = channel_labels(daq)
 
-        for index in range(num_frames):
+        for tile in tiles:
             ctx.check_cancel()
-            ctx.status(f"frame {index + 1}/{num_frames}")
+            ctx.status(
+                f"tile {tile.index + 1}/{len(tiles)} (row {tile.row + 1}, col {tile.col + 1})"
+            )
+            move_stage(ctx, stage, tile.x_um, tile.y_um)
             frame = raster_scan(
                 daq=daq,
                 galvo=galvo,

@@ -1,4 +1,4 @@
-"""The raster scan: geometry, dwell and frame count. Shared across modalities."""
+"""The raster scan: geometry and dwell. Shared across modalities."""
 
 from __future__ import annotations
 
@@ -11,12 +11,11 @@ from pyrpoc.structs.plugins.params import Group, block, float_field, int_field
 @block
 @dataclass
 class ScanGroup(Group):
-    """How the beam is scanned, and how many times. The frame count is here
-    because it decides how the imaging is done, like the geometry."""
+    """How the beam is scanned. How many times is ``FrameCountGroup``'s, since
+    a mosaic scans once per tile."""
 
     label: ClassVar[str] = "Scan"
 
-    num_frames: int = int_field("Frames", 1, minimum=1, tooltip="Number of frames to capture")
     x_pixels: int = int_field("X Pixels", 512, minimum=8, tooltip="Number of pixels in X")
     y_pixels: int = int_field("Y Pixels", 512, minimum=8, tooltip="Number of pixels in Y")
     extra_left: int = int_field(

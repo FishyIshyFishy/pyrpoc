@@ -15,7 +15,6 @@ class FrameGroup(Group):
 
     label: ClassVar[str] = "Frame"
 
-    num_frames: int = int_field("Frames", 1, minimum=1, tooltip="Number of frames to capture")
     x_pixels: int = int_field("X Pixels", 256, minimum=8, tooltip="Frame width in pixels")
     y_pixels: int = int_field("Y Pixels", 256, minimum=8, tooltip="Frame height in pixels")
     channels: int = int_field(

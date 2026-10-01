@@ -10,7 +10,11 @@ import numpy as np
 from pyrpoc.acquisition.executor import Executor, Run, RunCallbacks
 from pyrpoc.acquisition.recording import Series
 from pyrpoc.data_library.store import LIBRARY_LIMIT_BYTES, LibraryStore
-from pyrpoc.plugins.programs.components.param_groups import FrameGroup, PacingGroup
+from pyrpoc.plugins.programs.components.param_groups import (
+    FrameCountGroup,
+    FrameGroup,
+    PacingGroup,
+)
 from pyrpoc.structs.data_library.data import Spectrum1D
 from pyrpoc.structs.data_library.dataset import Dataset
 from pyrpoc.structs.data_library.saving import SaveTarget
@@ -34,8 +38,8 @@ class SpectrumProgram(Program):
 def small_simulation_blocks() -> BlockStore:
     """Simulation parameters for a tiny, fast recording: 3 frames of 2x8x8."""
     blocks = BlockStore()
+    blocks.get(FrameCountGroup).num_frames = 3
     frame = blocks.get(FrameGroup)
-    frame.num_frames = 3
     frame.x_pixels = 8
     frame.y_pixels = 8
     frame.channels = 2

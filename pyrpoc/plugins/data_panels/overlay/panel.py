@@ -18,20 +18,12 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from pyrpoc.qt_components.colors import color_for_index
+from pyrpoc.qt_components.colors import color_for_index, color_map_from_rgb
 from pyrpoc.qt_components.levels import autoscale_levels, mono_levels
 from pyrpoc.structs.data_library.data import Image2D
 from pyrpoc.structs.data_library.dataset import Dataset
 from pyrpoc.structs.data_library.library import Library
 from pyrpoc.structs.plugins.data_panels import DataPanel, data_panel_registry
-
-
-def color_map_from_rgb(rgb: tuple[int, int, int]) -> pg.ColorMap:
-    r, g, b = rgb
-    return pg.ColorMap(
-        pos=np.array([0.0, 1.0], dtype=float),
-        color=np.array([[0, 0, 0, 255], [r, g, b, 255]], dtype=np.ubyte),
-    )
 
 
 @dataclass

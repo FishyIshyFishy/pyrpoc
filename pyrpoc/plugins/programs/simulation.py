@@ -16,6 +16,7 @@ from pyrpoc.structs.data_library.data import Image2D
 from pyrpoc.structs.plugins.programs.program import Program, RunContext, program_registry
 
 from .components.param_groups import (
+    FrameCountGroup,
     FrameGroup,
     Mask,
     ModulationGroup,
@@ -198,14 +199,14 @@ def channel_labels(frame_shape: FrameGroup) -> list[str]:
 class Simulation(Program):
     display_name = "Simulation"
     uses = []
-    params = [FrameGroup, SignalGroup, ModulationGroup, PacingGroup]
+    params = [FrameGroup, FrameCountGroup, SignalGroup, ModulationGroup, PacingGroup]
     emits = {"intensity": Image2D}
     runners = [Single(), Continuous()]
 
     def run(self, ctx: RunContext) -> None:
         frame_shape = ctx.params[FrameGroup]
         signal = ctx.params[SignalGroup]
-        num_frames = frame_shape.num_frames
+        num_frames = ctx.params[FrameCountGroup].num_frames
         interval_ms = ctx.params[PacingGroup].frame_interval_ms
 
         # Built once before the loop; the pixels arrived with the parameter.

@@ -11,6 +11,8 @@ from pyrpoc.structs.plugins.programs.program import program_registry
 
 from .confocal import Confocal
 from .flim import FLIM
+from .mosaic import Mosaic
+from .mosaic_simulation import MosaicSimulation
 from .pinpoint_raman import PinpointRaman
 from .simulation import Simulation
 from .split_confocal import SplitConfocal
@@ -20,6 +22,8 @@ __all__ = [
     "Confocal",
     "SplitConfocal",
     "FLIM",
+    "Mosaic",
+    "MosaicSimulation",
     "PinpointRaman",
     "Simulation",
 ]
