@@ -32,25 +32,11 @@ repos:
         language: pygrep
         entry: '(type|pyright):\s*ignore'
         types: [python]
-      # Uses the project's pyright and venv, the same configuration Pylance
-      # reads from pyproject.toml, so a clean run means no red squiggles.
-      - id: pyright
-        name: pyright
-        language: system
-        entry: uv run pyright
-        types: [python]
-        pass_filenames: false
       - id: lint-imports
         name: import-linter
         language: system
         entry: uv run lint-imports
         types: [python]
         pass_filenames: false
-      # Includes loading every committed recording fixture, so a change that
-      # breaks reading saved data fails here.
-      - id: pytest
-        name: pytest
-        language: system
-        entry: uv run pytest -q
-        always_run: true
-        pass_filenames: false
+      # pyright and pytest are too slow for every commit; they run in CI
+      # (.github/workflows/ci.yml).

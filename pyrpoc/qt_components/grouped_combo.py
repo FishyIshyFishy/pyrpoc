@@ -2,10 +2,17 @@
 
 from __future__ import annotations
 
-from PyQt6.QtCore import QModelIndex, Qt
-from PyQt6.QtGui import QPainter, QPaintEvent, QStandardItem, QStandardItemModel
+from PyQt6.QtCore import QEvent, QModelIndex, QObject, Qt
+from PyQt6.QtGui import (
+    QMouseEvent,
+    QPainter,
+    QPaintEvent,
+    QStandardItem,
+    QStandardItemModel,
+)
 from PyQt6.QtWidgets import (
     QComboBox,
+    QListView,
     QStyle,
     QStyledItemDelegate,
     QStyleOptionComboBox,
@@ -15,6 +22,9 @@ from PyQt6.QtWidgets import (
 )
 
 _GROUP_ROLE = Qt.ItemDataRole.UserRole + 1
+# Set only on headings: whether their entries are currently hidden.
+_COLLAPSED_ROLE = Qt.ItemDataRole.UserRole + 2
+_HEADING_ROLE = Qt.ItemDataRole.UserRole + 3
 
 
 class _HeadingDelegate(QStyledItemDelegate):
@@ -40,11 +50,50 @@ class GroupedComboBox(QComboBox):
         super().__init__(parent)
         self.entries = QStandardItemModel(self)
         self.setModel(self.entries)
+        # Kept as a QListView, the view type that can hide rows. Set before the
+        # delegate, which goes on whichever view is current.
+        self.list_view = QListView(self)
+        self.setView(self.list_view)
         self.setItemDelegate(_HeadingDelegate(self))
+        viewport = self.list_view.viewport()
+        assert viewport is not None
+        viewport.installEventFilter(self)
+
+    def eventFilter(self, a0: QObject | None, a1: QEvent | None) -> bool:
+        if a1 is not None and a1.type() in (
+            QEvent.Type.MouseButtonPress,
+            QEvent.Type.MouseButtonRelease,
+        ):
+            assert isinstance(a1, QMouseEvent)
+            index = self.list_view.indexAt(a1.position().toPoint())
+            if index.isValid() and index.data(_COLLAPSED_ROLE) is not None:
+                if a1.type() == QEvent.Type.MouseButtonRelease:
+                    self._toggle_group(index.row())
+                return True
+        return super().eventFilter(a0, a1)
+
+    def _toggle_group(self, header_row: int) -> None:
+        header = self.entries.index(header_row, 0)
+        collapsed = not header.data(_COLLAPSED_ROLE)
+        self.entries.setData(header, collapsed, _COLLAPSED_ROLE)
+        self.entries.setData(
+            header,
+            f"{'▸' if collapsed else '▾'} {header.data(_HEADING_ROLE)}",
+            Qt.ItemDataRole.DisplayRole,
+        )
+        row = header_row + 1
+        while row < self.entries.rowCount() and (
+            self.entries.index(row, 0).data(_COLLAPSED_ROLE) is None
+        ):
+            self.list_view.setRowHidden(row, collapsed)
+            row += 1
 
     def add_group(self, heading: str, entries: list[tuple[str, str]]) -> None:
-        """One heading, then its entries as (label, data)."""
-        header = QStandardItem(heading)
+        """One heading, then its entries as (label, data). Clicking the heading
+        in the open list collapses its entries."""
+        header = QStandardItem(f"▾ {heading}")
+        header.setData(False, _COLLAPSED_ROLE)
+        header.setData(heading, _HEADING_ROLE)
         header.setFlags(Qt.ItemFlag.NoItemFlags)
         font = self.font()
         font.setBold(True)
