@@ -1,6 +1,7 @@
-"""Every parameter block a program can be built from, one per file, plus the
-field types that are this instrument's own. Importing this package registers
-every block, so a session can name any of them.
+"""Every parameter block a program can declare, one per file. A block whose
+values are not plain numbers or text defines its field type and editor widget
+in the same file. Pick from here when building a program. Importing this
+package registers every block, so a session can name any of them.
 """
 
 from __future__ import annotations
@@ -9,12 +10,10 @@ from .daq import DaqGroup
 from .frame import FrameGroup
 from .frame_count import FrameCountGroup
 from .histogram import HistogramGroup
-from .mask_field import Mask, MasksField, masks_field
-from .modulation import ModulationGroup
+from .modulation import Mask, MasksField, ModulationGroup
 from .mosaic import MosaicGroup, Tile
 from .pacing import PacingGroup
-from .point import PointGroup
-from .point_field import Point, PointField, point_field
+from .point import Point, PointField, PointGroup
 from .scan import ScanGroup
 from .signal import PATTERNS, SignalGroup
 from .specimen import SpecimenGroup
@@ -28,14 +27,12 @@ __all__ = [
     "FrameGroup",
     "HistogramGroup",
     "Mask",
-    "masks_field",
     "MasksField",
     "ModulationGroup",
     "MosaicGroup",
     "PacingGroup",
     "PATTERNS",
     "Point",
-    "point_field",
     "PointField",
     "PointGroup",
     "ScanGroup",

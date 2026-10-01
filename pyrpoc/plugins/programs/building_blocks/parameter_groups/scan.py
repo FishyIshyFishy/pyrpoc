@@ -1,4 +1,6 @@
-"""The raster scan: geometry and dwell. Shared across modalities."""
+"""The raster scan: geometry and dwell. Shared by every program that scans the
+galvos; ``functions/galvo_raster.py`` turns it into a waveform, and
+``voltage_at`` is that waveform's inverse, so change them together."""
 
 from __future__ import annotations
 
@@ -39,6 +41,11 @@ class ScanGroup(Group):
     @property
     def total_x(self) -> int:
         return self.x_pixels + self.extra_left + self.extra_right
+
+    @property
+    def kept_columns(self) -> slice:
+        """The scanned columns that are displayed, between the overscan."""
+        return slice(self.extra_left, self.extra_left + self.x_pixels)
 
     def voltage_at(self, x: int, y: int) -> tuple[float, float]:
         """The (fast, slow) volts at which displayed pixel ``(x, y)`` was sampled.

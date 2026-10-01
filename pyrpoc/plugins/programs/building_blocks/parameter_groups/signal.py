@@ -7,7 +7,8 @@ from typing import ClassVar
 
 from pyrpoc.structs.plugins.params import Group, block, choice_field, float_field
 
-# Pattern names offered by the simulated program, in menu order.
+# Pattern names offered by the simulated program, in menu order; the simulation
+# keys its plane functions by these.
 PATTERNS = ("cells", "rings", "gradient", "checkerboard", "flat")
 
 

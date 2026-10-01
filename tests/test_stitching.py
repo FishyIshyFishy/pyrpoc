@@ -7,7 +7,7 @@ import pytest
 
 from pyrpoc.plugins.data_panels.mosaic.layout import MosaicLayout, read_layout
 from pyrpoc.plugins.data_panels.mosaic.stitching import Stitcher, composite, tile_positions
-from pyrpoc.plugins.programs.components.param_groups import MosaicGroup
+from pyrpoc.plugins.programs.building_blocks.parameter_groups import MosaicGroup
 
 TILE = 96
 FALLBACK = 0.1

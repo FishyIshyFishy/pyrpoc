@@ -66,7 +66,7 @@ Written by the Mosaic and Mosaic Simulation programs on their `Image2D` output.
 Frame `i` of the output (page `i` of each channel's TIFF) is the tile whose
 `index` is `i`. The frames are ordinary images, so any viewer can open them;
 this key is what lets the Mosaic panel place them. It is written by
-`MosaicGroup.layout_metadata` (`plugins/programs/components/param_groups/mosaic.py`)
+`MosaicGroup.layout_metadata` (`plugins/programs/building_blocks/parameter_groups/mosaic.py`)
 and read by `plugins/data_panels/mosaic/layout.py`. The program and the panel
 share nothing but this table.
 

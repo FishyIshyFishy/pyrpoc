@@ -10,7 +10,7 @@ from PyQt6.QtCore import QObject
 from pyrpoc.acquisition.recording import Series
 from pyrpoc.data_library.format import META_SUFFIX, load_recording
 from pyrpoc.data_library.model import LibraryModel
-from pyrpoc.plugins.programs.simulation import Simulation
+from pyrpoc.plugins.programs.simulation.program import Simulation
 
 from .helpers import Recorder, small_simulation_blocks
 
