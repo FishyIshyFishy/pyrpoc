@@ -11,7 +11,7 @@ pyrpoc/
   structs/            the shared vocabulary: the nouns every other part talks through
   qt_components/      generic widgets that know no feature: tables, cards, parameter form, icons
   plugins/            things you add more of
-    devices/            hardware: DAQ, galvo, Prior stage, time tagger
+    devices/            hardware: DAQ, galvo, dual galvos, Prior stage, time tagger
     programs/           experiments, one folder each, built from programs/building_blocks/
     data_panels/        displays of one open dataset: 2D tiled, overlay, spectrum, mask editor
   device_inventory/   the devices this workbench has, and the Devices panel
