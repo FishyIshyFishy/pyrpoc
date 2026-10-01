@@ -35,4 +35,4 @@ class HistogramGroup(Group):
 
     @property
     def laser_period_ps(self) -> int:
-        return int(round(1e6 / self.laser_frequency_mhz))
+        return round(1e6 / self.laser_frequency_mhz)

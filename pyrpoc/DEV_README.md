@@ -89,7 +89,7 @@ app > acquisition > data_library | device_inventory > plugins > qt_components > 
 | Adding... | Goes in |
 |---|---|
 | an instrument, experiment or data view | its folder under `plugins/`, registered in the registry from its `structs/plugins/` contract |
-| a way to start a program, or a parameter group | the programs' shared components under `plugins/programs/` |
+| a way to start a program, a parameter group, or code more than one program runs | `plugins/programs/building_blocks/` (`runners/`, `parameter_groups/`, `functions/`) |
 | a kind of data or a file format | its contract under `structs/data_library/`, the format's writer under `data_library/`, and a data panel to show it |
 | a feature of storing or browsing data | `data_library/` |
 | a feature of running | `acquisition/` |

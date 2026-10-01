@@ -119,6 +119,19 @@ type = "layers"
 containers = ["pyrpoc.plugins"]
 layers = ["programs | data_panels", "devices"]
 
+# Keyed on <name>/program.py, the file every program registers in, so the
+# contracts never list the programs themselves.
+[[tool.importlinter.contracts]]
+name = "Programs never import each other; they share through building_blocks"
+type = "independence"
+modules = ["pyrpoc.plugins.programs.*.program"]
+
+[[tool.importlinter.contracts]]
+name = "Building blocks never import a program"
+type = "forbidden"
+source_modules = ["pyrpoc.plugins.programs.building_blocks"]
+forbidden_modules = ["pyrpoc.plugins.programs.*.program"]
+
 [[tool.importlinter.contracts]]
 name = "Subsystems never name a plugin; they find plugins through registries"
 type = "forbidden"

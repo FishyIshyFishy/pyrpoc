@@ -10,7 +10,7 @@ import numpy as np
 from pyrpoc.acquisition.executor import Executor, Run, RunCallbacks
 from pyrpoc.acquisition.recording import Series
 from pyrpoc.data_library.store import LIBRARY_LIMIT_BYTES, LibraryStore
-from pyrpoc.plugins.programs.components.param_groups import (
+from pyrpoc.plugins.programs.building_blocks.parameter_groups import (
     FrameCountGroup,
     FrameGroup,
     PacingGroup,

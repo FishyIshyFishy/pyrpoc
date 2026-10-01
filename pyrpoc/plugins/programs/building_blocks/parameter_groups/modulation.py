@@ -1,15 +1,17 @@
-"""Widgets for the field types declared in ``param_groups``, handed to the form
-through ``Field.editor``. The one Qt module in programs/, imported only when an
-editor is asked for, so programs import without Qt."""
+"""Modulation: masks driving digital lines during a scan. A mask is bound by
+reference to a library entry, so it has its own field type and table widget."""
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from collections.abc import Iterable
+from dataclasses import dataclass, replace
+from dataclasses import field as dc_field
+from typing import Any, ClassVar
 
+import numpy as np
 from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtWidgets import (
     QComboBox,
-    QDoubleSpinBox,
     QHBoxLayout,
     QHeaderView,
     QLabel,
@@ -23,9 +25,82 @@ from PyQt6.QtWidgets import (
 from pyrpoc.structs.data_library.data import Mask2D
 from pyrpoc.structs.data_library.dataset import Dataset
 from pyrpoc.structs.data_library.library import Library
-from pyrpoc.structs.plugins.params import Editor, FieldContext
+from pyrpoc.structs.plugins.params import (
+    Editor,
+    Field,
+    FieldContext,
+    Group,
+    ParameterError,
+    block,
+    spec_field,
+)
 
-from .param_groups import Mask, MasksField, Point, PointField
+
+@dataclass(frozen=True)
+class Mask:
+    """One authored mask wired to one digital output line, by reference.
+
+    The stored value names a library entry; ``source_label`` sits beside the id
+    because an id means nothing in metadata read months later. ``array`` is
+    filled only in a run's copy, by ``MasksField.resolve``: a program has no
+    library, so the pixels arrive with its parameters while the shared block
+    and session keep only the reference. ``compare=False`` because comparing
+    arrays in a frozen dataclass's ``__eq__`` raises.
+    """
+
+    source_id: str = ""
+    source_label: str = ""
+    array: np.ndarray | None = dc_field(default=None, compare=False)
+    port: int = 0
+    line: int = 0
+
+    def describe(self) -> str:
+        """Which library entry this is, for a row that has lost it."""
+        return self.source_label or self.source_id or "no mask"
+
+    def channel(self, device_name: str) -> str:
+        """The NI-DAQ channel string this mask drives."""
+        return f"{device_name}/port{self.port}/line{self.line}"
+
+    def on_grid(self, height: int, width: int) -> np.ndarray:
+        """The masked pixels as booleans, resized nearest-neighbour to ``(height, width)``."""
+        # Narrows for the type checker: a run's masks are resolved at start.
+        if self.array is None:
+            raise ValueError(f"mask '{self.describe()}' was not resolved")
+        lit = self.array > 0
+        if lit.shape == (height, width):
+            return lit
+        source_h, source_w = lit.shape
+        rows = np.minimum((np.arange(height, dtype=np.int64) * source_h) // height, source_h - 1)
+        cols = np.minimum((np.arange(width, dtype=np.int64) * source_w) // width, source_w - 1)
+        return lit[np.ix_(rows, cols)]
+
+    def to_dict(self) -> dict[str, Any]:
+        """Provenance only: the array is data, and this is a parameter."""
+        return {
+            "source_id": self.source_id,
+            "source_label": self.source_label,
+            "port": self.port,
+            "line": self.line,
+        }
+
+    @classmethod
+    def from_value(cls, raw: Any) -> Mask:
+        """A mask from the form (already a ``Mask``) or from JSON (a dict)."""
+        if isinstance(raw, Mask):
+            return raw
+        if not isinstance(raw, dict):
+            raise ParameterError("a mask must be an object with source_id/port/line")
+        try:
+            return cls(
+                source_id=str(raw.get("source_id", "")),
+                source_label=str(raw.get("source_label", "")),
+                port=int(raw.get("port", 0)),
+                line=int(raw.get("line", 0)),
+            )
+        except (TypeError, ValueError) as exc:
+            raise ParameterError(f"a mask's port and line must be integers: {exc}") from exc
+
 
 CLOSED_SUFFIX = " (closed)"
 
@@ -221,105 +296,58 @@ class MaskTable(QWidget):
         return text + (f", {closed} closed" if closed else "")
 
 
-# Shown under the spin boxes when no point has been set yet.
-NO_ORIGIN = "—"
+@dataclass(frozen=True)
+class MasksField(Field):
+    """The Modulation table: library entry, port, line, one row per mask."""
 
+    def coerce(self, value: Any) -> tuple[Mask, ...]:
+        if value is None:
+            return ()
+        if isinstance(value, (str, bytes)) or not isinstance(value, Iterable):
+            raise ParameterError(f"{self.label}: expected a list of masks")
+        return tuple(Mask.from_value(row) for row in value)
 
-class PointPicker(QWidget):
-    """Galvo volts, typed or picked off an image, and where they came from.
-    Picking is a runner's job; this shows the result when the form reloads."""
+    def encode(self, value: tuple[Mask, ...]) -> Any:
+        return [mask.to_dict() for mask in value]
 
-    changed = pyqtSignal()
+    def resolve(self, value: tuple[Mask, ...], library: Library) -> tuple[Mask, ...]:
+        """Each binding with its pixels. One whose entry is not open refuses the
+        run: acquiring without a mask the user bound is worse than not acquiring."""
+        out: list[Mask] = []
+        for mask in value:
+            dataset = library.by_id(mask.source_id)
+            array = dataset.latest() if dataset is not None else None
+            if array is None:
+                raise ParameterError(f"mask '{mask.describe()}' is not open")
+            out.append(replace(mask, array=array))
+        return tuple(out)
 
-    def __init__(self, parent: QWidget):
-        super().__init__(parent)
-        self._point = Point()
-        # True while ``set_value`` drives the spin boxes, so a programmatic
-        # write keeps the provenance a hand edit clears.
-        self._programmatic = False
-
-        root = QVBoxLayout(self)
-        root.setContentsMargins(0, 0, 0, 0)
-        root.setSpacing(2)
-        volts = QHBoxLayout()
-        volts.setContentsMargins(0, 0, 0, 0)
-        self.fast_spin = self.build_spin("Fast axis (X) volts")
-        self.slow_spin = self.build_spin("Slow axis (Y) volts")
-        volts.addWidget(QLabel("X", self))
-        volts.addWidget(self.fast_spin, 1)
-        volts.addWidget(QLabel("Y", self))
-        volts.addWidget(self.slow_spin, 1)
-        root.addLayout(volts)
-        self.origin_label = QLabel(f"from: {NO_ORIGIN}", self)
-        self.origin_label.setEnabled(False)
-        root.addWidget(self.origin_label)
-
-        self.fast_spin.valueChanged.connect(self.on_spin_changed)
-        self.slow_spin.valueChanged.connect(self.on_spin_changed)
-
-    def build_spin(self, tooltip: str) -> QDoubleSpinBox:
-        spin = QDoubleSpinBox(self)
-        spin.setRange(-10.0, 10.0)
-        spin.setDecimals(4)
-        spin.setSingleStep(0.01)
-        spin.setSuffix(" V")
-        spin.setToolTip(tooltip)
-        return spin
-
-    def value(self) -> Point:
-        return Point(
-            self.fast_spin.value(),
-            self.slow_spin.value(),
-            self._point.source_id,
-            self._point.source_label,
-            self._point.pixel_x,
-            self._point.pixel_y,
+    def editor(self, parent: Any, context: FieldContext) -> Editor:
+        # Narrows for the type checker: every form holding masks offers the library.
+        if context.library is None:
+            raise ValueError("a masks field needs the open data")
+        table = MaskTable(context.library, parent)
+        return Editor(
+            table,
+            get=table.value,
+            set=table.set_value,
+            connect=lambda cb: table.changed.connect(cb),
+            summary=table.summary,
+            spec=self,
         )
 
-    def set_value(self, point: Point) -> None:
-        """Blocks -> widget, keeping the provenance the point carries."""
-        self._point = point
-        self._programmatic = True
-        try:
-            self.fast_spin.setValue(point.fast_v)
-            self.slow_spin.setValue(point.slow_v)
-        finally:
-            self._programmatic = False
-        self.origin_label.setText(f"from: {point.describe() if point.picked else NO_ORIGIN}")
 
-    def on_spin_changed(self) -> None:
-        """A hand edit is no longer the pixel it was picked from, so say so."""
-        if not self._programmatic:
-            self._point = Point(self.fast_spin.value(), self.slow_spin.value())
-            self.origin_label.setText("from: typed")
-        self.changed.emit()
+@block
+@dataclass
+class ModulationGroup(Group):
+    label: ClassVar[str] = "Modulation"
 
-    def summary(self) -> str:
-        return f"{self.fast_spin.value():.3f} / {self.slow_spin.value():.3f} V"
-
-
-def mask_editor(spec: MasksField, parent: QWidget, context: FieldContext) -> Editor:
-    # Narrows for the type checker: every form holding masks offers the library.
-    if context.library is None:
-        raise ValueError("a masks field needs the open data")
-    table = MaskTable(context.library, parent)
-    return Editor(
-        table,
-        get=table.value,
-        set=table.set_value,
-        connect=lambda cb: table.changed.connect(cb),
-        summary=table.summary,
-        spec=spec,
-    )
-
-
-def point_editor(spec: PointField, parent: QWidget) -> Editor:
-    picker = PointPicker(parent)
-    return Editor(
-        picker,
-        get=picker.value,
-        set=picker.set_value,
-        connect=lambda cb: picker.changed.connect(cb),
-        summary=picker.summary,
-        spec=spec,
+    masks: tuple[Mask, ...] = spec_field(
+        None,
+        MasksField(
+            "Masks",
+            "Masks driving digital output lines during the scan. "
+            "Draw one in the Mask Editor to add it here",
+        ),
+        factory=tuple,
     )

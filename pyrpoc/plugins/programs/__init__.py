@@ -1,21 +1,20 @@
-"""One file per experiment, plus the components they are assembled from.
-
-A program's scan code lives in its own file, since that code is what the
-modality is. Programs running similar scans hold copies of the waveform
-arithmetic that are meant to stay identical: change one, change the others.
+"""Experiments, one folder each, holding the program and the code only it
+needs. Everything shared (parameter groups, runners, and functions like the
+galvo raster) is in ``building_blocks/``. Programs build from those and never
+import each other. Importing this package registers every program.
 """
 
 from __future__ import annotations
 
 from pyrpoc.structs.plugins.programs.program import program_registry
 
-from .confocal import Confocal
-from .flim import FLIM
-from .mosaic import Mosaic
-from .mosaic_simulation import MosaicSimulation
-from .pinpoint_raman import PinpointRaman
-from .simulation import Simulation
-from .split_confocal import SplitConfocal
+from .confocal.program import Confocal
+from .flim.program import FLIM
+from .mosaic.program import Mosaic
+from .mosaic_simulation.program import MosaicSimulation
+from .pinpoint_raman.program import PinpointRaman
+from .simulation.program import Simulation
+from .split_confocal.program import SplitConfocal
 
 __all__ = [
     "program_registry",

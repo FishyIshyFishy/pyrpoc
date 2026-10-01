@@ -8,13 +8,13 @@ import numpy as np
 
 from pyrpoc.data_library.format import load_recording
 from pyrpoc.plugins.data_panels.mosaic.layout import GridTile, read_layout
-from pyrpoc.plugins.programs.components.param_groups import (
+from pyrpoc.plugins.programs.building_blocks.parameter_groups import (
     FrameGroup,
     MosaicGroup,
     PacingGroup,
     SpecimenGroup,
 )
-from pyrpoc.plugins.programs.mosaic_simulation import MosaicSimulation
+from pyrpoc.plugins.programs.mosaic_simulation.program import MosaicSimulation
 from pyrpoc.structs.plugins.params import BlockStore
 
 from .helpers import Recorder

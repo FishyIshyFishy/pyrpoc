@@ -12,7 +12,7 @@ pyrpoc/
   qt_components/      generic widgets that know no feature: tables, cards, parameter form, icons
   plugins/            things you add more of
     devices/            hardware: DAQ, galvo, Prior stage, time tagger
-    programs/           experiments, with their parameter groups and runners
+    programs/           experiments, one folder each, built from programs/building_blocks/
     data_panels/        displays of one open dataset: 2D tiled, overlay, spectrum, mask editor
   device_inventory/   the devices this workbench has, and the Devices panel
   data_library/       the open data, recordings on disk, and the Data Library panel
@@ -79,8 +79,9 @@ Plus three rules:
 | You want to add… | It goes in… |
 |---|---|
 | A new instrument | `plugins/devices/<name>/`: a `Device` subclass registered in `device_registry` |
-| A new experiment | `plugins/programs/<name>.py`: a `Program` subclass registered in `program_registry` |
-| A new way to start a program (like Continuous) | `plugins/programs/components/runners/` |
+| A new experiment | `plugins/programs/<name>/`: a `Program` subclass in `program.py` registered in `program_registry`, declaring parameter groups and runners from `programs/building_blocks/` and calling its shared `functions/` (`galvo_raster.py` for a galvo scan). Programs never import each other |
+| A new way to start a program (like Continuous) | `plugins/programs/building_blocks/runners/` |
+| A parameter group, or code a second program needs | `plugins/programs/building_blocks/parameter_groups/` or `functions/`. Code only one program needs stays in its folder |
 | A new way to look at data | `plugins/data_panels/<name>/`: a `DataPanel` subclass registered in `data_panel_registry` |
 | A new kind of data (like a 3-D volume) | a class in `structs/data_library/data.py`, then a writer for it and a data panel that shows it |
 | A new file format | `data_library/writers/`: a `Writer` registered in `writer_registry` |

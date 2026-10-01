@@ -1,0 +1,25 @@
+{
+  "permissions": {
+    "deny": [
+      "Bash(uv run pyright*)",
+      "Bash(pyright*)",
+      "Bash(*pre-commit run*)",
+      "PowerShell(uv run pyright*)",
+      "PowerShell(pyright*)",
+      "PowerShell(*pre-commit run*)"
+    ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR/.venv/Scripts/python.exe\" \"$CLAUDE_PROJECT_DIR/.claude/hooks/ruff_on_edit.py\""
+          }
+        ]
+      }
+    ]
+  }
+}

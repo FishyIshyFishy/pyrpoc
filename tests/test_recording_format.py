@@ -16,7 +16,7 @@ import numpy as np
 import pytest
 
 from pyrpoc.data_library.format import META_SUFFIX, RecordingError, load_recording, write_notes
-from pyrpoc.plugins.programs.simulation import Simulation
+from pyrpoc.plugins.programs.simulation.program import Simulation
 from pyrpoc.structs.data_library.data import Data, Image2D, Spectrum1D
 from pyrpoc.structs.data_library.dataset import Origin
 from pyrpoc.structs.plugins.params import BlockStore

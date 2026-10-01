@@ -11,7 +11,7 @@ from PyQt6.QtCore import QObject
 from pyrpoc.acquisition.recording import Series
 from pyrpoc.data_library.model import LibraryModel
 from pyrpoc.data_library.store import LibraryFull, LibraryStore
-from pyrpoc.plugins.programs.simulation import Simulation
+from pyrpoc.plugins.programs.simulation.program import Simulation
 from pyrpoc.structs.data_library.data import Mask2D
 from pyrpoc.structs.data_library.dataset import Dataset, Origin, Provenance, utc_now
 

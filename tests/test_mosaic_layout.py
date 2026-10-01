@@ -6,7 +6,7 @@ from __future__ import annotations
 import pytest
 
 from pyrpoc.plugins.data_panels.mosaic.layout import GridTile, read_layout
-from pyrpoc.plugins.programs.components.param_groups import MosaicGroup
+from pyrpoc.plugins.programs.building_blocks.parameter_groups import MosaicGroup
 
 
 def test_snake_reverses_every_other_row() -> None:
