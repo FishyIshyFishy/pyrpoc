@@ -49,7 +49,9 @@ class ControlState:
 
 @data_panel_registry.register("overlay")
 class OverlayPanel(DataPanel):
-    display_name = "2D Overlaid"
+    display_name = "Overlaid channels"
+    group = "2D Image Views"
+    order = 20
     renders = [Image2D]
 
     def __init__(self, library: Library):

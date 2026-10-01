@@ -197,7 +197,9 @@ def channel_labels(frame_shape: FrameGroup) -> list[str]:
 
 @program_registry.register("simulation")
 class Simulation(Program):
-    display_name = "Simulation"
+    display_name = "2D image"
+    group = "Simulations"
+    order = 20
     uses = []
     params = [FrameGroup, FrameCountGroup, SignalGroup, ModulationGroup, PacingGroup]
     emits = {"intensity": Image2D}

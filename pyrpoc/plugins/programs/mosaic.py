@@ -333,6 +333,8 @@ def move_stage(ctx: RunContext, stage: PriorStage, x_um: float, y_um: float) -> 
 @program_registry.register("mosaic")
 class Mosaic(Program):
     display_name = "Mosaic"
+    group = "Confocal Fluorescence"
+    order = 12
     uses = [Galvo, DAQ, PriorStage]
     params = [ScanGroup, DaqGroup, ModulationGroup, MosaicGroup]
     emits = {"intensity": Image2D}

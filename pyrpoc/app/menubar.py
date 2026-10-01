@@ -36,13 +36,17 @@ class MainMenuBar(QMenuBar):
         self._style_group = QActionGroup(self)
         self._style_group.setExclusive(True)
 
-    def populate_add_menu(self, entries: list[tuple[str, str]]) -> None:
-        """What can be added, as (key, label). Fixed for the session."""
+    def populate_add_menu(self, groups: dict[str, list[tuple[str, str]]]) -> None:
+        """What can be added, as (key, label) under each heading, one submenu
+        per heading. Fixed for the session."""
         self.add_menu.clear()
-        for key, label in entries:
-            action = QAction(label, self.add_menu)
-            action.triggered.connect(lambda _checked=False, k=key: self.panel_requested.emit(k))
-            self.add_menu.addAction(action)
+        for heading, entries in groups.items():
+            group_menu = QMenu(heading, self.add_menu)
+            self.add_menu.addMenu(group_menu)
+            for key, label in entries:
+                action = QAction(label, group_menu)
+                action.triggered.connect(lambda _checked=False, k=key: self.panel_requested.emit(k))
+                group_menu.addAction(action)
 
     def populate_panels_menu(
         self, docks: list[qtads.CDockWidget], panel_actions: list[QAction]

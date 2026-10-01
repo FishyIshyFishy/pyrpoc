@@ -58,6 +58,10 @@ class Program:
 
     display_name: str = "Program"
 
+    # The heading it is listed under, and its place in the program list.
+    group: str
+    order: int
+
     # Device classes to claim. Claims propagate along ``backed_by``.
     uses: list[type[Device]] = []
 

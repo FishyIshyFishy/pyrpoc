@@ -25,6 +25,7 @@ from pyrpoc.device_inventory.panel import DevicesPanel
 from pyrpoc.plugins.data_panels import data_panel_registry
 from pyrpoc.structs.data_library.dataset import Dataset
 from pyrpoc.structs.plugins.data_panels import DataPanel
+from pyrpoc.structs.registry import grouped
 
 qtads.CDockManager.setConfigFlag(qtads.CDockManager.eConfigFlag.DisableTabTextEliding, True)
 qtads.CDockManager.setConfigFlag(qtads.CDockManager.eConfigFlag.OpaqueSplitterResize, False)
@@ -76,7 +77,10 @@ class MainWindow(QWidget):
 
         self.menubar = MainMenuBar(self)
         self.menubar.populate_add_menu(
-            [(key, data_panel_registry.get(key).display_name) for key in data_panel_registry.keys()]
+            {
+                heading: [(key, data_panel_registry.get(key).display_name) for key in keys]
+                for heading, keys in grouped(data_panel_registry).items()
+            }
         )
         self.menubar.panel_requested.connect(self.add_panel_of_type)
         self.build_panels()

@@ -88,7 +88,9 @@ def tile_frame(
 
 @program_registry.register("mosaic_simulation")
 class MosaicSimulation(Program):
-    display_name = "Mosaic Simulation"
+    display_name = "Mosaic"
+    group = "Simulations"
+    order = 21
     uses = []
     params = [FrameGroup, MosaicGroup, SpecimenGroup, PacingGroup]
     emits = {"intensity": Image2D}

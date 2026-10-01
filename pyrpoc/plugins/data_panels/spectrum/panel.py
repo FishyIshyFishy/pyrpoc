@@ -20,6 +20,8 @@ from pyrpoc.structs.plugins.data_panels import DataPanel, data_panel_registry
 @data_panel_registry.register("spectrum")
 class SpectrumPanel(DataPanel):
     display_name = "Spectrum"
+    group = "Spectral"
+    order = 10
     renders = [Spectrum1D]
 
     def __init__(self, library: Library):

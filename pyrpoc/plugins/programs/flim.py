@@ -191,6 +191,8 @@ def read_flim_frame(flim: FlimMeasurement, n_bins: int, scan: ScanGroup) -> np.n
 @program_registry.register("flim")
 class FLIM(Program):
     display_name = "FLIM"
+    group = "FLIM"
+    order = 40
     uses = [Galvo, DAQ, TimeTagger]
     params = [ScanGroup, FrameCountGroup, DaqGroup, TriggerGroup, HistogramGroup]
     emits = {"intensity": Image2D, "histogram": Cube3D}

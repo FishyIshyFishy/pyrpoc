@@ -100,6 +100,9 @@ def main() -> int:
     sys.excepthook = report_uncaught
     configure_qt_fontdir()
     qt_app = QApplication(sys.argv)
+    # The native Windows 11 style pads every combo and menu row heavily; Fusion
+    # is compact and looks the same on every platform under the theme stylesheet.
+    qt_app.setStyle("Fusion")
     theme_controller = ThemeController(qt_app)
     theme_controller.apply_saved_or_default()
 

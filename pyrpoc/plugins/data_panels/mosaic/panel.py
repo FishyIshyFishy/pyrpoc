@@ -37,6 +37,8 @@ NO_LAYOUT_TIP = "This dataset has no mosaic layout; it was not acquired as a mos
 @data_panel_registry.register("mosaic")
 class MosaicPanel(DataPanel):
     display_name = "Mosaic"
+    group = "2D Image Views"
+    order = 22
     renders = [Image2D]
 
     def __init__(self, library: Library):
