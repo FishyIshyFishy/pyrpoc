@@ -319,7 +319,9 @@ def build_ttl(
 
 @program_registry.register("confocal")
 class Confocal(Program):
-    display_name = "Confocal"
+    display_name = "Standard"
+    group = "Confocal Fluorescence"
+    order = 10
     uses = [Galvo, DAQ]
     params = [ScanGroup, FrameCountGroup, DaqGroup, ModulationGroup]
     emits = {"intensity": Image2D}

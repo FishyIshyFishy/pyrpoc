@@ -11,7 +11,6 @@ from collections.abc import Callable
 
 from PyQt6.QtWidgets import (
     QCheckBox,
-    QComboBox,
     QFileDialog,
     QFrame,
     QHBoxLayout,
@@ -24,12 +23,14 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
 )
 
+from pyrpoc.qt_components.grouped_combo import GroupedComboBox
 from pyrpoc.qt_components.icons import asset_icon
 from pyrpoc.qt_components.param_form import ParamForm
 from pyrpoc.structs.plugins.data_panels import Panel
 from pyrpoc.structs.plugins.params import FieldContext
 from pyrpoc.structs.plugins.programs.program import program_registry
 from pyrpoc.structs.plugins.programs.runner import Control
+from pyrpoc.structs.registry import grouped
 
 from .model import Acquisition
 
@@ -67,9 +68,11 @@ class AcquisitionPanel(Panel):
     def build_program_row(self) -> QHBoxLayout:
         row = QHBoxLayout()
         row.addWidget(QLabel("Program:", self))
-        self.program_combo = QComboBox(self)
-        for key in program_registry.keys():
-            self.program_combo.addItem(program_registry.get(key).display_name, key)
+        self.program_combo = GroupedComboBox(self)
+        for heading, keys in grouped(program_registry).items():
+            self.program_combo.add_group(
+                heading, [(program_registry.get(key).display_name, key) for key in keys]
+            )
         row.addWidget(self.program_combo, 1)
         return row
 

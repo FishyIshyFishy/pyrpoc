@@ -57,7 +57,9 @@ class TileState:
 
 @data_panel_registry.register("image_2d")
 class Image2DPanel(DataPanel):
-    display_name = "2D Tiled"
+    display_name = "Tiled channels"
+    group = "2D Image Views"
+    order = 21
     renders = [Image2D]
 
     def __init__(self, library: Library):

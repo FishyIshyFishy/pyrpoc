@@ -374,7 +374,9 @@ def build_ttl(
 
 @program_registry.register("split_confocal")
 class SplitConfocal(Program):
-    display_name = "Split Confocal"
+    display_name = "Intrapixel split"
+    group = "Confocal Fluorescence"
+    order = 11
     uses = [Galvo, DAQ]
     params = [ScanGroup, FrameCountGroup, DaqGroup, SplitGroup, ModulationGroup]
     emits = {"intensity": Image2D, "raw_pixel_stream": Samples4D}

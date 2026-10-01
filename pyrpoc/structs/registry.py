@@ -5,13 +5,25 @@ next to the base class it collects."""
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Generic, TypeVar
+from typing import Generic, Protocol, TypeVar
 
 T = TypeVar("T")
 
 # The decorated class itself, so ``@registry.register(...)`` keeps the class's
 # own type downstream instead of a bare ``type``.
 C = TypeVar("C", bound=type)
+
+
+class Listed(Protocol):
+    """A kind the user picks from a grouped list: ``group`` is the heading it
+    sits under, ``order`` its place, and groups follow their first member."""
+
+    display_name: str
+    group: str
+    order: int
+
+
+L = TypeVar("L", bound=Listed)
 
 
 class Registry(Generic[T]):
@@ -52,3 +64,11 @@ class Registry(Generic[T]):
             if registered is cls:
                 return key
         raise KeyError(f"{cls.__name__!r} is not registered in {self.name}")
+
+
+def grouped(registry: Registry[L]) -> dict[str, list[str]]:
+    """Keys under their group heading, both in ``order``."""
+    groups: dict[str, list[str]] = {}
+    for key, cls in sorted(registry.entries.items(), key=lambda entry: entry[1].order):
+        groups.setdefault(cls.group, []).append(key)
+    return groups

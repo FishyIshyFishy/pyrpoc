@@ -87,7 +87,9 @@ def aim_at_pick(pick: Pick, params: BlockMap) -> None:
 
 @program_registry.register("pinpoint_raman")
 class PinpointRaman(Program):
-    display_name = "Pinpoint Raman"
+    display_name = "Galvo pinpoint"
+    group = "Spectrum"
+    order = 30
     uses = [Galvo]
     params = [PointGroup, SpectrumGroup]
     emits = {"spectrum": Spectrum1D}

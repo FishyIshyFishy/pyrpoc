@@ -113,6 +113,10 @@ class DataPanel(Panel):
 
     renders: ClassVar[list[type[Data]]]
 
+    # The heading it is listed under, and its place in the Add menu.
+    group: str
+    order: int
+
     picked = pyqtSignal(object)
 
     def __init__(self, library: Library):

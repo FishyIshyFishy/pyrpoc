@@ -74,7 +74,9 @@ def write_mask(path: str, mask: np.ndarray) -> Path:
 class MaskEditorPanel(DataPanel):
     """Draw thresholded polygon ROIs over an acquired image and file the mask."""
 
-    display_name = "Mask Editor"
+    display_name = "Mask editor"
+    group = "Mask editors"
+    order = 30
     renders = [Image2D]
 
     def __init__(self, library: Library):
