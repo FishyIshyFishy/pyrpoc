@@ -5,10 +5,10 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 import numpy as np
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import QHBoxLayout, QLabel, QSlider, QVBoxLayout, QWidget
 
-from .image_view import LevelledImage
+from .image_view import ColourImage
 from .layout import MosaicLayout
 
 
@@ -16,44 +16,44 @@ class StackView(QWidget):
     """Scrolls through every frame of the dataset. While the slider is on the
     last frame it follows new ones as they arrive; moved back, it stays put."""
 
+    # The user moved to another frame.
+    moved = pyqtSignal()
+
     def __init__(self, parent: QWidget):
         super().__init__(parent)
         self.frames: Sequence[np.ndarray] = ()
         self.mosaic: MosaicLayout | None = None
-        self.channel = 0
 
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
-        self.image = LevelledImage(self)
+        self.image = ColourImage(self)
         root.addWidget(self.image, 1)
         row = QHBoxLayout()
         self.slider = QSlider(Qt.Orientation.Horizontal, self)
         self.slider.setEnabled(False)
-        self.slider.valueChanged.connect(self.draw)
+        self.slider.valueChanged.connect(lambda _value: self.moved.emit())
         self.position = QLabel("", self)
         row.addWidget(self.slider, 1)
         row.addWidget(self.position)
         root.addLayout(row)
 
-    def show_frames(
-        self, frames: Sequence[np.ndarray], mosaic: MosaicLayout | None, channel: int
-    ) -> None:
+    def take_frames(self, frames: Sequence[np.ndarray], mosaic: MosaicLayout | None) -> None:
+        """The dataset's frames so far; the slider follows a new one only if
+        it was already on the last."""
         following = self.slider.value() >= self.slider.maximum()
-        self.frames, self.mosaic, self.channel = frames, mosaic, channel
+        self.frames, self.mosaic = frames, mosaic
         self.slider.blockSignals(True)
         self.slider.setMaximum(len(frames) - 1)
         self.slider.setEnabled(len(frames) > 1)
         if following:
             self.slider.setValue(len(frames) - 1)
         self.slider.blockSignals(False)
-        self.draw()
 
-    def draw(self) -> None:
-        if not self.frames:
-            return
+    def current_frame(self) -> np.ndarray:
+        """The ``(C, H, W)`` frame under the slider, naming it beside the slider."""
         index = self.slider.value()
-        self.image.show_plane(np.asarray(self.frames[index][self.channel], dtype=np.float32))
         self.position.setText(self.describe(index))
+        return np.asarray(self.frames[index], dtype=np.float32)
 
     def describe(self, index: int) -> str:
         count = f"{index + 1}/{len(self.frames)}"
@@ -69,4 +69,4 @@ class StackView(QWidget):
         self.slider.setEnabled(False)
         self.slider.blockSignals(False)
         self.position.setText("")
-        self.image.clear_plane()
+        self.image.clear_image()

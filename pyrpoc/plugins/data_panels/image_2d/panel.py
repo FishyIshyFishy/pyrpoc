@@ -19,12 +19,17 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from pyrpoc.qt_components.levels import SATURATION_LUT, autoscale_levels, mono_levels
+from pyrpoc.qt_components.levels import autoscale_levels, mono_levels
 from pyrpoc.structs.data_library.data import Image2D
 from pyrpoc.structs.data_library.dataset import Dataset
 from pyrpoc.structs.data_library.library import Library
 from pyrpoc.structs.plugins.data_panels import DataPanel, data_panel_registry
 from pyrpoc.structs.plugins.programs.picks import Pick, PixelPick
+
+LUT = pg.ColorMap(
+    pos=np.array([0.0, 0.999, 1.0], dtype=float),
+    color=np.array([[0, 0, 0, 255], [255, 255, 255, 255], [255, 0, 0, 255]], dtype=np.ubyte),
+)
 
 
 @dataclass
@@ -125,7 +130,7 @@ class Image2DPanel(DataPanel):
         body.addWidget(plot, 1)
         hist_widget = pg.HistogramLUTWidget(root)
         hist_widget.setImageItem(image_item)
-        hist_widget.item.gradient.setColorMap(SATURATION_LUT)
+        hist_widget.item.gradient.setColorMap(LUT)
         autoscale_box = QCheckBox("Autoscale", root)
         autoscale_box.setChecked(True)
         right_col = QVBoxLayout()
@@ -152,7 +157,7 @@ class Image2DPanel(DataPanel):
         plot.setAspectLocked(True)
         plot.invertY(True)
         image_item = pg.ImageItem()
-        image_item.setColorMap(SATURATION_LUT)
+        image_item.setColorMap(LUT)
         plot.addItem(image_item)
         scene = plot.sceneObj
         if scene is None:

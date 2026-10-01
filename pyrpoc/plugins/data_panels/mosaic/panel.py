@@ -1,4 +1,5 @@
-"""A tiled acquisition, as a stack of frames or stitched into one mosaic.
+"""A tiled acquisition, as a stack of frames or stitched into one mosaic,
+with every channel overlaid in its own colour.
 
 The stack works for any ``Image2D``. The mosaic needs the layout its program
 wrote into the output's metadata; without one, the Mosaic button is disabled.
@@ -10,13 +11,12 @@ from typing import Any
 
 import numpy as np
 import pyqtgraph as pg
+from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QButtonGroup,
-    QCheckBox,
-    QComboBox,
     QHBoxLayout,
-    QLabel,
     QPushButton,
+    QSplitter,
     QStackedWidget,
     QVBoxLayout,
 )
@@ -26,6 +26,7 @@ from pyrpoc.structs.data_library.dataset import Dataset
 from pyrpoc.structs.data_library.library import Library
 from pyrpoc.structs.plugins.data_panels import DataPanel, data_panel_registry
 
+from .channels import ChannelStrip
 from .layout import MosaicLayout, read_layout
 from .mosaic_view import MosaicView
 from .stack_view import StackView
@@ -42,23 +43,33 @@ class MosaicPanel(DataPanel):
         super().__init__(library)
         pg.setConfigOptions(imageAxisOrder="row-major")
         self.layout_found: MosaicLayout | None = None
+        self.labels: list[str] = []
         # What the user chose; the mosaic shows only when the dataset has a layout.
         self.wants_mosaic = False
-        # A saved channel waits here until a dataset has that many channels.
-        self._pending_channel: int | None = None
 
         root = QVBoxLayout(self.body)
         root.setContentsMargins(0, 0, 0, 0)
-        root.addLayout(self.build_toolbar())
-        self.views = QStackedWidget(self.body)
+        root.addLayout(self.build_modes())
+        splitter = QSplitter(Qt.Orientation.Horizontal, self.body)
+        splitter.setChildrenCollapsible(False)
+        self.views = QStackedWidget(splitter)
         self.stack = StackView(self.views)
         self.mosaic = MosaicView(self.views)
         self.views.addWidget(self.stack)
         self.views.addWidget(self.mosaic)
-        root.addWidget(self.views, 1)
+        self.channels = ChannelStrip(splitter)
+        splitter.addWidget(self.views)
+        splitter.addWidget(self.channels)
+        splitter.setStretchFactor(0, 1)
+        splitter.setSizes([800, 300])
+        root.addWidget(splitter, 1)
+
+        self.stack.moved.connect(self.show_stack_frame)
+        self.mosaic.fallback_changed.connect(self.redraw)
+        self.channels.changed.connect(self.recolour)
         self.connect_source()
 
-    def build_toolbar(self) -> QHBoxLayout:
+    def build_modes(self) -> QHBoxLayout:
         bar = QHBoxLayout()
         self.stack_button = QPushButton("Stack", self.body)
         self.mosaic_button = QPushButton("Mosaic", self.body)
@@ -69,21 +80,11 @@ class MosaicPanel(DataPanel):
             bar.addWidget(button)
         self.stack_button.setChecked(True)
         self.modes.buttonClicked.connect(self.on_mode_clicked)
-
-        bar.addSpacing(12)
-        bar.addWidget(QLabel("Channel:", self.body))
-        self.channel = QComboBox(self.body)
-        self.channel.currentIndexChanged.connect(lambda _index: self.redraw())
-        bar.addWidget(self.channel)
-        self.autoscale = QCheckBox("Autoscale", self.body)
-        self.autoscale.setChecked(True)
-        self.autoscale.toggled.connect(self.on_autoscale_toggled)
-        bar.addWidget(self.autoscale)
         bar.addStretch(1)
         return bar
 
     def show_frame(self, dataset: Dataset, frame: np.ndarray) -> None:
-        self.sync_channels(dataset.resolved_channel_labels(frame.shape[0]))
+        self.labels = dataset.resolved_channel_labels(frame.shape[0])
         self.layout_found = self.read_layout(dataset)
         self.redraw()
 
@@ -100,41 +101,39 @@ class MosaicPanel(DataPanel):
         self.mosaic_button.setToolTip(tip)
         return layout
 
-    def sync_channels(self, labels: list[str]) -> None:
-        """Rename or resize the channel list, keeping the chosen channel."""
-        current = [self.channel.itemText(index) for index in range(self.channel.count())]
-        if current == labels:
-            return
-        chosen = self.channel.currentIndex()
-        if self._pending_channel is not None:
-            chosen, self._pending_channel = self._pending_channel, None
-        self.channel.blockSignals(True)
-        self.channel.clear()
-        self.channel.addItems(labels)
-        self.channel.setCurrentIndex(min(max(chosen, 0), len(labels) - 1))
-        self.channel.blockSignals(False)
-
     def redraw(self) -> None:
-        """Draw the dataset in whichever view is showing; the hidden one waits."""
-        dataset = self.shown_dataset
-        if dataset is None or self.channel.currentIndex() < 0:
+        """Draw the dataset in whichever view applies; the hidden one waits."""
+        dataset, layout = self.shown_dataset, self.layout_found
+        if dataset is None:
             return
-        frames, channel, layout = dataset.frames(), self.channel.currentIndex(), self.layout_found
+        frames = dataset.frames()
         if self.wants_mosaic and layout is not None:
             self.mosaic_button.setChecked(True)
             self.views.setCurrentWidget(self.mosaic)
-            self.mosaic.show_frames(dataset.id, frames, layout, channel)
+            self.show_planes(self.mosaic.stitch(dataset.id, frames, layout))
         else:
             self.stack_button.setChecked(True)
             self.views.setCurrentWidget(self.stack)
-            self.stack.show_frames(frames, layout, channel)
+            self.stack.take_frames(frames, layout)
+            self.show_stack_frame()
+
+    def show_stack_frame(self) -> None:
+        self.show_planes(self.stack.current_frame())
+
+    def show_planes(self, image: np.ndarray) -> None:
+        """Hand a ``(C, H, W)`` image to the channel strip, then draw it in colour."""
+        self.channels.set_planes(list(image), self.labels)
+        self.recolour()
+
+    def recolour(self) -> None:
+        """Redraw the shown image with the channels' current levels and visibility."""
+        if not self.channels.planes:
+            return
+        view = self.mosaic if self.views.currentWidget() is self.mosaic else self.stack
+        view.image.show_rgb(self.channels.rgb())
 
     def on_mode_clicked(self, button: object) -> None:
         self.wants_mosaic = button is self.mosaic_button
-        self.redraw()
-
-    def on_autoscale_toggled(self, checked: bool) -> None:
-        self.stack.image.autoscale = self.mosaic.image.autoscale = checked
         self.redraw()
 
     def clear(self) -> None:
@@ -142,31 +141,23 @@ class MosaicPanel(DataPanel):
         self.stack_button.setChecked(True)
         self.mosaic_button.setEnabled(False)
         self.mosaic_button.setToolTip(NO_LAYOUT_TIP)
+        self.channels.clear_planes()
         self.stack.clear()
         self.mosaic.clear()
 
     def export_persistence_state(self) -> dict[str, Any]:
         return {
             "mode": "mosaic" if self.wants_mosaic else "stack",
-            "channel": self.channel.currentIndex(),
-            "autoscale": self.autoscale.isChecked(),
             "fallback_overlap": self.mosaic.fallback.value(),
+            "channels": self.channels.export_state(),
         }
 
     def import_persistence_state(self, state: dict[str, Any]) -> None:
         """Parse saved settings from session JSON, a boundary: a malformed
         entry keeps its default."""
         self.wants_mosaic = state.get("mode") == "mosaic"
-        channel = state.get("channel")
-        if isinstance(channel, int) and channel >= 0:
-            if self.channel.count():
-                self.channel.setCurrentIndex(min(channel, self.channel.count() - 1))
-            else:
-                self._pending_channel = channel
-        autoscale = state.get("autoscale")
-        if isinstance(autoscale, bool):
-            self.autoscale.setChecked(autoscale)
         overlap = state.get("fallback_overlap")
         if isinstance(overlap, (int, float)):
             self.mosaic.fallback.setValue(float(overlap))
+        self.channels.import_state(state.get("channels"))
         self.redraw()

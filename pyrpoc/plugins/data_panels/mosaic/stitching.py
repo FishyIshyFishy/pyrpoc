@@ -7,6 +7,9 @@ integral images. Unlike phase correlation there is no wrap-around to resolve
 and no edge artefact to outrank the true peak, which matters when tiles
 overlap only at their borders and hold smooth, blobby structure.
 
+A pair registers on whichever channel overlays it best, so one dim or empty
+channel cannot spoil it, and the placement found applies to every channel.
+
 Every stage step along an axis is the same move, so the grid is placed with one
 step vector per axis: the median of that axis's confident pairs, refined at
 full resolution. One vector per axis also absorbs a stage that runs against,
@@ -44,6 +47,7 @@ Pair = tuple[int, int]
 class Registration:
     offset: Offset
     score: float
+    channel: int
 
 
 @dataclass(frozen=True)
@@ -169,19 +173,30 @@ def overlap_scores(a: np.ndarray, b: np.ndarray) -> np.ndarray:
     return scores
 
 
-def register_pair(a: np.ndarray, b: np.ndarray) -> Registration | None:
-    """Where tile ``b`` sits relative to tile ``a``, in full-resolution pixels,
-    or None when no offset overlays them convincingly. Every offset is scored
-    at the working resolution and the best kept."""
+def register_planes(a: np.ndarray, b: np.ndarray) -> tuple[Offset, float]:
+    """The offset that best overlays plane ``b`` on plane ``a``, in
+    full-resolution pixels, and its score. Every offset is scored at the
+    working resolution and the best kept."""
     factor = working_factor(a.shape)
     scores = overlap_scores(downsample(a, factor), downsample(b, factor))
     y, x = np.unravel_index(int(np.argmax(scores)), scores.shape)
-    score = float(scores[y, x])
-    if score < MIN_SCORE:
-        return None
     dy = int(padded_offsets(scores.shape[0] // 2)[y])
     dx = int(padded_offsets(scores.shape[1] // 2)[x])
-    return Registration((dy * factor, dx * factor), score)
+    return (dy * factor, dx * factor), float(scores[y, x])
+
+
+def register_pair(first: np.ndarray, second: np.ndarray) -> Registration | None:
+    """Where ``(C, H, W)`` tile ``second`` sits relative to ``first``, on the
+    channel that overlays them best, or None when no channel is convincing."""
+    best: Registration | None = None
+    for channel in range(first.shape[0]):
+        offset, score = register_planes(
+            np.asarray(first[channel], dtype=np.float32),
+            np.asarray(second[channel], dtype=np.float32),
+        )
+        if score >= MIN_SCORE and (best is None or score > best.score):
+            best = Registration(offset, score, channel)
+    return best
 
 
 def neighbour_pairs(layout: MosaicLayout) -> tuple[list[Pair], list[Pair]]:
@@ -208,20 +223,16 @@ def refine_step(planes: list[tuple[np.ndarray, np.ndarray]], start: Offset, radi
 
 
 class Stitcher:
-    """One dataset's tiles on one channel. Pair registrations are kept, so a
-    tile arriving mid-run registers only against its acquired neighbours."""
+    """One dataset's tiles. Pair registrations are kept, so a tile arriving
+    mid-run registers only against its acquired neighbours."""
 
-    def __init__(self, layout: MosaicLayout, channel: int):
+    def __init__(self, layout: MosaicLayout):
         self.layout = layout
-        self.channel = channel
         self.horizontal, self.vertical = neighbour_pairs(layout)
         self._registered: dict[Pair, Registration | None] = {}
         # Keyed by the pairs refined against and the coarse step, which a new
         # tile mid-run rarely changes, so re-stitching skips the search.
         self._refined: dict[tuple[tuple[Pair, ...], Offset], Offset] = {}
-
-    def plane(self, frames: Sequence[np.ndarray], index: int) -> np.ndarray:
-        return np.asarray(frames[index][self.channel], dtype=np.float32)
 
     def steps(self, frames: Sequence[np.ndarray], fallback_overlap: float) -> GridSteps:
         height, width = frames[0].shape[1:]
@@ -234,11 +245,9 @@ class Stitcher:
         self, frames: Sequence[np.ndarray], pairs: list[Pair], nominal: Offset
     ) -> AxisStep:
         acquired = [pair for pair in pairs if max(pair) < len(frames)]
-        for pair in acquired:
-            if pair not in self._registered:
-                self._registered[pair] = register_pair(
-                    self.plane(frames, pair[0]), self.plane(frames, pair[1])
-                )
+        for first, second in acquired:
+            if (first, second) not in self._registered:
+                self._registered[first, second] = register_pair(frames[first], frames[second])
         confident = [
             (pair, found) for pair in acquired if (found := self._registered[pair]) is not None
         ]
@@ -250,7 +259,13 @@ class Stitcher:
         chosen = tuple(pair for pair, _found in strongest[:REFINE_PAIRS])
         key = (chosen, (round(dy), round(dx)))
         if key not in self._refined:
-            planes = [(self.plane(frames, a), self.plane(frames, b)) for a, b in chosen]
+            planes = [
+                (
+                    np.asarray(frames[a][found.channel], dtype=np.float32),
+                    np.asarray(frames[b][found.channel], dtype=np.float32),
+                )
+                for (a, b), found in strongest[:REFINE_PAIRS]
+            ]
             radius = working_factor(frames[0].shape[1:])
             self._refined[key] = refine_step(planes, key[1], radius)
         return AxisStep(self._refined[key], len(confident), len(acquired))
@@ -280,16 +295,16 @@ def edge_weights(height: int, width: int) -> np.ndarray:
     return np.outer(rows, cols)
 
 
-def composite(planes: dict[int, np.ndarray], positions: dict[int, Offset]) -> np.ndarray:
-    """The tiles blended into one image. Pixels no tile covers are 0."""
-    height, width = next(iter(planes.values())).shape
+def composite(frames: Sequence[np.ndarray], positions: dict[int, Offset]) -> np.ndarray:
+    """The placed ``(C, H, W)`` tiles blended into one ``(C, H', W')`` image.
+    Pixels no tile covers are 0."""
+    channels, height, width = frames[0].shape
     extent_y = max(y for y, _x in positions.values()) + height
     extent_x = max(x for _y, x in positions.values()) + width
-    total = np.zeros((extent_y, extent_x), dtype=np.float32)
-    weight = np.zeros_like(total)
+    total = np.zeros((channels, extent_y, extent_x), dtype=np.float32)
+    weight = np.zeros((extent_y, extent_x), dtype=np.float32)
     ramp = edge_weights(height, width)
-    for index, plane in planes.items():
-        y, x = positions[index]
-        total[y : y + height, x : x + width] += ramp * plane
+    for index, (y, x) in positions.items():
+        total[:, y : y + height, x : x + width] += ramp * frames[index]
         weight[y : y + height, x : x + width] += ramp
     return np.divide(total, weight, out=np.zeros_like(total), where=weight > 0)

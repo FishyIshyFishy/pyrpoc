@@ -56,7 +56,7 @@ def test_steps_are_recovered(col_step: tuple[int, int], row_step: tuple[int, int
     layout = snake_layout(3, 3)
     frames = cut_tiles(texture(640), layout, col_step, row_step)
 
-    steps = Stitcher(layout, 0).steps(frames, FALLBACK)
+    steps = Stitcher(layout).steps(frames, FALLBACK)
 
     assert (steps.col.offset, steps.row.offset) == (col_step, row_step)
     assert (steps.col.confident, steps.row.confident) == (6, 6)
@@ -67,19 +67,19 @@ def test_the_composite_reproduces_the_specimen() -> None:
     layout = snake_layout(3, 2)
     frames = cut_tiles(source, layout, (0, 80), (80, 0))
 
-    steps = Stitcher(layout, 0).steps(frames, FALLBACK)
+    steps = Stitcher(layout).steps(frames, FALLBACK)
     positions = tile_positions(layout, steps, len(frames))
-    image = composite({index: frames[index][0] for index in positions}, positions)
+    image = composite(frames, positions)
 
-    assert image.shape == (80 + TILE, 2 * 80 + TILE)
-    np.testing.assert_allclose(image, source[200 : 200 + 176, 200 : 200 + 256], atol=1e-4)
+    assert image.shape == (1, 80 + TILE, 2 * 80 + TILE)
+    np.testing.assert_allclose(image[0], source[200 : 200 + 176, 200 : 200 + 256], atol=1e-4)
 
 
 def test_tiles_so_far_are_placed_during_a_run() -> None:
     layout = snake_layout(3, 3)
     frames = cut_tiles(texture(640), layout, (0, 80), (80, 0))[:4]
 
-    steps = Stitcher(layout, 0).steps(frames, FALLBACK)
+    steps = Stitcher(layout).steps(frames, FALLBACK)
     positions = tile_positions(layout, steps, len(frames))
 
     # Tiles 0-2 are row 0; tile 3 is row 1, col 2, reached by the snake.
@@ -91,7 +91,18 @@ def test_featureless_tiles_fall_back_to_the_nominal_overlap() -> None:
     layout = snake_layout(2, 2)
     frames = [np.full((1, TILE, TILE), 0.5, dtype=np.float32) for _ in layout.tiles]
 
-    steps = Stitcher(layout, 0).steps(frames, FALLBACK)
+    steps = Stitcher(layout).steps(frames, FALLBACK)
 
     assert steps.col.nominal and steps.row.nominal
     assert (steps.col.offset, steps.row.offset) == ((0, 86), (86, 0))
+
+
+def test_a_pair_registers_on_the_channel_with_structure() -> None:
+    layout = snake_layout(3, 2)
+    textured = cut_tiles(texture(640), layout, (0, 80), (80, 0))
+    blank = np.zeros((1, TILE, TILE), dtype=np.float32)
+    frames = [np.concatenate([blank, tile]) for tile in textured]
+
+    steps = Stitcher(layout).steps(frames, FALLBACK)
+
+    assert (steps.col.offset, steps.row.offset) == ((0, 80), (80, 0))

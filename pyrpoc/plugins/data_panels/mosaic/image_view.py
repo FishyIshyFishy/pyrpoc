@@ -1,44 +1,26 @@
-"""One image with its histogram, which both of the mosaic panel's views show."""
+"""The colour image both of the mosaic panel's views show."""
 
 from __future__ import annotations
 
 import numpy as np
 import pyqtgraph as pg
-from PyQt6.QtWidgets import QHBoxLayout, QWidget
-
-from pyrpoc.qt_components.levels import SATURATION_LUT, autoscale_levels, mono_levels
+from PyQt6.QtWidgets import QWidget
 
 
-class LevelledImage(QWidget):
-    """An aspect-locked image and its histogram. With ``autoscale`` off, a new
-    image keeps the levels the user set on the histogram."""
+class ColourImage(pg.PlotWidget):
+    """An aspect-locked RGB image, already scaled to 0..1 by the channel strip."""
 
     def __init__(self, parent: QWidget):
         super().__init__(parent)
-        self.autoscale = True
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-
-        self.plot = pg.PlotWidget(self)
-        self.plot.setMenuEnabled(False)
-        self.plot.hideButtons()
-        self.plot.setAspectLocked(True)
-        self.plot.invertY(True)
+        self.setMenuEnabled(False)
+        self.hideButtons()
+        self.setAspectLocked(True)
+        self.invertY(True)
         self.item = pg.ImageItem()
-        self.item.setColorMap(SATURATION_LUT)
-        self.plot.addItem(self.item)
-        layout.addWidget(self.plot, 1)
+        self.addItem(self.item)
 
-        self.histogram = pg.HistogramLUTWidget(self)
-        self.histogram.setImageItem(self.item)
-        self.histogram.item.gradient.setColorMap(SATURATION_LUT)
-        layout.addWidget(self.histogram)
+    def show_rgb(self, rgb: np.ndarray) -> None:
+        self.item.setImage(rgb, autoLevels=False, levels=(0.0, 1.0))
 
-    def show_plane(self, plane: np.ndarray) -> None:
-        self.item.setImage(plane, autoLevels=False)
-        low, high = autoscale_levels(plane) if self.autoscale else mono_levels(self.histogram)
-        self.item.setLevels((low, high))
-        self.histogram.item.setLevels(low, high)
-
-    def clear_plane(self) -> None:
+    def clear_image(self) -> None:
         self.item.clear()
