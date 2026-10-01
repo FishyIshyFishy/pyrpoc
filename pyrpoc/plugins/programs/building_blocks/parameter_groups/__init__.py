@@ -15,6 +15,7 @@ from .mosaic import MosaicGroup, Tile
 from .pacing import PacingGroup
 from .point import Point, PointField, PointGroup
 from .scan import ScanGroup
+from .second_galvos import SecondGalvosGroup
 from .signal import PATTERNS, SignalGroup
 from .specimen import SpecimenGroup
 from .spectrum import SpectrumGroup
@@ -36,6 +37,7 @@ __all__ = [
     "PointField",
     "PointGroup",
     "ScanGroup",
+    "SecondGalvosGroup",
     "SignalGroup",
     "SpecimenGroup",
     "SpectrumGroup",

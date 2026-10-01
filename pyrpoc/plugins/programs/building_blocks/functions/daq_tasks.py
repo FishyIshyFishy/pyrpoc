@@ -19,16 +19,35 @@ from pyrpoc.plugins.devices import DAQ, DaqError, Galvo
 TIMEOUT_MARGIN_S = 5.0
 
 
+def galvo_channels(galvo: Galvo) -> list[int]:
+    return [galvo.config.fast_ao, galvo.config.slow_ao]
+
+
+def add_ao_channels(task: nx.Task, device_name: str, ao_channels: list[int]) -> None:
+    for index in ao_channels:
+        task.ao_channels.add_ao_voltage_chan(f"{device_name}/ao{index}")
+
+
 def add_galvo_channels(task: nx.Task, device_name: str, galvo: Galvo) -> None:
-    task.ao_channels.add_ao_voltage_chan(f"{device_name}/ao{galvo.config.fast_ao}")
-    task.ao_channels.add_ao_voltage_chan(f"{device_name}/ao{galvo.config.slow_ao}")
+    add_ao_channels(task, device_name, galvo_channels(galvo))
 
 
 def clock_galvos(
     task: nx.Task, device_name: str, galvo: Galvo, sample_rate_hz: float, total_samples: int
 ) -> None:
     """The galvo channels on a finite sample clock of their own."""
-    add_galvo_channels(task, device_name, galvo)
+    clock_ao(task, device_name, galvo_channels(galvo), sample_rate_hz, total_samples)
+
+
+def clock_ao(
+    task: nx.Task,
+    device_name: str,
+    ao_channels: list[int],
+    sample_rate_hz: float,
+    total_samples: int,
+) -> None:
+    """``ao_channels`` on one finite sample clock, which every follower shares."""
+    add_ao_channels(task, device_name, ao_channels)
     task.timing.cfg_samp_clk_timing(
         rate=sample_rate_hz, sample_mode=AcquisitionType.FINITE, samps_per_chan=total_samples
     )
@@ -96,10 +115,14 @@ def add_clocked_lines(
 
 
 def acquire(
-    daq: DAQ, galvo: Galvo, waveform: np.ndarray, ttl: dict[str, np.ndarray], sample_rate_hz: float
+    daq: DAQ,
+    ao_channels: list[int],
+    waveform: np.ndarray,
+    ttl: dict[str, np.ndarray],
+    sample_rate_hz: float,
 ) -> np.ndarray:
-    """Play ``waveform`` on the galvos and read every analog input on its clock,
-    with ``ttl`` on the digital lines: the raw ``(channels, samples)`` stream."""
+    """Play ``waveform`` (one row per AO channel) and read every analog input on
+    its clock, with ``ttl`` on the digital lines: the raw ``(channels, samples)`` stream."""
     device = daq.config.device_name
     total = waveform.shape[1]
     clocked = {channel: signal for channel, signal in ttl.items() if is_clocked(channel)}
@@ -109,7 +132,7 @@ def acquire(
             if held:
                 stack.enter_context(held_lines(held))
             galvos = stack.enter_context(nx.Task())
-            clock_galvos(galvos, device, galvo, sample_rate_hz, total)
+            clock_ao(galvos, device, ao_channels, sample_rate_hz, total)
             inputs = stack.enter_context(nx.Task())
             for index in daq.config.ai_channels:
                 inputs.ai_channels.add_ai_voltage_chan(f"{device}/ai{index}")

@@ -14,7 +14,7 @@ from pyrpoc.structs.plugins.programs.program import RunContext
 from ..parameter_groups.daq import DaqGroup
 from ..parameter_groups.modulation import ModulationGroup
 from ..parameter_groups.scan import ScanGroup
-from .daq_tasks import acquire
+from .daq_tasks import acquire, galvo_channels
 from .mask_ttl import mask_ttl
 
 
@@ -48,7 +48,7 @@ class Raster:
     they are built once, before the first."""
 
     daq: DAQ
-    galvo: Galvo
+    ao_channels: list[int]
     scan: ScanGroup
     sample_rate_hz: float
     samples_per_pixel: int
@@ -57,6 +57,11 @@ class Raster:
 
     @classmethod
     def for_run(cls, ctx: RunContext) -> Raster:
+        return cls.on_channels(ctx, galvo_channels(ctx.devices[Galvo]))
+
+    @classmethod
+    def on_channels(cls, ctx: RunContext, ao_channels: list[int]) -> Raster:
+        """The scan played on ``ao_channels`` (fast, slow), for a scanner other than ``Galvo``."""
         scan = ctx.params[ScanGroup]
         sample_rate_hz = ctx.params[DaqGroup].sample_rate_hz
         daq = ctx.devices[DAQ]
@@ -65,7 +70,7 @@ class Raster:
             ctx.params[ModulationGroup].masks, scan, samples_per_pixel, daq.config.device_name
         )
         waveform = raster_waveform(scan, samples_per_pixel)
-        return cls(daq, ctx.devices[Galvo], scan, sample_rate_hz, samples_per_pixel, waveform, ttl)
+        return cls(daq, ao_channels, scan, sample_rate_hz, samples_per_pixel, waveform, ttl)
 
     @property
     def channel_labels(self) -> list[str]:
@@ -74,7 +79,7 @@ class Raster:
     def samples(self) -> np.ndarray:
         """One scan as ``(C, H, W, S)``: every displayed pixel's raw samples,
         with the overscan columns dropped."""
-        raw = acquire(self.daq, self.galvo, self.waveform, self.ttl, self.sample_rate_hz)
+        raw = acquire(self.daq, self.ao_channels, self.waveform, self.ttl, self.sample_rate_hz)
         scan = self.scan
         cube = raw.astype(np.float32).reshape(
             len(raw), scan.y_pixels, scan.total_x, self.samples_per_pixel
