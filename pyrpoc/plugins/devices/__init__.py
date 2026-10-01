@@ -9,6 +9,7 @@ from __future__ import annotations
 from pyrpoc.structs.plugins.devices import Device, device_registry
 
 from .daq.device import DAQ, DaqError
+from .dual_galvo.device import DualGalvo
 from .galvo.device import Galvo
 from .prior_stage.device import PriorStage
 from .prior_stage.sdk import PriorError
@@ -19,6 +20,7 @@ __all__ = [
     "device_registry",
     "DAQ",
     "DaqError",
+    "DualGalvo",
     "FlimMeasurement",
     "Galvo",
     "PriorError",

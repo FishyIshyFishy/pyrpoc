@@ -11,7 +11,7 @@
 - A whole new capability is a new subsystem folder, wired in `app/application.py`.
 
 ## Checks
-Never silence a check (`noqa`, `ignore_imports`, `type: ignore`, `pyright: ignore`, config changes); stop and ask instead. Pre-commit (incl. slow pyright) runs only on `git commit`; never run it after ordinary edits. Fix every failure it reports. 
+Never silence a check (`noqa`, `ignore_imports`, `type: ignore`, `pyright: ignore`, config changes); stop and ask instead. Pre-commit (ruff, import-linter) runs only on `git commit`; never run it after ordinary edits. pyright and pytest run in GitHub CI (`.github/workflows/ci.yml`). Fix every failure it reports. 
 
 ## Code style
 - Comments explain why, in one or two lines. No history or narration of what the code plainly does.
