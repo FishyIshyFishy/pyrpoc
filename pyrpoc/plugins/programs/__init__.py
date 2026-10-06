@@ -9,6 +9,7 @@ from __future__ import annotations
 from pyrpoc.structs.plugins.programs.program import program_registry
 
 from .confocal.program import Confocal
+from .dual_galvo_confocal.program import DualGalvoConfocal
 from .flim.program import FLIM
 from .mosaic.program import Mosaic
 from .mosaic_simulation.program import MosaicSimulation
@@ -20,6 +21,7 @@ __all__ = [
     "program_registry",
     "Confocal",
     "SplitConfocal",
+    "DualGalvoConfocal",
     "FLIM",
     "Mosaic",
     "MosaicSimulation",
