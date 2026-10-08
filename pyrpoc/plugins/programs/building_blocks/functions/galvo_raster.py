@@ -27,16 +27,8 @@ def pixel_samples(dwell_time_us: float, sample_rate_hz: float) -> int:
 def raster_waveform(scan: ScanGroup, samples_per_pixel: int) -> np.ndarray:
     """The ``(fast, slow)`` AO waveform for one frame: the fast axis sweeps the
     overscan-padded width each line, holding ``samples_per_pixel`` per pixel."""
-    fast_step = 2.0 * scan.fast_axis_amplitude / scan.x_pixels
-    fast_start = -scan.fast_axis_amplitude - scan.extra_left * fast_step
-    fast_axis = (
-        fast_start + np.arange(scan.total_x, dtype=np.float32) * fast_step + scan.fast_axis_offset
-    )
-    slow_axis = (
-        np.linspace(-1.0, 1.0, scan.y_pixels, endpoint=False, dtype=np.float32)
-        * scan.slow_axis_amplitude
-        + scan.slow_axis_offset
-    )
+    fast_axis = scan.fast_volts(np.arange(-scan.extra_left, scan.x_pixels + scan.extra_right))
+    slow_axis = scan.slow_volts(np.arange(scan.y_pixels))
     fast_raster = np.tile(np.repeat(fast_axis, samples_per_pixel), scan.y_pixels)
     slow_raster = np.repeat(slow_axis, scan.total_x * samples_per_pixel)
     return np.vstack((fast_raster, slow_raster)).astype(np.float64)
