@@ -6,6 +6,7 @@ package registers every block, so a session can name any of them.
 
 from __future__ import annotations
 
+from .camera import CameraGroup
 from .daq import DaqGroup
 from .frame import FrameGroup
 from .frame_count import FrameCountGroup
@@ -22,6 +23,7 @@ from .split import SplitGroup
 from .trigger import TriggerGroup
 
 __all__ = [
+    "CameraGroup",
     "DaqGroup",
     "FrameCountGroup",
     "FrameGroup",
