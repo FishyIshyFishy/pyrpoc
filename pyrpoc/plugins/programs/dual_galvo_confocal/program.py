@@ -33,6 +33,26 @@ def second_waveform(
     return second.amplitude * np.vstack((np.sin(phase), np.cos(phase))) + second.offset
 
 
+# The second pair's lines take this many times longer than the scan's: an
+# octave lower in pitch at 2, and still fast enough to hear and see.
+SECOND_PAIR_SLOWDOWN = 2
+
+
+def slowed_raster(scan: ScanGroup, scan_waveform: np.ndarray, samples_per_line: int) -> np.ndarray:
+    """The scan's raster with each line ``SECOND_PAIR_SLOWDOWN`` times longer and
+    proportionally fewer lines, so it still sweeps both axes once per frame."""
+    total = scan_waveform.shape[1]
+    line = np.repeat(scan_waveform[0, :samples_per_line], SECOND_PAIR_SLOWDOWN)
+    lines = -(-total // len(line))
+    slow_axis = (
+        np.linspace(-1.0, 1.0, lines, endpoint=False) * scan.slow_axis_amplitude
+        + scan.slow_axis_offset
+    )
+    fast_raster = np.resize(line, total)
+    slow_raster = np.repeat(slow_axis, len(line))[:total]
+    return np.vstack((fast_raster, slow_raster))
+
+
 @program_registry.register("dual_galvo_confocal")
 class DualGalvoConfocal(Program):
     display_name = "Dual galvo (4 AO)"
@@ -46,9 +66,11 @@ class DualGalvoConfocal(Program):
     def run(self, ctx: RunContext) -> None:
         galvos = ctx.devices[DualGalvo]
         raster = Raster.on_channels(ctx, galvos.scan_channels)
-        second = second_waveform(
-            ctx.params[SecondGalvosGroup], raster.waveform, raster.sample_rate_hz
-        )
+        # Debug: the second pair plays a slowed copy of the scan, ignoring SecondGalvosGroup.
+        scan = raster.scan
+        second = slowed_raster(scan, raster.waveform, scan.total_x * raster.samples_per_pixel)
+        print(np.shape(galvos.scan_channels + galvos.second_channels))
+        print(raster)
         raster = replace(
             raster,
             ao_channels=galvos.scan_channels + galvos.second_channels,

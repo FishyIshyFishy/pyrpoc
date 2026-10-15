@@ -1,0 +1,25 @@
+# The slow checks, moved off the pre-commit hook. The fast ones (ruff, import-linter,
+# comment rules) still run on every commit; see .github/pre-commit.yaml.
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  checks:
+    # The app targets Windows (bundled SDK DLLs), and Qt runs there without a virtual display.
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      # Matches pythonVersion in [tool.pyright], so CI type-checks what Pylance does.
+      - run: uv sync --locked --python 3.13
+      - name: pyright
+        run: uv run pyright
+      # Includes loading every committed recording fixture, so a change that
+      # breaks reading saved data fails here.
+      - name: pytest
+        run: uv run pytest -q
