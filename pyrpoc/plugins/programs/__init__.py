@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from pyrpoc.structs.plugins.programs.program import program_registry
 
+from .auto_segment.program import AutoSegment
 from .autofocus.program import Autofocus
 from .confocal.program import Confocal
 from .flim.program import FLIM
@@ -24,6 +25,7 @@ __all__ = [
     "FLIM",
     "Mosaic",
     "Autofocus",
+    "AutoSegment",
     "MosaicSimulation",
     "PinpointRaman",
     "Simulation",

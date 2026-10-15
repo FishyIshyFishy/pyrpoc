@@ -16,6 +16,7 @@ A recording is one metadata file plus data files, all in the same folder:
 <stem>_meta.json        the entry point; names everything else
 <stem>_<channel>.tiff   Image2D: one multi-page float32 TIFF per channel, a page per frame
 <stem>_<output>.npz     Cube3D, Samples4D, Spectrum1D: `data` holds every frame on its leading axis
+<stem>_<output>.tiff    Mask2D: one multi-page uint8 TIFF, a page per frame
 ```
 
 - **The stem.** `<stem>` is the save name. If a recording with that stem
