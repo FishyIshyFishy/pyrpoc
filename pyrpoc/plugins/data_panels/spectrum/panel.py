@@ -43,6 +43,9 @@ class SpectrumPanel(DataPanel):
     def show_frame(self, dataset: Dataset, frame: np.ndarray) -> None:
         arr = np.asarray(frame, dtype=np.float32)
         self.sync_curves(arr.shape[0], dataset.resolved_channel_labels(arr.shape[0]))
+        # TODO: an in-widget calibration (pixel -> nm, or Raman shift from an
+        # excitation wavelength), kept with the widget or saved on its own, not
+        # in the dataset.
         xs = np.arange(arr.shape[1], dtype=np.float32)
         for index, curve in enumerate(self._curves):
             curve.setData(xs, arr[index])
