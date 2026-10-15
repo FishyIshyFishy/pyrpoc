@@ -8,6 +8,8 @@ from __future__ import annotations
 
 from pyrpoc.structs.plugins.devices import Device, device_registry
 
+from .andor_ccd.device import AndorCCD, SpectrumReadout
+from .andor_ccd.sdk import AndorError
 from .daq.device import DAQ, DaqError
 from .galvo.device import Galvo
 from .prior_stage.device import PriorStage
@@ -17,12 +19,15 @@ from .time_tagger.device import FlimMeasurement, TaggerError, TimeTagger
 __all__ = [
     "Device",
     "device_registry",
+    "AndorCCD",
+    "AndorError",
     "DAQ",
     "DaqError",
     "FlimMeasurement",
     "Galvo",
     "PriorError",
     "PriorStage",
+    "SpectrumReadout",
     "TaggerError",
     "TimeTagger",
 ]
