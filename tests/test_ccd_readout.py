@@ -3,12 +3,15 @@ values that come from the user."""
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import numpy as np
 import pytest
 
 from pyrpoc.plugins.devices import AndorError, SpectrumReadout
 from pyrpoc.plugins.devices.andor_ccd.device import check_track, clipped, match_index
 from pyrpoc.plugins.programs.building_blocks.parameter_groups import CcdReadoutGroup
+from pyrpoc.plugins.programs.ccd_spectrum.program import check_em_safe
 
 
 def test_labels_map_to_device_values():
@@ -18,7 +21,6 @@ def test_labels_map_to_device_values():
         em_gain=50,
         readout_rate="1 MHz",
         preamp_gain="4x",
-        shutter="Closed (dark)",
     )
     assert group.to_readout() == SpectrumReadout(
         exposure_s=0.1,
@@ -30,7 +32,6 @@ def test_labels_map_to_device_values():
         em_gain=50,
         readout_mhz=1.0,
         preamp_gain=4.0,
-        shutter="closed",
     )
 
 
@@ -57,3 +58,10 @@ def test_clipping_scales_with_accumulations():
     counts = np.array([300, 65535], dtype=np.int32)
     assert clipped(counts, 1)
     assert not clipped(counts, 2)
+
+
+def test_saturation_stops_only_on_the_em_amplifier():
+    readout = CcdReadoutGroup().to_readout()
+    check_em_safe(readout)
+    with pytest.raises(AndorError, match="EM amplifier"):
+        check_em_safe(replace(readout, amplifier="em"))

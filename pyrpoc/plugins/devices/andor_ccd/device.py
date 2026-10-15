@@ -5,8 +5,15 @@ The session stays open between runs because Initialize takes seconds and
 cooling takes minutes; the app opens it at launch and closes it on exit, and
 the sensor stays cold after that (see ``COOLER_MAINTAIN_ON_SHUTDOWN``).
 
-The camera has no shutter of its own. The Kymera's shutter is set to BNC
-mode, so it follows the camera's shutter TTL and ``SetShutter`` drives it.
+The camera has no shutter of its own, and pyrpoc does not shutter: the
+camera's shutter output is held open so nothing moves during acquisition.
+The Kymera's shutter is in BNC mode, meant to follow that output, but on this
+rig open, closed and auto all passed the same light, so the output does not
+reach the shutter in this light path. Dark spectra are taken by blocking the
+light.
+
+TODO(kymera): take the Kymera's shutter out of BNC mode and drive it over USB
+with ATSpectrographSetShutter, so closing it is a deliberate, verified action.
 
 TODO(kymera): control the Kymera 328i (KY-4105) through
 ``Andor SDK/ATSpectrograph/x64/atspectrograph.dll``. Found on this rig: it
@@ -34,11 +41,11 @@ if TYPE_CHECKING:  # pragma: no cover
 
 ReadMode = Literal["fvb", "single_track"]
 Amplifier = Literal["em", "conventional"]
-ShutterMode = Literal["auto", "open", "closed"]
 
 READ_MODES: dict[ReadMode, int] = {"fvb": 0, "single_track": 3}
 AMPLIFIERS: dict[Amplifier, int] = {"em": 0, "conventional": 1}
-SHUTTER_MODES: dict[ShutterMode, int] = {"auto": 0, "open": 1, "closed": 2}
+# SetShutter(TTL high, permanently open, no closing or opening delay).
+SHUTTER_HELD_OPEN = (1, 1, 0, 0)
 ACQ_SINGLE = 1
 ACQ_ACCUMULATE = 2
 TRIGGER_INTERNAL = 0
@@ -65,23 +72,6 @@ class AndorCcdConfig(P.Group):
         maximum=-10,
         tooltip="Set at connect; Set Temperature applies a change",
     )
-    shutter_ttl_high: bool = P.bool_field(
-        "Shutter Opens on TTL High", True, tooltip="Polarity of the camera's shutter output"
-    )
-    shutter_open_ms: int = P.int_field(
-        "Shutter Opening (ms)",
-        10,
-        minimum=0,
-        maximum=1000,
-        tooltip="Time the shutter takes to open",
-    )
-    shutter_close_ms: int = P.int_field(
-        "Shutter Closing (ms)",
-        10,
-        minimum=0,
-        maximum=1000,
-        tooltip="Time the shutter takes to close",
-    )
 
 
 @dataclass(frozen=True)
@@ -97,7 +87,6 @@ class SpectrumReadout:
     em_gain: int
     readout_mhz: float
     preamp_gain: float
-    shutter: ShutterMode
 
 
 @dataclass(frozen=True)
@@ -191,7 +180,8 @@ class AndorCCD(Device):
         session = self.require_session()
         self.apply_acquisition(session, readout)
         self.apply_amplifier(session, readout)
-        self.apply_shutter(session, readout.shutter)
+        # Every run, so a shutter mode left behind by other software is undone.
+        session.check("SetShutter", *SHUTTER_HELD_OPEN)
         session.check("SetExposureTime", readout.exposure_s)
         exposure, accumulate, kinetic = session.floats("GetAcquisitionTimings", count=3)
         return AcceptedTimings(exposure, accumulate, kinetic)
@@ -230,16 +220,6 @@ class AndorCCD(Device):
             if not low <= readout.em_gain <= high:
                 raise AndorError(f"EM gain must be within {low}..{high}, not {readout.em_gain}")
             session.check("SetEMCCDGain", readout.em_gain)
-
-    def apply_shutter(self, session: AndorSession, mode: ShutterMode) -> None:
-        config = self.config
-        session.check(
-            "SetShutter",
-            1 if config.shutter_ttl_high else 0,
-            SHUTTER_MODES[mode],
-            config.shutter_close_ms,
-            config.shutter_open_ms,
-        )
 
     def acquire(self, sleep: Callable[[float], None]) -> np.ndarray:
         """One spectrum of ``width`` int32 counts, as configured. A program

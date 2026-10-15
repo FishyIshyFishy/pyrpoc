@@ -1,4 +1,4 @@
-"""How the CCD reads a spectrum: exposure, binning, amplifier and shutter."""
+"""How the CCD reads a spectrum: exposure, binning and amplifier."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import ClassVar
 
 from pyrpoc.plugins.devices import SpectrumReadout
-from pyrpoc.plugins.devices.andor_ccd.device import Amplifier, ReadMode, ShutterMode
+from pyrpoc.plugins.devices.andor_ccd.device import Amplifier, ReadMode
 from pyrpoc.structs.plugins.params import Group, block, choice_field, float_field, int_field
 
 # Menu labels mapped to the device's values; the labels are what sessions save.
@@ -14,7 +14,6 @@ READ_MODES: dict[str, ReadMode] = {"Full vertical binning": "fvb", "Single track
 AMPLIFIERS: dict[str, Amplifier] = {"Conventional": "conventional", "EM": "em"}
 READOUT_RATES: dict[str, float] = {"0.05 MHz": 0.05, "1 MHz": 1.0, "3 MHz": 3.0}
 PREAMP_GAINS: dict[str, float] = {"1x": 1.0, "2x": 2.0, "4x": 4.0}
-SHUTTERS: dict[str, ShutterMode] = {"Auto": "auto", "Open": "open", "Closed (dark)": "closed"}
 
 
 @block
@@ -52,12 +51,6 @@ class CcdReadoutGroup(Group):
         tooltip="Slower reads with less noise",
     )
     preamp_gain: str = choice_field("Preamp Gain", "1x", choices=PREAMP_GAINS)
-    shutter: str = choice_field(
-        "Shutter",
-        "Auto",
-        choices=SHUTTERS,
-        tooltip="Auto opens it for each exposure; Closed takes a dark spectrum",
-    )
 
     def to_readout(self) -> SpectrumReadout:
         return SpectrumReadout(
@@ -70,5 +63,4 @@ class CcdReadoutGroup(Group):
             em_gain=self.em_gain,
             readout_mhz=READOUT_RATES[self.readout_rate],
             preamp_gain=PREAMP_GAINS[self.preamp_gain],
-            shutter=SHUTTERS[self.shutter],
         )

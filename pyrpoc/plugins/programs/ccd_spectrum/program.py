@@ -10,7 +10,7 @@ from dataclasses import asdict
 
 import numpy as np
 
-from pyrpoc.plugins.devices import AndorCCD
+from pyrpoc.plugins.devices import AndorCCD, AndorError, SpectrumReadout
 from pyrpoc.plugins.devices.andor_ccd.device import clipped
 from pyrpoc.structs.data_library.data import Spectrum1D
 from pyrpoc.structs.plugins.programs.program import (
@@ -23,6 +23,16 @@ from pyrpoc.structs.plugins.programs.program import (
 from ..building_blocks.functions.run_loops import count_off
 from ..building_blocks.parameter_groups import CcdReadoutGroup, FrameCountGroup
 from ..building_blocks.runners import Continuous, Single
+
+
+def check_em_safe(readout: SpectrumReadout) -> None:
+    """Saturating through the EM register ages the sensor, so the run stops
+    rather than repeating it; on the conventional amplifier it is only clipping."""
+    if readout.amplifier == "em":
+        raise AndorError(
+            f"spectrum saturated on the EM amplifier at gain {readout.em_gain}; stopped to "
+            "protect the sensor. Lower the gain or exposure, or use the conventional amplifier"
+        )
 
 
 @program_registry.register("ccd_spectrum")
@@ -49,6 +59,7 @@ class CcdSpectrum(Program):
                 counts = ccd.acquire(ctx.sleep)
                 ctx.publish("spectrum", counts[None, :].astype(np.float32), channels=["ccd"])
                 if clipped(counts, readout.accumulations):
+                    check_em_safe(readout)
                     ctx.status(f"spectrum {index + 1}/{frames} saturated")
         except Cancelled:
             ccd.abort()
