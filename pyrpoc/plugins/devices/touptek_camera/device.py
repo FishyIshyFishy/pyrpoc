@@ -51,6 +51,7 @@ class ToupcamCamera(Device):
         super().__init__(instance_id=instance_id, user_label=user_label)
         self.session: ToupcamSession | None = None
         self.exposure_s = 0.0
+        self.drop_next = False
 
     def summary(self) -> str:
         if self.session is None:
@@ -95,11 +96,21 @@ class ToupcamCamera(Device):
         # Index 1 is the camera's 2x2-binned size; index 0 is full frame.
         session.start(1 if binned else 0, exposure_us, gain_pct)
         self.exposure_s = exposure_us / 1e6
+        # The first frame after a start is often a dark frame (black level and
+        # noise, no image), so the first grab drops it.
+        self.drop_next = True
 
     def grab(self, sleep: Callable[[float], None]) -> np.ndarray:
         """The next frame as ``(H, W, 3)`` uint8, in the SDK's channel order.
         A program passes ``ctx.sleep`` so a stopped run interrupts the wait;
         its ``finally`` should then call ``stop()``."""
+        if self.drop_next:
+            self.read_frame(sleep)
+            self.drop_next = False
+        return self.read_frame(sleep)
+
+    def read_frame(self, sleep: Callable[[float], None]) -> np.ndarray:
+        """The next frame the camera delivers, whatever it holds."""
         session = self.require_session()
         width, height = session.frame_size()
         buffer = np.empty(row_pitch(width) * height, dtype=np.uint8)

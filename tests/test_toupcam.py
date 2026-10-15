@@ -1,14 +1,21 @@
 """The ToupTek camera's hardware-free parts: frame unpacking, error naming,
-camera choice, and the greyscale reduction Brightfield publishes."""
+camera choice, dropping the dark frame after a start, and the greyscale
+reduction Brightfield publishes."""
 
 from __future__ import annotations
+
+import threading
+import time
+from typing import cast
 
 import numpy as np
 import pytest
 
+from pyrpoc.plugins.devices.touptek_camera.device import ToupcamCamera
 from pyrpoc.plugins.devices.touptek_camera.sdk import (
     CameraInfo,
     ToupcamError,
+    ToupcamSession,
     describe_hresult,
     find_camera,
     row_pitch,
@@ -60,3 +67,41 @@ def test_grey_is_a_one_channel_image():
     assert grey.dtype == np.float32
     assert np.allclose(grey, 10.0)
     Image2D.validate(grey)
+
+
+class FakeSession:
+    """Delivers numbered 2x2 frames, each filled with its number, one per pull."""
+
+    def __init__(self):
+        self.frame_ready = threading.Event()
+        self.frame_ready.set()
+        self.fault = None
+        self.pulled = 0
+
+    def exposure_range_us(self):
+        return 100, 2_000_000
+
+    def gain_range_pct(self):
+        return 100, 300
+
+    def start(self, size_index, exposure_us, gain_pct):
+        pass
+
+    def frame_size(self):
+        return 2, 2
+
+    def pull(self, buffer):
+        buffer[:] = self.pulled
+        self.pulled += 1
+        self.frame_ready.set()
+        return 2, 2
+
+
+def test_first_frame_after_start_is_dropped():
+    camera = ToupcamCamera()
+    camera.session = cast(ToupcamSession, FakeSession())
+    camera.start(exposure_us=10_000, gain_pct=100, binned=False)
+    assert camera.grab(time.sleep)[0, 0, 0] == 1
+    assert camera.grab(time.sleep)[0, 0, 0] == 2
+    camera.start(exposure_us=10_000, gain_pct=100, binned=False)
+    assert camera.grab(time.sleep)[0, 0, 0] == 4
