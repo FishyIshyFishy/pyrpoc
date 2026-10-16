@@ -1,6 +1,6 @@
-"""Autofocus: scan one region at each z, score it by Tenengrad, and climb the
-Prior's focus drive to the sharpest z. Each region frame is published as it is
-taken, so the climb can be watched."""
+"""Autofocus: scan one region at each z, score it by Tenengrad, and search the
+Prior's focus drive for the sharpest z. Each region frame is published as it is
+taken, so the search can be watched."""
 
 from __future__ import annotations
 
@@ -20,8 +20,8 @@ from pyrpoc.structs.plugins.programs.program import (
 
 from ..building_blocks.parameter_groups import DaqGroup, FocusSearchGroup, RoiGroup, ScanGroup
 from ..building_blocks.runners import Single
-from .climb import ClimbResult, ClimbStep, climb
 from .roi_scan import RoiRaster
+from .search import FocusResult, FocusStep, search_focus
 from .tenengrad import tenengrad
 
 
@@ -39,7 +39,7 @@ def return_to_start(stage: PriorStage, start_z_um: float) -> None:
 
 
 class FocusRun:
-    """One climb's measurements and what it records of them."""
+    """One search's measurements and what it records of them."""
 
     def __init__(self, ctx: RunContext, stage: PriorStage, raster: RoiRaster, start_z_um: float):
         self.ctx = ctx
@@ -47,27 +47,30 @@ class FocusRun:
         self.raster = raster
         self.history: dict[str, Any] = {"start_z_um": start_z_um, "steps": []}
 
-    def measure(self, z_um: float) -> float:
+    def move(self, z_um: float) -> None:
         self.ctx.check_cancel()
         move_z(self.stage, z_um, self.ctx.sleep)
+
+    def measure(self, z_um: float) -> float:
+        self.move(z_um)
         frame = self.raster.frame()
         self.ctx.publish("intensity", frame, channels=self.raster.channel_labels)
         return tenengrad(frame, self.raster.weights)
 
-    def report(self, step: ClimbStep) -> None:
+    def report(self, step: FocusStep) -> None:
         # Recorded every step, so a run cut short still says where it went.
         self.history["steps"].append(asdict(step))
         self.ctx.describe("intensity", autofocus=self.history)
-        self.ctx.status(
-            f"z {step.z_um:.2f} µm · tenengrad {step.metric:.4g} · step {step.step_um:g} µm"
-        )
+        self.ctx.status(f"{step.phase}: z {step.z_um:.2f} µm · tenengrad {step.metric:.4g}")
 
-    def finish(self, result: ClimbResult) -> None:
-        self.history.update(
-            best_z_um=result.best_z_um, best_metric=result.best_metric, at_edge=result.at_edge
-        )
+    def finish(self, result: FocusResult | None, search_range_um: float) -> None:
+        if result is None:
+            self.history.update(found=False)
+            self.ctx.describe("intensity", autofocus=self.history)
+            self.ctx.status(f"no focus found within ±{search_range_um:g} µm; back at the start")
+            return
+        self.history.update(found=True, **asdict(result))
         self.ctx.describe("intensity", autofocus=self.history)
-        move_z(self.stage, result.best_z_um, self.ctx.sleep)
         if result.at_edge:
             self.ctx.status(
                 f"stopped at the search range's edge, z {result.best_z_um:.2f} µm: "
@@ -97,8 +100,9 @@ class Autofocus(Program):
         start_z_um = stage.z_position()
         focus = FocusRun(ctx, stage, raster, start_z_um)
         try:
-            result = climb(focus.measure, focus.report, start_z_um, ctx.params[FocusSearchGroup])
-            focus.finish(result)
+            search = ctx.params[FocusSearchGroup]
+            result = search_focus(focus.measure, focus.move, focus.report, start_z_um, search)
+            focus.finish(result, search.search_range_um)
         except (Cancelled, DaqError, PriorError):
             return_to_start(stage, start_z_um)
             raise

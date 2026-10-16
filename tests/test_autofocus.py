@@ -10,7 +10,6 @@ import cv2
 import numpy as np
 import pytest
 
-from pyrpoc.plugins.programs.autofocus.climb import ClimbResult, ClimbStep, climb
 from pyrpoc.plugins.programs.autofocus.roi_scan import (
     Box,
     metric_weights,
@@ -18,6 +17,12 @@ from pyrpoc.plugins.programs.autofocus.roi_scan import (
     roi_region,
     roi_waveform,
     row_spans,
+)
+from pyrpoc.plugins.programs.autofocus.search import (
+    FocusResult,
+    FocusStep,
+    fit_peak,
+    search_focus,
 )
 from pyrpoc.plugins.programs.autofocus.tenengrad import tenengrad
 from pyrpoc.plugins.programs.building_blocks.functions.galvo_raster import raster_waveform
@@ -30,7 +35,9 @@ from pyrpoc.plugins.programs.building_blocks.parameter_groups import (
 )
 from pyrpoc.structs.plugins.params import ParameterError
 
-SEARCH = FocusSearchGroup(search_range_um=50.0, initial_step_um=5.0, plateau_pct=1.0)
+SEARCH = FocusSearchGroup(
+    search_range_um=50.0, coarse_step_um=5.0, fine_step_um=0.5, min_contrast=2.0
+)
 
 
 def small_scan() -> ScanGroup:
@@ -56,34 +63,108 @@ def u_shape() -> np.ndarray:
     return region
 
 
-def run_climb(metric: Callable[[float], float]) -> tuple[list[ClimbStep], ClimbResult]:
-    steps: list[ClimbStep] = []
-    result = climb(metric, steps.append, 0.0, SEARCH)
-    return steps, result
+class Drive:
+    """A focus drive over a known curve, recording every z it is sent to."""
+
+    def __init__(self, curve: Callable[[float], float]):
+        self.curve = curve
+        self.moves: list[float] = []
+        self.steps: list[FocusStep] = []
+
+    def measure(self, z_um: float) -> float:
+        self.moves.append(z_um)
+        return self.curve(z_um)
+
+    def search(self, search: FocusSearchGroup) -> FocusResult | None:
+        return search_focus(self.measure, self.moves.append, self.steps.append, 0.0, search)
 
 
-def test_climb_converges_on_a_peak_inside_the_range() -> None:
-    steps, result = run_climb(lambda z: math.exp(-((z - 7.3) ** 2) / 200.0))
-    assert abs(result.best_z_um - 7.3) < 1.0
+def focus_at(
+    center_um: float, width_um: float, rng: np.random.Generator
+) -> Callable[[float], float]:
+    """A Gaussian focus peak over a floor, with a little noise on each frame."""
+
+    def curve(z_um: float) -> float:
+        peak = 10.0 * math.exp(-((z_um - center_um) ** 2) / (2.0 * width_um**2))
+        return 1.0 + peak + 0.02 * float(rng.standard_normal())
+
+    return curve
+
+
+def test_a_focus_far_from_the_start_is_found() -> None:
+    drive = Drive(focus_at(30.0, 3.0, np.random.default_rng(0)))
+    result = drive.search(SEARCH)
+    assert result is not None
+    assert abs(result.best_z_um - 30.0) < SEARCH.fine_step_um / 2.0
     assert not result.at_edge
-    assert steps[0] == ClimbStep(0.0, math.exp(-(7.3**2) / 200.0), 0.0)
-    assert all(abs(step.z_um) <= SEARCH.search_range_um for step in steps)
+    assert all(abs(z) <= SEARCH.search_range_um for z in drive.moves)
 
 
-def test_climb_stops_at_the_range_edge_when_still_rising() -> None:
-    search = FocusSearchGroup(search_range_um=12.0, initial_step_um=5.0, plateau_pct=1.0)
-    visited: list[float] = []
-    result = climb(lambda z: z + 100.0, lambda step: visited.append(step.z_um), 0.0, search)
+def test_a_focus_near_the_start_stops_the_outward_search_early() -> None:
+    drive = Drive(focus_at(2.0, 3.0, np.random.default_rng(1)))
+    result = drive.search(SEARCH)
+    assert result is not None
+    bracket = [step for step in drive.steps if step.phase == "bracket"]
+    # A full coarse sweep of the range would be 21 frames.
+    assert len(bracket) <= 5
+
+
+def test_no_focus_in_the_range_returns_to_the_start() -> None:
+    rng = np.random.default_rng(2)
+    drive = Drive(lambda z: 1.0 + 0.02 * float(rng.standard_normal()))
+    assert drive.search(SEARCH) is None
+    assert drive.moves[-1] == 0.0
+    assert {step.phase for step in drive.steps} == {"bracket"}
+
+
+def test_a_peak_beyond_the_range_stops_at_its_edge() -> None:
+    search = FocusSearchGroup(
+        search_range_um=12.0, coarse_step_um=5.0, fine_step_um=0.5, min_contrast=2.0
+    )
+    result = Drive(lambda z: math.exp(z / 3.0)).search(search)
+    assert result is not None
     assert result.at_edge
     assert result.best_z_um == 12.0
-    assert visited == [0.0, 5.0, 10.0, 12.0]
 
 
-def test_climb_on_a_flat_metric_refines_once_then_stops() -> None:
-    steps, result = run_climb(lambda z: 1.0)
-    assert result.best_z_um == 0.0
-    assert not result.at_edge
-    assert [step.z_um for step in steps] == [0.0, 5.0, -5.0, 2.5, -2.5]
+def test_of_two_peaks_the_nearer_is_chosen() -> None:
+    near = focus_at(-12.0, 3.0, np.random.default_rng(3))
+    far = focus_at(35.0, 3.0, np.random.default_rng(4))
+    result = Drive(lambda z: near(z) + far(z) - 1.0).search(SEARCH)
+    assert result is not None
+    assert abs(result.best_z_um + 12.0) < SEARCH.fine_step_um
+
+
+def test_the_fine_sweep_and_the_final_move_only_go_up() -> None:
+    drive = Drive(focus_at(-8.0, 3.0, np.random.default_rng(5)))
+    result = drive.search(SEARCH)
+    assert result is not None
+    refine = [step.z_um for step in drive.steps if step.phase == "refine"]
+    assert refine == sorted(refine)
+    assert drive.moves[-2] < drive.moves[-1] == result.best_z_um
+
+
+def test_fine_must_be_finer_than_coarse() -> None:
+    search = FocusSearchGroup(
+        search_range_um=50.0, coarse_step_um=1.0, fine_step_um=1.0, min_contrast=2.0
+    )
+    with pytest.raises(ParameterError, match="fine step"):
+        Drive(lambda z: 1.0).search(search)
+
+
+def test_the_fit_recovers_a_gaussian_vertex() -> None:
+    steps = [
+        FocusStep(z, 5.0 * math.exp(-((z - 1.23) ** 2) / 8.0), "refine")
+        for z in np.arange(-4.0, 6.0, 0.5)
+    ]
+    vertex = fit_peak(steps)
+    assert vertex is not None
+    assert vertex == pytest.approx(1.23, abs=1e-6)
+
+
+def test_the_fit_refuses_a_flat_or_falling_curve() -> None:
+    assert fit_peak([FocusStep(z, 1.0, "refine") for z in (0.0, 1.0, 2.0, 3.0)]) is None
+    assert fit_peak([FocusStep(z, 10.0 - z, "refine") for z in (0.0, 1.0, 2.0, 3.0)]) is None
 
 
 def test_the_centre_rectangle_is_the_fraction_of_the_grid() -> None:
