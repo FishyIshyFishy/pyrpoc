@@ -112,5 +112,4 @@ Folder names are not saved anywhere:
 - **Saved sessions** store registry keys like `"image_2d"`.
 - **Recordings** follow [data-format.md](data-format.md).
 
-Moving code around never breaks either. `tests/` loads a committed recording of
-every format version on every commit.
+Moving code around never breaks either.

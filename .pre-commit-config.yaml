@@ -30,4 +30,4 @@ repos:
         entry: uv run lint-imports
         types: [python]
         pass_filenames: false
-      # pyright and pytest are slower; they run in CI (.github/workflows/ci.yml).
+      # pyright is slower; it runs in CI (.github/workflows/ci.yml).

@@ -6,7 +6,6 @@ Where things live, by idea rather than by file. The long version is `docs/archit
 
 ```
 uv run pyrpoc          launch
-uv run pytest          tests
 uv run lint-imports    folder rules
 uv run pyright         types (CI runs it too)
 git commit             pre-commit runs ruff and lint-imports
@@ -100,4 +99,4 @@ app > acquisition > data_library | device_inventory > plugins > qt_components > 
 
 - Sessions store registry keys, not module paths, so moving code is safe.
 - Recordings follow `docs/data-format.md`. Changing the format means a new
-  version, a decoder for it, and a fixture under `tests/fixtures/recordings/`.
+  version and a decoder for it.

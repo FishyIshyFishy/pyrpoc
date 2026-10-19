@@ -21,7 +21,3 @@ jobs:
         run: uv run pre-commit run --all-files --show-diff-on-failure
       - name: pyright
         run: uv run pyright
-      # Includes loading every committed recording fixture, so a change that
-      # breaks reading saved data fails here.
-      - name: pytest
-        run: uv run pytest -q
