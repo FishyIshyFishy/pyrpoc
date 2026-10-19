@@ -8,23 +8,25 @@ from __future__ import annotations
 
 from pyrpoc.structs.plugins.programs.program import program_registry
 
-from .ccd_spectrum.program import CcdSpectrum
 from .confocal.program import Confocal
 from .flim.program import FLIM
+from .galvo_pinpoint.program import GalvoPinpoint
 from .mosaic.program import Mosaic
 from .mosaic_simulation.program import MosaicSimulation
 from .pinpoint_raman.program import PinpointRaman
+from .raman.program import Raman
 from .simulation.program import Simulation
 from .split_confocal.program import SplitConfocal
 
 __all__ = [
     "program_registry",
-    "CcdSpectrum",
     "Confocal",
     "SplitConfocal",
     "FLIM",
+    "GalvoPinpoint",
     "Mosaic",
     "MosaicSimulation",
     "PinpointRaman",
+    "Raman",
     "Simulation",
 ]

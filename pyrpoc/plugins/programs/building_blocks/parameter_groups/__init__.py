@@ -18,7 +18,6 @@ from .point import Point, PointField, PointGroup
 from .scan import ScanGroup
 from .signal import PATTERNS, SignalGroup
 from .specimen import SpecimenGroup
-from .spectrum import SpectrumGroup
 from .split import SplitGroup
 from .trigger import TriggerGroup
 
@@ -40,7 +39,6 @@ __all__ = [
     "ScanGroup",
     "SignalGroup",
     "SpecimenGroup",
-    "SpectrumGroup",
     "SplitGroup",
     "Tile",
     "TriggerGroup",
