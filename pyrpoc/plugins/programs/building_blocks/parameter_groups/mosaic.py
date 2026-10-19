@@ -54,7 +54,7 @@ class MosaicGroup(Group):
 
     def layout_metadata(self, tiles: list[Tile]) -> dict[str, Any]:
         """The ``mosaic`` entry of an output's metadata, laid out as
-        ``docs/data-format.md`` promises; the Mosaic panel reads it back."""
+        ``docs/internal/data-format.md`` promises; the Mosaic panel reads it back."""
         return {
             "path": "snake",
             "x_tiles": self.x_tiles,

@@ -1,7 +1,7 @@
 """Reading a mosaic's layout from an output's metadata.
 
 The program that moved the stage wrote it under ``"mosaic"``, in the shape
-``docs/data-format.md`` documents; that document is the only thing the program
+``docs/internal/data-format.md`` documents; that document is the only thing the program
 and this panel share. Only what placing tiles needs is read: each tile's frame
 index and grid cell. Stage positions are kept on disk for people, not used here.
 """

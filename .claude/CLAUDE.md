@@ -1,6 +1,6 @@
 # pyrpoc
 
-## Architecture (enforced by `uv run lint-imports`; the map is `docs/architecture.md`)
+## Architecture (enforced by `uv run lint-imports`; the map is `docs/internal/architecture.md`)
 - `structs/`: the vocabulary, one noun per file, mirroring the package: nouns implemented in `pyrpoc/X/` live in `structs/X/`. Imports nothing else from pyrpoc; Qt only in `plugins/data_panels.py`.
 - `plugins/{devices,programs,data_panels}/`: things you add more of. Each knows only `structs/` and `qt_components/`.
   - `programs/` may import `devices/`; `programs/` and `data_panels/` never import each other.

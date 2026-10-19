@@ -56,4 +56,4 @@ uv tool upgrade pyrpoc
    uv run pyrpoc
    ```
 
-4. To type check, use `uv run pyright`. When dependencies change, adjust `pyproject.toml` and rerun `uv sync`. To add packages, use `uv add <package-name>`. To add a dev only package, use `uv add -dev <package-name>`.
+4. To type check, use `uv run pyright`. When dependencies change, adjust `pyproject.toml` and rerun `uv sync`. To add packages, use `uv add <package-name>`. To add a dev only package, use `uv add --dev <package-name>`.

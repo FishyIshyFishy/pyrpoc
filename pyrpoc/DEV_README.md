@@ -1,6 +1,6 @@
 # pyrpoc dev refresher
 
-Where things live, by idea rather than by file. The long version is `docs/architecture.md`.
+Where things live, by idea rather than by file. The long version is `docs/internal/architecture.md`.
 
 ## Commands
 
@@ -98,5 +98,5 @@ app > acquisition > data_library | device_inventory > plugins > qt_components > 
 ## Don't break on disk
 
 - Sessions store registry keys, not module paths, so moving code is safe.
-- Recordings follow `docs/data-format.md`. Changing the format means a new
+- Recordings follow `docs/internal/data-format.md`. Changing the format means a new
   version and a decoder for it.
