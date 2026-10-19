@@ -2,7 +2,7 @@
 
 Autofocus currently publishes only its region frames. Each step's z and
 Tenengrad score go to the status line and into the `autofocus` metadata of the
-`intensity` output (`steps: [{z_um, metric, phase}, ...]`). This page
+`intensity` output (`steps: [{z_um, metric, step_um}, ...]`). This page
 describes how to also show the score against z live, as a curve. It is a small
 change that touches no subsystem.
 
@@ -33,10 +33,9 @@ change that touches no subsystem.
 3. **A panel** in `plugins/data_panels/curve/`, with `renders = [Curve1D]`.
    `show_frame` stacks `dataset.frames()` and plots `x` against `y` for each
    channel.
-   - The `bracket` phase visits z alternately above and below the start, so
-     draw its points as a scatter. Do not join them in visit order. The
-     `refine` phase sweeps upward and can be drawn as a line. Colour the
-     points by `phase`.
+   - The hill climb visits z out of order, overshooting and coming back. Draw
+     the points as a scatter, optionally joined in visit order so the path of
+     the climb shows. Do not join them sorted by z.
    - Mark the best point.
 4. **The program.**
    - Add `"focus_curve": Curve1D` to `Autofocus.emits`.

@@ -9,6 +9,7 @@ from __future__ import annotations
 from pyrpoc.structs.plugins.programs.program import program_registry
 
 from .autofocus.program import Autofocus
+from .brightfield.program import Brightfield
 from .confocal.program import Confocal
 from .flim.program import FLIM
 from .galvo_pinpoint.program import GalvoPinpoint
@@ -33,4 +34,5 @@ __all__ = [
     "Raman",
     "RoiSpectralSeries",
     "Simulation",
+    "Brightfield",
 ]
