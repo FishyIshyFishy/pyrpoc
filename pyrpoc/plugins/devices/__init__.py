@@ -15,6 +15,8 @@ from .galvo.device import Galvo
 from .prior_stage.device import PriorStage
 from .prior_stage.sdk import PriorError
 from .time_tagger.device import FlimMeasurement, TaggerError, TimeTagger
+from .touptek_camera.device import ToupcamCamera
+from .touptek_camera.sdk import ToupcamError
 
 __all__ = [
     "Device",
@@ -30,4 +32,6 @@ __all__ = [
     "SpectrumReadout",
     "TaggerError",
     "TimeTagger",
+    "ToupcamCamera",
+    "ToupcamError",
 ]

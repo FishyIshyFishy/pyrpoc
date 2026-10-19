@@ -6,6 +6,7 @@ package registers every block, so a session can name any of them.
 
 from __future__ import annotations
 
+from .camera import CameraGroup
 from .ccd_readout import CcdReadoutGroup
 from .daq import DaqGroup
 from .focus_search import FocusSearchGroup
@@ -24,6 +25,7 @@ from .split import SplitGroup
 from .trigger import TriggerGroup
 
 __all__ = [
+    "CameraGroup",
     "CcdReadoutGroup",
     "DaqGroup",
     "FocusSearchGroup",
