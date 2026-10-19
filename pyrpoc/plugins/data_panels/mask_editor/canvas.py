@@ -49,6 +49,9 @@ class MaskImageView(QGraphicsView):
         self._drawing = False
         self._current_points: list[QPointF] = []
         self._live_path_item: QGraphicsPathItem | None = None
+        # Kept here, not read back from the item: the item drops a path that is
+        # only its start point, so the first segment would start at the origin.
+        self._live_path = QPainterPath()
         self._path_pen = QPen(
             QColor(255, 80, 80), 2, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap
         )
@@ -70,7 +73,8 @@ class MaskImageView(QGraphicsView):
         self._drawing = True
         self._current_points = [scene_pos]
         self.clear_live_path()
-        self._live_path_item = QGraphicsPathItem(QPainterPath(scene_pos))
+        self._live_path = QPainterPath(scene_pos)
+        self._live_path_item = QGraphicsPathItem()
         self._live_path_item.setPen(self._path_pen)
         self.gscene.addItem(self._live_path_item)
 
@@ -80,9 +84,8 @@ class MaskImageView(QGraphicsView):
             return
         scene_pos = self.editor.clamp_scene_point(self.mapToScene(event.pos()))
         self._current_points.append(scene_pos)
-        path = self._live_path_item.path()
-        path.lineTo(scene_pos)
-        self._live_path_item.setPath(path)
+        self._live_path.lineTo(scene_pos)
+        self._live_path_item.setPath(self._live_path)
 
     def mouseReleaseEvent(self, event: QMouseEvent | None) -> None:
         if event is None or event.button() != Qt.MouseButton.LeftButton or not self._drawing:
