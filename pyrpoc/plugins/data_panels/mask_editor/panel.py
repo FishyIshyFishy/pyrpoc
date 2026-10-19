@@ -43,7 +43,7 @@ from pyrpoc.structs.data_library.dataset import Dataset, Origin, Provenance, utc
 from pyrpoc.structs.data_library.library import Library
 from pyrpoc.structs.plugins.data_panels import DataPanel, data_panel_registry
 
-from .canvas import MaskImageView, MaskRoi
+from .canvas import MaskImageView, MaskRoi, Threshold
 from .dialog import RoiThresholdDialog
 
 CHANNEL_COLORS = tuple(
@@ -117,7 +117,14 @@ class MaskEditorPanel(DataPanel):
 
     def build_threshold_row(self) -> QHBoxLayout:
         """One span read left to right: each number is the handle beside it,
-        and the accented groove between them is what is kept."""
+        and the accented groove between them is what is kept. Off by default,
+        so a drawn shape is the mask unless a threshold is asked for."""
+        self.apply_thresholds = QCheckBox("Apply thresholds", self)
+        self.apply_thresholds.setToolTip(
+            "On: an ROI drawn now keeps only the pixels inside the span. "
+            "Off: it keeps every pixel of the drawn shape."
+        )
+        self.apply_thresholds.toggled.connect(self.on_apply_thresholds_toggled)
         self.low_spin = QSpinBox(self)
         self.high_spin = QSpinBox(self)
         for spin in (self.low_spin, self.high_spin):
@@ -128,11 +135,22 @@ class MaskEditorPanel(DataPanel):
         self.threshold_slider.setToolTip("Pixels inside the accented span count toward the mask.")
         self.threshold_slider.values_changed.connect(self.on_slider_changed)
 
+        self.enable_threshold_controls(False)
+
         row = QHBoxLayout()
+        row.addWidget(self.apply_thresholds)
         row.addWidget(self.low_spin)
         row.addWidget(self.threshold_slider, 1)
         row.addWidget(self.high_spin)
         return row
+
+    def enable_threshold_controls(self, enabled: bool) -> None:
+        for control in (self.low_spin, self.high_spin, self.threshold_slider):
+            control.setEnabled(enabled)
+
+    def on_apply_thresholds_toggled(self, checked: bool) -> None:
+        self.enable_threshold_controls(checked)
+        self.update_view_image()
 
     def build_name_row(self) -> QHBoxLayout:
         row = QHBoxLayout()
@@ -293,7 +311,9 @@ class MaskEditorPanel(DataPanel):
             display += norm[..., None] * CHANNEL_COLORS[idx % len(CHANNEL_COLORS)] * 0.65
             active |= (channel >= low) & (channel <= high)
         display = np.clip(display, 0, 255)
-        display[active] = 255
+        # Whitening shows what a threshold keeps; with none, the image is left plain.
+        if self.apply_thresholds.isChecked():
+            display[active] = 255
 
         rgb = display.astype(np.uint8)
         qimg = QImage(rgb.tobytes(), self._w, self._h, 3 * self._w, QImage.Format.Format_RGB888)
@@ -306,15 +326,11 @@ class MaskEditorPanel(DataPanel):
         points, which is not a region."""
         if len(points) < 3:
             return
-        low, high = self.coerced_thresholds()
-        self._rois.append(
-            MaskRoi(
-                points=points,
-                threshold_low=float(low),
-                threshold_high=float(high),
-                active_channels=self._channel_visibility.copy(),
-            )
-        )
+        threshold = None
+        if self.apply_thresholds.isChecked():
+            low, high = self.coerced_thresholds()
+            threshold = Threshold(float(low), float(high), self._channel_visibility.copy())
+        self._rois.append(MaskRoi(points=points, threshold=threshold))
         self.sync_rois()
 
     def sync_rois(self) -> None:
@@ -322,11 +338,7 @@ class MaskEditorPanel(DataPanel):
         by position, so editing either in place would put them out of step."""
         self.roi_table.setRowCount(len(self._rois))
         for row, roi in enumerate(self._rois):
-            channels = ",".join(
-                str(i + 1) for i, active in enumerate(roi.active_channels) if active
-            )
-            cells = (f"{roi.threshold_low:.1f}", f"{roi.threshold_high:.1f}", channels or "-")
-            for col, text in enumerate(cells):
+            for col, text in enumerate(threshold_cells(roi.threshold)):
                 item = QTableWidgetItem(text)
                 item.setFlags(Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsEnabled)
                 self.roi_table.setItem(row, col, item)
@@ -343,21 +355,27 @@ class MaskEditorPanel(DataPanel):
         # Connected rather than read from exec()'s return: Qt hides the menu
         # before it emits, so the dialog opens with the menu already gone.
         change = QAction("Change thresholds...", menu)
-        change.triggered.connect(lambda _checked=False, r=row: self.change_roi_thresholds(r))
+        threshold = self._rois[row].threshold
+        if threshold is None:
+            # A shape drawn without thresholds has none to change.
+            change.setEnabled(False)
+        else:
+            change.triggered.connect(
+                lambda _checked=False, r=row, t=threshold: self.change_roi_thresholds(r, t)
+            )
         delete = QAction("Delete", menu)
         delete.triggered.connect(lambda _checked=False, r=row: self.delete_roi(r))
         menu.addActions([change, delete])
         menu.exec(viewport.mapToGlobal(pos))
 
-    def change_roi_thresholds(self, row: int) -> None:
-        dialog = RoiThresholdDialog(self, row)
+    def change_roi_thresholds(self, row: int, threshold: Threshold) -> None:
+        dialog = RoiThresholdDialog(self, row, threshold)
         # A frame of a new shape during the modal dialog clears the ROIs.
         if dialog.exec() != QDialog.DialogCode.Accepted or row >= len(self._rois):
             return
         low, high = dialog.values()
-        self._rois[row] = replace(
-            self._rois[row], threshold_low=float(low), threshold_high=float(high)
-        )
+        changed = replace(threshold, low=float(low), high=float(high))
+        self._rois[row] = replace(self._rois[row], threshold=changed)
         self.sync_rois()
 
     def delete_roi(self, row: int) -> None:
@@ -381,19 +399,7 @@ class MaskEditorPanel(DataPanel):
         the threshold dialog preview an edit before it is written."""
         if not rois:
             return None
-        final_mask = np.zeros((self._h, self._w), dtype=np.uint8)
-        for roi in rois:
-            polygon = np.array(
-                [[int(round(x)), int(round(y))] for x, y in roi.points], dtype=np.int32
-            ).reshape(-1, 1, 2)
-            roi_mask = np.zeros((self._h, self._w), dtype=np.uint8)
-            cv2.fillPoly(roi_mask, [polygon], 255)
-            active = np.zeros((self._h, self._w), dtype=bool)
-            for channel, enabled in zip(self._data, roi.active_channels, strict=False):
-                if enabled:
-                    active |= (channel >= roi.threshold_low) & (channel <= roi.threshold_high)
-            final_mask[(roi_mask == 255) & active] = 255
-        return final_mask
+        return mask_from_rois(rois, self._data)
 
     def preview_mask(self) -> None:
         mask = self.generate_mask(self._rois)
@@ -449,6 +455,42 @@ class MaskEditorPanel(DataPanel):
             QMessageBox.critical(self, "Save Failed", f"Failed to save mask to {path}: {exc}")
             return
         QMessageBox.information(self, "Mask Saved", f"Wrote a mask to {written}.")
+
+
+def mask_from_rois(rois: list[MaskRoi], data: np.ndarray) -> np.ndarray:
+    """The ``(H, W)`` mask ``rois`` draw over a ``(C, H, W)`` frame: each ROI's
+    filled shape, cut to its threshold when it has one."""
+    height, width = data.shape[1:]
+    mask = np.zeros((height, width), dtype=np.uint8)
+    for roi in rois:
+        polygon = np.array(
+            [[int(round(x)), int(round(y))] for x, y in roi.points], dtype=np.int32
+        ).reshape(-1, 1, 2)
+        shape = np.zeros((height, width), dtype=np.uint8)
+        cv2.fillPoly(shape, [polygon], 255)
+        inside = shape == 255
+        if roi.threshold is not None:
+            inside &= in_range(data, roi.threshold)
+        mask[inside] = 255
+    return mask
+
+
+def in_range(data: np.ndarray, threshold: Threshold) -> np.ndarray:
+    """The pixels of a ``(C, H, W)`` frame within ``threshold`` on any of its
+    active channels."""
+    active = np.zeros(data.shape[1:], dtype=bool)
+    for channel, enabled in zip(data, threshold.active_channels, strict=False):
+        if enabled:
+            active |= (channel >= threshold.low) & (channel <= threshold.high)
+    return active
+
+
+def threshold_cells(threshold: Threshold | None) -> tuple[str, str, str]:
+    """An ROI's Low, High and Channels cells; dashes for a shape kept whole."""
+    if threshold is None:
+        return "-", "-", "-"
+    channels = ",".join(str(i + 1) for i, on in enumerate(threshold.active_channels) if on)
+    return f"{threshold.low:.1f}", f"{threshold.high:.1f}", channels or "-"
 
 
 def clear_layout_after(layout: QLayout, keep: int) -> None:

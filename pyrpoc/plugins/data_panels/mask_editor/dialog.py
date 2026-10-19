@@ -21,7 +21,7 @@ from PyQt6.QtWidgets import (
 
 from pyrpoc.plugins.data_panels.mask_editor.range_slider import RangeSlider
 
-from .canvas import MaskRoi
+from .canvas import MaskRoi, Threshold
 
 if TYPE_CHECKING:  # pragma: no cover
     from .panel import MaskEditorPanel
@@ -65,16 +65,17 @@ class RoiThresholdDialog(QDialog):
     for how the finished mask looks, with the other ROIs as context. The stored
     ROI is untouched until accepted, so Cancel needs no undo."""
 
-    def __init__(self, editor: MaskEditorPanel, index: int):
+    def __init__(self, editor: MaskEditorPanel, index: int, threshold: Threshold):
         super().__init__(editor)
         self.editor = editor
         self.index = index
+        self.threshold = threshold
         self.setWindowTitle(f"ROI {index + 1} thresholds")
 
         layout = QVBoxLayout(self)
         self.preview_label = MaskPreviewLabel(self)
         layout.addWidget(self.preview_label, 1)
-        layout.addLayout(self.build_threshold_row(editor.rois()[index]))
+        layout.addLayout(self.build_threshold_row(threshold))
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel,
             parent=self,
@@ -86,11 +87,11 @@ class RoiThresholdDialog(QDialog):
         self.resize(420, 520)
         self.update_preview()
 
-    def build_threshold_row(self, roi: MaskRoi) -> QHBoxLayout:
+    def build_threshold_row(self, threshold: Threshold) -> QHBoxLayout:
         int_min = int(np.floor(self.editor.data_min()))
         int_max = int(np.ceil(self.editor.data_max()))
-        low = max(int_min, min(int_max, int(round(roi.threshold_low))))
-        high = max(low, min(int_max, int(round(roi.threshold_high))))
+        low = max(int_min, min(int_max, int(round(threshold.low))))
+        high = max(low, min(int_max, int(round(threshold.high))))
 
         self.low_spin = QSpinBox(self)
         self.high_spin = QSpinBox(self)
@@ -138,9 +139,8 @@ class RoiThresholdDialog(QDialog):
         rois = list(self.editor.rois())
         # A frame of a new shape while the dialog is open clears the ROIs.
         if self.index < len(rois):
-            rois[self.index] = replace(
-                rois[self.index], threshold_low=float(low), threshold_high=float(high)
-            )
+            threshold = replace(self.threshold, low=float(low), high=float(high))
+            rois[self.index] = replace(rois[self.index], threshold=threshold)
         return rois
 
     def update_preview(self) -> None:

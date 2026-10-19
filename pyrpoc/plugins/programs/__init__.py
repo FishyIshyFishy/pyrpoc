@@ -16,6 +16,7 @@ from .mosaic.program import Mosaic
 from .mosaic_simulation.program import MosaicSimulation
 from .pinpoint_raman.program import PinpointRaman
 from .raman.program import Raman
+from .roi_spectral_series.program import RoiSpectralSeries
 from .simulation.program import Simulation
 from .split_confocal.program import SplitConfocal
 
@@ -30,5 +31,6 @@ __all__ = [
     "MosaicSimulation",
     "PinpointRaman",
     "Raman",
+    "RoiSpectralSeries",
     "Simulation",
 ]
