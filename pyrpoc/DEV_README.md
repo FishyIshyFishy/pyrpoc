@@ -8,7 +8,8 @@ Where things live, by idea rather than by file. The long version is `docs/archit
 uv run pyrpoc          launch
 uv run pytest          tests
 uv run lint-imports    folder rules
-git commit             pre-commit runs ruff, pyright, lint-imports and pytest
+uv run pyright         types (CI runs it too)
+git commit             pre-commit runs ruff and lint-imports
 ```
 
 ## The four kinds of folder

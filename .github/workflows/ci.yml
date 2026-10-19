@@ -1,5 +1,5 @@
-# The slow checks, moved off the pre-commit hook. The fast ones (ruff, import-linter,
-# comment rules) still run on every commit; see .github/pre-commit.yaml.
+# Every check. The fast ones also run on each commit (.pre-commit-config.yaml);
+# they are repeated here because a local hook can be skipped or not installed.
 name: CI
 
 on:
@@ -17,6 +17,8 @@ jobs:
           enable-cache: true
       # Matches pythonVersion in [tool.pyright], so CI type-checks what Pylance does.
       - run: uv sync --locked --python 3.13
+      - name: pre-commit (ruff, import-linter)
+        run: uv run pre-commit run --all-files --show-diff-on-failure
       - name: pyright
         run: uv run pyright
       # Includes loading every committed recording fixture, so a change that

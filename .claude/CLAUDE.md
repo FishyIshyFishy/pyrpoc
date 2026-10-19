@@ -11,11 +11,13 @@
 - A whole new capability is a new subsystem folder, wired in `app/application.py`.
 
 ## Checks
-Never silence a check (`noqa`, `ignore_imports`, `type: ignore`, `pyright: ignore`, config changes); stop and ask instead. Pre-commit (ruff, import-linter) runs only on `git commit`; never run it after ordinary edits. pyright and pytest run in GitHub CI (`.github/workflows/ci.yml`). Fix every failure it reports. 
+Before finishing a change, check the files you touched:
+`uv run ruff check --fix <files>`, `uv run ruff format <files>`, `uv run pyright <files>`, and `uv run lint-imports` if imports changed. Run `uv run pytest` when you touched code that tests cover. The pre-commit hook re-runs ruff and import-linter on `git commit`, and CI (`.github/workflows/ci.yml`) runs everything on the whole project.
+
+Never silence a check (`noqa`, `ignore_imports`, `type: ignore`, `pyright: ignore`, config changes); stop and ask instead.
 
 ## Code style
 - Comments explain why, in one or two lines. No history or narration of what the code plainly does.
-- Plain `#` comments, never `#:`.
 - Every file starts with `from __future__ import annotations`.
 - Fix type errors by typing correctly (narrowing, protocols, stubs). Never `cast` or suppress.
 - Keep functions under ~40 lines. Split by extracting a verb-named helper, not to hit a number.
