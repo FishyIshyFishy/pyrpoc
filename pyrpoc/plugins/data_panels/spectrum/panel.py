@@ -45,18 +45,20 @@ class SpectrumPanel(DataPanel):
         self._autoscale_box.setChecked(True)
         self._autoscale_box.toggled.connect(self.on_autoscale_toggled)
         body_root.addWidget(self._autoscale_box)
-        self._plot.getPlotItem().getViewBox().sigRangeChangedManually.connect(
-            self.on_range_changed_manually
-        )
+        plot_item = self._plot.getPlotItem()
+        if plot_item is None:
+            raise RuntimeError("a new PlotWidget has no PlotItem")
+        plot_item.getViewBox().sigRangeChangedManually.connect(self.on_range_changed_manually)
         self.connect_source()
 
     def on_autoscale_toggled(self, checked: bool) -> None:
-        self._plot.enableAutoRange(axis=pg.ViewBox.YAxis, enable=checked)
+        self._plot.enableAutoRange(y=checked)
 
     def on_range_changed_manually(self, mask: list[bool]) -> None:
         """A pan or zoom in y already stops pyqtgraph autoranging that axis;
         untick the box so it says so."""
-        if mask[pg.ViewBox.YAxis]:
+        _, y_changed = mask
+        if y_changed:
             self._autoscale_box.setChecked(False)
 
     def show_frame(self, dataset: Dataset, frame: np.ndarray) -> None:
