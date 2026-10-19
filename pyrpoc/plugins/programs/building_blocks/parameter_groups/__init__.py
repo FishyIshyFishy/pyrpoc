@@ -8,13 +8,15 @@ from __future__ import annotations
 
 from .ccd_readout import CcdReadoutGroup
 from .daq import DaqGroup
+from .focus_search import FocusSearchGroup
 from .frame import FrameGroup
 from .frame_count import FrameCountGroup
 from .histogram import HistogramGroup
-from .modulation import Mask, MasksField, ModulationGroup
+from .modulation import Mask, MaskRef, MasksField, ModulationGroup
 from .mosaic import MosaicGroup, Tile
 from .pacing import PacingGroup
 from .point import Point, PointField, PointGroup
+from .roi import RoiGroup
 from .scan import ScanGroup
 from .signal import PATTERNS, SignalGroup
 from .specimen import SpecimenGroup
@@ -24,10 +26,12 @@ from .trigger import TriggerGroup
 __all__ = [
     "CcdReadoutGroup",
     "DaqGroup",
+    "FocusSearchGroup",
     "FrameCountGroup",
     "FrameGroup",
     "HistogramGroup",
     "Mask",
+    "MaskRef",
     "MasksField",
     "ModulationGroup",
     "MosaicGroup",
@@ -36,6 +40,7 @@ __all__ = [
     "Point",
     "PointField",
     "PointGroup",
+    "RoiGroup",
     "ScanGroup",
     "SignalGroup",
     "SpecimenGroup",
