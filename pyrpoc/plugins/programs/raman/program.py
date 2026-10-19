@@ -17,7 +17,7 @@ from ..building_blocks.runners import Continuous, Single
 
 @program_registry.register("raman")
 class Raman(Program):
-    display_name = "Raman spectrum"
+    display_name = "Spectral readout"
     group = "Raman"
     order = 10
     uses = [AndorCCD]

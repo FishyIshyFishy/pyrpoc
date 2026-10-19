@@ -18,7 +18,7 @@ from ..building_blocks.runners import ArmAndRun, Single
 
 @program_registry.register("galvo_pinpoint")
 class GalvoPinpoint(Program):
-    display_name = "Galvo pinpoint (external CCD)"
+    display_name = "Pinpoint"
     group = "Raman"
     order = 30
     uses = [Galvo]

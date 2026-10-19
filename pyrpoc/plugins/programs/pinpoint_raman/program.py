@@ -20,7 +20,7 @@ from ..building_blocks.runners import ArmAndRun, Continuous, Single
 
 @program_registry.register("pinpoint_raman")
 class PinpointRaman(Program):
-    display_name = "Pinpoint Raman"
+    display_name = "Pinpoint + spectral readout"
     group = "Raman"
     order = 20
     uses = [Galvo, AndorCCD]
