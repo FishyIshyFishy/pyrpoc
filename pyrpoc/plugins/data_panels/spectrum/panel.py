@@ -6,9 +6,11 @@ calibration, not the shape contract.
 
 from __future__ import annotations
 
+from typing import Any
+
 import numpy as np
 import pyqtgraph as pg
-from PyQt6.QtWidgets import QVBoxLayout
+from PyQt6.QtWidgets import QCheckBox, QVBoxLayout
 
 from pyrpoc.qt_components.colors import color_for_index
 from pyrpoc.structs.data_library.data import Spectrum1D
@@ -38,7 +40,24 @@ class SpectrumPanel(DataPanel):
         self._plot.setLabel("left", "Counts")
         self._legend = self._plot.addLegend(offset=(-10, 10))
         body_root.addWidget(self._plot, 1)
+
+        self._autoscale_box = QCheckBox("Autoscale Y", self.body)
+        self._autoscale_box.setChecked(True)
+        self._autoscale_box.toggled.connect(self.on_autoscale_toggled)
+        body_root.addWidget(self._autoscale_box)
+        self._plot.getPlotItem().getViewBox().sigRangeChangedManually.connect(
+            self.on_range_changed_manually
+        )
         self.connect_source()
+
+    def on_autoscale_toggled(self, checked: bool) -> None:
+        self._plot.enableAutoRange(axis=pg.ViewBox.YAxis, enable=checked)
+
+    def on_range_changed_manually(self, mask: list[bool]) -> None:
+        """A pan or zoom in y already stops pyqtgraph autoranging that axis;
+        untick the box so it says so."""
+        if mask[pg.ViewBox.YAxis]:
+            self._autoscale_box.setChecked(False)
 
     def show_frame(self, dataset: Dataset, frame: np.ndarray) -> None:
         arr = np.asarray(frame, dtype=np.float32)
@@ -68,3 +87,9 @@ class SpectrumPanel(DataPanel):
         self._legend.clear()
         for curve, name in zip(self._curves, labels, strict=True):
             self._legend.addItem(curve, name)
+
+    def export_persistence_state(self) -> dict[str, Any]:
+        return {"autoscale_y": self._autoscale_box.isChecked()}
+
+    def import_persistence_state(self, state: dict[str, Any]) -> None:
+        self._autoscale_box.setChecked(bool(state.get("autoscale_y", True)))
