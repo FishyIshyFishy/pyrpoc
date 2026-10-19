@@ -19,14 +19,23 @@ if TYPE_CHECKING:  # pragma: no cover
 
 
 @dataclass
+class Threshold:
+    """Which pixels of an ROI's shape count: those within ``low..high`` on any
+    active channel."""
+
+    low: float
+    high: float
+    active_channels: list[bool]
+
+
+@dataclass
 class MaskRoi:
     """One drawn region. Its number is its position in the editor's list; a
-    stored id would be a second numbering that deleting an ROI puts out of step."""
+    stored id would be a second numbering that deleting an ROI puts out of step.
+    Without a threshold, every pixel of the shape counts."""
 
     points: list[tuple[float, float]]
-    threshold_low: float
-    threshold_high: float
-    active_channels: list[bool]
+    threshold: Threshold | None
 
 
 class MaskImageView(QGraphicsView):

@@ -18,6 +18,7 @@ from pyrpoc.structs.plugins.programs.program import (
     program_registry,
 )
 
+from ..building_blocks.functions.roi_scan import region_source
 from ..building_blocks.parameter_groups import DaqGroup, FocusSearchGroup, RoiGroup, ScanGroup
 from ..building_blocks.runners import Single
 from .roi_scan import RoiRaster
@@ -94,9 +95,7 @@ class Autofocus(Program):
     def run(self, ctx: RunContext) -> None:
         stage = ctx.devices[PriorStage]
         raster = RoiRaster.for_run(ctx)
-        mask = ctx.params[RoiGroup].mask
-        source = "center" if mask is None else mask.describe()
-        ctx.describe("intensity", roi=raster.layout_metadata(source))
+        ctx.describe("intensity", roi=raster.layout_metadata(region_source(ctx.params[RoiGroup])))
         start_z_um = stage.z_position()
         focus = FocusRun(ctx, stage, raster, start_z_um)
         try:

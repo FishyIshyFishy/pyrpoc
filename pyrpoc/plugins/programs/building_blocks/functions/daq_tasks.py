@@ -4,6 +4,7 @@ with a rig to test on."""
 
 from __future__ import annotations
 
+import time
 from collections.abc import Iterator
 from contextlib import ExitStack, contextmanager
 
@@ -123,6 +124,29 @@ def acquire(
             return read_inputs(inputs, total)
     except nidaqmx.errors.Error as exc:
         raise DaqError(f"NI-DAQ acquisition failed: {exc}") from exc
+
+
+@contextmanager
+def sweeping(
+    daq: DAQ, galvo: Galvo, waveform: np.ndarray, sample_rate_hz: float
+) -> Iterator[float]:
+    """Loop ``waveform`` on the galvos until the block exits, yielding the
+    ``time.monotonic()`` it started at. The card regenerates the waveform from
+    its buffer, so the sweep never pauses between passes; nothing is read."""
+    try:
+        with nx.Task() as galvos:
+            add_galvo_channels(galvos, daq.config.device_name, galvo)
+            galvos.timing.cfg_samp_clk_timing(
+                rate=sample_rate_hz,
+                sample_mode=AcquisitionType.CONTINUOUS,
+                samps_per_chan=waveform.shape[1],
+            )
+            # Many samples per channel, so write() does not auto-start.
+            galvos.write(waveform)
+            galvos.start()
+            yield time.monotonic()
+    except nidaqmx.errors.Error as exc:
+        raise DaqError(f"NI-DAQ sweep failed: {exc}") from exc
 
 
 def read_inputs(task: nx.Task, total_samples: int) -> np.ndarray:

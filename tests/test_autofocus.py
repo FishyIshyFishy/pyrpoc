@@ -10,14 +10,7 @@ import cv2
 import numpy as np
 import pytest
 
-from pyrpoc.plugins.programs.autofocus.roi_scan import (
-    Box,
-    metric_weights,
-    place_rows,
-    roi_region,
-    roi_waveform,
-    row_spans,
-)
+from pyrpoc.plugins.programs.autofocus.roi_scan import metric_weights, place_rows
 from pyrpoc.plugins.programs.autofocus.search import (
     FocusResult,
     FocusStep,
@@ -26,6 +19,12 @@ from pyrpoc.plugins.programs.autofocus.search import (
 )
 from pyrpoc.plugins.programs.autofocus.tenengrad import tenengrad
 from pyrpoc.plugins.programs.building_blocks.functions.galvo_raster import raster_waveform
+from pyrpoc.plugins.programs.building_blocks.functions.roi_scan import (
+    Box,
+    roi_region,
+    roi_waveform,
+    row_spans,
+)
 from pyrpoc.plugins.programs.building_blocks.parameter_groups import (
     FocusSearchGroup,
     Mask,
