@@ -45,8 +45,6 @@ change that touches no subsystem.
      detectors.
 5. **The format.** Add the kind to the layout list in
    [data-format.md](data-format.md). A new kind does not break old recordings.
-   The NPZ path is already covered by the committed `spectrum` fixture in
-   `tests/fixtures/recordings/v1/`, so a curve fixture is optional.
 
 ## What to decide then
 

@@ -1,4 +1,4 @@
-"""One tile per channel, with a per-tile name, autoscale and LUT. Clicking a
+"""One tile per channel, with a per-tile autoscale and LUT. Clicking a
 pixel answers a ``PixelPick`` request."""
 
 from __future__ import annotations
@@ -13,7 +13,6 @@ from PyQt6.QtWidgets import (
     QCheckBox,
     QGridLayout,
     QHBoxLayout,
-    QLineEdit,
     QScrollArea,
     QVBoxLayout,
     QWidget,
@@ -35,7 +34,6 @@ LUT = pg.ColorMap(
 @dataclass
 class ChannelTile:
     root: QWidget
-    name_edit: QLineEdit
     autoscale_box: QCheckBox
     plot: pg.PlotWidget
     image_item: pg.ImageItem
@@ -49,7 +47,6 @@ class TileState:
     """One tile's saved settings, parsed from the session."""
 
     index: int
-    name: str
     autoscale: bool
     min_val: float
     max_val: float
@@ -86,26 +83,18 @@ class Image2DPanel(DataPanel):
         self.connect_source()
 
     def show_frame(self, dataset: Dataset, frame: np.ndarray) -> None:
+        del dataset
         arr = np.asarray(frame, dtype=np.float32)
         self.sync_channel_tiles(arr.shape[0])
-        self.apply_channel_names(dataset.channel_labels)
         for index in range(arr.shape[0]):
             self.update_channel_image(index, arr[index])
-
-    def apply_channel_names(self, labels: list[str]) -> None:
-        """Name a tile after its acquisition channel, unless renamed by hand."""
-        for index, (tile, label) in enumerate(zip(self._tiles, labels, strict=False)):
-            if tile.name_edit.text().strip() in ("", f"Input {index + 1}"):
-                tile.name_edit.blockSignals(True)
-                tile.name_edit.setText(label)
-                tile.name_edit.blockSignals(False)
 
     def clear(self) -> None:
         self.sync_channel_tiles(0)
 
     def sync_channel_tiles(self, count: int) -> None:
         """Add or drop tiles to match ``count``. Tiles that stay keep their
-        name, levels and zoom; an unchanged count touches nothing."""
+        levels and zoom; an unchanged count touches nothing."""
         if len(self._tiles) == count:
             return
         while len(self._tiles) > count:
@@ -123,8 +112,6 @@ class Image2DPanel(DataPanel):
         root = QWidget(self._content)
         root_layout = QVBoxLayout(root)
         root_layout.setContentsMargins(6, 6, 6, 6)
-        name_edit = QLineEdit(f"Input {index + 1}", root)
-        root_layout.addWidget(name_edit)
         body = QHBoxLayout()
         root_layout.addLayout(body, 1)
 
@@ -142,7 +129,7 @@ class Image2DPanel(DataPanel):
         right_col.addWidget(autoscale_box)
         body.addLayout(right_col)
 
-        tile = ChannelTile(root, name_edit, autoscale_box, plot, image_item, hist_widget)
+        tile = ChannelTile(root, autoscale_box, plot, image_item, hist_widget)
         autoscale_box.toggled.connect(lambda _checked, i=index: self.on_autoscale_toggled(i))
         hist_widget.item.sigLevelsChanged.connect(
             lambda _item, i=index: self.on_lut_levels_changed(i)
@@ -238,24 +225,22 @@ class Image2DPanel(DataPanel):
             if widget is not None:
                 widget.setParent(self._content)
 
-        columns = 2
-        rows = (len(self._tiles) + columns - 1) // columns
+        columns = min(2, len(self._tiles))
+        rows = (len(self._tiles) + columns - 1) // columns if columns else 0
         for index, tile in enumerate(self._tiles):
-            row, col = index // columns, index % columns
-            self._grid.addWidget(tile.root, row, col)
-            # Keep all tiles evenly sized as the channel count grows.
-            self._grid.setRowStretch(row, 1)
-            self._grid.setColumnStretch(col, 1)
-        # Clear stale stretch left by removed rows.
-        for row in range(rows, max(rows, 8)):
-            self._grid.setRowStretch(row, 0)
+            self._grid.addWidget(tile.root, index // columns, index % columns)
+        # The grid keeps the row and column count it once had; stretch left on
+        # an emptied one would reserve blank space beside the remaining tiles.
+        for row in range(self._grid.rowCount()):
+            self._grid.setRowStretch(row, 1 if row < rows else 0)
+        for col in range(self._grid.columnCount()):
+            self._grid.setColumnStretch(col, 1 if col < columns else 0)
 
     def export_persistence_state(self) -> dict[str, Any]:
         return {
             "channels": [
                 {
                     "index": index,
-                    "name": tile.name_edit.text().strip(),
                     "autoscale": tile.autoscale_box.isChecked(),
                     "min_val": tile.min_val,
                     "max_val": tile.max_val,
@@ -273,7 +258,6 @@ class Image2DPanel(DataPanel):
         self._pending_state = [
             TileState(
                 index=int(row.get("index", position)),
-                name=str(row.get("name", "")).strip(),
                 autoscale=bool(row.get("autoscale", True)),
                 min_val=float(row.get("min_val", 0.0)),
                 max_val=float(row.get("max_val", 1.0)),
@@ -292,9 +276,6 @@ class Image2DPanel(DataPanel):
             if not 0 <= saved.index < len(self._tiles):
                 continue
             tile = self._tiles[saved.index]
-            tile.name_edit.blockSignals(True)
-            tile.name_edit.setText(saved.name or f"Input {saved.index + 1}")
-            tile.name_edit.blockSignals(False)
             tile.autoscale_box.blockSignals(True)
             tile.autoscale_box.setChecked(saved.autoscale)
             tile.autoscale_box.blockSignals(False)

@@ -5,7 +5,7 @@ metadata file is the only entry point: it names the files and says everything
 needed to rebuild each output as a ``Dataset``. Every recording saved since
 format 1 must load in every later version of pyrpoc, so a new format version
 adds a decoder to ``DECODERS`` and never removes one; within a version, fields
-may be added but never renamed or removed. See ``docs/data-format.md``.
+may be added but never renamed or removed. See ``docs/internal/data-format.md``.
 """
 
 from __future__ import annotations

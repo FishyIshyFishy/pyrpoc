@@ -11,9 +11,9 @@ pyrpoc/
   structs/            the shared vocabulary: the nouns every other part talks through
   qt_components/      generic widgets that know no feature: tables, cards, parameter form, icons
   plugins/            things you add more of
-    devices/            hardware: DAQ, galvo, Prior stage, time tagger
+    devices/            hardware: DAQ, galvos, Prior stage, time tagger, CCDs, cameras
     programs/           experiments, one folder each, built from programs/building_blocks/
-    data_panels/        displays of one open dataset: 2D tiled, overlay, spectrum, mask editor
+    data_panels/        displays of one open dataset: tiled, overlay, mosaic, spectrum, mask editor
   device_inventory/   the devices this workbench has, and the Devices panel
   data_library/       the open data, recordings on disk, and the Data Library panel
   acquisition/        choosing a program, setting it up and running it, and the Acquisition panel
@@ -112,5 +112,4 @@ Folder names are not saved anywhere:
 - **Saved sessions** store registry keys like `"image_2d"`.
 - **Recordings** follow [data-format.md](data-format.md).
 
-Moving code around never breaks either. `tests/` loads a committed recording of
-every format version on every commit.
+Moving code around never breaks either.

@@ -32,7 +32,6 @@ class ChannelControl:
     autoscale_box: QCheckBox
     hist_widget: pg.HistogramLUTWidget
     source_item: pg.ImageItem
-    rgb: tuple[int, int, int]
     min_val: float = 0.0
     max_val: float = 1.0
 
@@ -45,6 +44,13 @@ class ControlState:
     autoscale: bool
     min_val: float
     max_val: float
+
+
+def channel_lut(hist_widget: pg.HistogramLUTWidget) -> np.ndarray:
+    """The channel's gradient as a (256, 3) float table in 0..1, so the
+    composite follows whatever colour map the user picked for it."""
+    table = hist_widget.item.gradient.colorMap().getLookupTable(0.0, 1.0, 256, alpha=False)
+    return np.asarray(table, dtype=np.float32) / 255.0
 
 
 @data_panel_registry.register("overlay")
@@ -141,8 +147,7 @@ class OverlayPanel(DataPanel):
         autoscale_box.setChecked(True)
         layout.addWidget(autoscale_box)
 
-        rgb = color_for_index(index)
-        cmap = color_map_from_rgb(rgb)
+        cmap = color_map_from_rgb(color_for_index(index))
         source_item = pg.ImageItem()
         source_item.setColorMap(cmap)
         hist_widget = pg.HistogramLUTWidget(root)
@@ -150,11 +155,13 @@ class OverlayPanel(DataPanel):
         hist_widget.item.gradient.setColorMap(cmap)
         layout.addWidget(hist_widget, 1)
 
-        control = ChannelControl(root, autoscale_box, hist_widget, source_item, rgb)
+        control = ChannelControl(root, autoscale_box, hist_widget, source_item)
         autoscale_box.toggled.connect(lambda _checked, i=index: self.on_channel_control_changed(i))
         hist_widget.item.sigLevelsChanged.connect(
             lambda _item, i=index: self.on_lut_levels_changed(i)
         )
+        # Picking a preset or editing the gradient recolours this channel.
+        hist_widget.item.sigLookupTableChanged.connect(lambda _item: self.update_overlay())
         return control
 
     def on_channel_control_changed(self, index: int) -> None:
@@ -202,8 +209,8 @@ class OverlayPanel(DataPanel):
         for channel, control in zip(arr, self._controls, strict=False):
             lo, hi = control.min_val, max(control.max_val, control.min_val + 1e-12)
             scaled = np.clip((channel - lo) / (hi - lo), 0.0, 1.0)
-            for axis, component in enumerate(control.rgb):
-                rgb[..., axis] += scaled * (component / 255.0)
+            lut = channel_lut(control.hist_widget)
+            rgb += lut[np.rint(scaled * (len(lut) - 1)).astype(np.intp)]
         self._overlay_item.setImage(np.clip(rgb, 0.0, 1.0), autoLevels=False, levels=(0.0, 1.0))
 
     def reflow_controls(self) -> None:

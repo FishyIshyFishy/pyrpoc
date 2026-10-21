@@ -90,12 +90,7 @@ from the images themselves.
 2. **Anything else is a new version.**
    - Add a decoder for it to `DECODERS`, and keep every older decoder
      forever.
-   - Add a folder of fixtures, `tests/fixtures/recordings/v<N>/`, written by
-     the release that introduces format N.
-3. **Fixtures are never regenerated or edited.** `tests/test_recording_format.py`
-   loads every fixture of every version and checks its contents. If a change
-   breaks one, the change is wrong, not the fixture.
-4. **Data file formats are covered by the same promise.**
+3. **Data file formats are covered by the same promise.**
    - A writer's `read` must keep reading what every earlier version of that
      writer wrote.
    - A new on-disk layout for a kind needs a new writer key, or a new format

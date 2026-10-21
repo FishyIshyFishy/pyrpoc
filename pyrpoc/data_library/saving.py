@@ -3,8 +3,8 @@
 
     <root>_meta.json        rewritten as each run joins and ends, and at the end
 
-The formats themselves live in ``programs/components/writers/``, and the
-metadata file's shape in ``recording_format.py``.
+The formats themselves live in ``writers/``, and the metadata file's shape
+in ``format.py``.
 """
 
 from __future__ import annotations

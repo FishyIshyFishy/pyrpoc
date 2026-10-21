@@ -14,7 +14,7 @@ from pathlib import Path
 
 from pyrpoc.structs.plugins.devices import DeviceError
 
-# ``pyrpoc/assets/sdks``, two levels up from ``pyrpoc/devices/prior_stage``.
+# ``pyrpoc/assets/sdks``, three levels up from ``pyrpoc/plugins/devices/prior_stage``.
 DLL_PATH = Path(__file__).resolve().parents[3] / "assets" / "sdks" / "PriorScientificSDK.dll"
 
 # The size Prior's own examples use; every reply is a short line of text.

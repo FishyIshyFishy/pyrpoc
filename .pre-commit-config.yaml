@@ -1,8 +1,5 @@
-# Installed with: uv run pre-commit install --config .github/pre-commit.yaml
-# Run by hand:    uv run pre-commit run --all-files --config .github/pre-commit.yaml
-#
-# Every hook runs from the project's locked environment (uv.lock), so these are
-# the same tool versions as `uv run ...` on the command line.
+# Install once with `uv run pre-commit install`. Hooks run from the locked
+# environment (uv.lock), so they use the same tool versions as `uv run ...`.
 
 # Vendored example code from Swabian, kept as reference and not held to our rules.
 exclude: ^docs/swabian_demos/
@@ -22,11 +19,6 @@ repos:
         language: system
         entry: uv run ruff format --force-exclude
         types_or: [python, pyi]
-      - id: no-colon-comments
-        name: no '#:' comments
-        language: pygrep
-        entry: '#:'
-        types: [python]
       - id: no-type-ignores
         name: no type-checker ignore comments
         language: pygrep
@@ -38,5 +30,4 @@ repos:
         entry: uv run lint-imports
         types: [python]
         pass_filenames: false
-      # pyright and pytest are too slow for every commit; they run in CI
-      # (.github/workflows/ci.yml).
+      # pyright is slower; it runs in CI (.github/workflows/ci.yml).

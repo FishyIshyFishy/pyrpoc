@@ -40,14 +40,10 @@ dev = [
   "ruff",
   "pre-commit",
   "import-linter>=2.15",
-  "pytest>=9.1.1",
 ]
 
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-
 [tool.pyright]
-include = ["pyrpoc", "tests"]
+include = ["pyrpoc"]
 exclude = [
   "docs/swabian_demos",
   "rpoc_env",

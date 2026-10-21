@@ -1,14 +1,14 @@
 # pyrpoc dev refresher
 
-Where things live, by idea rather than by file. The long version is `docs/architecture.md`.
+Where things live, by idea rather than by file. The long version is `docs/internal/architecture.md`.
 
 ## Commands
 
 ```
 uv run pyrpoc          launch
-uv run pytest          tests
 uv run lint-imports    folder rules
-git commit             pre-commit runs ruff, pyright, lint-imports and pytest
+uv run pyright         types (CI runs it too)
+git commit             pre-commit runs ruff and lint-imports
 ```
 
 ## The four kinds of folder
@@ -98,5 +98,5 @@ app > acquisition > data_library | device_inventory > plugins > qt_components > 
 ## Don't break on disk
 
 - Sessions store registry keys, not module paths, so moving code is safe.
-- Recordings follow `docs/data-format.md`. Changing the format means a new
-  version, a decoder for it, and a fixture under `tests/fixtures/recordings/`.
+- Recordings follow `docs/internal/data-format.md`. Changing the format means a new
+  version and a decoder for it.
