@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from pyrpoc.structs.plugins.programs.program import program_registry
 
+from .aom_hold.program import AomHold
 from .autofocus.program import Autofocus
 from .brightfield.program import Brightfield
 from .confocal.program import Confocal
@@ -35,4 +36,5 @@ __all__ = [
     "RoiSpectralSeries",
     "Simulation",
     "Brightfield",
+    "AomHold",
 ]

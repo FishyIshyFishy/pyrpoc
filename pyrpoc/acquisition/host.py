@@ -50,9 +50,9 @@ class RunnerSession(RunnerContext):
     def running(self) -> bool:
         return any(run.running for run in self.runs)
 
-    def execute(self) -> None:
+    def execute(self, stand_in: type[Program] | None = None) -> None:
         if not self.closed:
-            self.host.start(self)
+            self.host.start(self, stand_in)
 
     def on_run_started(self, callback: Callable[[], None]) -> None:
         self.started.append(callback)
@@ -175,16 +175,21 @@ class RunnerHost(QObject):
         slot.close_series()
         self.controls_changed.emit()
 
-    def start(self, slot: RunnerSession) -> None:
-        """Start ``slot``'s program with what the workbench holds right now."""
+    def start(self, slot: RunnerSession, stand_in: type[Program] | None = None) -> None:
+        """Start ``slot``'s program, or ``stand_in`` under its key, with what the
+        workbench holds right now."""
         acquisition = self.acquisition
+        if stand_in is None:
+            program, key, series = slot.program(), slot.key, slot.series
+        else:
+            program, key, series = stand_in(), f"{slot.key}/{stand_in.__name__}", None
         acquisition.events.start(
-            slot.program(),
-            slot.key,
+            program,
+            key,
             acquisition.blocks,
             acquisition.inventory.devices,
             acquisition.save,
-            slot.series,
+            series,
             slot.claim,
         )
 

@@ -12,6 +12,7 @@ from .daq import DaqGroup
 from .focus_search import FocusSearchGroup
 from .frame import FrameGroup
 from .frame_count import FrameCountGroup
+from .held_line import HeldLineGroup
 from .histogram import HistogramGroup
 from .modulation import Mask, MaskRef, MasksField, ModulationGroup
 from .mosaic import MosaicGroup, Tile
@@ -31,6 +32,7 @@ __all__ = [
     "FocusSearchGroup",
     "FrameCountGroup",
     "FrameGroup",
+    "HeldLineGroup",
     "HistogramGroup",
     "Mask",
     "MaskRef",

@@ -13,11 +13,14 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import ClassVar
+from typing import TYPE_CHECKING, ClassVar
 
 from pyrpoc.structs.plugins.params import BlockMap
 
 from .picks import Pick
+
+if TYPE_CHECKING:  # pragma: no cover
+    from .program import Program
 
 
 class Control:
@@ -105,8 +108,10 @@ class RunnerContext(ABC):
     through one context goes away when its program is deselected."""
 
     @abstractmethod
-    def execute(self) -> None:
-        """Start a run of the program. Failures are reported, not raised."""
+    def execute(self, stand_in: type[Program] | None = None) -> None:
+        """Start a run of the program, or of ``stand_in`` in its place: a helper
+        the runner carries, such as one holding lines high instead of scanning.
+        A stand-in's run joins no series. Failures are reported, not raised."""
 
     @abstractmethod
     def on_run_started(self, callback: Callable[[], None]) -> None:
