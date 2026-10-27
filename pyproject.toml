@@ -18,6 +18,7 @@ dependencies = [
   "nidaqmx",
   "tifffile",
   "swabian-timetagger>=2.22.6",
+  "scipy>=1.15.3",
 ]
 
 [project.scripts]

@@ -1,13 +1,11 @@
 """Region: the part of the scan grid a region scan covers, either one authored
 mask or a centred rectangle. The mask is a library reference, so it has its
-own field type and picker, shared with Modulation's table."""
+own field type and picker."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any, ClassVar
-
-from PyQt6.QtWidgets import QWidget
 
 from pyrpoc.structs.data_library.data import Mask2D
 from pyrpoc.structs.data_library.library import Library
@@ -21,33 +19,11 @@ from pyrpoc.structs.plugins.params import (
     spec_field,
 )
 
-from .modulation import CLOSED_SUFFIX, MaskRef, MaskSourceCombo, resolve_mask
+from .library_ref import RefCombo
+from .modulation import MASK_TOOLTIP, MaskRef, resolve_mask
 
 # The picker's entry for no mask, which scans the centred rectangle.
 CENTER = "Center region"
-
-
-class RegionMaskCombo(MaskSourceCombo):
-    """The open masks, after an entry for the centred rectangle."""
-
-    def __init__(self, library: Library, parent: QWidget):
-        super().__init__(lambda: library.matching(Mask2D), CENTER, parent)
-        self.library = library
-
-    def value(self) -> MaskRef | None:
-        source_id = self.currentData()
-        if not source_id:
-            return None
-        dataset = self.library.by_id(source_id)
-        label = dataset.label if dataset is not None else self.currentText()
-        return MaskRef(source_id=source_id, source_label=label.removesuffix(CLOSED_SUFFIX))
-
-    def set_value(self, mask: MaskRef | None) -> None:
-        self.clear()
-        self.addItem(CENTER, "")
-        if mask is not None:
-            self.addItem(mask.describe(), mask.source_id)
-            self.setCurrentIndex(1)
 
 
 @dataclass(frozen=True)
@@ -69,7 +45,10 @@ class RegionMaskField(Field):
         # Narrows for the type checker: every form holding masks offers the library.
         if context.library is None:
             raise ValueError("a mask field needs the open data")
-        combo = RegionMaskCombo(context.library, parent)
+        library = context.library
+        combo = RefCombo(
+            library, lambda: library.matching(Mask2D), MaskRef, CENTER, MASK_TOOLTIP, parent
+        )
         return Editor(
             combo,
             get=combo.value,

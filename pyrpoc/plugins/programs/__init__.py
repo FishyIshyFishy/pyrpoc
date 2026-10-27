@@ -10,6 +10,7 @@ from pyrpoc.structs.plugins.programs.program import program_registry
 
 from .autofocus.program import Autofocus
 from .brightfield.program import Brightfield
+from .cell_kinetics.program import CellKinetics
 from .confocal.program import Confocal
 from .flim.program import FLIM
 from .galvo_pinpoint.program import GalvoPinpoint
@@ -35,4 +36,5 @@ __all__ = [
     "RoiSpectralSeries",
     "Simulation",
     "Brightfield",
+    "CellKinetics",
 ]

@@ -80,6 +80,7 @@ Plus three rules:
 |---|---|
 | A new instrument | `plugins/devices/<name>/`: a `Device` subclass registered in `device_registry` |
 | A new experiment | `plugins/programs/<name>/`: a `Program` subclass in `program.py` registered in `program_registry`, declaring parameter groups and runners from `programs/building_blocks/` and calling its shared `functions/` (`galvo_raster.py` for a galvo scan). Programs never import each other |
+| An analysis of one open recording | `plugins/programs/<name>/`, like `cell_kinetics/`: a `Program` with `uses = []` that reads its input through a parameter naming a library entry (`SeriesGroup`, or a field built on `parameter_groups/library_ref.py`) and emits its results as outputs. Analysis across many recordings is a new capability (below) |
 | A new way to start a program (like Continuous) | `plugins/programs/building_blocks/runners/` |
 | A parameter group, or code a second program needs | `plugins/programs/building_blocks/parameter_groups/` or `functions/`. Code only one program needs stays in its folder |
 | A new way to look at data | `plugins/data_panels/<name>/`: a `DataPanel` subclass registered in `data_panel_registry` |

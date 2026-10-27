@@ -9,6 +9,7 @@ from __future__ import annotations
 from .camera import CameraGroup
 from .ccd_readout import CcdReadoutGroup
 from .daq import DaqGroup
+from .decay_fit import DecayFitGroup
 from .focus_search import FocusSearchGroup
 from .frame import FrameGroup
 from .frame_count import FrameCountGroup
@@ -19,15 +20,18 @@ from .pacing import PacingGroup
 from .point import Point, PointField, PointGroup
 from .roi import RoiGroup
 from .scan import ScanGroup
+from .series import SeriesGroup, SeriesRef
 from .signal import PATTERNS, SignalGroup
 from .specimen import SpecimenGroup
 from .split import SplitGroup
+from .treatment import TreatmentGroup
 from .trigger import TriggerGroup
 
 __all__ = [
     "CameraGroup",
     "CcdReadoutGroup",
     "DaqGroup",
+    "DecayFitGroup",
     "FocusSearchGroup",
     "FrameCountGroup",
     "FrameGroup",
@@ -44,9 +48,12 @@ __all__ = [
     "PointGroup",
     "RoiGroup",
     "ScanGroup",
+    "SeriesGroup",
+    "SeriesRef",
     "SignalGroup",
     "SpecimenGroup",
     "SplitGroup",
     "Tile",
+    "TreatmentGroup",
     "TriggerGroup",
 ]

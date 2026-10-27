@@ -1,10 +1,10 @@
 """Modulation: masks driving digital lines during a scan. A mask is bound by
 reference to a library entry, so it has its own field type and table widget;
-the reference and its picker serve any other field that names a mask."""
+the reference serves any other field that names a mask."""
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable
+from collections.abc import Iterable
 from dataclasses import dataclass, replace
 from dataclasses import field as dc_field
 from typing import Any, ClassVar, TypeVar
@@ -12,7 +12,6 @@ from typing import Any, ClassVar, TypeVar
 import numpy as np
 from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtWidgets import (
-    QComboBox,
     QHBoxLayout,
     QHeaderView,
     QLabel,
@@ -36,26 +35,21 @@ from pyrpoc.structs.plugins.params import (
     spec_field,
 )
 
+from .library_ref import CLOSED_SUFFIX, LibraryRef, SourceCombo
+
+MASK_TOOLTIP = "A mask drawn in the Mask Editor. Add one there to see it here."
+
 
 @dataclass(frozen=True)
-class MaskRef:
+class MaskRef(LibraryRef):
     """An authored mask, by reference to its library entry.
 
-    The stored value names a library entry; ``source_label`` sits beside the id
-    because an id means nothing in metadata read months later. ``array`` is
-    filled only in a run's copy, by ``resolve_mask``: a program has no library,
-    so the pixels arrive with its parameters while the shared block and session
-    keep only the reference. ``compare=False`` because comparing arrays in a
-    frozen dataclass's ``__eq__`` raises.
+    ``array`` is filled only in a run's copy, by ``resolve_mask``.
+    ``compare=False`` because comparing arrays in a frozen dataclass's
+    ``__eq__`` raises.
     """
 
-    source_id: str = ""
-    source_label: str = ""
     array: np.ndarray | None = dc_field(default=None, compare=False)
-
-    def describe(self) -> str:
-        """Which library entry this is, for a row that has lost it."""
-        return self.source_label or self.source_id or "no mask"
 
     def on_grid(self, height: int, width: int) -> np.ndarray:
         """The masked pixels as booleans, resized nearest-neighbour to ``(height, width)``."""
@@ -69,21 +63,6 @@ class MaskRef:
         rows = np.minimum((np.arange(height, dtype=np.int64) * source_h) // height, source_h - 1)
         cols = np.minimum((np.arange(width, dtype=np.int64) * source_w) // width, source_w - 1)
         return lit[np.ix_(rows, cols)]
-
-    def to_dict(self) -> dict[str, Any]:
-        """Provenance only: the array is data, and this is a parameter."""
-        return {"source_id": self.source_id, "source_label": self.source_label}
-
-    @classmethod
-    def from_value(cls, raw: Any) -> MaskRef:
-        """A reference from the form (already a ``MaskRef``) or from JSON (a dict)."""
-        if isinstance(raw, MaskRef):
-            return raw
-        if not isinstance(raw, dict):
-            raise ParameterError("a mask must be an object with a source_id")
-        return cls(
-            source_id=str(raw.get("source_id", "")), source_label=str(raw.get("source_label", ""))
-        )
 
 
 @dataclass(frozen=True)
@@ -131,49 +110,9 @@ def resolve_mask(mask: M, library: Library) -> M:
     return replace(mask, array=array)
 
 
-CLOSED_SUFFIX = " (closed)"
-
-
-class MaskSourceCombo(QComboBox):
-    """Picks a ``Mask2D`` entry out of the open data, after a ``blank`` entry
-    with no id when no mask is itself a choice.
-
-    Filled when opened rather than from a library subscription: the form is
-    rebuilt on every program change, and a stale callback into a deleted row
-    would raise inside the library's notify, which runs at run start.
-    """
-
-    def __init__(self, sources: Callable[[], list[Dataset]], blank: str | None, parent: QWidget):
-        super().__init__(parent)
-        self._sources = sources
-        self._blank = blank
-        self.setToolTip("A mask drawn in the Mask Editor. Add one there to see it here.")
-
-    def showPopup(self) -> None:
-        chosen = self.currentData()
-        label = self.currentText()
-        self.blockSignals(True)
-        self.clear()
-        if self._blank is not None:
-            self.addItem(self._blank, "")
-        found = False
-        for dataset in self._sources():
-            self.addItem(dataset.label, dataset.id)
-            if dataset.id == chosen:
-                self.setCurrentIndex(self.count() - 1)
-                found = True
-        if chosen and not found:
-            # Closed in the data panel: keep naming it rather than silently
-            # rebinding the row to an unrelated mask.
-            self.addItem(f"{label}{CLOSED_SUFFIX}", chosen)
-            self.setCurrentIndex(self.count() - 1)
-        self.blockSignals(False)
-        super().showPopup()
-
-
 @dataclass
 class MaskRow:
-    source: MaskSourceCombo
+    source: SourceCombo
     port: QSpinBox
     line: QSpinBox
 
@@ -229,7 +168,7 @@ class MaskTable(QWidget):
     def add_row(self, binding: Mask) -> None:
         index = self.table.rowCount()
         self.table.insertRow(index)
-        source = MaskSourceCombo(self.sources, None, self.table)
+        source = SourceCombo(self.sources, None, MASK_TOOLTIP, self.table)
         if binding.source_id:
             source.addItem(binding.source_label or binding.source_id, binding.source_id)
         else:
