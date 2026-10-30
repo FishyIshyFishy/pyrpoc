@@ -3,10 +3,10 @@ while collapsed, and a body shown while expanded."""
 
 from __future__ import annotations
 
-from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtCore import QSize, pyqtSignal
 from PyQt6.QtWidgets import QFrame, QHBoxLayout, QLabel, QToolButton, QVBoxLayout, QWidget
 
-_REMOVE_BTN_COLOR = "#e75480"
+from pyrpoc.qt_components.icons import expand_arrow_icon
 
 # Scoped by object name so a card's frame styling does not reach into its body.
 _CARD_STYLESHEET = (
@@ -18,35 +18,7 @@ _CARD_STYLESHEET = (
     # ``.QWidget`` is exactly QWidget: plain containers go transparent while
     # buttons and inputs keep the theme's fill, so they stand out from the card.
     "#card .QWidget { background: transparent; }"
-    "#card QLabel, #card QCheckBox, #card QToolButton { background: transparent; }"
-    # The theme fills buttons with the window colour, which in light themes is
-    # the card's own colour, so buttons are outlined in the accent instead.
-    "#card QPushButton {"
-    "background: palette(button);"
-    "color: palette(button-text);"
-    "border: 1px solid palette(highlight);"
-    "border-radius: 4px;"
-    "padding: 3px 10px;"
-    "}"
-    "#card QPushButton:hover, #card QPushButton:pressed {"
-    "background: palette(highlight);"
-    "color: palette(highlighted-text);"
-    "padding: 3px 10px;"
-    "}"
-    "#card QPushButton:disabled {"
-    "background: transparent;"
-    "color: palette(mid);"
-    "border: 1px solid palette(mid);"
-    "}"
-    "#card QCheckBox::indicator:checked {"
-    "background: palette(highlight);"
-    "border: 1px solid palette(highlight);"
-    "color: white;"
-    "}"
-    "#card QCheckBox::indicator:unchecked {"
-    "background: transparent;"
-    "border: 1px solid palette(mid);"
-    "}"
+    "#card QLabel, #card QCheckBox { background: transparent; }"
 )
 
 
@@ -68,19 +40,20 @@ class BaseCardWidget(QFrame):
         self.header_row.setContentsMargins(0, 0, 0, 0)
         self.header_row.setSpacing(4)
         self.expand_btn = QToolButton(self)
-        self.expand_btn.setArrowType(Qt.ArrowType.RightArrow)
+        self.expand_btn.setIcon(expand_arrow_icon(False))
+        self.expand_btn.setIconSize(QSize(16, 16))
         self.expand_btn.setAutoRaise(True)
         self.expand_btn.setToolTip("Expand")
         self.expand_btn.clicked.connect(lambda: self.set_expanded(not self._expanded))
         self.header_row.addWidget(self.expand_btn)
         self.title_label = QLabel(title, self)
+        self.title_label.setProperty("role", "heading")
         self.header_row.addWidget(self.title_label, 1)
         root.addLayout(self.header_row)
 
         self._description_label = QLabel("", self)
-        self._description_label.setStyleSheet(
-            "color: palette(mid); font-size: 9pt; padding-left: 22px;"
-        )
+        self._description_label.setProperty("role", "caption")
+        self._description_label.setContentsMargins(22, 0, 0, 0)
         self._description_label.setWordWrap(True)
         self._description_label.setVisible(False)
         root.addWidget(self._description_label)
@@ -95,9 +68,7 @@ class BaseCardWidget(QFrame):
     def set_expanded(self, expanded: bool) -> None:
         self._expanded = expanded
         self.body_container.setVisible(expanded)
-        self.expand_btn.setArrowType(
-            Qt.ArrowType.DownArrow if expanded else Qt.ArrowType.RightArrow
-        )
+        self.expand_btn.setIcon(expand_arrow_icon(expanded))
         self.expand_btn.setToolTip("Collapse" if expanded else "Expand")
         self._description_label.setVisible(bool(self._description_label.text()) and not expanded)
 
@@ -119,7 +90,11 @@ class RemovableCardWidget(BaseCardWidget):
         remove_btn = QToolButton(self)
         remove_btn.setAutoRaise(True)
         remove_btn.setText("X")
-        remove_btn.setStyleSheet(f"QToolButton {{ color: {_REMOVE_BTN_COLOR}; font-weight: 700; }}")
+        # Muted until hovered, so a column of cards isn't a column of red marks.
+        remove_btn.setStyleSheet(
+            "QToolButton { color: palette(mid); font-weight: 700; }"
+            "QToolButton:hover { color: palette(link); }"
+        )
         remove_btn.setToolTip("Remove")
         remove_btn.clicked.connect(self.remove_requested)
         self.header_row.addWidget(remove_btn)

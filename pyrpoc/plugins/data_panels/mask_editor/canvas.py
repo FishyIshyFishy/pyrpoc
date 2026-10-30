@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from PyQt6.QtCore import QPointF, Qt
-from PyQt6.QtGui import QColor, QMouseEvent, QPainter, QPainterPath, QPen, QWheelEvent
+from PyQt6.QtGui import QColor, QMouseEvent, QPainter, QPainterPath, QPalette, QPen, QWheelEvent
 from PyQt6.QtWidgets import QGraphicsPathItem, QGraphicsScene, QGraphicsTextItem, QGraphicsView
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -52,11 +52,13 @@ class MaskImageView(QGraphicsView):
         # Kept here, not read back from the item: the item drops a path that is
         # only its start point, so the first segment would start at the origin.
         self._live_path = QPainterPath()
-        self._path_pen = QPen(
-            QColor(255, 80, 80), 2, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap
-        )
         self._roi_items: list[QGraphicsPathItem] = []
         self._roi_labels: list[QGraphicsTextItem] = []
+
+    def path_pen(self) -> QPen:
+        """Read per stroke, so a stroke drawn after a theme switch is in the new accent."""
+        accent = self.palette().color(QPalette.ColorRole.Highlight)
+        return QPen(accent, 2, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap)
 
     # Qt types every event as optional; the None checks narrow for that.
     def wheelEvent(self, event: QWheelEvent | None) -> None:
@@ -75,7 +77,7 @@ class MaskImageView(QGraphicsView):
         self.clear_live_path()
         self._live_path = QPainterPath(scene_pos)
         self._live_path_item = QGraphicsPathItem()
-        self._live_path_item.setPen(self._path_pen)
+        self._live_path_item.setPen(self.path_pen())
         self.gscene.addItem(self._live_path_item)
 
     def mouseMoveEvent(self, event: QMouseEvent | None) -> None:

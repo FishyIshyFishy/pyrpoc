@@ -20,6 +20,7 @@ from PyQt6.QtWidgets import (
 
 from pyrpoc.qt_components.colors import color_for_index, color_map_from_rgb
 from pyrpoc.qt_components.levels import autoscale_levels, mono_levels
+from pyrpoc.qt_components.plot_theme import follow_histogram, follow_plot
 from pyrpoc.structs.data_library.data import Image2D
 from pyrpoc.structs.data_library.dataset import Dataset
 from pyrpoc.structs.data_library.library import Library
@@ -82,6 +83,7 @@ class OverlayPanel(DataPanel):
 
     def build_plot(self, parent: QWidget) -> pg.PlotWidget:
         plot = pg.PlotWidget(parent)
+        follow_plot(plot)
         plot.setMenuEnabled(False)
         plot.hideButtons()
         plot.setAspectLocked(True)
@@ -151,6 +153,7 @@ class OverlayPanel(DataPanel):
         source_item = pg.ImageItem()
         source_item.setColorMap(cmap)
         hist_widget = pg.HistogramLUTWidget(root)
+        follow_histogram(hist_widget)
         hist_widget.setImageItem(source_item)
         hist_widget.item.gradient.setColorMap(cmap)
         layout.addWidget(hist_widget, 1)

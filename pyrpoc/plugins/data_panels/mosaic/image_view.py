@@ -6,12 +6,15 @@ import numpy as np
 import pyqtgraph as pg
 from PyQt6.QtWidgets import QWidget
 
+from pyrpoc.qt_components.plot_theme import follow_plot
+
 
 class ColourImage(pg.PlotWidget):
     """An aspect-locked RGB image, already scaled to 0..1 by the channel strip."""
 
     def __init__(self, parent: QWidget):
         super().__init__(parent)
+        follow_plot(self)
         self.setMenuEnabled(False)
         self.hideButtons()
         self.setAspectLocked(True)

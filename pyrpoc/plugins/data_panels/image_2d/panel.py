@@ -19,6 +19,7 @@ from PyQt6.QtWidgets import (
 )
 
 from pyrpoc.qt_components.levels import autoscale_levels, mono_levels
+from pyrpoc.qt_components.plot_theme import follow_histogram, follow_plot
 from pyrpoc.structs.data_library.data import Image2D
 from pyrpoc.structs.data_library.dataset import Dataset
 from pyrpoc.structs.data_library.library import Library
@@ -118,6 +119,7 @@ class Image2DPanel(DataPanel):
         plot, image_item = self.build_plot(root)
         body.addWidget(plot, 1)
         hist_widget = pg.HistogramLUTWidget(root)
+        follow_histogram(hist_widget)
         hist_widget.setImageItem(image_item)
         hist_widget.item.gradient.setColorMap(LUT)
         autoscale_box = QCheckBox("Autoscale", root)
@@ -141,6 +143,7 @@ class Image2DPanel(DataPanel):
         """The image and its click wiring. Wired at build rather than when a pick
         is requested, because a tile can appear after arming."""
         plot = pg.PlotWidget(parent)
+        follow_plot(plot)
         plot.setMenuEnabled(False)
         plot.hideButtons()
         plot.setAspectLocked(True)
