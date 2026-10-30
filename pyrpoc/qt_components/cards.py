@@ -3,8 +3,10 @@ while collapsed, and a body shown while expanded."""
 
 from __future__ import annotations
 
-from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtCore import QSize, pyqtSignal
 from PyQt6.QtWidgets import QFrame, QHBoxLayout, QLabel, QToolButton, QVBoxLayout, QWidget
+
+from pyrpoc.qt_components.icons import expand_arrow_icon
 
 # Scoped by object name so a card's frame styling does not reach into its body.
 _CARD_STYLESHEET = (
@@ -16,35 +18,7 @@ _CARD_STYLESHEET = (
     # ``.QWidget`` is exactly QWidget: plain containers go transparent while
     # buttons and inputs keep the theme's fill, so they stand out from the card.
     "#card .QWidget { background: transparent; }"
-    "#card QLabel, #card QCheckBox, #card QToolButton { background: transparent; }"
-    # The theme fills buttons with the window colour, which in light themes is
-    # the card's own colour, so buttons are outlined in the accent instead.
-    "#card QPushButton {"
-    "background: palette(button);"
-    "color: palette(button-text);"
-    "border: 1px solid palette(highlight);"
-    "border-radius: 4px;"
-    "padding: 3px 10px;"
-    "}"
-    "#card QPushButton:hover, #card QPushButton:pressed {"
-    "background: palette(highlight);"
-    "color: palette(highlighted-text);"
-    "padding: 3px 10px;"
-    "}"
-    "#card QPushButton:disabled {"
-    "background: transparent;"
-    "color: palette(mid);"
-    "border: 1px solid palette(mid);"
-    "}"
-    "#card QCheckBox::indicator:checked {"
-    "background: palette(highlight);"
-    "border: 1px solid palette(highlight);"
-    "color: palette(highlighted-text);"
-    "}"
-    "#card QCheckBox::indicator:unchecked {"
-    "background: transparent;"
-    "border: 1px solid palette(mid);"
-    "}"
+    "#card QLabel, #card QCheckBox { background: transparent; }"
 )
 
 
@@ -66,7 +40,8 @@ class BaseCardWidget(QFrame):
         self.header_row.setContentsMargins(0, 0, 0, 0)
         self.header_row.setSpacing(4)
         self.expand_btn = QToolButton(self)
-        self.expand_btn.setArrowType(Qt.ArrowType.RightArrow)
+        self.expand_btn.setIcon(expand_arrow_icon(False))
+        self.expand_btn.setIconSize(QSize(16, 16))
         self.expand_btn.setAutoRaise(True)
         self.expand_btn.setToolTip("Expand")
         self.expand_btn.clicked.connect(lambda: self.set_expanded(not self._expanded))
@@ -93,9 +68,7 @@ class BaseCardWidget(QFrame):
     def set_expanded(self, expanded: bool) -> None:
         self._expanded = expanded
         self.body_container.setVisible(expanded)
-        self.expand_btn.setArrowType(
-            Qt.ArrowType.DownArrow if expanded else Qt.ArrowType.RightArrow
-        )
+        self.expand_btn.setIcon(expand_arrow_icon(expanded))
         self.expand_btn.setToolTip("Collapse" if expanded else "Expand")
         self._description_label.setVisible(bool(self._description_label.text()) and not expanded)
 

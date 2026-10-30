@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from PyQt6.QtCore import QSettings
+from pathlib import Path
+
+from PyQt6.QtCore import QSettings, QStandardPaths
 from PyQt6.QtGui import QFontDatabase
 from PyQt6.QtWidgets import QApplication
 
@@ -25,6 +27,8 @@ class ThemeController:
     def __init__(self, app: QApplication):
         self.app = app
         self.settings = QSettings(_SETTINGS_ORG, _SETTINGS_APP)
+        cache = QStandardPaths.writableLocation(QStandardPaths.StandardLocation.CacheLocation)
+        self.glyph_dir = Path(cache) / "theme_glyphs"
         # One size for the app; the stylesheet scales headings and captions from it.
         font = QFontDatabase.systemFont(QFontDatabase.SystemFont.GeneralFont)
         font.setPointSizeF(_BASE_POINT_SIZE)
@@ -43,7 +47,7 @@ class ThemeController:
 
     def apply(self, theme: Theme, *, persist: bool) -> Theme:
         self.app.setPalette(build_palette(theme))
-        self.app.setStyleSheet(build_qss(theme))
+        self.app.setStyleSheet(build_qss(theme, self.glyph_dir))
         if persist:
             self.settings.setValue(_KEY_MODE, theme.mode.value)
             self.settings.setValue(_KEY_ACCENT, theme.accent)

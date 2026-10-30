@@ -64,3 +64,20 @@ def asset_icon(name: str) -> QIcon:
     if png.is_file():
         return QIcon(str(png))
     raise FileNotFoundError(f"no icon named {name!r} in {ASSETS}")
+
+
+def _chevron(path: str) -> bytes:
+    return (
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16">'
+        f'<path d="{path}" fill="none" stroke="currentColor" stroke-width="1.3" '
+        'stroke-linecap="round" stroke-linejoin="round"/></svg>'
+    ).encode()
+
+
+# Thin strokes, large enough to read as an expand control at a glance.
+_ARROW_RIGHT = _chevron("M5.5 2.5 11 8l-5.5 5.5")
+_ARROW_DOWN = _chevron("M2.5 5.5 8 11l5.5-5.5")
+
+
+def expand_arrow_icon(expanded: bool) -> QIcon:
+    return QIcon(PaletteSvgEngine(_ARROW_DOWN if expanded else _ARROW_RIGHT))

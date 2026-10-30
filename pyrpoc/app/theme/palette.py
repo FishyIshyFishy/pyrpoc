@@ -25,6 +25,7 @@ class Surfaces:
     window: str
     base: str
     raised: str
+    hover: str
     border: str
     text: str
     muted: str
@@ -37,7 +38,8 @@ SURFACES: dict[Mode, Surfaces] = {
         window="#1a1a1a",
         base="#121212",
         raised="#2a2a2a",
-        border="#383838",
+        hover="#353535",
+        border="#444444",
         text="#e8e8e8",
         muted="#9a9a9a",
         disabled="#5e5e5e",
@@ -46,7 +48,8 @@ SURFACES: dict[Mode, Surfaces] = {
         window="#f3f3f3",
         base="#ffffff",
         raised="#e6e6e6",
-        border="#c9c9c9",
+        hover="#d9d9d9",
+        border="#c2c2c2",
         text="#1b1b1b",
         muted="#6a6a6a",
         disabled="#a6a6a6",
