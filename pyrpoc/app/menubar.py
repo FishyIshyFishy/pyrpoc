@@ -2,22 +2,16 @@ from __future__ import annotations
 
 import PyQt6Ads as qtads
 from PyQt6.QtCore import pyqtSignal
-from PyQt6.QtGui import QAction, QActionGroup
+from PyQt6.QtGui import QAction, QActionGroup, QColor, QIcon, QPixmap
 from PyQt6.QtWidgets import QMenu, QMenuBar, QWidget
 
-from pyrpoc.app.theme.manager import available_breeze_themes
-
-_STYLE_COLOR_GROUPS = ["blue", "red", "green", "purple", "cyan", "pink"]
-_STYLE_VARIANTS = [
-    ("light-{c}", "Light"),
-    ("light-{c}-alt", "Light Alt"),
-    ("dark-{c}", "Dark"),
-    ("dark-{c}-alt", "Dark Alt"),
-]
+from pyrpoc.app.theme.mfruit import ACCENTS
+from pyrpoc.app.theme.palette import Mode, Theme
 
 
 class MainMenuBar(QMenuBar):
-    style_selected = pyqtSignal(str)
+    mode_selected = pyqtSignal(Mode)
+    accent_selected = pyqtSignal(str)
     # A panel type was chosen from Add, by registry key.
     panel_requested = pyqtSignal(str)
 
@@ -32,9 +26,8 @@ class MainMenuBar(QMenuBar):
 
         self.style_menu = QMenu("&Style", self)
         self.addMenu(self.style_menu)
-        self._style_actions: dict[str, QAction] = {}
-        self._style_group = QActionGroup(self)
-        self._style_group.setExclusive(True)
+        self._mode_actions: dict[Mode, QAction] = {}
+        self._accent_actions: dict[str, QAction] = {}
 
     def populate_add_menu(self, groups: dict[str, list[tuple[str, str]]]) -> None:
         """What can be added, as (key, label) under each heading, one submenu
@@ -61,24 +54,33 @@ class MainMenuBar(QMenuBar):
         for action in panel_actions:
             self.panels_menu.addAction(action)
 
-    def populate_style_menu(self, selected_mode: str) -> None:
+    def populate_style_menu(self, selected: Theme) -> None:
         self.style_menu.clear()
-        self._style_actions.clear()
-        for color in _STYLE_COLOR_GROUPS:
-            color_menu = QMenu(color.title(), self.style_menu)
-            self.style_menu.addMenu(color_menu)
-            for pattern, label in _STYLE_VARIANTS:
-                theme = pattern.format(c=color)
-                if theme not in available_breeze_themes:
-                    continue
-                action = QAction(label, color_menu)
-                action.setCheckable(True)
-                action.triggered.connect(lambda checked, m=theme: self.style_selected.emit(m))
-                self._style_group.addAction(action)
-                color_menu.addAction(action)
-                self._style_actions[theme] = action
-        self.set_active_style(selected_mode)
+        self._mode_actions.clear()
+        self._accent_actions.clear()
+        mode_group = QActionGroup(self.style_menu)
+        for mode in Mode:
+            action = QAction(mode.value.title(), self.style_menu)
+            action.setCheckable(True)
+            action.triggered.connect(lambda _checked, m=mode: self.mode_selected.emit(m))
+            mode_group.addAction(action)
+            self.style_menu.addAction(action)
+            self._mode_actions[mode] = action
+        self.style_menu.addSeparator()
+        accent_group = QActionGroup(self.style_menu)
+        for name, hex_color in ACCENTS.items():
+            swatch = QPixmap(14, 14)
+            swatch.fill(QColor(hex_color))
+            action = QAction(QIcon(swatch), name, self.style_menu)
+            action.setCheckable(True)
+            action.triggered.connect(lambda _checked, n=name: self.accent_selected.emit(n))
+            accent_group.addAction(action)
+            self.style_menu.addAction(action)
+            self._accent_actions[name] = action
+        self.set_active_style(selected)
 
-    def set_active_style(self, selected_mode: str) -> None:
-        for mode, action in self._style_actions.items():
-            action.setChecked(mode == selected_mode)
+    def set_active_style(self, selected: Theme) -> None:
+        for mode, action in self._mode_actions.items():
+            action.setChecked(mode is selected.mode)
+        for name, action in self._accent_actions.items():
+            action.setChecked(name == selected.accent)

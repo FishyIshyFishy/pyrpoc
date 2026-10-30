@@ -18,6 +18,7 @@ from PyQt6.QtWidgets import QCheckBox, QHBoxLayout, QLabel, QScrollArea, QVBoxLa
 
 from pyrpoc.qt_components.colors import color_for_index, color_map_from_rgb
 from pyrpoc.qt_components.levels import autoscale_levels, mono_levels
+from pyrpoc.qt_components.plot_theme import follow_histogram
 
 # Columns the strip makes room for before scrolling the rest sideways.
 COLUMNS_WITHOUT_SCROLLING = 4
@@ -139,6 +140,7 @@ class ChannelStrip(QScrollArea):
 
         source = pg.ImageItem()
         histogram = pg.HistogramLUTWidget(root)
+        follow_histogram(histogram)
         histogram.setImageItem(source)
         histogram.item.gradient.setColorMap(color_map_from_rgb(rgb))
         layout.addWidget(histogram, 1)

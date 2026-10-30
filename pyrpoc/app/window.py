@@ -8,7 +8,7 @@ panels and connects each to the model; the model never holds a widget.
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import Enum
 
 import PyQt6Ads as qtads
@@ -20,6 +20,7 @@ from pyrpoc.acquisition.panel import AcquisitionPanel
 from pyrpoc.app.application import Application
 from pyrpoc.app.menubar import MainMenuBar
 from pyrpoc.app.theme.manager import ThemeController
+from pyrpoc.app.theme.palette import Mode, Theme
 from pyrpoc.data_library.panel import DataLibraryPanel
 from pyrpoc.device_inventory.panel import DevicesPanel
 from pyrpoc.plugins.data_panels import data_panel_registry
@@ -92,8 +93,9 @@ class MainWindow(QWidget):
         layout.addWidget(self.dock_manager)
 
         self.refresh_panels_menu()
-        self.menubar.populate_style_menu(self.theme_controller.get_saved_mode())
-        self.menubar.style_selected.connect(self.set_style)
+        self.menubar.populate_style_menu(self.theme_controller.get_saved_theme())
+        self.menubar.mode_selected.connect(self.set_mode)
+        self.menubar.accent_selected.connect(self.set_accent)
 
     def bind_session(self, save_now: Callable[[], None]) -> None:
         """Save the session when the window closes."""
@@ -273,8 +275,14 @@ class MainWindow(QWidget):
             list(self.dock_by_key.values()), list(self.panel_actions.values())
         )
 
-    def set_style(self, theme_mode: str) -> None:
-        self.menubar.set_active_style(self.theme_controller.apply(theme_mode, persist=True))
+    def set_theme(self, theme: Theme) -> None:
+        self.menubar.set_active_style(self.theme_controller.apply(theme, persist=True))
+
+    def set_mode(self, mode: Mode) -> None:
+        self.set_theme(replace(self.theme_controller.get_saved_theme(), mode=mode))
+
+    def set_accent(self, accent: str) -> None:
+        self.set_theme(replace(self.theme_controller.get_saved_theme(), accent=accent))
 
     def closeEvent(self, event: QCloseEvent | None) -> None:
         self.shutting_down = True

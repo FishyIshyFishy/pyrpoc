@@ -6,8 +6,6 @@ from __future__ import annotations
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import QFrame, QHBoxLayout, QLabel, QToolButton, QVBoxLayout, QWidget
 
-_REMOVE_BTN_COLOR = "#e75480"
-
 # Scoped by object name so a card's frame styling does not reach into its body.
 _CARD_STYLESHEET = (
     "#card {"
@@ -41,7 +39,7 @@ _CARD_STYLESHEET = (
     "#card QCheckBox::indicator:checked {"
     "background: palette(highlight);"
     "border: 1px solid palette(highlight);"
-    "color: white;"
+    "color: palette(highlighted-text);"
     "}"
     "#card QCheckBox::indicator:unchecked {"
     "background: transparent;"
@@ -74,13 +72,13 @@ class BaseCardWidget(QFrame):
         self.expand_btn.clicked.connect(lambda: self.set_expanded(not self._expanded))
         self.header_row.addWidget(self.expand_btn)
         self.title_label = QLabel(title, self)
+        self.title_label.setProperty("role", "heading")
         self.header_row.addWidget(self.title_label, 1)
         root.addLayout(self.header_row)
 
         self._description_label = QLabel("", self)
-        self._description_label.setStyleSheet(
-            "color: palette(mid); font-size: 9pt; padding-left: 22px;"
-        )
+        self._description_label.setProperty("role", "caption")
+        self._description_label.setContentsMargins(22, 0, 0, 0)
         self._description_label.setWordWrap(True)
         self._description_label.setVisible(False)
         root.addWidget(self._description_label)
@@ -119,7 +117,11 @@ class RemovableCardWidget(BaseCardWidget):
         remove_btn = QToolButton(self)
         remove_btn.setAutoRaise(True)
         remove_btn.setText("X")
-        remove_btn.setStyleSheet(f"QToolButton {{ color: {_REMOVE_BTN_COLOR}; font-weight: 700; }}")
+        # Muted until hovered, so a column of cards isn't a column of red marks.
+        remove_btn.setStyleSheet(
+            "QToolButton { color: palette(mid); font-weight: 700; }"
+            "QToolButton:hover { color: palette(link); }"
+        )
         remove_btn.setToolTip("Remove")
         remove_btn.clicked.connect(self.remove_requested)
         self.header_row.addWidget(remove_btn)

@@ -13,6 +13,7 @@ import pyqtgraph as pg
 from PyQt6.QtWidgets import QCheckBox, QVBoxLayout
 
 from pyrpoc.qt_components.colors import color_for_index
+from pyrpoc.qt_components.plot_theme import follow_plot
 from pyrpoc.structs.data_library.data import Spectrum1D
 from pyrpoc.structs.data_library.dataset import Dataset
 from pyrpoc.structs.data_library.library import Library
@@ -34,6 +35,7 @@ class SpectrumPanel(DataPanel):
         body_root = QVBoxLayout(self.body)
         body_root.setContentsMargins(6, 6, 6, 6)
         self._plot = pg.PlotWidget(self.body)
+        follow_plot(self._plot)
         self._plot.setMenuEnabled(False)
         self._plot.showGrid(x=True, y=True, alpha=0.15)
         self._plot.setLabel("bottom", "Sample")
