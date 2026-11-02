@@ -14,7 +14,7 @@ Low priority
 5. Names of panels
 
 Just for fun
-1. mColors for the themes
+1. mColors for the themes (feat/mColors)
 
 Bug log
 1. Can't set notes before acquiring, that's inconvenient
