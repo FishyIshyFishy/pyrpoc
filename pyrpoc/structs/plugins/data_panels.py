@@ -1,16 +1,15 @@
 """Widgets that live in the dock area, and the data-panel contract.
 
-A ``Panel`` has identity and a title. A ``DataPanel`` shows one open dataset,
-chosen with a ``SourcePicker``; data-panel plugins subclass it and register in
-``data_panel_registry``. The only Qt file in structs, since a panel is a widget.
+A ``Panel`` has identity and a title. A ``DataPanel`` shows one open dataset
+of the one kind it renders, chosen with a ``SourcePicker``; data-panel plugins
+subclass it and register in ``data_panel_registry``. The only Qt file in
+structs, since a panel is a widget.
 """
 
 from __future__ import annotations
 
-from collections.abc import Sequence
-from typing import Any, ClassVar
+from typing import Any, Generic, TypeVar
 
-import numpy as np
 from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtWidgets import QComboBox, QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
@@ -20,6 +19,8 @@ from pyrpoc.structs.data_library.library import Library
 from pyrpoc.structs.registry import Registry
 
 from .devices import make_instance_id
+
+D = TypeVar("D", bound=Data)
 
 
 class Panel(QWidget):
@@ -48,16 +49,16 @@ class Panel(QWidget):
         del state
 
 
-class SourcePicker(QWidget):
-    """Names one dataset matching ``renders``, out of everything open. "Latest"
-    follows the newest match, so a new run shows up without a click."""
+class SourcePicker(QWidget, Generic[D]):
+    """Names one open dataset of kind ``renders``. "Latest" follows the newest
+    one, so a new run shows up without a click."""
 
     # The chosen dataset may have changed; the panel re-reads ``current()``.
     changed = pyqtSignal()
 
-    def __init__(self, renders: Sequence[type[Data]], library: Library, parent: QWidget):
+    def __init__(self, renders: type[D], library: Library, parent: QWidget):
         super().__init__(parent)
-        self.renders = list(renders)
+        self.renders = renders
         self.library = library
         self._follow_latest = True
 
@@ -77,7 +78,7 @@ class SourcePicker(QWidget):
         self.combo.blockSignals(True)
         self.combo.clear()
         self.combo.addItem("Latest", None)
-        for dataset in self.library.matching(*self.renders):
+        for dataset in self.library.matching(self.renders):
             self.combo.addItem(dataset.label, dataset.id)
         if not self._follow_latest:
             self.combo.setCurrentIndex(max(self.combo.findData(current), 0))
@@ -88,21 +89,21 @@ class SourcePicker(QWidget):
         self._follow_latest = self.combo.currentData() is None
         self.changed.emit()
 
-    def current(self) -> Dataset | None:
+    def current(self) -> Dataset[D] | None:
         chosen = self.combo.currentData()
         if chosen is None:
-            candidates = self.library.matching(*self.renders)
+            candidates = self.library.matching(self.renders)
             return candidates[0] if candidates else None
-        return self.library.by_id(chosen)
+        return self.library.by_id(chosen, self.renders)
 
 
-class DataPanel(Panel):
+class DataPanel(Panel, Generic[D]):
     """A source picker above a ``body`` the subclass fills. ``refresh`` runs
-    whenever the chosen dataset or its frames change, and hands the newest
-    frame to ``show_frame``, which updates the widgets it already has.
+    whenever the chosen dataset or its value changes, and hands the value to
+    ``show_value``, which updates the widgets it already has.
 
-    A chosen dataset with no frames yet, as when a run has just started,
-    leaves the last frame on screen: the next run replaces the picture rather
+    A chosen dataset with no value yet, as when a run has just started,
+    leaves the last value on screen: the next run replaces the picture rather
     than blanking it, and levels and layout carry over. Only having no
     dataset at all calls ``clear``.
 
@@ -110,13 +111,14 @@ class DataPanel(Panel):
     cannot provide pixels keep the no-op, so the host routes to all of them.
     """
 
-    renders: ClassVar[list[type[Data]]]
+    # The one kind of data this panel shows.
+    renders: type[D]
 
     # The heading it is listed under, and its place in the Add menu.
     group: str
     order: int
 
-    # A ``Pixel`` the user clicked while picking.
+    # A ``Dataset[Pixel]`` the user clicked while picking.
     picked = pyqtSignal(object)
 
     def __init__(self, library: Library):
@@ -128,8 +130,8 @@ class DataPanel(Panel):
         self.source = SourcePicker(self.renders, library, self)
         root.addWidget(self.source)
         root.addWidget(self.body, 1)
-        self.shown_dataset: Dataset | None = None
-        self.shown_frame: np.ndarray | None = None
+        self.shown_dataset: Dataset[D] | None = None
+        self.shown_value: D | None = None
 
     def connect_source(self) -> None:
         """Start redrawing on source changes. Called by subclasses once their
@@ -145,23 +147,23 @@ class DataPanel(Panel):
     def library(self) -> Library:
         return self.source.library
 
-    def dataset(self) -> Dataset | None:
+    def dataset(self) -> Dataset[D] | None:
         return self.source.current()
 
     def refresh(self) -> None:
         dataset = self.dataset()
         if dataset is None:
-            self.shown_dataset = self.shown_frame = None
+            self.shown_dataset = self.shown_value = None
             self.clear()
             return
-        frame = dataset.latest()
+        value = dataset.value
         # Library changes re-announce the source even when nothing new arrived.
-        if frame is None or (dataset is self.shown_dataset and frame is self.shown_frame):
+        if value is None or (dataset is self.shown_dataset and value is self.shown_value):
             return
-        self.shown_dataset, self.shown_frame = dataset, frame
-        self.show_frame(dataset, frame)
+        self.shown_dataset, self.shown_value = dataset, value
+        self.show_value(dataset, value)
 
-    def show_frame(self, dataset: Dataset, frame: np.ndarray) -> None:
+    def show_value(self, dataset: Dataset[D], value: D) -> None:
         raise NotImplementedError
 
     def clear(self) -> None:
@@ -172,4 +174,4 @@ class DataPanel(Panel):
         del picking
 
 
-data_panel_registry: Registry[DataPanel] = Registry("DataPanelRegistry", DataPanel)
+data_panel_registry: Registry[DataPanel[Any]] = Registry("DataPanelRegistry", DataPanel)

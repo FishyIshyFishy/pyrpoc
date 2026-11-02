@@ -54,11 +54,11 @@ def channel_lut(hist_widget: pg.HistogramLUTWidget) -> np.ndarray:
 
 
 @data_panel_registry.register("overlay")
-class OverlayPanel(DataPanel):
+class OverlayPanel(DataPanel[Image]):
     display_name = "Overlaid channels"
     group = "2D Image Views"
     order = 20
-    renders = [Image]
+    renders = Image
 
     def __init__(self, library: Library):
         super().__init__(library)
@@ -104,12 +104,12 @@ class OverlayPanel(DataPanel):
         return scroll
 
     def frame(self) -> np.ndarray | None:
-        shown = self.shown_frame
-        return None if shown is None else np.asarray(shown, dtype=np.float32)
+        shown = self.shown_value
+        return None if shown is None else shown.array
 
-    def show_frame(self, dataset: Dataset, frame: np.ndarray) -> None:
+    def show_value(self, dataset: Dataset[Image], value: Image) -> None:
         del dataset
-        arr = np.asarray(frame, dtype=np.float32)
+        arr = value.array
         self.sync_controls(arr.shape[0])
         for index in range(arr.shape[0]):
             self.update_channel(index, arr[index])

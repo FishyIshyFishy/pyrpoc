@@ -11,8 +11,6 @@ import threading
 from collections.abc import Callable, Iterator, Mapping
 from typing import Any, TypeVar
 
-import numpy as np
-
 from pyrpoc.structs.data_library.data import Data
 from pyrpoc.structs.data_library.dataset import Dataset
 from pyrpoc.structs.plugins.devices import Device
@@ -88,7 +86,7 @@ class RunContext:
         *,
         params: Any,
         devices: Mapping[type[Device], Device],
-        datasets: dict[str, Dataset],
+        datasets: dict[str, Dataset[Any]],
         cancel: threading.Event,
         on_status: Callable[[str], None],
     ):
@@ -98,7 +96,7 @@ class RunContext:
         self._cancel = cancel
         self._on_status = on_status
 
-    def dataset_for(self, output: str) -> Dataset:
+    def dataset_for(self, output: str) -> Dataset[Any]:
         if output not in self.datasets:
             raise KeyError(
                 f"{output!r} is not declared in emits; this program declares "
@@ -106,12 +104,13 @@ class RunContext:
             )
         return self.datasets[output]
 
-    def publish(self, output: str, data: np.ndarray, *, channels=None) -> None:
-        """Write one array into one of this run's datasets."""
+    def publish(self, output: str, value: Data) -> None:
+        """Make ``value`` the current value of one of this run's outputs. It
+        must be the kind ``emits`` declares for that output."""
         dataset = self.dataset_for(output)
-        if channels and not dataset.channel_labels:
-            dataset.channel_labels = list(channels)
-        dataset.append(data)
+        if type(value) is not dataset.kind:
+            raise TypeError(f"{output!r} carries {dataset.kind.name}, not {type(value).name}")
+        dataset.publish(value)
 
     def describe(self, output: str, **metadata: Any) -> None:
         """Record per-output metadata, set once rather than per frame."""

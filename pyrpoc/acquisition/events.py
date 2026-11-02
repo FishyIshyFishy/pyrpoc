@@ -2,7 +2,7 @@
 
 Runs report on their worker threads; the signals here are what carries that
 onto the GUI thread. This is the only subscriber to each dataset a run opens,
-because ``Dataset.append`` runs on the worker thread. Nothing here knows which
+because ``Dataset.publish`` runs on the worker thread. Nothing here knows which
 program is selected or which runner asked.
 """
 

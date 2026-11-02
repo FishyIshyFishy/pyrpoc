@@ -19,10 +19,9 @@ from PyQt6.QtWidgets import (
 )
 
 from pyrpoc.qt_components.levels import autoscale_levels, mono_levels
-from pyrpoc.structs.data_library.data import Image
-from pyrpoc.structs.data_library.dataset import Dataset
+from pyrpoc.structs.data_library.data import Image, Pixel
+from pyrpoc.structs.data_library.dataset import Dataset, Origin
 from pyrpoc.structs.data_library.library import Library
-from pyrpoc.structs.data_library.pixel import Pixel
 from pyrpoc.structs.plugins.data_panels import DataPanel, data_panel_registry
 
 LUT = pg.ColorMap(
@@ -53,11 +52,11 @@ class TileState:
 
 
 @data_panel_registry.register("image")
-class ImagePanel(DataPanel):
+class ImagePanel(DataPanel[Image]):
     display_name = "Tiled channels"
     group = "2D Image Views"
     order = 21
-    renders = [Image]
+    renders = Image
 
     def __init__(self, library: Library):
         super().__init__(library)
@@ -82,12 +81,11 @@ class ImagePanel(DataPanel):
         scroll.setWidget(self._content)
         self.connect_source()
 
-    def show_frame(self, dataset: Dataset, frame: np.ndarray) -> None:
+    def show_value(self, dataset: Dataset[Image], value: Image) -> None:
         del dataset
-        arr = np.asarray(frame, dtype=np.float32)
-        self.sync_channel_tiles(arr.shape[0])
-        for index in range(arr.shape[0]):
-            self.update_channel_image(index, arr[index])
+        self.sync_channel_tiles(len(value.channels))
+        for index, plane in enumerate(value.array):
+            self.update_channel_image(index, plane)
 
     def clear(self) -> None:
         self.sync_channel_tiles(0)
@@ -174,20 +172,21 @@ class ImagePanel(DataPanel):
         if not self._picking or event.button() != Qt.MouseButton.LeftButton:
             return
         # What is on screen, which is what the user clicked on.
-        dataset, frame = self.shown_dataset, self.shown_frame
-        if dataset is None or frame is None:
+        dataset, image = self.shown_dataset, self.shown_value
+        if dataset is None or image is None:
             return
         point = image_item.mapFromScene(event.scenePos())
         x, y = int(np.floor(point.x())), int(np.floor(point.y()))
-        if not (0 <= x < frame.shape[2] and 0 <= y < frame.shape[1]):
+        _, height, width = image.array.shape
+        if not (0 <= x < width and 0 <= y < height):
             return
         event.accept()
-        self.picked.emit(Pixel(dataset, x, y))
+        self.picked.emit(pick_of(dataset, x, y))
 
     def on_autoscale_toggled(self, index: int) -> None:
-        frame = self.shown_frame
-        if frame is not None:
-            self.update_channel_image(index, np.asarray(frame[index], dtype=np.float32))
+        image = self.shown_value
+        if image is not None:
+            self.update_channel_image(index, image.array[index])
 
     def on_lut_levels_changed(self, index: int) -> None:
         if self._suspend_lut_signal:
@@ -280,3 +279,17 @@ class ImagePanel(DataPanel):
             tile.autoscale_box.blockSignals(False)
             self.apply_levels(tile, saved.min_val, max(saved.max_val, saved.min_val + 1e-12))
         self._pending_state = []
+
+
+def pick_of(dataset: Dataset[Image], x: int, y: int) -> Dataset[Pixel]:
+    """Pixel ``(x, y)`` of ``dataset``, as a dataset of its own that keeps the
+    image's provenance: a pixel only names a position in that acquisition."""
+    pick = Dataset(
+        output=dataset.output,
+        kind=Pixel,
+        provenance=dataset.provenance,
+        origin=Origin.AUTHORED,
+        writer=None,
+    )
+    pick.publish(Pixel(x, y))
+    return pick

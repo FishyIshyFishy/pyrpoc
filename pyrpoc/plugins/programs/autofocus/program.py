@@ -52,7 +52,7 @@ class FocusRun:
         self.ctx.check_cancel()
         move_z(self.stage, z_um, self.ctx.sleep)
         frame = self.raster.frame()
-        self.ctx.publish("intensity", frame, channels=self.raster.channel_labels)
+        self.ctx.publish("intensity", Image(frame, self.raster.channel_labels))
         return tenengrad(frame, self.raster.weights)
 
     def report(self, step: ClimbStep) -> None:

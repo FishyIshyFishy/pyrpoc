@@ -4,7 +4,7 @@
     model.py      LibraryModel: the commands the UI issues, and change signals (Qt)
     saving.py     RecordingSaver: one recording's writers and metadata file (no Qt)
     format.py     the recording format, written and read in one place (no Qt)
-    writers/      file formats per kind of data (TIFF, NPZ), registered in writer_registry
+    writers/      file formats per kind of data (TIFF, NPZ, mosaic), registered in writer_registry
     panel.py      the Data Library panel
     details.py    the Details dialog: metadata and notes
 
@@ -13,6 +13,6 @@ Importing this package registers the writers.
 
 from __future__ import annotations
 
-from .writers import NpzWriter, TiffWriter
+from .writers import MosaicWriter, NpzWriter, TiffWriter
 
-__all__ = ["NpzWriter", "TiffWriter"]
+__all__ = ["MosaicWriter", "NpzWriter", "TiffWriter"]

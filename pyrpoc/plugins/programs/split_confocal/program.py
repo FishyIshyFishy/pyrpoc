@@ -42,5 +42,5 @@ class SplitConfocal(Program):
 
         for _ in count_off(ctx, ctx.params[FrameCountGroup].num_frames, "frame"):
             samples = raster.samples()
-            ctx.publish("intensity", split_frame(samples, split), channels=labels)
-            ctx.publish("raw_pixel_stream", samples)
+            ctx.publish("intensity", Image(split_frame(samples, split), labels))
+            ctx.publish("raw_pixel_stream", RawSamples(samples))

@@ -5,7 +5,8 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from pyrpoc.structs.data_library.pixel import Pixel
+from pyrpoc.structs.data_library.data import Pixel
+from pyrpoc.structs.data_library.dataset import Dataset
 from pyrpoc.structs.plugins.params import BlockMap, ParameterError
 from pyrpoc.structs.plugins.programs.runner import Runner, RunnerContext, Toggle
 
@@ -19,7 +20,7 @@ class ArmAndRun(Runner):
     anything would stop the run starting, since the answer is what starts it.
     """
 
-    apply: Callable[[Pixel, BlockMap], None]
+    apply: Callable[[Dataset[Pixel], BlockMap], None]
     label: str
     icon: str | None
     tooltip: str
@@ -36,12 +37,12 @@ class ArmAndRun(Runner):
                 return
             ctx.request_pixel(on_pick)
 
-        def on_pick(pixel: Pixel | None) -> None:
+        def on_pick(pick: Dataset[Pixel] | None) -> None:
             toggle.set(False)
-            if pixel is None:
+            if pick is None:
                 return
             try:
-                self.apply(pixel, ctx.params)
+                self.apply(pick, ctx.params)
             except ParameterError as exc:
                 ctx.status(str(exc))
                 return

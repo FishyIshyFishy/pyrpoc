@@ -45,9 +45,8 @@ structs/
     data_panels.py         Panel, DataPanel, SourcePicker; data_panel_registry
     params.py              fields, Group (a parameter block), BlockStore; block_registry
   data_library/          what the data library holds and saves
-    data.py                kinds of data: Image, Spectrum, Mask, ...
-    dataset.py             Dataset: one output's frames + where they came from
-    pixel.py               Pixel: one pixel of a dataset, what a click on a display names
+    data.py                the nouns data comes as: Image, Mask, Pixel, Mosaic, ...
+    dataset.py             Dataset: one output's current value + where it came from
     library.py             Library: read-only view of open datasets
     saving.py              SaveTarget (where to save), Writer (a file format); writer_registry
 ```
@@ -56,15 +55,16 @@ The placements that surprise:
 
 - **Writers are data, not programs.** A program never touches a writer. It
   declares its outputs and the `Data` kind each carries (`Image`, ...), and
-  publishes arrays. When saving is on, the data library's saver picks a writer
+  publishes values of that kind. When saving is on, the data library's saver picks a writer
   for each output by its data kind from `writer_registry`. Loading uses the same
   writer to read the files back.
 - **Data kinds live in `data_library/` even though programs make them** and data
   panels draw them. The library is what stores and saves them.
 - **`SaveTarget` lives in `data_library/`,** though acquisition holds the current one
   and the Acquisition panel edits it.
-- **`Pixel` lives with data.** A runner asks for one ("click a pixel") and an
-  image panel answers, so programs and data panels meet only through it.
+- **A picked pixel is data like any other.** A runner asks for one ("click a
+  pixel") and an image panel answers with a `Dataset[Pixel]` carrying the
+  clicked image's provenance, as the mask editor answers with a `Dataset[Mask]`.
 - **`params.py` lives under `plugins/`,** though the parameter form, acquisition
   and the session also read it. Plugins are what declare parameters.
 - **`Panel` (the base for every dock) is in `plugins/data_panels.py`,** so the

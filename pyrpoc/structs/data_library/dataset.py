@@ -1,6 +1,6 @@
-"""A dataset: one output's frames, where they came from, and who is told
-when a frame arrives. Programs publish into one; the data library, data panels
-and acquisition read it."""
+"""A dataset: one named output's current value, where it came from, and who
+is told when it changes. Programs publish into one; the data library, data
+panels and acquisition read it."""
 
 from __future__ import annotations
 
@@ -10,15 +10,15 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Generic, TypeVar
 from uuid import uuid4
-
-import numpy as np
 
 from .data import Data
 
 if TYPE_CHECKING:  # pragma: no cover
     from .saving import Writer
+
+D = TypeVar("D", bound=Data)
 
 
 def utc_now() -> str:
@@ -44,39 +44,43 @@ class Origin(Enum):
 
     ACQUIRED = "acquired"
     LOADED = "loaded"
-    # Drawn by the user, like a mask: work that exists nowhere else.
+    # Made by the user, like a mask or a picked pixel: work that exists nowhere else.
     AUTHORED = "authored"
 
 
-class Dataset:
-    """One named output of one recording: frames of one kind of ``Data``."""
+class Dataset(Generic[D]):
+    """One named output of one recording: the latest value of one ``kind``.
+
+    Each publish replaces the value, so a continuous run holds one value in
+    memory however long it goes; its writer keeps every publish on disk.
+    """
 
     def __init__(
         self,
         *,
         output: str,
-        spec: type[Data],
+        kind: type[D],
         provenance: Provenance,
         origin: Origin,
-        writer: Writer | None = None,
+        writer: Writer[D] | None,
     ):
         self.id = f"{output}-{uuid4().hex[:12]}"
         self.output = output
-        self.spec = spec
+        self.kind = kind
         self.provenance = provenance
         self.origin = origin
-        # No more frames will arrive. Only an acquisition is still being written.
+        # No more values will arrive. Only an acquisition is still being written.
         self.finished = origin is not Origin.ACQUIRED
         # The recording's metadata file, once it is on disk.
         self.meta_path: Path | None = None
         self.notes = ""
-        self.channel_labels: list[str] = []
         self.metadata: dict[str, Any] = {}
         self.writer = writer
+        self.value: D | None = None
+        # How many values were published into it; every one reached the writer.
+        self.published = 0
 
-        self._frames: list[np.ndarray] = []
-        self._nbytes = 0
-        self._subscribers: list[Callable[[Dataset], None]] = []
+        self._subscribers: list[Callable[[Dataset[D]], None]] = []
         self._lock = threading.RLock()
 
     @property
@@ -99,53 +103,27 @@ class Dataset:
         """One line naming this dataset, for pickers that have no columns."""
         return " · ".join((self.started_time, self.name, self.output))
 
-    def resolved_channel_labels(self, count: int) -> list[str]:
-        if len(self.channel_labels) == count:
-            return list(self.channel_labels)
-        return [f"channel_{index}" for index in range(count)]
-
-    def append(self, array: np.ndarray) -> None:
-        """Validate, store, save, then notify. Runs on the worker thread, so
-        subscribers must not touch Qt; the data library's model re-emits for them."""
-        frame = self.spec.coerce(array)
-        with self._lock:
-            self._frames.append(frame)
-            self._nbytes += frame.nbytes
-            if not self.channel_labels and self.spec.axes[0] == "channel":
-                self.channel_labels = self.resolved_channel_labels(frame.shape[0])
-
-        if self.writer is not None:
-            self.writer.write(self, frame)
-
-        self.notify()
-
-    def __len__(self) -> int:
-        with self._lock:
-            return len(self._frames)
-
     @property
     def nbytes(self) -> int:
-        """Memory held by every frame so far. A long run is what can
-        exhaust a machine, so the data panel shows this as it grows. Kept as a
-        running total because the panel asks on every append."""
-        with self._lock:
-            return self._nbytes
+        value = self.value
+        return 0 if value is None else value.nbytes
 
-    def latest(self) -> np.ndarray | None:
+    def publish(self, value: D) -> None:
+        """Replace the value, save it, then notify. Runs on the worker thread,
+        so subscribers must not touch Qt; the data library's model re-emits for them."""
         with self._lock:
-            return self._frames[-1] if self._frames else None
+            self.value = value
+            self.published += 1
+        if self.writer is not None:
+            self.writer.write(self, value)
+        self.notify()
 
-    def frames(self) -> list[np.ndarray]:
-        """Every frame so far, oldest first."""
-        with self._lock:
-            return list(self._frames)
-
-    def subscribe(self, callback: Callable[[Dataset], None]) -> None:
+    def subscribe(self, callback: Callable[[Dataset[D]], None]) -> None:
         with self._lock:
             if callback not in self._subscribers:
                 self._subscribers.append(callback)
 
-    def unsubscribe(self, callback: Callable[[Dataset], None]) -> None:
+    def unsubscribe(self, callback: Callable[[Dataset[D]], None]) -> None:
         with self._lock:
             if callback in self._subscribers:
                 self._subscribers.remove(callback)
@@ -162,4 +140,4 @@ class Dataset:
             self.writer.finalize(self, error)
 
     def __repr__(self) -> str:  # pragma: no cover - debugging aid
-        return f"<Dataset {self.output} frames={len(self)}>"
+        return f"<Dataset {self.output} {self.kind.name} published={self.published}>"

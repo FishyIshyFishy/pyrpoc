@@ -124,11 +124,11 @@ M = TypeVar("M", bound=MaskRef)
 def resolve_mask(mask: M, library: Library) -> M:
     """``mask`` with its pixels. One whose entry is not open refuses the run:
     acquiring without a mask the user bound is worse than not acquiring."""
-    dataset = library.by_id(mask.source_id)
-    array = dataset.latest() if dataset is not None else None
-    if array is None:
+    dataset = library.by_id(mask.source_id, Mask)
+    value = dataset.value if dataset is not None else None
+    if value is None:
         raise ParameterError(f"mask '{mask.describe()}' is not open")
-    return replace(mask, array=array)
+    return replace(mask, array=value.array)
 
 
 CLOSED_SUFFIX = " (closed)"
@@ -143,7 +143,9 @@ class MaskSourceCombo(QComboBox):
     would raise inside the library's notify, which runs at run start.
     """
 
-    def __init__(self, sources: Callable[[], list[Dataset]], blank: str | None, parent: QWidget):
+    def __init__(
+        self, sources: Callable[[], list[Dataset[Mask]]], blank: str | None, parent: QWidget
+    ):
         super().__init__(parent)
         self._sources = sources
         self._blank = blank
@@ -222,7 +224,7 @@ class MaskTable(QWidget):
         row.addStretch(1)
         return row
 
-    def sources(self) -> list[Dataset]:
+    def sources(self) -> list[Dataset[Mask]]:
         """The mask entries currently open, newest first."""
         return self.library.matching(Mask)
 
@@ -257,7 +259,7 @@ class MaskTable(QWidget):
             line += 1
         return line
 
-    def next_source(self) -> Dataset | None:
+    def next_source(self) -> Dataset[Mask] | None:
         """The newest mask no row has taken, or the newest if all are taken, so a
         second row does not default to the first row's mask."""
         taken = {row.source.currentData() for row in self.rows}
@@ -299,7 +301,7 @@ class MaskTable(QWidget):
             dataset_id = row.source.currentData()
             if not dataset_id:
                 continue
-            dataset = self.library.by_id(dataset_id)
+            dataset = self.library.by_id(dataset_id, Mask)
             label = dataset.label if dataset is not None else row.source.currentText()
             out.append(
                 MaskBinding(
@@ -323,7 +325,7 @@ class MaskTable(QWidget):
         closed entry, since those will stop the run."""
         if not self.rows:
             return "none"
-        live = sum(1 for mask in self.value() if self.library.by_id(mask.source_id))
+        live = sum(1 for mask in self.value() if self.library.by_id(mask.source_id, Mask))
         closed = len(self.rows) - live
         text = f"{live} mask" + ("" if live == 1 else "s")
         return text + (f", {closed} closed" if closed else "")

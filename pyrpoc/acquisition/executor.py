@@ -51,7 +51,7 @@ class Run:
         return self.provenance.run_id
 
     @property
-    def datasets(self) -> dict[str, Dataset]:
+    def datasets(self) -> dict[str, Dataset[Any]]:
         return self.recording.datasets
 
     def stop(self) -> None:
@@ -207,16 +207,16 @@ class Executor:
 
     def open_datasets(
         self, program: Program, provenance: Provenance, saver: RecordingSaver | None
-    ) -> dict[str, Dataset]:
-        datasets = {
+    ) -> dict[str, Dataset[Any]]:
+        datasets: dict[str, Dataset[Any]] = {
             output: Dataset(
                 output=output,
-                spec=spec,
+                kind=kind,
                 provenance=provenance,
                 origin=Origin.ACQUIRED,
                 writer=saver.writer_for(output) if saver is not None else None,
             )
-            for output, spec in program.emits.items()
+            for output, kind in program.emits.items()
         }
         for dataset in datasets.values():
             self.library.add(dataset)

@@ -38,7 +38,7 @@ class RegionMaskCombo(MaskSourceCombo):
         source_id = self.currentData()
         if not source_id:
             return None
-        dataset = self.library.by_id(source_id)
+        dataset = self.library.by_id(source_id, Mask)
         label = dataset.label if dataset is not None else self.currentText()
         return MaskRef(source_id=source_id, source_label=label.removesuffix(CLOSED_SUFFIX))
 

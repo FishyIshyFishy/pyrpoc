@@ -13,7 +13,7 @@ from .layout import MosaicLayout
 
 
 class StackView(QWidget):
-    """Scrolls through every frame of the dataset. While the slider is on the
+    """Scrolls through every image of the mosaic. While the slider is on the
     last frame it follows new ones as they arrive; moved back, it stays put."""
 
     # The user moved to another frame.

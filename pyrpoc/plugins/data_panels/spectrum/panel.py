@@ -20,11 +20,11 @@ from pyrpoc.structs.plugins.data_panels import DataPanel, data_panel_registry
 
 
 @data_panel_registry.register("spectrum")
-class SpectrumPanel(DataPanel):
+class SpectrumPanel(DataPanel[Spectrum]):
     display_name = "Spectrum"
     group = "Spectral"
     order = 10
-    renders = [Spectrum]
+    renders = Spectrum
 
     def __init__(self, library: Library):
         super().__init__(library)
@@ -61,9 +61,10 @@ class SpectrumPanel(DataPanel):
         if y_changed:
             self._autoscale_box.setChecked(False)
 
-    def show_frame(self, dataset: Dataset, frame: np.ndarray) -> None:
-        arr = np.asarray(frame, dtype=np.float32)
-        self.sync_curves(arr.shape[0], dataset.resolved_channel_labels(arr.shape[0]))
+    def show_value(self, dataset: Dataset[Spectrum], value: Spectrum) -> None:
+        del dataset
+        arr = value.array
+        self.sync_curves(arr.shape[0], list(value.channels))
         # TODO: an in-widget calibration (pixel -> nm, or Raman shift from an
         # excitation wavelength), kept with the widget or saved on its own, not
         # in the dataset.

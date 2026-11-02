@@ -25,4 +25,4 @@ class Confocal(Program):
     def run(self, ctx: RunContext) -> None:
         raster = Raster.for_run(ctx)
         for _ in count_off(ctx, ctx.params[FrameCountGroup].num_frames, "frame"):
-            ctx.publish("intensity", raster.frame(), channels=raster.channel_labels)
+            ctx.publish("intensity", Image(raster.frame(), raster.channel_labels))

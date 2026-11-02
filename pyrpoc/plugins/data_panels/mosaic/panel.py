@@ -1,9 +1,5 @@
-"""A tiled acquisition, as a stack of frames or stitched into one mosaic,
-with every channel overlaid in its own colour.
-
-The stack works for any ``Image``. The mosaic needs the layout its program
-wrote into the output's metadata; without one, the Mosaic button is disabled.
-"""
+"""A mosaic, as a stack of its images or stitched into one, with every
+channel overlaid in its own colour."""
 
 from __future__ import annotations
 
@@ -21,32 +17,28 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
 )
 
-from pyrpoc.structs.data_library.data import Image
+from pyrpoc.structs.data_library.data import Mosaic
 from pyrpoc.structs.data_library.dataset import Dataset
 from pyrpoc.structs.data_library.library import Library
 from pyrpoc.structs.plugins.data_panels import DataPanel, data_panel_registry
 
 from .channels import ChannelStrip
-from .layout import MosaicLayout, read_layout
+from .layout import layout_of
 from .mosaic_view import MosaicView
 from .stack_view import StackView
 
-NO_LAYOUT_TIP = "This dataset has no mosaic layout; it was not acquired as a mosaic"
-
 
 @data_panel_registry.register("mosaic")
-class MosaicPanel(DataPanel):
+class MosaicPanel(DataPanel[Mosaic]):
     display_name = "Mosaic"
     group = "2D Image Views"
     order = 22
-    renders = [Image]
+    renders = Mosaic
 
     def __init__(self, library: Library):
         super().__init__(library)
         pg.setConfigOptions(imageAxisOrder="row-major")
-        self.layout_found: MosaicLayout | None = None
         self.labels: list[str] = []
-        # What the user chose; the mosaic shows only when the dataset has a layout.
         self.wants_mosaic = False
 
         root = QVBoxLayout(self.body)
@@ -85,31 +77,22 @@ class MosaicPanel(DataPanel):
         bar.addStretch(1)
         return bar
 
-    def show_frame(self, dataset: Dataset, frame: np.ndarray) -> None:
-        self.labels = dataset.resolved_channel_labels(frame.shape[0])
-        self.layout_found = self.read_layout(dataset)
+    def show_value(self, dataset: Dataset[Mosaic], value: Mosaic) -> None:
+        del dataset
+        if not value.images:
+            self.clear()
+            return
+        self.labels = list(value.images[0].channels)
         self.redraw()
 
-    def read_layout(self, dataset: Dataset) -> MosaicLayout | None:
-        """The dataset's layout, enabling the Mosaic button only when there is
-        one. Metadata may come from a file, so an unreadable layout is shown
-        on the button rather than raised."""
-        try:
-            layout = read_layout(dataset.metadata)
-            tip = NO_LAYOUT_TIP if layout is None else "Stitch the tiles into one image"
-        except ValueError as exc:
-            layout, tip = None, f"The mosaic layout could not be read: {exc}"
-        self.mosaic_button.setEnabled(layout is not None)
-        self.mosaic_button.setToolTip(tip)
-        return layout
-
     def redraw(self) -> None:
-        """Draw the dataset in whichever view applies; the hidden one waits."""
-        dataset, layout = self.shown_dataset, self.layout_found
-        if dataset is None:
+        """Draw the mosaic in whichever view is chosen; the hidden one waits."""
+        dataset, mosaic = self.shown_dataset, self.shown_value
+        if dataset is None or mosaic is None or not mosaic.images:
             return
-        frames = dataset.frames()
-        if self.wants_mosaic and layout is not None:
+        frames = [image.array for image in mosaic.images]
+        layout = layout_of(mosaic)
+        if self.wants_mosaic:
             self.mosaic_button.setChecked(True)
             self.views.setCurrentWidget(self.mosaic)
             self.show_planes(self.mosaic.stitch(dataset.id, frames, layout))
@@ -139,10 +122,6 @@ class MosaicPanel(DataPanel):
         self.redraw()
 
     def clear(self) -> None:
-        self.layout_found = None
-        self.stack_button.setChecked(True)
-        self.mosaic_button.setEnabled(False)
-        self.mosaic_button.setToolTip(NO_LAYOUT_TIP)
         self.channels.clear_planes()
         self.stack.clear()
         self.mosaic.clear()

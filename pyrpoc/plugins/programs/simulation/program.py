@@ -90,5 +90,5 @@ class Simulation(Program):
 
         for index in count_off(ctx, ctx.params[FrameCountGroup].num_frames, "frame"):
             frame = synthetic_frame(frame_shape, signal, seed=seed, frame_index=index, lit=lit)
-            ctx.publish("intensity", frame, channels=labels)
+            ctx.publish("intensity", Image(frame, labels))
             ctx.sleep(interval_ms / 1000.0)

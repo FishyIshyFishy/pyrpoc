@@ -2,10 +2,11 @@
 
 A recording is one ``<stem>_meta.json`` with its data files beside it. The
 metadata file is the only entry point: it names the files and says everything
-needed to rebuild each output as a ``Dataset``. Every recording saved since
-format 1 must load in every later version of pyrpoc, so a new format version
-adds a decoder to ``DECODERS`` and never removes one; within a version, fields
-may be added but never renamed or removed. See ``docs/internal/data-format.md``.
+needed to rebuild each output as a ``Dataset`` holding its last value. Every
+recording saved since format 1 must load in every later version of pyrpoc, so a
+new format version adds a decoder to ``DECODERS`` and never removes one; within
+a version, fields may be added but never renamed or removed. See
+``docs/internal/data-format.md``.
 """
 
 from __future__ import annotations
@@ -18,9 +19,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
-import numpy as np
-
-from pyrpoc.structs.data_library.data import DATA_KINDS
+from pyrpoc.structs.data_library.data import DATA_KINDS, Data
 from pyrpoc.structs.data_library.dataset import Dataset, Origin, Provenance
 from pyrpoc.structs.data_library.saving import writer_registry
 
@@ -44,8 +43,8 @@ class RunRecord:
 @dataclass
 class OutputRecord:
     kind: str
-    channels: list[str]
-    frames: int
+    # Values published; the files hold every one.
+    published: int
     # File names beside the metadata file, keyed as the writer keyed them.
     files: dict[str, str]
     metadata: dict[str, Any]
@@ -147,8 +146,7 @@ def decode_v1(raw: dict[str, Any]) -> RecordingRecord:
         outputs={
             str(output): OutputRecord(
                 kind=str(entry["kind"]),
-                channels=[str(label) for label in entry["channels"]],
-                frames=int(entry["frames"]),
+                published=int(entry["published"]),
                 files={str(key): str(name) for key, name in entry["files"].items()},
                 metadata=dict(entry["metadata"]),
                 notes=str(entry["notes"]),
@@ -162,8 +160,9 @@ def decode_v1(raw: dict[str, Any]) -> RecordingRecord:
 DECODERS: dict[int, Callable[[dict[str, Any]], RecordingRecord]] = {1: decode_v1}
 
 
-def load_recording(meta_path: Path) -> list[Dataset]:
-    """Every output of the recording at ``meta_path``, frames in memory."""
+def load_recording(meta_path: Path) -> list[Dataset[Any]]:
+    """Every output of the recording at ``meta_path``, each holding the last
+    value it was published."""
     record = read_record(meta_path)
     return [
         load_output(meta_path, record, output, entry) for output, entry in record.outputs.items()
@@ -172,14 +171,13 @@ def load_recording(meta_path: Path) -> list[Dataset]:
 
 def load_output(
     meta_path: Path, record: RecordingRecord, output: str, entry: OutputRecord
-) -> Dataset:
-    spec = DATA_KINDS.get(entry.kind)
-    if spec is None:
+) -> Dataset[Any]:
+    kind = DATA_KINDS.get(entry.kind)
+    if kind is None:
         raise RecordingError(f"{meta_path}: output {output!r} is of unknown kind {entry.kind!r}")
-    frames = read_frames(meta_path, output, entry)
     dataset = Dataset(
         output=output,
-        spec=spec,
+        kind=kind,
         provenance=Provenance(
             program_key=record.program_key,
             started_at=record.started_at,
@@ -189,25 +187,25 @@ def load_output(
             run_id=record.runs[0].run_id if record.runs else 0,
         ),
         origin=Origin.LOADED,
+        writer=None,
     )
-    dataset.channel_labels = list(entry.channels)
     dataset.metadata = dict(entry.metadata)
     dataset.notes = entry.notes
     dataset.meta_path = meta_path
-    for frame in frames:
-        dataset.append(frame)
+    dataset.value = read_value(meta_path, output, kind, entry)
+    dataset.published = entry.published
     return dataset
 
 
-def read_frames(meta_path: Path, output: str, entry: OutputRecord) -> list[np.ndarray]:
+def read_value(meta_path: Path, output: str, kind: type[Data], entry: OutputRecord) -> Data | None:
     files = {key: meta_path.parent / name for key, name in entry.files.items()}
     missing = [path.name for path in files.values() if not path.is_file()]
     if missing:
         raise RecordingError(f"{meta_path}: output {output!r} is missing {', '.join(missing)}")
     if not files:
-        return []
+        return None
     try:
-        return writer_registry.get(entry.kind).read(files)
+        return writer_registry.get(entry.kind).read(kind, files)
     except (OSError, ValueError, KeyError) as exc:
         raise RecordingError(f"{meta_path}: cannot read output {output!r}: {exc}") from exc
 

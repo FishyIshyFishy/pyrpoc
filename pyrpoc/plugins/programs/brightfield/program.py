@@ -43,6 +43,6 @@ class Brightfield(Program):
         )
         try:
             for _ in count_off(ctx, ctx.params[FrameCountGroup].num_frames, "frame"):
-                ctx.publish("intensity", to_grey(camera.grab(ctx.sleep)), channels=["brightfield"])
+                ctx.publish("intensity", Image(to_grey(camera.grab(ctx.sleep)), ["brightfield"]))
         finally:
             camera.stop()

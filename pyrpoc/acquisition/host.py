@@ -3,7 +3,7 @@
 Selecting a program detaches the previous one's runners and attaches the new
 one's, each through its own ``RunnerSession``; detaching drops the session, so its controls
 and callbacks go with it, a pending pick is cancelled, and the runs it started
-are stopped. A runner's request for a ``Pixel`` goes out as ``picking_changed``
+are stopped. A runner's request for a picked ``Pixel`` goes out as ``picking_changed``
 to whatever displays are listening, and the first ``on_picked`` answers it.
 Pick state never reaches the saved session: a relaunch that came
 back armed would point a hardware trigger at the next stray click.
@@ -18,7 +18,8 @@ from PyQt6.QtCore import QObject, pyqtSignal
 
 from pyrpoc.acquisition.executor import Run
 from pyrpoc.acquisition.recording import Series
-from pyrpoc.structs.data_library.pixel import Pixel
+from pyrpoc.structs.data_library.data import Pixel
+from pyrpoc.structs.data_library.dataset import Dataset
 from pyrpoc.structs.plugins.params import BlockMap
 from pyrpoc.structs.plugins.programs.program import Program
 from pyrpoc.structs.plugins.programs.runner import Control, RunnerContext
@@ -26,7 +27,7 @@ from pyrpoc.structs.plugins.programs.runner import Control, RunnerContext
 if TYPE_CHECKING:  # pragma: no cover
     from .model import Acquisition
 
-PixelCallback = Callable[[Pixel | None], None]
+PixelCallback = Callable[[Dataset[Pixel] | None], None]
 
 
 class RunnerSession(RunnerContext):
@@ -210,10 +211,10 @@ class RunnerHost(QObject):
         if pending is not None:
             pending(None)
 
-    def on_picked(self, pixel: Pixel) -> None:
+    def on_picked(self, pick: Dataset[Pixel]) -> None:
         callback = self.end_pick()
         if callback is not None:
-            callback(pixel)
+            callback(pick)
 
     def end_pick(self) -> PixelCallback | None:
         """Disarm every display before anything that can fail, so no path out

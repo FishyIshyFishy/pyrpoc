@@ -14,9 +14,8 @@ registers in.
       params.py          the parameter language plugins declare: fields, Group,
                          BlockStore; block_registry
     data_library/      what the data library holds
-      data.py            kinds of data (Image, Spectrum, ...)
-      dataset.py         Dataset, Provenance, Origin
-      pixel.py           Pixel: one pixel of a dataset (a runner asks, a data panel answers)
+      data.py            the nouns data comes as (Image, Mask, Pixel, Mosaic, ...)
+      dataset.py         Dataset: one output's current value + Provenance, Origin
       library.py         Library: read access to the open datasets
       saving.py          SaveTarget, Writer + writer_registry: file formats
 """

@@ -43,9 +43,9 @@ def acquire_frame(ctx: RunContext, flim: FlimMeasurement) -> None:
     )
     ctx.sleep(histogram.frame_settle_s)
     cube = read_histograms(flim, histogram.histogram_bins, scan)
-    ctx.publish("histogram", cube)
+    ctx.publish("histogram", DecayHistogram(cube))
     # Photon counts summed over the decay: the intensity image.
-    ctx.publish("intensity", cube.sum(axis=2)[np.newaxis], channels=["intensity"])
+    ctx.publish("intensity", Image(cube.sum(axis=2)[np.newaxis], ["intensity"]))
 
 
 @program_registry.register("flim")

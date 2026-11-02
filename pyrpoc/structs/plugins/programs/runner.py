@@ -3,8 +3,8 @@
 A runner is a frozen declaration whose ``attach`` builds per-program state
 against a ``RunnerContext``, so one declaration can be a shared class
 attribute. The context is the host's side: starting a run, parameters,
-controls, and requests for a ``Pixel`` that the host routes to whichever
-display is clicked.
+controls, and requests for a picked ``Pixel`` that the host routes to
+whichever display is clicked.
 Controls are Qt-free descriptors the host's view renders.
 """
 
@@ -15,7 +15,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import ClassVar
 
-from pyrpoc.structs.data_library.pixel import Pixel
+from pyrpoc.structs.data_library.data import Pixel
+from pyrpoc.structs.data_library.dataset import Dataset
 from pyrpoc.structs.plugins.params import BlockMap
 
 
@@ -138,9 +139,10 @@ class RunnerContext(ABC):
         """Announce that ``params`` was changed somewhere other than the form."""
 
     @abstractmethod
-    def request_pixel(self, callback: Callable[[Pixel | None], None]) -> None:
+    def request_pixel(self, callback: Callable[[Dataset[Pixel] | None], None]) -> None:
         """Ask for a pixel clicked on a display. A new request cancels the old;
-        ``callback`` gets the pixel, or None if the request was cancelled."""
+        ``callback`` gets it, with the clicked image's provenance, or None if
+        the request was cancelled."""
 
     @abstractmethod
     def cancel_request(self) -> None: ...

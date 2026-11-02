@@ -14,7 +14,7 @@ from .frame import FrameGroup
 from .frame_count import FrameCountGroup
 from .histogram import HistogramGroup
 from .modulation import MaskBinding, MaskRef, MasksField, ModulationGroup
-from .mosaic import MosaicGroup, Tile
+from .mosaic import MosaicGroup
 from .pacing import PacingGroup
 from .point import Point, PointField, PointGroup
 from .roi import RoiGroup
@@ -47,6 +47,5 @@ __all__ = [
     "SignalGroup",
     "SpecimenGroup",
     "SplitGroup",
-    "Tile",
     "TriggerGroup",
 ]
