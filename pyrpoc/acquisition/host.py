@@ -3,9 +3,9 @@
 Selecting a program detaches the previous one's runners and attaches the new
 one's, each through its own ``RunnerSession``; detaching drops the session, so its controls
 and callbacks go with it, a pending pick is cancelled, and the runs it started
-are stopped. A runner's request for a ``Pick`` goes out as ``pick_mode_changed``
-to whatever displays are listening, and the first matching ``on_picked``
-answers it. Pick state never reaches the saved session: a relaunch that came
+are stopped. A runner's request for a ``Pixel`` goes out as ``picking_changed``
+to whatever displays are listening, and the first ``on_picked`` answers it.
+Pick state never reaches the saved session: a relaunch that came
 back armed would point a hardware trigger at the next stray click.
 """
 
@@ -18,15 +18,15 @@ from PyQt6.QtCore import QObject, pyqtSignal
 
 from pyrpoc.acquisition.executor import Run
 from pyrpoc.acquisition.recording import Series
+from pyrpoc.structs.data_library.pixel import Pixel
 from pyrpoc.structs.plugins.params import BlockMap
-from pyrpoc.structs.plugins.programs.picks import Pick
 from pyrpoc.structs.plugins.programs.program import Program
 from pyrpoc.structs.plugins.programs.runner import Control, RunnerContext
 
 if TYPE_CHECKING:  # pragma: no cover
     from .model import Acquisition
 
-PickCallback = Callable[[Pick | None], None]
+PixelCallback = Callable[[Pixel | None], None]
 
 
 class RunnerSession(RunnerContext):
@@ -78,11 +78,11 @@ class RunnerSession(RunnerContext):
             self.host.acquisition.params_written.emit()
             self.host.acquisition.edited.emit()
 
-    def request(self, kind: type[Pick], callback: PickCallback) -> None:
+    def request_pixel(self, callback: PixelCallback) -> None:
         if self.closed:
             callback(None)
             return
-        self.host.request_pick(kind, callback)
+        self.host.request_pick(callback)
 
     def cancel_request(self) -> None:
         self.host.cancel_pick()
@@ -120,16 +120,15 @@ class RunnerHost(QObject):
     # The control list changed; the view re-renders from ``controls``.
     controls_changed = pyqtSignal()
     status = pyqtSignal(str)
-    # A pick was requested (True) or ended (False).
+    # A pixel was requested (True) or the request ended (False); displays
+    # offer a pick or stop offering.
     picking_changed = pyqtSignal(bool)
-    # The kind of pick wanted, or None; displays offer it or stop offering.
-    pick_mode_changed = pyqtSignal(object)
 
     def __init__(self, acquisition: Acquisition):
         super().__init__(acquisition)
         self.acquisition = acquisition
         self.slot: RunnerSession | None = None
-        self._pick: tuple[type[Pick], PickCallback] | None = None
+        self._pick: PixelCallback | None = None
 
         acquisition.events.run_failed.connect(self.note_failure)
         acquisition.events.run_finished.connect(self.forget)
@@ -148,11 +147,6 @@ class RunnerHost(QObject):
     @property
     def picking(self) -> bool:
         return self._pick is not None
-
-    @property
-    def pick_mode(self) -> type[Pick] | None:
-        """What a display added now should offer."""
-        return self._pick[0] if self._pick is not None else None
 
     def attach(self, key: str, program: type[Program]) -> None:
         """Replace whatever is attached with ``program``'s runners."""
@@ -204,10 +198,9 @@ class RunnerHost(QObject):
         if self.slot is not None and run in self.slot.runs:
             self.slot.release(run)
 
-    def request_pick(self, kind: type[Pick], callback: PickCallback) -> None:
+    def request_pick(self, callback: PixelCallback) -> None:
         self.cancel_pick()
-        self._pick = (kind, callback)
-        self.pick_mode_changed.emit(kind)
+        self._pick = callback
         self.status.emit("waiting for a pick on a display")
         self.picking_changed.emit(True)
 
@@ -217,23 +210,17 @@ class RunnerHost(QObject):
         if pending is not None:
             pending(None)
 
-    def on_picked(self, pick: Pick) -> None:
-        # A display may emit a kind of pick nobody asked for.
-        if self._pick is None or not isinstance(pick, self._pick[0]):
-            return
+    def on_picked(self, pixel: Pixel) -> None:
         callback = self.end_pick()
         if callback is not None:
-            callback(pick)
+            callback(pixel)
 
-    def end_pick(self) -> PickCallback | None:
+    def end_pick(self) -> PixelCallback | None:
         """Disarm every display before anything that can fail, so no path out
         of a pick leaves a live cursor behind."""
-        if self._pick is None:
-            return None
-        _, callback = self._pick
-        self._pick = None
-        self.pick_mode_changed.emit(None)
-        self.picking_changed.emit(False)
+        callback, self._pick = self._pick, None
+        if callback is not None:
+            self.picking_changed.emit(False)
         return callback
 
     def check_pick_blockers(self) -> None:

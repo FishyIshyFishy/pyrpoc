@@ -8,12 +8,11 @@ left in place when the run ends, so a continuous run keeps reading the same spot
 from __future__ import annotations
 
 from pyrpoc.plugins.devices import DAQ, AndorCCD, Galvo
-from pyrpoc.structs.data_library.data import Spectrum1D
-from pyrpoc.structs.plugins.programs.picks import PixelPick
+from pyrpoc.structs.data_library.data import Spectrum
 from pyrpoc.structs.plugins.programs.program import Program, RunContext, program_registry
 
 from ..building_blocks.functions.ccd_read import publish_spectrum
-from ..building_blocks.functions.galvo_park import aim_at_pick, park_galvos
+from ..building_blocks.functions.galvo_park import aim_at_pixel, park_galvos
 from ..building_blocks.parameter_groups import CcdReadoutGroup, PointGroup
 from ..building_blocks.runners import ArmAndRun, Continuous, Single
 
@@ -25,13 +24,12 @@ class PinpointRaman(Program):
     order = 20
     uses = [Galvo, AndorCCD]
     params = [PointGroup, CcdReadoutGroup]
-    emits = {"spectrum": Spectrum1D}
+    emits = {"spectrum": Spectrum}
     runners = [
         Single(),
         Continuous(),
         ArmAndRun(
-            PixelPick,
-            aim_at_pick,
+            aim_at_pixel,
             label="Acquire at point…",
             icon=None,
             tooltip="Arm, then click a pixel to read a spectrum there",

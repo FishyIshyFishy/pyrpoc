@@ -109,7 +109,7 @@ its own top-level folder, shaped like the other subsystems:
 ## What stays true on disk
 
 Folder names are not saved anywhere:
-- **Saved sessions** store registry keys like `"image_2d"`.
+- **Saved sessions** store registry keys like `"image"`.
 - **Recordings** follow [data-format.md](data-format.md).
 
 Moving code around never breaks either.

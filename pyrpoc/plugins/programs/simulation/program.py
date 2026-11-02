@@ -13,7 +13,7 @@ from functools import reduce
 
 import numpy as np
 
-from pyrpoc.structs.data_library.data import Image2D
+from pyrpoc.structs.data_library.data import Image
 from pyrpoc.structs.plugins.programs.program import Program, RunContext, program_registry
 
 from ..building_blocks.functions.run_loops import count_off
@@ -21,7 +21,7 @@ from ..building_blocks.functions.synthetic_detector import sim_labels, with_nois
 from ..building_blocks.parameter_groups import (
     FrameCountGroup,
     FrameGroup,
-    Mask,
+    MaskBinding,
     ModulationGroup,
     PacingGroup,
     SignalGroup,
@@ -30,7 +30,7 @@ from ..building_blocks.runners import Continuous, Single
 from .planes import PLANES
 
 
-def lit_pixels(masks: Sequence[Mask], frame_shape: FrameGroup) -> np.ndarray | None:
+def lit_pixels(masks: Sequence[MaskBinding], frame_shape: FrameGroup) -> np.ndarray | None:
     """Every bound mask on the frame, OR-ed into one plane, or None for no
     masks. Ports and lines are ignored: there are no digital lines here, but
     which pixels are illuminated can still be checked."""
@@ -76,7 +76,7 @@ class Simulation(Program):
     order = 20
     uses = []
     params = [FrameGroup, FrameCountGroup, SignalGroup, ModulationGroup, PacingGroup]
-    emits = {"intensity": Image2D}
+    emits = {"intensity": Image}
     runners = [Single(), Continuous()]
 
     def run(self, ctx: RunContext) -> None:

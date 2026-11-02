@@ -41,12 +41,13 @@ structs/
   plugins/               contracts that plugins implement
     devices.py             Device: what hardware must do; device_registry
     programs/              Program + RunContext (what an experiment gets while running);
-                           Runner + Button/Toggle (ways to start one); Pick
+                           Runner + Button/Toggle (ways to start one)
     data_panels.py         Panel, DataPanel, SourcePicker; data_panel_registry
     params.py              fields, Group (a parameter block), BlockStore; block_registry
   data_library/          what the data library holds and saves
-    data.py                kinds of data: Image2D, Spectrum1D, Mask2D, ...
+    data.py                kinds of data: Image, Spectrum, Mask, ...
     dataset.py             Dataset: one output's frames + where they came from
+    pixel.py               Pixel: one pixel of a dataset, what a click on a display names
     library.py             Library: read-only view of open datasets
     saving.py              SaveTarget (where to save), Writer (a file format); writer_registry
 ```
@@ -54,7 +55,7 @@ structs/
 The placements that surprise:
 
 - **Writers are data, not programs.** A program never touches a writer. It
-  declares its outputs and the `Data` kind each carries (`Image2D`, ...), and
+  declares its outputs and the `Data` kind each carries (`Image`, ...), and
   publishes arrays. When saving is on, the data library's saver picks a writer
   for each output by its data kind from `writer_registry`. Loading uses the same
   writer to read the files back.
@@ -62,7 +63,7 @@ The placements that surprise:
   panels draw them. The library is what stores and saves them.
 - **`SaveTarget` lives in `data_library/`,** though acquisition holds the current one
   and the Acquisition panel edits it.
-- **`Pick` lives with programs.** A runner asks for one ("click a pixel") and an
+- **`Pixel` lives with data.** A runner asks for one ("click a pixel") and an
   image panel answers, so programs and data panels meet only through it.
 - **`params.py` lives under `plugins/`,** though the parameter form, acquisition
   and the session also read it. Plugins are what declare parameters.

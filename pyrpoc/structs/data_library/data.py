@@ -1,8 +1,10 @@
-"""The kinds of data the application passes around.
+"""The kinds of data the application passes around, one noun each.
 
-A ``Data`` subclass fixes an array's shape, dtype and axis meanings. Programs
-name the kind each output carries and data panels name the kinds they render,
-so a binding is checked before a run starts rather than inferred mid-flight.
+A kind is what the data is, not how many axes it has: an ``Image`` and a
+``Mask`` are both 2-D, but nothing that wants one should be offered the other.
+Programs name the kind each output carries and data panels name the kinds they
+render, so a binding is checked before a run starts rather than inferred
+mid-flight. ``axes`` and ``dtype`` are how a kind checks a frame it is given.
 """
 
 from __future__ import annotations
@@ -11,20 +13,22 @@ import numpy as np
 
 
 class Data:
-    """Base kind. Subclasses fix ``ndim``, ``axes`` and a human name."""
+    """Base kind. Subclasses fix ``axes`` and, if not float32, ``dtype``."""
 
-    name: str = "data"
-    ndim: int = 0
+    # The class name, set per subclass: what a recording's ``kind`` field holds.
+    name: str = "Data"
     axes: tuple[str, ...] = ()
     dtype = np.float32
+
+    def __init_subclass__(cls) -> None:
+        super().__init_subclass__()
+        cls.name = cls.__name__
 
     @classmethod
     def validate(cls, array: np.ndarray) -> None:
         arr = np.asarray(array)
-        if arr.ndim != cls.ndim:
-            raise ValueError(
-                f"{cls.name} expects {cls.ndim} dimensions {cls.axes}, got shape {arr.shape}"
-            )
+        if arr.ndim != len(cls.axes):
+            raise ValueError(f"{cls.name} expects axes {cls.axes}, got shape {arr.shape}")
         if any(size <= 0 for size in arr.shape):
             raise ValueError(f"{cls.name} received an empty axis: shape {arr.shape}")
 
@@ -34,58 +38,46 @@ class Data:
         return np.asarray(array, dtype=cls.dtype)
 
 
-class Image2D(Data):
-    """``(C, H, W)`` float32: one image per channel."""
+class Image(Data):
+    """One picture per channel."""
 
-    name = "Image2D"
-    ndim = 3
     axes = ("channel", "y", "x")
 
 
-class Cube3D(Data):
-    """``(H, W, B)`` float32: one value per pixel per bin (FLIM histograms)."""
+class DecayHistogram(Data):
+    """Photon arrival times binned per pixel: what FLIM measures."""
 
-    name = "Cube3D"
-    ndim = 3
     axes = ("y", "x", "bin")
 
 
-class Samples4D(Data):
-    """``(C, H, W, S)`` float32: per-pixel raw samples, unaveraged."""
+class RawSamples(Data):
+    """Every sample a detector took at each pixel, before averaging."""
 
-    name = "Samples4D"
-    ndim = 4
     axes = ("channel", "y", "x", "sample")
 
 
-class Spectrum1D(Data):
-    """``(C, W)`` float32: one spectrum per channel.
+class Spectrum(Data):
+    """Intensity per wavelength bin, one spectrum per channel.
 
-    Channel-first like ``Image2D`` so ``Dataset.append`` fills in channel
+    Channel-first like ``Image`` so ``Dataset.append`` fills in channel
     labels and a multi-detector spectrometer needs no new kind. Bins carry no
-    units: that is the spectrometer's calibration, not a shape contract.
+    units: that is the spectrometer's calibration, not part of the kind.
     """
 
-    name = "Spectrum1D"
-    ndim = 2
     axes = ("channel", "wavelength")
 
 
-class Mask2D(Data):
-    """``(H, W)`` uint8: an authored region, 0 outside and non-zero inside.
+class Mask(Data):
+    """An authored region: 0 outside, non-zero inside.
 
-    Its own kind rather than a one-channel ``Image2D``, because pickers filter
-    on the kind: sharing one with acquired images would offer every run as a
-    mask. uint8 because a mask is a decision per pixel, not a measurement.
+    uint8 because a mask is a decision per pixel, not a measurement.
     """
 
-    name = "Mask2D"
-    ndim = 2
     axes = ("y", "x")
     dtype = np.uint8
 
 
 # Every kind a saved recording can name, so a file's kind string finds its class.
 DATA_KINDS: dict[str, type[Data]] = {
-    kind.name: kind for kind in (Image2D, Cube3D, Samples4D, Spectrum1D, Mask2D)
+    kind.name: kind for kind in (Image, DecayHistogram, RawSamples, Spectrum, Mask)
 }

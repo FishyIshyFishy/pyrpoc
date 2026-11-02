@@ -13,7 +13,7 @@ from .focus_search import FocusSearchGroup
 from .frame import FrameGroup
 from .frame_count import FrameCountGroup
 from .histogram import HistogramGroup
-from .modulation import Mask, MaskRef, MasksField, ModulationGroup
+from .modulation import MaskBinding, MaskRef, MasksField, ModulationGroup
 from .mosaic import MosaicGroup, Tile
 from .pacing import PacingGroup
 from .point import Point, PointField, PointGroup
@@ -32,7 +32,7 @@ __all__ = [
     "FrameCountGroup",
     "FrameGroup",
     "HistogramGroup",
-    "Mask",
+    "MaskBinding",
     "MaskRef",
     "MasksField",
     "ModulationGroup",

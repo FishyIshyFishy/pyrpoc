@@ -6,8 +6,8 @@ import nidaqmx as nx
 import nidaqmx.errors
 
 from pyrpoc.plugins.devices import DAQ, DaqError, Galvo
+from pyrpoc.structs.data_library.pixel import Pixel
 from pyrpoc.structs.plugins.params import BlockMap
-from pyrpoc.structs.plugins.programs.picks import Pick, PixelPick
 
 from ..parameter_groups import Point, PointGroup
 from .daq_tasks import add_galvo_channels
@@ -29,9 +29,6 @@ def park_galvos(daq: DAQ, galvo: Galvo, point: Point) -> None:
         raise DaqError(f"could not park the galvos: {exc}") from exc
 
 
-def aim_at_pick(pick: Pick, params: BlockMap) -> None:
+def aim_at_pixel(pixel: Pixel, params: BlockMap) -> None:
     """Point the galvos at the picked pixel: its volts become the target."""
-    # Narrows for the type checker: the runner asks for a PixelPick.
-    if not isinstance(pick, PixelPick):
-        raise TypeError(f"expected a PixelPick, got {type(pick).__name__}")
-    params[PointGroup].target = Point.from_pixel(pick.dataset, pick.x, pick.y)
+    params[PointGroup].target = Point.from_pixel(pixel)

@@ -17,7 +17,6 @@ from PyQt6.QtWidgets import QComboBox, QHBoxLayout, QLabel, QVBoxLayout, QWidget
 from pyrpoc.structs.data_library.data import Data
 from pyrpoc.structs.data_library.dataset import Dataset
 from pyrpoc.structs.data_library.library import Library
-from pyrpoc.structs.plugins.programs.picks import Pick
 from pyrpoc.structs.registry import Registry
 
 from .devices import make_instance_id
@@ -107,8 +106,8 @@ class DataPanel(Panel):
     than blanking it, and levels and layout carry over. Only having no
     dataset at all calls ``clear``.
 
-    Every one can be told a pick is wanted and can emit one; panels that
-    cannot provide picks keep the no-op, so the host routes to all of them.
+    Every one can be told a pixel is wanted and can emit one; panels that
+    cannot provide pixels keep the no-op, so the host routes to all of them.
     """
 
     renders: ClassVar[list[type[Data]]]
@@ -117,6 +116,7 @@ class DataPanel(Panel):
     group: str
     order: int
 
+    # A ``Pixel`` the user clicked while picking.
     picked = pyqtSignal(object)
 
     def __init__(self, library: Library):
@@ -167,9 +167,9 @@ class DataPanel(Panel):
     def clear(self) -> None:
         raise NotImplementedError
 
-    def set_pick_mode(self, kind: type[Pick] | None) -> None:
-        """Offer picks of ``kind`` to the user, or stop offering with None."""
-        del kind
+    def set_picking(self, picking: bool) -> None:
+        """Offer the user a pixel to click, or stop offering."""
+        del picking
 
 
 data_panel_registry: Registry[DataPanel] = Registry("DataPanelRegistry", DataPanel)

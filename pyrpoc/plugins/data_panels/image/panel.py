@@ -1,5 +1,5 @@
 """One tile per channel, with a per-tile autoscale and LUT. Clicking a
-pixel answers a ``PixelPick`` request."""
+pixel answers a pixel request."""
 
 from __future__ import annotations
 
@@ -19,11 +19,11 @@ from PyQt6.QtWidgets import (
 )
 
 from pyrpoc.qt_components.levels import autoscale_levels, mono_levels
-from pyrpoc.structs.data_library.data import Image2D
+from pyrpoc.structs.data_library.data import Image
 from pyrpoc.structs.data_library.dataset import Dataset
 from pyrpoc.structs.data_library.library import Library
+from pyrpoc.structs.data_library.pixel import Pixel
 from pyrpoc.structs.plugins.data_panels import DataPanel, data_panel_registry
-from pyrpoc.structs.plugins.programs.picks import Pick, PixelPick
 
 LUT = pg.ColorMap(
     pos=np.array([0.0, 0.999, 1.0], dtype=float),
@@ -52,12 +52,12 @@ class TileState:
     max_val: float
 
 
-@data_panel_registry.register("image_2d")
-class Image2DPanel(DataPanel):
+@data_panel_registry.register("image")
+class ImagePanel(DataPanel):
     display_name = "Tiled channels"
     group = "2D Image Views"
     order = 21
-    renders = [Image2D]
+    renders = [Image]
 
     def __init__(self, library: Library):
         super().__init__(library)
@@ -154,9 +154,8 @@ class Image2DPanel(DataPanel):
         scene.sigMouseClicked.connect(lambda event: self.on_scene_clicked(event, image_item))
         return plot, image_item
 
-    def set_pick_mode(self, kind: type[Pick] | None) -> None:
-        """Only a request a ``PixelPick`` satisfies turns the crosshair on."""
-        self._picking = kind is not None and issubclass(PixelPick, kind)
+    def set_picking(self, picking: bool) -> None:
+        self._picking = picking
         for tile in self._tiles:
             self.apply_pick_cursor(tile)
 
@@ -183,7 +182,7 @@ class Image2DPanel(DataPanel):
         if not (0 <= x < frame.shape[2] and 0 <= y < frame.shape[1]):
             return
         event.accept()
-        self.picked.emit(PixelPick(dataset, x, y))
+        self.picked.emit(Pixel(dataset, x, y))
 
     def on_autoscale_toggled(self, index: int) -> None:
         frame = self.shown_frame

@@ -25,7 +25,7 @@ change that touches no subsystem.
    - Name the kind for its shape, not for autofocus, so other scans (a power
      sweep, a delay scan) can reuse it.
    - Add it to `DATA_KINDS`.
-   - Do not reuse `Spectrum1D`: its axis is a bin index, and pickers filter on
+   - Do not reuse `Spectrum`: its axis is a bin index, and pickers filter on
      kind. A spectrum panel would then offer focus curves.
 2. **A writer.** Register the kind on `NpzWriter`
    (`data_library/writers/npz.py`) with one more `@writer_registry.register`

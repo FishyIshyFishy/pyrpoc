@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pyrpoc.plugins.devices import DAQ, Galvo, PriorStage
-from pyrpoc.structs.data_library.data import Image2D
+from pyrpoc.structs.data_library.data import Image
 from pyrpoc.structs.plugins.programs.program import (
     Cancelled,
     Program,
@@ -43,7 +43,7 @@ class Mosaic(Program):
     order = 12
     uses = [Galvo, DAQ, PriorStage]
     params = [ScanGroup, DaqGroup, ModulationGroup, MosaicGroup]
-    emits = {"intensity": Image2D}
+    emits = {"intensity": Image}
     # Once only: a mosaic is one pass over the grid, never repeated or looped.
     runners = [Single()]
 

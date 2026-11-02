@@ -1,7 +1,7 @@
 """A tiled acquisition, as a stack of frames or stitched into one mosaic,
 with every channel overlaid in its own colour.
 
-The stack works for any ``Image2D``. The mosaic needs the layout its program
+The stack works for any ``Image``. The mosaic needs the layout its program
 wrote into the output's metadata; without one, the Mosaic button is disabled.
 """
 
@@ -21,7 +21,7 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
 )
 
-from pyrpoc.structs.data_library.data import Image2D
+from pyrpoc.structs.data_library.data import Image
 from pyrpoc.structs.data_library.dataset import Dataset
 from pyrpoc.structs.data_library.library import Library
 from pyrpoc.structs.plugins.data_panels import DataPanel, data_panel_registry
@@ -39,7 +39,7 @@ class MosaicPanel(DataPanel):
     display_name = "Mosaic"
     group = "2D Image Views"
     order = 22
-    renders = [Image2D]
+    renders = [Image]
 
     def __init__(self, library: Library):
         super().__init__(library)

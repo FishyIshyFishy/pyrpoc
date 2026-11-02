@@ -162,13 +162,13 @@ class MainWindow(QWidget):
         """Let ``panel`` answer pick requests, starting in whatever mode a
         pending request has already set."""
         runners = self.app.acquisition.host
-        runners.pick_mode_changed.connect(panel.set_pick_mode)
+        runners.picking_changed.connect(panel.set_picking)
         panel.picked.connect(runners.on_picked)
-        panel.set_pick_mode(runners.pick_mode)
+        panel.set_picking(runners.picking)
 
     def disconnect_panel(self, panel: DataPanel) -> None:
         runners = self.app.acquisition.host
-        runners.pick_mode_changed.disconnect(panel.set_pick_mode)
+        runners.picking_changed.disconnect(panel.set_picking)
         panel.picked.disconnect(runners.on_picked)
 
     def on_dataset_changed(self, dataset: Dataset) -> None:

@@ -17,7 +17,7 @@ from typing import Any
 import numpy as np
 
 from pyrpoc.plugins.devices import DAQ, AndorCCD, Galvo
-from pyrpoc.structs.data_library.data import Spectrum1D
+from pyrpoc.structs.data_library.data import Spectrum
 from pyrpoc.structs.plugins.programs.program import Program, RunContext, program_registry
 
 from ..building_blocks.functions.ccd_read import configure_spectrum, read_spectrum
@@ -64,7 +64,7 @@ class RoiSpectralSeries(Program):
     order = 50
     uses = [Galvo, AndorCCD]
     params = [ScanGroup, DaqGroup, RoiGroup, FrameCountGroup, CcdReadoutGroup]
-    emits = {"spectrum": Spectrum1D}
+    emits = {"spectrum": Spectrum}
     # Once only: each start is one bleaching series of a set length.
     runners = [Single()]
 

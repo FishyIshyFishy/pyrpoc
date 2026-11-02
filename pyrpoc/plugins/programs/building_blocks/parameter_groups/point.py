@@ -9,7 +9,7 @@ from typing import Any, ClassVar
 from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtWidgets import QDoubleSpinBox, QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
-from pyrpoc.structs.data_library.dataset import Dataset
+from pyrpoc.structs.data_library.pixel import Pixel
 from pyrpoc.structs.plugins.params import (
     Editor,
     Field,
@@ -43,18 +43,19 @@ class Point:
     pixel_y: int = -1
 
     @classmethod
-    def from_pixel(cls, dataset: Dataset, x: int, y: int) -> Point:
-        """The position pixel ``(x, y)`` of ``dataset`` was measured at. The
-        geometry comes from the dataset's provenance, not the live block, which
-        may have been edited since the image was taken."""
+    def from_pixel(cls, pixel: Pixel) -> Point:
+        """The position ``pixel`` was measured at. The geometry comes from the
+        dataset's provenance, not the live block, which may have been edited
+        since the image was taken."""
+        dataset = pixel.dataset
         raw = dataset.provenance.parameters.get(block_name(ScanGroup))
         if raw is None:
             raise ParameterError(
                 f"{dataset.label} was not acquired with a scan geometry, "
                 "so a pixel does not name a position"
             )
-        fast_v, slow_v = decode_block(ScanGroup, raw).voltage_at(x, y)
-        return cls(fast_v, slow_v, dataset.id, dataset.label, x, y)
+        fast_v, slow_v = decode_block(ScanGroup, raw).voltage_at(pixel.x, pixel.y)
+        return cls(fast_v, slow_v, dataset.id, dataset.label, pixel.x, pixel.y)
 
     @property
     def picked(self) -> bool:

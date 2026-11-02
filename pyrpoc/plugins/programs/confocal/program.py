@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pyrpoc.plugins.devices import DAQ, Galvo
-from pyrpoc.structs.data_library.data import Image2D
+from pyrpoc.structs.data_library.data import Image
 from pyrpoc.structs.plugins.programs.program import Program, RunContext, program_registry
 
 from ..building_blocks.functions.galvo_raster import Raster
@@ -19,7 +19,7 @@ class Confocal(Program):
     order = 10
     uses = [Galvo, DAQ]
     params = [ScanGroup, FrameCountGroup, DaqGroup, ModulationGroup]
-    emits = {"intensity": Image2D}
+    emits = {"intensity": Image}
     runners = [Single(), Continuous()]
 
     def run(self, ctx: RunContext) -> None:

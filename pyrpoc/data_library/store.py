@@ -1,6 +1,6 @@
 """The datasets currently open, like a list of open documents. Not persisted.
 
-Authored data is filed here too: a mask from the mask editor is a ``Mask2D``
+Authored data is filed here too: a mask from the mask editor is a ``Mask``
 entry, so a parameter can select it by kind without either side naming the
 other. ``Dataset.origin`` says which kind of entry each one is.
 """

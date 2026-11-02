@@ -8,10 +8,9 @@ from a clicked pixel, and the run records it in its parameters.
 from __future__ import annotations
 
 from pyrpoc.plugins.devices import DAQ, Galvo
-from pyrpoc.structs.plugins.programs.picks import PixelPick
 from pyrpoc.structs.plugins.programs.program import Program, RunContext, program_registry
 
-from ..building_blocks.functions.galvo_park import aim_at_pick, park_galvos
+from ..building_blocks.functions.galvo_park import aim_at_pixel, park_galvos
 from ..building_blocks.parameter_groups import PointGroup
 from ..building_blocks.runners import ArmAndRun, Single
 
@@ -26,8 +25,7 @@ class GalvoPinpoint(Program):
     runners = [
         Single(),
         ArmAndRun(
-            PixelPick,
-            aim_at_pick,
+            aim_at_pixel,
             label="Park at point…",
             icon=None,
             tooltip="Arm, then click a pixel to park the beam there",

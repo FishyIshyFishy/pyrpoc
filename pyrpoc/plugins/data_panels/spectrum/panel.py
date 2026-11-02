@@ -13,7 +13,7 @@ import pyqtgraph as pg
 from PyQt6.QtWidgets import QCheckBox, QVBoxLayout
 
 from pyrpoc.qt_components.colors import color_for_index
-from pyrpoc.structs.data_library.data import Spectrum1D
+from pyrpoc.structs.data_library.data import Spectrum
 from pyrpoc.structs.data_library.dataset import Dataset
 from pyrpoc.structs.data_library.library import Library
 from pyrpoc.structs.plugins.data_panels import DataPanel, data_panel_registry
@@ -24,7 +24,7 @@ class SpectrumPanel(DataPanel):
     display_name = "Spectrum"
     group = "Spectral"
     order = 10
-    renders = [Spectrum1D]
+    renders = [Spectrum]
 
     def __init__(self, library: Library):
         super().__init__(library)

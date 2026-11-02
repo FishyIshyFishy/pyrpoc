@@ -7,14 +7,14 @@ from typing import Any
 
 import numpy as np
 
-from pyrpoc.structs.data_library.data import Cube3D, Samples4D, Spectrum1D
+from pyrpoc.structs.data_library.data import DecayHistogram, RawSamples, Spectrum
 from pyrpoc.structs.data_library.dataset import Dataset
 from pyrpoc.structs.data_library.saving import Writer, writer_registry
 
 
-@writer_registry.register(Cube3D.name)
-@writer_registry.register(Samples4D.name)
-@writer_registry.register(Spectrum1D.name)
+@writer_registry.register(DecayHistogram.name)
+@writer_registry.register(RawSamples.name)
+@writer_registry.register(Spectrum.name)
 class NpzWriter(Writer):
     """``<root>_<output>.npz`` holding ``data`` and ``parameters``. The leading
     axis of ``data`` is one entry per published array, in publish order."""

@@ -9,7 +9,7 @@ from __future__ import annotations
 import numpy as np
 
 from pyrpoc.plugins.devices import DAQ, FlimMeasurement, Galvo, TimeTagger
-from pyrpoc.structs.data_library.data import Cube3D, Image2D
+from pyrpoc.structs.data_library.data import DecayHistogram, Image
 from pyrpoc.structs.plugins.programs.program import Program, RunContext, program_registry
 
 from ..building_blocks.functions.run_loops import count_off
@@ -55,7 +55,7 @@ class FLIM(Program):
     order = 40
     uses = [Galvo, DAQ, TimeTagger]
     params = [ScanGroup, FrameCountGroup, DaqGroup, TriggerGroup, HistogramGroup]
-    emits = {"intensity": Image2D, "histogram": Cube3D}
+    emits = {"intensity": Image, "histogram": DecayHistogram}
     runners = [Single(), Continuous()]
 
     def run(self, ctx: RunContext) -> None:

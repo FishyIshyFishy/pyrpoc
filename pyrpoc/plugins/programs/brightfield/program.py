@@ -5,7 +5,7 @@ from __future__ import annotations
 import numpy as np
 
 from pyrpoc.plugins.devices import ToupcamCamera
-from pyrpoc.structs.data_library.data import Image2D
+from pyrpoc.structs.data_library.data import Image
 from pyrpoc.structs.plugins.programs.program import Program, RunContext, program_registry
 
 from ..building_blocks.functions.run_loops import count_off
@@ -18,7 +18,7 @@ def to_grey(frame: np.ndarray) -> np.ndarray:
 
     An unweighted mean, so the SDK's channel order (BGR or RGB) cannot skew it.
     TODO: make colour readout configurable, publishing the three planes as
-    R/G/B channels of the Image2D once the SDK's channel order is checked.
+    R/G/B channels of the Image once the SDK's channel order is checked.
     """
     return frame.mean(axis=2, dtype=np.float32)[None]
 
@@ -30,7 +30,7 @@ class Brightfield(Program):
     order = 50
     uses = [ToupcamCamera]
     params = [CameraGroup, FrameCountGroup]
-    emits = {"intensity": Image2D}
+    emits = {"intensity": Image}
     runners = [Single(), Continuous()]
 
     def run(self, ctx: RunContext) -> None:

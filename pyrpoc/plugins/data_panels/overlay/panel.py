@@ -20,7 +20,7 @@ from PyQt6.QtWidgets import (
 
 from pyrpoc.qt_components.colors import color_for_index, color_map_from_rgb
 from pyrpoc.qt_components.levels import autoscale_levels, mono_levels
-from pyrpoc.structs.data_library.data import Image2D
+from pyrpoc.structs.data_library.data import Image
 from pyrpoc.structs.data_library.dataset import Dataset
 from pyrpoc.structs.data_library.library import Library
 from pyrpoc.structs.plugins.data_panels import DataPanel, data_panel_registry
@@ -58,7 +58,7 @@ class OverlayPanel(DataPanel):
     display_name = "Overlaid channels"
     group = "2D Image Views"
     order = 20
-    renders = [Image2D]
+    renders = [Image]
 
     def __init__(self, library: Library):
         super().__init__(library)

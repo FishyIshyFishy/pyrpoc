@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from pyrpoc.structs.data_library.data import Image2D
+from pyrpoc.structs.data_library.data import Image
 from pyrpoc.structs.plugins.programs.program import Program, RunContext, program_registry
 
 from ..building_blocks.functions.run_loops import plan_tiles, walk
@@ -46,7 +46,7 @@ class MosaicSimulation(Program):
     order = 21
     uses = []
     params = [FrameGroup, MosaicGroup, SpecimenGroup, PacingGroup]
-    emits = {"intensity": Image2D}
+    emits = {"intensity": Image}
     runners = [Single()]
 
     def run(self, ctx: RunContext) -> None:

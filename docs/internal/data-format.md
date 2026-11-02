@@ -14,8 +14,8 @@ A recording is one metadata file plus data files, all in the same folder:
 
 ```
 <stem>_meta.json        the entry point; names everything else
-<stem>_<channel>.tiff   Image2D: one multi-page float32 TIFF per channel, a page per frame
-<stem>_<output>.npz     Cube3D, Samples4D, Spectrum1D: `data` holds every frame on its leading axis
+<stem>_<channel>.tiff   Image: one multi-page float32 TIFF per channel, a page per frame
+<stem>_<output>.npz     DecayHistogram, RawSamples, Spectrum: `data` holds every frame on its leading axis
 ```
 
 - **The stem.** `<stem>` is the save name. If a recording with that stem
@@ -48,7 +48,7 @@ Each output has these fields:
 
 | Field | Type | Meaning |
 |---|---|---|
-| `kind` | string | The `Data` kind: `Image2D`, `Cube3D`, `Samples4D`, `Spectrum1D` or `Mask2D`. |
+| `kind` | string | The `Data` kind: `Image`, `DecayHistogram`, `RawSamples`, `Spectrum` or `Mask`. |
 | `channels` | list of strings | Channel labels, in axis order. |
 | `frames` | int | Frames written. |
 | `files` | object: key → file name | Where the frames are. The keys are what that kind's reader expects (channel labels for TIFF, the output name for NPZ). |
@@ -62,7 +62,7 @@ fall under the same promise as the fields above.
 
 ### `mosaic`: a tiled acquisition
 
-Written by the Mosaic and Mosaic Simulation programs on their `Image2D` output.
+Written by the Mosaic and Mosaic Simulation programs on their `Image` output.
 Frame `i` of the output (page `i` of each channel's TIFF) is the tile whose
 `index` is `i`. The frames are ordinary images, so any viewer can open them;
 this key is what lets the Mosaic panel place them. It is written by
