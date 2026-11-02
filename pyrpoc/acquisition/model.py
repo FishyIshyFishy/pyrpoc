@@ -15,6 +15,7 @@ from pyrpoc.structs.plugins.programs.program import program_registry
 
 from . import claims
 from .events import RunEvents
+from .executor import Run
 from .host import RunnerHost
 
 
@@ -39,8 +40,27 @@ class Acquisition(QObject):
         self.save = SaveTarget()
         self.events = RunEvents(library.store, self)
         self.host = RunnerHost(self)
+        # Runs going now, so the inventory can show what they hold.
+        self.live_runs: set[Run] = set()
         # A run started with these settings, so they are worth keeping.
         self.events.run_started.connect(lambda _run: self.edited.emit())
+        self.events.run_started.connect(self.on_run_started)
+        self.events.run_finished.connect(self.on_run_finished)
+
+    def on_run_started(self, run: Run) -> None:
+        self.live_runs.add(run)
+        self.publish_in_use()
+
+    def on_run_finished(self, run: Run) -> None:
+        self.live_runs.discard(run)
+        self.publish_in_use()
+
+    def publish_in_use(self) -> None:
+        """Every device a live run holds, backing devices included, since a
+        run's devices were resolved through ``claims.expand``."""
+        self.inventory.set_in_use(
+            {device for run in self.live_runs for device in run.devices.values()}
+        )
 
     def select_program(self, key: str) -> None:
         self.selected_program = key

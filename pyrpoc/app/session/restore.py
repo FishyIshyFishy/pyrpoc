@@ -10,6 +10,8 @@ from pyrpoc.app.window import MainWindow
 from pyrpoc.plugins.data_panels import data_panel_registry
 from pyrpoc.plugins.devices import device_registry
 from pyrpoc.plugins.programs import program_registry
+from pyrpoc.structs.plugins.data_panels import has_panel
+from pyrpoc.structs.plugins.devices import Device
 
 from .file import BAD_STATE, DeviceState, LibraryState, SaveState, SessionState, ViewState
 
@@ -21,7 +23,7 @@ def capture(app: Application, window: MainWindow) -> SessionState:
         DeviceState(
             key=device_registry.key_for(type(device)),
             instance_id=device.instance_id,
-            user_label=device.user_label,
+            panel_open=device in app.inventory.open_panels,
             state=device.export_state(),
         )
         for device in app.inventory.devices
@@ -50,15 +52,19 @@ def capture(app: Application, window: MainWindow) -> SessionState:
     )
 
 
-def restore_devices(state: SessionState, app: Application) -> None:
+def restore_devices(state: SessionState, app: Application) -> list[Device]:
+    """Add the saved devices, returning the ones whose panel was open."""
+    reopen: list[Device] = []
     for row in state.devices:
         try:
-            device = app.inventory.add(
-                row.key, instance_id=row.instance_id or None, user_label=row.user_label
-            )
+            device = app.inventory.add(row.key, instance_id=row.instance_id or None)
             device.import_state(row.state)
         except BAD_STATE:
             log.warning("skipping saved device %r", row.key, exc_info=True)
+            continue
+        if row.panel_open and has_panel(device):
+            reopen.append(device)
+    return reopen
 
 
 def restore_panels(state: SessionState, app: Application, window: MainWindow) -> None:
@@ -80,8 +86,10 @@ def apply(state: SessionState, app: Application, window: MainWindow) -> None:
     type that no longer exists is skipped rather than blocking launch."""
     window.clear_panels()
     app.inventory.clear()
-    restore_devices(state, app)
+    reopen = restore_devices(state, app)
     restore_panels(state, app, window)
+    for device in reopen:
+        window.device_docks.open(device)
     app.acquisition.load_params_state(state.param_blocks)
     app.acquisition.set_save(
         name=state.save.name, directory=state.save.directory, enabled=state.save.enabled

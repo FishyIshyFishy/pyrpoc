@@ -11,7 +11,6 @@ from __future__ import annotations
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
 
 import numpy as np
 
@@ -19,9 +18,6 @@ from pyrpoc.structs.plugins import params as P
 from pyrpoc.structs.plugins.devices import Device, device_registry
 
 from .sdk import ToupcamError, ToupcamSession, row_pitch, unpack_rgb24
-
-if TYPE_CHECKING:  # pragma: no cover
-    from PyQt6.QtWidgets import QWidget
 
 # How often a grab checks whether a frame has arrived.
 POLL_S = 0.01
@@ -47,16 +43,17 @@ class ToupcamCamera(Device):
 
     config: ToupcamConfig
 
-    def __init__(self, instance_id: str | None = None, user_label: str | None = None):
-        super().__init__(instance_id=instance_id, user_label=user_label)
+    def __init__(self, instance_id: str | None = None):
+        super().__init__(instance_id=instance_id)
         self.session: ToupcamSession | None = None
         self.exposure_s = 0.0
         self.drop_next = False
 
-    def summary(self) -> str:
-        if self.session is None:
-            return "not connected"
-        return f"{self.session.camera.name} - connected"
+    def connection_info(self) -> str:
+        """The camera opened, or the one asked for until then."""
+        if self.session is not None:
+            return self.session.camera.name
+        return self.config.camera or "first camera found"
 
     @property
     def session_open(self) -> bool:
@@ -130,8 +127,3 @@ class ToupcamCamera(Device):
     def stop(self) -> None:
         if self.session is not None:
             self.session.stop()
-
-    def panel(self, parent: QWidget, on_change: Callable[[], None]) -> QWidget:
-        from .panel import ToupcamPanel
-
-        return ToupcamPanel(self, parent, on_change)

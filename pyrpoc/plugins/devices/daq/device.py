@@ -7,15 +7,10 @@ handle: NI tasks are created per scan by the programs that use them.
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
 
 from pyrpoc.structs.plugins import params as P
 from pyrpoc.structs.plugins.devices import Device, DeviceError, device_registry
-
-if TYPE_CHECKING:  # pragma: no cover
-    from PyQt6.QtWidgets import QWidget
 
 
 class DaqError(DeviceError):
@@ -40,17 +35,11 @@ class DAQ(Device):
 
     config: DaqConfig
 
-    def summary(self) -> str:
-        channels = ", ".join(f"AI{n}" for n in self.config.ai_channels) or "no inputs"
-        return f"{self.config.device_name} - {channels}"
+    def connection_info(self) -> str:
+        return self.config.device_name
 
     def check_reachable(self) -> bool:
         import nidaqmx.system
 
         names = {device.name for device in nidaqmx.system.System.local().devices}
         return self.config.device_name in names
-
-    def panel(self, parent: QWidget, on_change: Callable[[], None]) -> QWidget:
-        from .panel import DaqPanel
-
-        return DaqPanel(self, parent, on_change)

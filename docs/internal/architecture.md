@@ -14,7 +14,7 @@ pyrpoc/
     devices/            hardware: DAQ, galvos, Prior stage, time tagger, CCDs, cameras
     programs/           experiments, one folder each, built from programs/building_blocks/
     data_panels/        displays of one open dataset: tiled, overlay, mosaic, spectrum, mask editor
-  device_inventory/   the devices this workbench has, and the Devices panel
+  device_inventory/   the devices this workbench has, and the Devices panel (a table of them)
   data_library/       the open data, recordings on disk, and the Data Library panel
   acquisition/        choosing a program, setting it up and running it, and the Acquisition panel
   app/                builds all of the above, connects them, and shows the window
@@ -78,7 +78,7 @@ Plus three rules:
 
 | You want to add… | It goes in… |
 |---|---|
-| A new instrument | `plugins/devices/<name>/`: a `Device` subclass registered in `device_registry` |
+| A new instrument | `plugins/devices/<name>/`: a `Device` subclass registered in `device_registry`. If it has live controls, a `DevicePanel` subclass in `panel.py` registered in `device_panel_registry` under the same key; its configuration form goes in that panel. Without one, its configuration is edited from the Devices table |
 | A new experiment | `plugins/programs/<name>/`: a `Program` subclass in `program.py` registered in `program_registry`, declaring parameter groups and runners from `programs/building_blocks/` and calling its shared `functions/` (`galvo_raster.py` for a galvo scan). Programs never import each other |
 | A new way to start a program (like Continuous) | `plugins/programs/building_blocks/runners/` |
 | A parameter group, or code a second program needs | `plugins/programs/building_blocks/parameter_groups/` or `functions/`. Code only one program needs stays in its folder |

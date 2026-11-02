@@ -30,7 +30,8 @@ BAD_STATE = (KeyError, TypeError, ValueError, ParameterError)
 class DeviceState:
     key: str
     instance_id: str = ""
-    user_label: str | None = None
+    # Optional in the file, so adding it needed no schema bump.
+    panel_open: bool = False
     state: dict[str, Any] = field(default_factory=dict)
 
 
@@ -119,7 +120,7 @@ def decode(raw: dict[str, Any]) -> SessionState:
         DeviceState(
             key=str(row["key"]),
             instance_id=str(row.get("instance_id", "")),
-            user_label=row.get("user_label"),
+            panel_open=bool(row.get("panel_open", False)),
             state=dict(row.get("state") or {}),
         )
         for row in decode_rows(raw.get("devices", []))

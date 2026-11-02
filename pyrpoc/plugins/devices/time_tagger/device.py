@@ -6,15 +6,11 @@ parameters because they describe how the tagger is cabled and thresholded.
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Protocol
+from typing import Any, Protocol
 
 from pyrpoc.structs.plugins import params as P
 from pyrpoc.structs.plugins.devices import Device, DeviceError, device_registry
-
-if TYPE_CHECKING:  # pragma: no cover
-    from PyQt6.QtWidgets import QWidget
 
 
 class TaggerError(DeviceError):
@@ -71,14 +67,9 @@ class TimeTagger(Device):
 
     config: TaggerConfig
 
-    def __init__(self, instance_id: str | None = None, user_label: str | None = None):
-        super().__init__(instance_id=instance_id, user_label=user_label)
+    def __init__(self, instance_id: str | None = None):
+        super().__init__(instance_id=instance_id)
         self.tagger = None
-
-    def summary(self) -> str:
-        if self.last_test_ok is None:
-            return "Connection: not tested"
-        return "Connection: OK" if self.last_test_ok else "Connection: FAILED"
 
     def check_reachable(self) -> bool:
         self.create_tagger()
@@ -138,8 +129,3 @@ class TimeTagger(Device):
         """Stop the measurement and free the tagger, once per run."""
         flim.stop()
         self.free_tagger()
-
-    def panel(self, parent: QWidget, on_change: Callable[[], None]) -> QWidget:
-        from .panel import TimeTaggerPanel
-
-        return TimeTaggerPanel(self, parent, on_change)

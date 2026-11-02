@@ -1,6 +1,7 @@
-"""The Andor CCD's card: connect, and watch and steer the cooling.
+"""The Andor CCD's panel: its configuration, connect, and watch and steer the
+cooling.
 
-The target temperature is edited in the config form above this card; Set
+The target temperature is edited in the config form at the top; Set
 Temperature sends it to the camera.
 """
 
@@ -12,6 +13,10 @@ from typing import TYPE_CHECKING
 from PyQt6.QtCore import QTimer
 from PyQt6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
 
+from pyrpoc.qt_components.param_form import ParamForm
+from pyrpoc.structs.plugins.data_panels import DevicePanel, device_panel_registry
+from pyrpoc.structs.plugins.params import FieldContext
+
 from .sdk import AndorError
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -20,23 +25,30 @@ if TYPE_CHECKING:  # pragma: no cover
 POLL_MS = 1000
 
 
-class AndorCcdPanel(QWidget):
-    def __init__(self, device: AndorCCD, parent: QWidget, on_change: Callable[[], None]) -> None:
-        super().__init__(parent)
+@device_panel_registry.register("andor_ccd")
+class AndorCcdPanel(DevicePanel):
+    def __init__(self, device: AndorCCD, on_change: Callable[[], None]) -> None:
+        super().__init__(device, on_change)
         self.device = device
-        self.on_change = on_change
+        # What the controls last showed, so a sync only restarts the cooling
+        # poll when the connection actually changed.
+        self.connected = device.session_open
 
         self.poll = QTimer(self)
         self.poll.setInterval(POLL_MS)
         self.poll.timeout.connect(self.on_poll)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setContentsMargins(8, 8, 8, 8)
+        form = ParamForm([device.config], self, cards=False, context=FieldContext())
+        form.changed.connect(on_change)
+        layout.addWidget(form)
         layout.addLayout(self.build_connection_row())
         self.camera_label = QLabel(self)
         layout.addWidget(self.camera_label)
         self.cooling_section = self.build_cooling_section()
         layout.addWidget(self.cooling_section)
+        layout.addStretch(1)
 
         self.show_session_status()
         self.update_controls()
@@ -69,7 +81,7 @@ class AndorCcdPanel(QWidget):
 
     def attempt(self, action: Callable[[], None]) -> bool:
         """Run one camera call. The hardware is a boundary, so a fault is
-        shown on the card rather than raised as an unexpected error."""
+        shown on the panel rather than raised as an unexpected error."""
         try:
             action()
         except AndorError as exc:
@@ -102,13 +114,22 @@ class AndorCcdPanel(QWidget):
             self.temperature_label.setText("-")
 
     def on_connect_clicked(self) -> None:
+        """Connect or disconnect; ``sync`` then updates the controls, as it
+        does when the inventory connects the camera."""
         if self.device.session_open:
             self.attempt(self.device.close_session)
         else:
+            # Shown here too, since a failed connect leaves nothing for sync to change.
             self.device.try_open_session()
+            self.show_session_status()
+        self.on_change()
+
+    def sync(self) -> None:
+        if self.device.session_open == self.connected:
+            return
+        self.connected = self.device.session_open
         self.show_session_status()
         self.update_controls()
-        self.on_change()
 
     def on_poll(self) -> None:
         if not self.attempt(self.show_temperature):

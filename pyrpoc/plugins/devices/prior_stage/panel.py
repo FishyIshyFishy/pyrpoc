@@ -1,4 +1,5 @@
-"""The Prior stage's card: connect, read and move, and the motion profile.
+"""The Prior stage's panel: its port, connect, read and move, and the motion
+profile.
 
 A move is sent and then polled on a timer, so the window never blocks on a
 travelling stage. The motion profile is written only by its Apply buttons.
@@ -20,6 +21,10 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+
+from pyrpoc.qt_components.param_form import ParamForm
+from pyrpoc.structs.plugins.data_panels import DevicePanel, device_panel_registry
+from pyrpoc.structs.plugins.params import FieldContext
 
 from .device import MotionProfile
 from .sdk import PriorError
@@ -43,7 +48,7 @@ def make_spinbox(parent: QWidget, minimum: float, decimals: int) -> QDoubleSpinB
     box.setRange(minimum, LIMIT)
     box.setDecimals(decimals)
     # Qt sizes a spinbox to its widest value; with this range that would push
-    # the card past the dock's edge, so the layout sets the width instead.
+    # the panel past the dock's edge, so the layout sets the width instead.
     box.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
     box.setMinimumWidth(SPINBOX_WIDTH)
     return box
@@ -57,11 +62,14 @@ def make_heading(text: str, parent: QWidget) -> QLabel:
     return label
 
 
-class PriorStagePanel(QWidget):
-    def __init__(self, device: PriorStage, parent: QWidget, on_change: Callable[[], None]) -> None:
-        super().__init__(parent)
+@device_panel_registry.register("prior_stage")
+class PriorStagePanel(DevicePanel):
+    def __init__(self, device: PriorStage, on_change: Callable[[], None]) -> None:
+        super().__init__(device, on_change)
         self.device = device
-        self.on_change = on_change
+        # What the controls last showed, so a sync only re-reads the
+        # controller when the connection actually changed.
+        self.connected = device.session_open
         self.shown: dict[str, float] = {}
         self.readouts: dict[str, QLabel] = {}
         self.targets: dict[str, QDoubleSpinBox] = {}
@@ -74,13 +82,17 @@ class PriorStagePanel(QWidget):
         self.poll.timeout.connect(self.on_poll)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setContentsMargins(8, 8, 8, 8)
         layout.setSpacing(10)
+        form = ParamForm([device.config], self, cards=False, context=FieldContext())
+        form.changed.connect(on_change)
+        layout.addWidget(form)
         layout.addLayout(self.build_connection_row())
         self.position_section = self.build_position_section()
         layout.addWidget(self.position_section)
         self.motion_section = self.build_motion_section()
         layout.addWidget(self.motion_section)
+        layout.addStretch(1)
 
         self.show_session_status()
         self.update_controls()
@@ -163,7 +175,7 @@ class PriorStagePanel(QWidget):
 
     def attempt(self, action: Callable[[], None]) -> bool:
         """Run one stage call. The hardware is a boundary, so a controller
-        fault is shown on the card rather than raised as an unexpected error."""
+        fault is shown on the panel rather than raised as an unexpected error."""
         try:
             action()
         except PriorError as exc:
@@ -187,17 +199,25 @@ class PriorStagePanel(QWidget):
                 button.setEnabled(False)
 
     def on_connect_clicked(self) -> None:
-        self.poll.stop()
+        """Connect or disconnect; ``sync`` then updates the controls, as it
+        does when the inventory connects the stage."""
         if self.device.session_open:
-            if self.attempt(self.device.close_session):
-                self.status_label.setText("Not connected")
+            self.attempt(self.device.close_session)
         else:
+            # Shown here too, since a failed connect leaves nothing for sync to change.
             self.device.try_open_session()
             self.show_session_status()
-        self.update_controls()
-        if self.device.session_open:
-            self.read_all()
         self.on_change()
+
+    def sync(self) -> None:
+        if self.device.session_open == self.connected:
+            return
+        self.connected = self.device.session_open
+        self.poll.stop()
+        self.show_session_status()
+        self.update_controls()
+        if self.connected:
+            self.read_all()
 
     def read_all(self) -> None:
         """Everything the controller currently holds; targets start at the

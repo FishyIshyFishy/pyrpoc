@@ -145,10 +145,6 @@ source_modules = [
   "pyrpoc.structs.plugins.programs",
 ]
 forbidden_modules = ["PyQt6", "pyqtgraph"]
-ignore_imports = [
-  # A type-only import, for the return type of Device.panel().
-  "pyrpoc.structs.plugins.devices -> PyQt6",
-]
 
 [[tool.importlinter.contracts]]
 name = "The cores are Qt-free: running, the library's store and files, the session file"
@@ -163,9 +159,6 @@ source_modules = [
   "pyrpoc.app.session.file",
 ]
 forbidden_modules = ["PyQt6"]
-# Direct imports only: structs.plugins.devices' type-only Qt import is already on the
-# structs ledger above, and reaches these through structs, not through them.
-allow_indirect_imports = true
 
 # The application itself is left out: it is the composition root, and importing
 # every plugin, display panels included, is how it registers them.

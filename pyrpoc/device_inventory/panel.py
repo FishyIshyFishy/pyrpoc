@@ -1,20 +1,50 @@
-"""The devices panel: what is configured, and how it is wired.
+"""The devices panel: what this workbench has, whether each is reachable, and
+the actions on a device that are not controlling it.
 
-Each card's body is a form generated from the device's config plus whatever
-controls the device supplies, so a new config field needs no edit here.
+Controlling a device happens in its own panel, opened from here or the Panels
+menu; a device without one is configured from its row instead.
 """
 
 from __future__ import annotations
 
-from PyQt6.QtWidgets import QComboBox, QHBoxLayout, QPushButton, QScrollArea, QVBoxLayout, QWidget
+from collections.abc import Callable
 
-from pyrpoc.qt_components.cards import RemovableCardWidget
-from pyrpoc.qt_components.param_form import ParamForm
-from pyrpoc.structs.plugins.data_panels import Panel
+from PyQt6.QtCore import QPoint, Qt
+from PyQt6.QtGui import QAction
+from PyQt6.QtWidgets import (
+    QComboBox,
+    QHBoxLayout,
+    QHeaderView,
+    QMenu,
+    QPushButton,
+    QVBoxLayout,
+)
+
+from pyrpoc.qt_components.table import ListTable, horizontal_header, viewport_of
+from pyrpoc.structs.plugins.data_panels import Panel, has_panel
 from pyrpoc.structs.plugins.devices import Device, device_registry
-from pyrpoc.structs.plugins.params import FieldContext
 
+from .configure import ConfigureDialog
 from .inventory import DeviceInventory
+
+NAME, STATUS, CONNECTION = range(3)
+COLUMNS = ["Device", "Status", "Connection"]
+
+
+def status_of(device: Device, in_use: bool) -> str:
+    if in_use:
+        return "In use"
+    if device.holds_session:
+        if device.session_open:
+            return "Connected"
+        return "Error" if device.last_error else "Disconnected"
+    if device.owns_connection:
+        if device.last_test_ok is None:
+            return "Not tested"
+        return "OK" if device.last_test_ok else "Failed"
+    if device.backed_by is not None:
+        return f"via {device.backed_by.display_name}"
+    return "—"
 
 
 class DevicesPanel(Panel):
@@ -26,60 +56,93 @@ class DevicesPanel(Panel):
 
         root = QVBoxLayout(self)
         root.setContentsMargins(8, 8, 8, 8)
-        root.setSpacing(8)
+        root.setSpacing(6)
+        root.addLayout(self.build_add_row())
 
-        top = QHBoxLayout()
+        self.table = ListTable(COLUMNS, self)
+        header = horizontal_header(self.table)
+        header.setSectionResizeMode(NAME, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(STATUS, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(CONNECTION, QHeaderView.ResizeMode.Stretch)
+        self.table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.table.customContextMenuRequested.connect(self.show_row_menu)
+        root.addWidget(self.table, 1)
+
+        for signal in (
+            inventory.changed,
+            inventory.edited,
+            inventory.in_use_changed,
+            inventory.panels_changed,
+        ):
+            signal.connect(self.refresh)
+        self.refresh()
+
+    def build_add_row(self) -> QHBoxLayout:
+        row = QHBoxLayout()
         self.type_combo = QComboBox(self)
         for key in device_registry.keys():
             self.type_combo.addItem(device_registry.get(key).display_name, key)
         add_btn = QPushButton("Add", self)
-        add_btn.clicked.connect(lambda: self.inventory.add(self.type_combo.currentData()))
-        top.addWidget(self.type_combo, 1)
-        top.addWidget(add_btn)
-        root.addLayout(top)
+        add_btn.clicked.connect(self.add_chosen)
+        row.addWidget(self.type_combo, 1)
+        row.addWidget(add_btn)
+        return row
 
-        scroll_area = QScrollArea(self)
-        scroll_area.setWidgetResizable(True)
-        self.content = QWidget(scroll_area)
-        self.instances_layout = QVBoxLayout(self.content)
-        self.instances_layout.setContentsMargins(0, 0, 0, 0)
-        self.instances_layout.setSpacing(6)
-        scroll_area.setWidget(self.content)
-        root.addWidget(scroll_area, 1)
-
-        self.inventory.changed.connect(self.refresh)
-        self.refresh()
+    def add_chosen(self) -> None:
+        device = self.inventory.add(self.type_combo.currentData())
+        if has_panel(device):
+            self.inventory.request_panel(device, True)
 
     def refresh(self) -> None:
-        while (item := self.instances_layout.takeAt(0)) is not None:
-            widget = item.widget()
-            if widget is not None:
-                widget.setParent(None)
-                widget.deleteLater()
-        for device in self.inventory.devices:
-            self.instances_layout.addWidget(self.build_card(device))
-        self.instances_layout.addStretch(1)
+        devices = self.inventory.devices
+        self.table.setRowCount(len(devices))
+        for row, device in enumerate(devices):
+            self.table.set_cell(row, NAME, device.name)
+            status = self.table.set_cell(
+                row, STATUS, status_of(device, device in self.inventory.in_use)
+            )
+            status.setToolTip(device.last_error or "")
+            self.table.set_cell(row, CONNECTION, device.connection_info())
 
-    def build_card(self, device: Device) -> RemovableCardWidget:
-        card = RemovableCardWidget(device.name, self.content)
-        card.set_description(device.summary())
-        card.remove_requested.connect(lambda d=device: self.inventory.remove(d))
+    def show_row_menu(self, position: QPoint) -> None:
+        row = self.table.rowAt(position.y())
+        if row < 0:
+            return
+        self.table.selectRow(row)
+        menu = self.build_row_menu(self.inventory.devices[row])
+        menu.exec(viewport_of(self.table).mapToGlobal(position))
 
-        body = QWidget(card)
-        layout = QVBoxLayout(body)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(6)
-        form = ParamForm([device.config], body, cards=False, context=FieldContext())
-        form.changed.connect(lambda d=device, c=card: self.on_config_changed(d, c))
-        layout.addWidget(form)
-        extra = device.panel(body, lambda d=device, c=card: self.on_config_changed(d, c))
-        if extra is not None:
-            layout.addWidget(extra)
+    def build_row_menu(self, device: Device) -> QMenu:
+        """Only the actions that apply to this kind of device; the ones that
+        would disturb a run are greyed while it holds the device."""
+        inventory = self.inventory
+        idle = device not in inventory.in_use
+        menu = QMenu(self)
+        if has_panel(device):
+            showing = device in inventory.open_panels
+            menu.addAction(
+                "Close Panel" if showing else "Open Panel",
+                lambda: inventory.request_panel(device, not showing),
+            )
+        else:
+            menu.addAction("Configure…", lambda: self.configure(device))
+        if device.holds_session:
+            if device.session_open:
+                add_action(menu, "Disconnect", lambda: inventory.disconnect_device(device), idle)
+            else:
+                menu.addAction("Connect", lambda: inventory.connect_device(device))
+        elif device.owns_connection:
+            add_action(menu, "Test Connection", lambda: inventory.test_device(device), idle)
+        menu.addSeparator()
+        add_action(menu, "Remove", lambda: inventory.remove(device), idle)
+        return menu
 
-        card.set_body_widget(body)
-        return card
+    def configure(self, device: Device) -> None:
+        ConfigureDialog(device, self.inventory, self).show()
 
-    def on_config_changed(self, device: Device, card: RemovableCardWidget) -> None:
-        card.set_description(device.summary())
-        card.title_label.setText(device.name)
-        self.inventory.mark_edited()
+
+def add_action(menu: QMenu, text: str, slot: Callable[[], None], enabled: bool) -> None:
+    action = QAction(text, menu)
+    action.setEnabled(enabled)
+    action.triggered.connect(slot)
+    menu.addAction(action)

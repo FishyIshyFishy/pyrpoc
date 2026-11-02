@@ -11,15 +11,12 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Literal
+from typing import Literal
 
 from pyrpoc.structs.plugins import params as P
 from pyrpoc.structs.plugins.devices import Device, device_registry
 
 from .sdk import PriorError, PriorSession
-
-if TYPE_CHECKING:  # pragma: no cover
-    from PyQt6.QtWidgets import QWidget
 
 # "xy" is what the SDK calls the stage; "z" is the focus drive.
 Axis = Literal["xy", "z"]
@@ -71,13 +68,12 @@ class PriorStage(Device):
 
     config: PriorConfig
 
-    def __init__(self, instance_id: str | None = None, user_label: str | None = None):
-        super().__init__(instance_id=instance_id, user_label=user_label)
+    def __init__(self, instance_id: str | None = None):
+        super().__init__(instance_id=instance_id)
         self.session: PriorSession | None = None
 
-    def summary(self) -> str:
-        state = "connected" if self.session_open else "not connected"
-        return f"COM{self.config.com_port} - {state}"
+    def connection_info(self) -> str:
+        return f"COM{self.config.com_port}"
 
     @property
     def session_open(self) -> bool:
@@ -159,8 +155,3 @@ class PriorStage(Device):
         self.command(f"{prefix}.speed.set {format_number(profile.speed)}")
         self.command(f"{prefix}.acc.set {format_number(profile.acc)}")
         self.command(f"{prefix}.jerk.set {format_number(profile.jerk)}")
-
-    def panel(self, parent: QWidget, on_change: Callable[[], None]) -> QWidget:
-        from .panel import PriorStagePanel
-
-        return PriorStagePanel(self, parent, on_change)

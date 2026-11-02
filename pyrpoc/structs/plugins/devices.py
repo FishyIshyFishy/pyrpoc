@@ -1,21 +1,19 @@
 """What every device has: identity, configuration, and maybe a connection.
 
 Identity is separate from connection so a device with no port of its own, like
-the galvo, can still have a panel and persist; it is ``backed_by`` the DAQ.
+the galvo, can still be configured and persist; it is ``backed_by`` the DAQ.
+A device with live controls has a ``DevicePanel``, registered separately in
+``data_panels.py`` so this file stays Qt-free.
 """
 
 from __future__ import annotations
 
-from collections.abc import Callable
-from typing import TYPE_CHECKING, Any
+from typing import Any
 from uuid import uuid4
 
 from pyrpoc.structs.registry import Registry
 
 from . import params as P
-
-if TYPE_CHECKING:  # pragma: no cover - import only for type checkers
-    from PyQt6.QtWidgets import QWidget
 
 
 def make_instance_id(prefix: str) -> str:
@@ -55,23 +53,26 @@ class Device:
     # The block describing this device's wiring and calibration.
     config_cls: type[P.Group]
 
-    def __init__(self, instance_id: str | None = None, user_label: str | None = None):
+    def __init__(self, instance_id: str | None = None):
         self.instance_id = instance_id or make_instance_id(self.registry_key)
-        self.user_label = user_label
+        # Which of its type this is, set by the inventory to tell same-kind
+        # devices apart.
+        self.number = 1
         self.last_error: str | None = None
         self.last_test_ok: bool | None = None
         self.config = self.config_cls()
 
     @property
     def name(self) -> str:
-        return self.user_label or self.display_name
+        return self.display_name if self.number == 1 else f"{self.display_name} {self.number}"
 
-    def summary(self) -> str:
-        """One short line for the collapsed card in the devices panel."""
+    def connection_info(self) -> str:
+        """Where the device is reached, like a port or serial number, for the
+        inventory table. Whether it is connected is shown separately."""
         return ""
 
     def test_connection(self) -> bool:
-        """Verify the device is reachable, recording the result so the panel
+        """Verify the device is reachable, recording the result so the inventory
         can show it after a restore."""
         if not self.owns_connection:
             return True
@@ -112,13 +113,6 @@ class Device:
             return False
         self.last_error = None
         return True
-
-    def panel(self, parent: QWidget, on_change: Callable[[], None]) -> QWidget | None:
-        """Device-specific controls beneath the generated config form, or None.
-        Subclasses import Qt inside this method so devices/ stays importable
-        without a display."""
-        del parent, on_change
-        return None
 
     def export_state(self) -> dict[str, Any]:
         return {"config": P.encode_block(self.config), "last_test_ok": self.last_test_ok}
