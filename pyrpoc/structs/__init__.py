@@ -10,7 +10,8 @@ registers in.
       devices.py         Device + device_registry
       programs/          Program, RunContext + program_registry; Runner and its
                          controls
-      data_panels.py     Panel, DataPanel + data_panel_registry (the only Qt file)
+      data_panels.py     Panel, DataPanel + data_panel_registry, DevicePanel +
+                         device_panel_registry (the only Qt file)
       params.py          the parameter language plugins declare: fields, Group,
                          BlockStore; block_registry
     data_library/      what the data library holds

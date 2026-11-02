@@ -27,7 +27,7 @@ from __future__ import annotations
 import math
 from collections.abc import Callable, Sequence
 from dataclasses import asdict, dataclass
-from typing import TYPE_CHECKING, Any, Literal
+from typing import Any, Literal
 
 import numpy as np
 
@@ -35,9 +35,6 @@ from pyrpoc.structs.plugins import params as P
 from pyrpoc.structs.plugins.devices import Device, device_registry
 
 from .sdk import ACQUIRING, IDLE, AndorError, AndorSession, Temperature, code_name
-
-if TYPE_CHECKING:  # pragma: no cover
-    from PyQt6.QtWidgets import QWidget
 
 ReadMode = Literal["fvb", "single_track"]
 Amplifier = Literal["em", "conventional"]
@@ -131,15 +128,15 @@ class AndorCCD(Device):
 
     config: AndorCcdConfig
 
-    def __init__(self, instance_id: str | None = None, user_label: str | None = None):
-        super().__init__(instance_id=instance_id, user_label=user_label)
+    def __init__(self, instance_id: str | None = None):
+        super().__init__(instance_id=instance_id)
         self.session: AndorSession | None = None
 
-    def summary(self) -> str:
+    def connection_info(self) -> str:
         if self.session is None:
-            return "not connected"
+            return ""
         info = self.session.info
-        return f"{info.head_model} #{info.serial} - connected"
+        return f"{info.head_model} #{info.serial}"
 
     @property
     def session_open(self) -> bool:
@@ -244,8 +241,3 @@ class AndorCCD(Device):
         info = asdict(self.require_session().info)
         info["temperature"] = asdict(self.temperature())
         return info
-
-    def panel(self, parent: QWidget, on_change: Callable[[], None]) -> QWidget:
-        from .panel import AndorCcdPanel
-
-        return AndorCcdPanel(self, parent, on_change)

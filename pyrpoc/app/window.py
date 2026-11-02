@@ -1,4 +1,5 @@
-"""The dock manager: three fixed panels plus one dock per added panel.
+"""The dock manager: three fixed panels, one dock per added data panel, and
+the device panels ``DeviceDocks`` keeps.
 
 The fixed panels hide when unchecked in the menu; an added panel is destroyed,
 so it exists exactly as long as its dock does. The window owns the added
@@ -18,13 +19,15 @@ from PyQt6.QtWidgets import QVBoxLayout, QWidget
 
 from pyrpoc.acquisition.panel import AcquisitionPanel
 from pyrpoc.app.application import Application
+from pyrpoc.app.device_docks import DeviceDocks
 from pyrpoc.app.menubar import MainMenuBar
 from pyrpoc.app.theme.manager import ThemeController
 from pyrpoc.data_library.panel import DataLibraryPanel
 from pyrpoc.device_inventory.panel import DevicesPanel
 from pyrpoc.plugins.data_panels import data_panel_registry
+from pyrpoc.plugins.devices import device_registry
 from pyrpoc.structs.data_library.dataset import Dataset
-from pyrpoc.structs.plugins.data_panels import DataPanel
+from pyrpoc.structs.plugins.data_panels import DataPanel, has_panel
 from pyrpoc.structs.registry import grouped
 
 qtads.CDockManager.setConfigFlag(qtads.CDockManager.eConfigFlag.DisableTabTextEliding, True)
@@ -75,14 +78,13 @@ class MainWindow(QWidget):
         # Which instance of its type each panel is, to tell same-kind docks apart.
         self.panel_ordinals: dict[DataPanel, int] = {}
 
+        self.device_docks = DeviceDocks(self.app.inventory, self.dock_manager, self)
+        self.device_docks.actions_changed.connect(self.refresh_panels_menu)
+
         self.menubar = MainMenuBar(self)
-        self.menubar.populate_add_menu(
-            {
-                heading: [(key, data_panel_registry.get(key).display_name) for key in keys]
-                for heading, keys in grouped(data_panel_registry).items()
-            }
-        )
+        self.populate_add_menus()
         self.menubar.panel_requested.connect(self.add_panel_of_type)
+        self.menubar.device_requested.connect(self.add_device)
         self.build_panels()
 
         self.app.library.dataset_changed.connect(self.on_dataset_changed)
@@ -98,6 +100,29 @@ class MainWindow(QWidget):
     def bind_session(self, save_now: Callable[[], None]) -> None:
         """Save the session when the window closes."""
         self.closing.connect(save_now)
+
+    def populate_add_menus(self) -> None:
+        """Displays under their headings; misc panels and devices flat."""
+        displays: dict[str, list[tuple[str, str]]] = {}
+        misc: list[tuple[str, str]] = []
+        for heading, keys in grouped(data_panel_registry).items():
+            for key in keys:
+                cls = data_panel_registry.get(key)
+                if cls.misc:
+                    misc.append((key, cls.display_name))
+                else:
+                    displays.setdefault(heading, []).append((key, cls.display_name))
+        devices = sorted(
+            ((key, device_registry.get(key).display_name) for key in device_registry.keys()),
+            key=lambda entry: entry[1],
+        )
+        self.menubar.populate_add_menus(displays, devices, misc)
+
+    def add_device(self, key: str) -> None:
+        """Add one from the menu, opening its panel straight away."""
+        device = self.app.inventory.add(key)
+        if has_panel(device):
+            self.device_docks.open(device)
 
     def build_panels(self) -> None:
         widgets = {
@@ -208,7 +233,7 @@ class MainWindow(QWidget):
         dock = qtads.CDockWidget(self.panel_title(panel))
         dock.setObjectName(self.panel_object_name(panel))
         dock.setWidget(panel)
-        self.dock_manager.addDockWidget(qtads.DockWidgetArea.RightDockWidgetArea, dock)
+        self.dock_manager.addDockWidgetFloating(dock)
         self.panel_docks[panel] = dock
 
         action = QAction(self.panel_title(panel), self)
@@ -261,22 +286,26 @@ class MainWindow(QWidget):
         data = QByteArray.fromBase64(layout_base64.encode("ascii"))
         if data.isEmpty():
             return
-        self.restoring_layout = True
+        self.restoring_layout = self.device_docks.frozen = True
         try:
             self.dock_manager.restoreState(data)
         finally:
-            self.restoring_layout = False
+            self.restoring_layout = self.device_docks.frozen = False
         self.refresh_panels_menu()
 
     def refresh_panels_menu(self) -> None:
+        actions = self.panel_actions
         self.menubar.populate_panels_menu(
-            list(self.dock_by_key.values()), list(self.panel_actions.values())
+            list(self.dock_by_key.values()),
+            [action for panel, action in actions.items() if not panel.misc],
+            list(self.device_docks.actions.values()),
+            [action for panel, action in actions.items() if panel.misc],
         )
 
     def set_style(self, theme_mode: str) -> None:
         self.menubar.set_active_style(self.theme_controller.apply(theme_mode, persist=True))
 
     def closeEvent(self, event: QCloseEvent | None) -> None:
-        self.shutting_down = True
+        self.shutting_down = self.device_docks.frozen = True
         self.closing.emit()
         super().closeEvent(event)

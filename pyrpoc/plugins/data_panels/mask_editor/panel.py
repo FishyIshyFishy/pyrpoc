@@ -77,6 +77,7 @@ class MaskEditorPanel(DataPanel[Image]):
     display_name = "Mask editor"
     group = "Mask editors"
     order = 30
+    misc = True
     renders = Image
 
     def __init__(self, library: Library):

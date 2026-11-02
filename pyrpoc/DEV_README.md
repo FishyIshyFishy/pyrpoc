@@ -69,6 +69,8 @@ The placements that surprise:
   and the session also read it. Plugins are what declare parameters.
 - **`Panel` (the base for every dock) is in `plugins/data_panels.py`,** so the
   built-in Acquisition, Data Library and Devices panels import it from there too.
+  So is `DevicePanel`, a device's own dock, which registers in
+  `device_panel_registry` under its device's key; `devices.py` stays Qt-free.
 - **`Library` is how plugins see the library.** Data panels and the mask field get
   read access through it, never the real `LibraryModel`.
 

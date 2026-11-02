@@ -1,14 +1,16 @@
-"""Widgets that live in the dock area, and the data-panel contract.
+"""Widgets that live in the dock area: the data-panel and device-panel contracts.
 
 A ``Panel`` has identity and a title. A ``DataPanel`` shows one open dataset
 of the one kind it renders, chosen with a ``SourcePicker``; data-panel plugins
-subclass it and register in ``data_panel_registry``. The only Qt file in
-structs, since a panel is a widget.
+subclass it and register in ``data_panel_registry``. A ``DevicePanel`` holds
+one device's controls and registers in ``device_panel_registry`` under its
+device's key. The only Qt file in structs, since a panel is a widget.
 """
 
 from __future__ import annotations
 
-from typing import Any, Generic, TypeVar
+from collections.abc import Callable
+from typing import Any, ClassVar, Generic, TypeVar
 
 from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtWidgets import QComboBox, QHBoxLayout, QLabel, QVBoxLayout, QWidget
@@ -18,7 +20,7 @@ from pyrpoc.structs.data_library.dataset import Dataset
 from pyrpoc.structs.data_library.library import Library
 from pyrpoc.structs.registry import Registry
 
-from .devices import make_instance_id
+from .devices import Device, make_instance_id
 
 D = TypeVar("D", bound=Data)
 
@@ -117,6 +119,9 @@ class DataPanel(Panel, Generic[D]):
     # The heading it is listed under, and its place in the Add menu.
     group: str
     order: int
+    # Listed under Add Misc. Panel rather than Add Display: a tool that works
+    # on data, not a way to look at it.
+    misc: ClassVar[bool] = False
 
     # A ``Dataset[Pixel]`` the user clicked while picking.
     picked = pyqtSignal(object)
@@ -175,3 +180,38 @@ class DataPanel(Panel, Generic[D]):
 
 
 data_panel_registry: Registry[DataPanel[Any]] = Registry("DataPanelRegistry", DataPanel)
+
+
+class DevicePanel(Panel):
+    """One device's controls and configuration, docked on their own. A device
+    has at most one open; closing it leaves the device in the inventory.
+
+    ``on_change`` reports that the device's configuration or connection
+    changed, so the inventory saves it and every view re-reads it.
+    """
+
+    def __init__(self, device: Device, on_change: Callable[[], None]):
+        super().__init__()
+        # The device's identity, so the dock keeps its place across launches.
+        self.instance_id = device.instance_id
+        self.device_name = device.name
+        self.on_change = on_change
+
+    @property
+    def title(self) -> str:
+        return self.device_name
+
+    def sync(self) -> None:
+        """Re-read the device, which may have been connected or disconnected
+        from elsewhere, such as the inventory."""
+
+    def set_in_use(self, in_use: bool) -> None:
+        """A run holds the device: controls must not touch it meanwhile."""
+        self.setEnabled(not in_use)
+
+
+device_panel_registry: Registry[DevicePanel] = Registry("DevicePanelRegistry", DevicePanel)
+
+
+def has_panel(device: Device) -> bool:
+    return device.registry_key in device_panel_registry.entries
