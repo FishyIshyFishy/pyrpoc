@@ -7,40 +7,43 @@ from typing import Any
 
 import numpy as np
 
-from pyrpoc.structs.data_library.data import Cube3D, Samples4D, Spectrum1D
+from pyrpoc.structs.data_library.data import ArrayData, DecayHistogram, RawSamples, Spectrum
 from pyrpoc.structs.data_library.dataset import Dataset
 from pyrpoc.structs.data_library.saving import Writer, writer_registry
 
 
-@writer_registry.register(Cube3D.name)
-@writer_registry.register(Samples4D.name)
-@writer_registry.register(Spectrum1D.name)
-class NpzWriter(Writer):
-    """``<root>_<output>.npz`` holding ``data`` and ``parameters``. The leading
-    axis of ``data`` is one entry per published array, in publish order."""
+@writer_registry.register(DecayHistogram.name)
+@writer_registry.register(RawSamples.name)
+@writer_registry.register(Spectrum.name)
+class NpzWriter(Writer[ArrayData]):
+    """``<root>_<output>.npz`` holding ``data``, ``channels`` and ``parameters``.
+    The leading axis of ``data`` is one entry per publish, in publish order."""
 
     def __init__(self, root: Path, output: str, parameters: dict[str, Any]):
         super().__init__(root, output, parameters)
         self._buffer: list[np.ndarray] = []
+        self._channels: tuple[str, ...] = ()
 
-    def write(self, dataset: Dataset, array: np.ndarray) -> None:
-        self._buffer.append(np.asarray(array, dtype=np.float32))
+    def write(self, dataset: Dataset[ArrayData], value: ArrayData) -> None:
+        self._buffer.append(value.array)
+        self._channels = tuple(value.channels)
 
-    def finalize(self, dataset: Dataset, error: Exception | None) -> None:
+    def finalize(self, dataset: Dataset[ArrayData], error: Exception | None) -> None:
         if not self._buffer:
             return
         path = self.root.with_name(f"{self.root.name}_{self.output}.npz")
         np.savez_compressed(
             str(path),
             data=np.stack(self._buffer, axis=0),
+            channels=np.asarray(self._channels, dtype=str),
             parameters=np.asarray(self.parameters, dtype=object),
         )
         self.paths = {self.output: path}
 
     @classmethod
-    def read(cls, files: dict[str, Path]) -> list[np.ndarray]:
-        """One file per output; ``parameters`` is not read, since the recording's
+    def read(cls, kind: type[ArrayData], files: dict[str, Path]) -> ArrayData:
+        """The last entry; ``parameters`` is not read, since the recording's
         metadata file holds them, and reading it would unpickle."""
         (path,) = files.values()
         with np.load(str(path)) as archive:
-            return list(archive["data"])
+            return kind(archive["data"][-1], [str(label) for label in archive["channels"]])

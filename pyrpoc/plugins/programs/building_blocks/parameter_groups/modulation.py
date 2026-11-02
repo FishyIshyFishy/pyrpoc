@@ -23,7 +23,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from pyrpoc.structs.data_library.data import Mask2D
+from pyrpoc.structs.data_library.data import Mask
 from pyrpoc.structs.data_library.dataset import Dataset
 from pyrpoc.structs.data_library.library import Library
 from pyrpoc.structs.plugins.params import (
@@ -87,7 +87,7 @@ class MaskRef:
 
 
 @dataclass(frozen=True)
-class Mask(MaskRef):
+class MaskBinding(MaskRef):
     """One authored mask wired to one digital output line."""
 
     port: int = 0
@@ -101,9 +101,9 @@ class Mask(MaskRef):
         return {**super().to_dict(), "port": self.port, "line": self.line}
 
     @classmethod
-    def from_value(cls, raw: Any) -> Mask:
-        """A mask from the form (already a ``Mask``) or from JSON (a dict)."""
-        if isinstance(raw, Mask):
+    def from_value(cls, raw: Any) -> MaskBinding:
+        """A mask from the form (already a ``MaskBinding``) or from JSON (a dict)."""
+        if isinstance(raw, MaskBinding):
             return raw
         if not isinstance(raw, dict):
             raise ParameterError("a mask must be an object with source_id/port/line")
@@ -124,18 +124,18 @@ M = TypeVar("M", bound=MaskRef)
 def resolve_mask(mask: M, library: Library) -> M:
     """``mask`` with its pixels. One whose entry is not open refuses the run:
     acquiring without a mask the user bound is worse than not acquiring."""
-    dataset = library.by_id(mask.source_id)
-    array = dataset.latest() if dataset is not None else None
-    if array is None:
+    dataset = library.by_id(mask.source_id, Mask)
+    value = dataset.value if dataset is not None else None
+    if value is None:
         raise ParameterError(f"mask '{mask.describe()}' is not open")
-    return replace(mask, array=array)
+    return replace(mask, array=value.array)
 
 
 CLOSED_SUFFIX = " (closed)"
 
 
 class MaskSourceCombo(QComboBox):
-    """Picks a ``Mask2D`` entry out of the open data, after a ``blank`` entry
+    """Picks a ``Mask`` entry out of the open data, after a ``blank`` entry
     with no id when no mask is itself a choice.
 
     Filled when opened rather than from a library subscription: the form is
@@ -143,7 +143,9 @@ class MaskSourceCombo(QComboBox):
     would raise inside the library's notify, which runs at run start.
     """
 
-    def __init__(self, sources: Callable[[], list[Dataset]], blank: str | None, parent: QWidget):
+    def __init__(
+        self, sources: Callable[[], list[Dataset[Mask]]], blank: str | None, parent: QWidget
+    ):
         super().__init__(parent)
         self._sources = sources
         self._blank = blank
@@ -222,11 +224,11 @@ class MaskTable(QWidget):
         row.addStretch(1)
         return row
 
-    def sources(self) -> list[Dataset]:
+    def sources(self) -> list[Dataset[Mask]]:
         """The mask entries currently open, newest first."""
-        return self.library.matching(Mask2D)
+        return self.library.matching(Mask)
 
-    def add_row(self, binding: Mask) -> None:
+    def add_row(self, binding: MaskBinding) -> None:
         index = self.table.rowCount()
         self.table.insertRow(index)
         source = MaskSourceCombo(self.sources, None, self.table)
@@ -257,7 +259,7 @@ class MaskTable(QWidget):
             line += 1
         return line
 
-    def next_source(self) -> Dataset | None:
+    def next_source(self) -> Dataset[Mask] | None:
         """The newest mask no row has taken, or the newest if all are taken, so a
         second row does not default to the first row's mask."""
         taken = {row.source.currentData() for row in self.rows}
@@ -270,7 +272,7 @@ class MaskTable(QWidget):
     def on_add_clicked(self) -> None:
         newest = self.next_source()
         self.add_row(
-            Mask(
+            MaskBinding(
                 source_id=newest.id if newest is not None else "",
                 source_label=newest.label if newest is not None else "",
                 port=0,
@@ -291,18 +293,18 @@ class MaskTable(QWidget):
     def refresh_hint(self) -> None:
         self.hint.setVisible(not self.rows)
 
-    def value(self) -> tuple[Mask, ...]:
+    def value(self) -> tuple[MaskBinding, ...]:
         """Every row that names a mask, as a reference. A row whose entry was
         closed is kept: the run resolves it and refuses to start without it."""
-        out: list[Mask] = []
+        out: list[MaskBinding] = []
         for row in self.rows:
             dataset_id = row.source.currentData()
             if not dataset_id:
                 continue
-            dataset = self.library.by_id(dataset_id)
+            dataset = self.library.by_id(dataset_id, Mask)
             label = dataset.label if dataset is not None else row.source.currentText()
             out.append(
-                Mask(
+                MaskBinding(
                     source_id=dataset_id,
                     source_label=label.removesuffix(CLOSED_SUFFIX),
                     port=row.port.value(),
@@ -311,7 +313,7 @@ class MaskTable(QWidget):
             )
         return tuple(out)
 
-    def set_value(self, bindings: tuple[Mask, ...]) -> None:
+    def set_value(self, bindings: tuple[MaskBinding, ...]) -> None:
         self.table.setRowCount(0)
         self.rows = []
         for binding in bindings:
@@ -323,7 +325,7 @@ class MaskTable(QWidget):
         closed entry, since those will stop the run."""
         if not self.rows:
             return "none"
-        live = sum(1 for mask in self.value() if self.library.by_id(mask.source_id))
+        live = sum(1 for mask in self.value() if self.library.by_id(mask.source_id, Mask))
         closed = len(self.rows) - live
         text = f"{live} mask" + ("" if live == 1 else "s")
         return text + (f", {closed} closed" if closed else "")
@@ -333,17 +335,17 @@ class MaskTable(QWidget):
 class MasksField(Field):
     """The Modulation table: library entry, port, line, one row per mask."""
 
-    def coerce(self, value: Any) -> tuple[Mask, ...]:
+    def coerce(self, value: Any) -> tuple[MaskBinding, ...]:
         if value is None:
             return ()
         if isinstance(value, (str, bytes)) or not isinstance(value, Iterable):
             raise ParameterError(f"{self.label}: expected a list of masks")
-        return tuple(Mask.from_value(row) for row in value)
+        return tuple(MaskBinding.from_value(row) for row in value)
 
-    def encode(self, value: tuple[Mask, ...]) -> Any:
+    def encode(self, value: tuple[MaskBinding, ...]) -> Any:
         return [mask.to_dict() for mask in value]
 
-    def resolve(self, value: tuple[Mask, ...], library: Library) -> tuple[Mask, ...]:
+    def resolve(self, value: tuple[MaskBinding, ...], library: Library) -> tuple[MaskBinding, ...]:
         """Each binding with its pixels."""
         return tuple(resolve_mask(mask, library) for mask in value)
 
@@ -367,7 +369,7 @@ class MasksField(Field):
 class ModulationGroup(Group):
     label: ClassVar[str] = "Modulation"
 
-    masks: tuple[Mask, ...] = spec_field(
+    masks: tuple[MaskBinding, ...] = spec_field(
         None,
         MasksField(
             "Masks",

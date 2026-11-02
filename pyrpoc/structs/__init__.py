@@ -9,13 +9,13 @@ registers in.
     plugins/           what plugins implement
       devices.py         Device + device_registry
       programs/          Program, RunContext + program_registry; Runner and its
-                         controls; Pick (a runner asks, a data panel answers)
+                         controls
       data_panels.py     Panel, DataPanel + data_panel_registry (the only Qt file)
       params.py          the parameter language plugins declare: fields, Group,
                          BlockStore; block_registry
     data_library/      what the data library holds
-      data.py            kinds of data (Image2D, Spectrum1D, ...)
-      dataset.py         Dataset, Provenance, Origin
+      data.py            the nouns data comes as (Image, Mask, Pixel, Mosaic, ...)
+      dataset.py         Dataset: one output's current value + Provenance, Origin
       library.py         Library: read access to the open datasets
       saving.py          SaveTarget, Writer + writer_registry: file formats
 """

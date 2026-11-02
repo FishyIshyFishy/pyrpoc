@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 from PyQt6.QtCore import QPoint, Qt, QUrl
 from PyQt6.QtGui import QAction, QDesktopServices
@@ -62,7 +63,7 @@ class DataLibraryPanel(Panel):
         self.library = library
         self.save_folder = save_folder
         # Datasets in table order, so a row number maps back to a dataset.
-        self.rows: list[Dataset] = []
+        self.rows: list[Dataset[Any]] = []
 
         root = QVBoxLayout(self)
         root.setContentsMargins(8, 4, 8, 8)
@@ -132,7 +133,7 @@ class DataLibraryPanel(Panel):
         for row, dataset in enumerate(self.rows):
             self.table.set_cell(row, TIME, dataset.started_time)
             name = self.table.set_cell(row, NAME, dataset.name)
-            tooltip = f"{dataset.name} · {dataset.spec.name}"
+            tooltip = f"{dataset.name} · {dataset.kind.name}"
             name.setToolTip(f"{tooltip}\n\n{dataset.notes}" if dataset.notes else tooltip)
             self.table.set_cell(row, OUTPUT, dataset.output)
             self.table.set_cell(row, SIZE, format_size(dataset.nbytes), right=True)
@@ -143,7 +144,7 @@ class DataLibraryPanel(Panel):
             self.table.selectRow(self.rows.index(chosen))
         self.refresh_actions()
 
-    def on_dataset_changed(self, dataset: Dataset) -> None:
+    def on_dataset_changed(self, dataset: Dataset[Any]) -> None:
         """Update one cell and the total, not the whole table: a running
         acquisition appends several times a second, and a rebuild would drop the selection."""
         if dataset in self.rows:
@@ -160,7 +161,7 @@ class DataLibraryPanel(Panel):
         warning = "color: palette(highlight); font-weight: bold;"
         self.total_label.setStyleSheet(warning if library.over_limit else "color: palette(mid);")
 
-    def selected_dataset(self) -> Dataset | None:
+    def selected_dataset(self) -> Dataset[Any] | None:
         rows = {index.row() for index in self.table.selectedIndexes()}
         return self.rows[rows.pop()] if len(rows) == 1 else None
 
@@ -185,13 +186,13 @@ class DataLibraryPanel(Panel):
         menu.addAction("Close", lambda: self.library.close(dataset))
         menu.exec(viewport_of(self.table).mapToGlobal(position))
 
-    def show_details(self, dataset: Dataset) -> None:
+    def show_details(self, dataset: Dataset[Any]) -> None:
         dialog = DetailsDialog(dataset, lambda notes: self.library.set_notes(dataset, notes), self)
         if dialog.exec() and dataset in self.rows:
             # The notes show in the name's tooltip.
             self.rebuild()
 
-    def show_in_folder(self, dataset: Dataset) -> None:
+    def show_in_folder(self, dataset: Dataset[Any]) -> None:
         if dataset.meta_path is not None:
             QDesktopServices.openUrl(QUrl.fromLocalFile(str(dataset.meta_path.parent)))
 

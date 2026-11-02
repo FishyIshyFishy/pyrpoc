@@ -83,7 +83,7 @@ Plus three rules:
 | A new way to start a program (like Continuous) | `plugins/programs/building_blocks/runners/` |
 | A parameter group, or code a second program needs | `plugins/programs/building_blocks/parameter_groups/` or `functions/`. Code only one program needs stays in its folder |
 | A new way to look at data | `plugins/data_panels/<name>/`: a `DataPanel` subclass registered in `data_panel_registry` |
-| A new kind of data (like a 3-D volume) | a class in `structs/data_library/data.py`, then a writer for it and a data panel that shows it |
+| A new kind of data (like a 3-D volume) | a `Data` class in `structs/data_library/data.py` holding what that noun is, then a writer for it if a program saves it, and a data panel if someone looks at it |
 | A new file format | `data_library/writers/`: a `Writer` registered in `writer_registry` |
 | A feature of the data library (search, tags, streaming off RAM) | `data_library/` |
 | A feature of running (queues, run history, parallel runs) | `acquisition/` |
@@ -109,7 +109,7 @@ its own top-level folder, shaped like the other subsystems:
 ## What stays true on disk
 
 Folder names are not saved anywhere:
-- **Saved sessions** store registry keys like `"image_2d"`.
+- **Saved sessions** store registry keys like `"image"`.
 - **Recordings** follow [data-format.md](data-format.md).
 
 Moving code around never breaks either.

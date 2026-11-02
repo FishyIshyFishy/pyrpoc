@@ -3,7 +3,7 @@
 The ``LibraryStore`` holds the entries; this is where the Data Library panel's
 actions land, so the panel draws and forwards and keeps no bookkeeping of its
 own. It is also the ``Library`` every data panel and parameter editor reads,
-and it relays each dataset's new frames to the GUI thread, so everything that
+and it relays each dataset's new values to the GUI thread, so everything that
 reaches the library goes through one object.
 """
 
@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from pathlib import Path
+from typing import Any, TypeVar
 
 from PyQt6.QtCore import QObject, QTimer, pyqtSignal
 
@@ -20,9 +21,11 @@ from pyrpoc.structs.data_library.dataset import Dataset
 from .format import RecordingError, load_recording, write_notes
 from .store import LibraryFull, LibraryStore
 
+D = TypeVar("D", bound=Data)
+
 
 class LibraryModel(QObject):
-    # A dataset gained frames. Emitted from the thread that appended; Qt
+    # A dataset got a new value. Emitted from the thread that published; Qt
     # delivers it on the GUI thread, which is the only one panels may touch.
     dataset_changed = pyqtSignal(object)
     auto_purge_changed = pyqtSignal(bool)
@@ -34,7 +37,7 @@ class LibraryModel(QObject):
         super().__init__(parent)
         self.store = store
         # Purging closes entries, which redraws panels, so it runs on the GUI
-        # thread; coalesced so a burst of frames checks once. Runs never wait
+        # thread; coalesced so a burst of publishes checks once. Runs never wait
         # on this thread, so it cannot stall acquisition.
         self._purge_timer = QTimer(self)
         self._purge_timer.setSingleShot(True)
@@ -50,16 +53,16 @@ class LibraryModel(QObject):
         for dataset in self.store.all():
             dataset.subscribe(self.dataset_changed.emit)
 
-    def add(self, dataset: Dataset) -> Dataset:
+    def add(self, dataset: Dataset[D]) -> Dataset[D]:
         return self.store.add(dataset)
 
-    def by_id(self, dataset_id: str) -> Dataset | None:
-        return self.store.by_id(dataset_id)
+    def by_id(self, dataset_id: str, kind: type[D]) -> Dataset[D] | None:
+        return self.store.by_id(dataset_id, kind)
 
-    def matching(self, *specs: type[Data]) -> list[Dataset]:
-        return self.store.matching(*specs)
+    def matching(self, kind: type[D]) -> list[Dataset[D]]:
+        return self.store.matching(kind)
 
-    def all(self) -> list[Dataset]:
+    def all(self) -> list[Dataset[Any]]:
         return self.store.all()
 
     def subscribe(self, callback: Callable[[], None]) -> None:
@@ -103,7 +106,7 @@ class LibraryModel(QObject):
         for dataset in datasets:
             self.store.add(dataset)
 
-    def set_notes(self, dataset: Dataset, notes: str) -> str | None:
+    def set_notes(self, dataset: Dataset[Any], notes: str) -> str | None:
         """Set ``dataset``'s notes, and write them into its recording if that
         is on disk and finished; a recording still going writes them itself
         the next time it updates its metadata. Returns why the file could not
@@ -117,7 +120,7 @@ class LibraryModel(QObject):
             return str(exc)
         return None
 
-    def close(self, dataset: Dataset) -> None:
+    def close(self, dataset: Dataset[Any]) -> None:
         """Drop ``dataset`` from memory. Files already saved stay on disk."""
         dataset.unsubscribe(self.dataset_changed.emit)
         self.store.remove(dataset)

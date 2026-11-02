@@ -9,7 +9,7 @@ from typing import Any, ClassVar
 
 from PyQt6.QtWidgets import QWidget
 
-from pyrpoc.structs.data_library.data import Mask2D
+from pyrpoc.structs.data_library.data import Mask
 from pyrpoc.structs.data_library.library import Library
 from pyrpoc.structs.plugins.params import (
     Editor,
@@ -31,14 +31,14 @@ class RegionMaskCombo(MaskSourceCombo):
     """The open masks, after an entry for the centred rectangle."""
 
     def __init__(self, library: Library, parent: QWidget):
-        super().__init__(lambda: library.matching(Mask2D), CENTER, parent)
+        super().__init__(lambda: library.matching(Mask), CENTER, parent)
         self.library = library
 
     def value(self) -> MaskRef | None:
         source_id = self.currentData()
         if not source_id:
             return None
-        dataset = self.library.by_id(source_id)
+        dataset = self.library.by_id(source_id, Mask)
         label = dataset.label if dataset is not None else self.currentText()
         return MaskRef(source_id=source_id, source_label=label.removesuffix(CLOSED_SUFFIX))
 

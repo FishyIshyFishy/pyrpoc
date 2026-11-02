@@ -5,15 +5,17 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
-
-import numpy as np
+from typing import TYPE_CHECKING, Any, Generic, TypeVar
 
 from pyrpoc.structs.plugins.params import ParameterError
 from pyrpoc.structs.registry import Registry
 
+from .data import Data
+
 if TYPE_CHECKING:  # pragma: no cover
     from .dataset import Dataset
+
+D = TypeVar("D", bound=Data)
 
 
 @dataclass
@@ -52,10 +54,10 @@ class SaveTarget:
         return self.folder / self.filename
 
 
-class Writer:
-    """Puts one output's arrays on disk as they arrive, and reads them back:
-    one file format, registered in ``writer_registry`` for each kind of
-    ``Data`` it saves.
+class Writer(Generic[D]):
+    """Puts one output's values on disk as they are published, and reads the
+    last one back: one file format, registered in ``writer_registry`` for each
+    kind of ``Data`` it saves.
 
     ``root`` is the base path every file of the run hangs its suffix off, and
     ``parameters`` the run's encoded blocks, for formats that carry them.
@@ -68,18 +70,18 @@ class Writer:
         # What was written, keyed as ``read`` expects them back.
         self.paths: dict[str, Path] = {}
 
-    def write(self, dataset: Dataset, array: np.ndarray) -> None:
+    def write(self, dataset: Dataset[D], value: D) -> None:
         raise NotImplementedError
 
-    def finalize(self, dataset: Dataset, error: Exception | None) -> None:
+    def finalize(self, dataset: Dataset[D], error: Exception | None) -> None:
         del dataset, error
 
     @classmethod
-    def read(cls, files: dict[str, Path]) -> list[np.ndarray]:
-        """Every frame ``paths`` named, in publish order. ``files`` has the same
-        keys ``paths`` had when the recording was written."""
+    def read(cls, kind: type[D], files: dict[str, Path]) -> D:
+        """The last value written to ``files``, which has the same keys
+        ``paths`` had when the recording was written."""
         raise NotImplementedError
 
 
 # Keyed by the name of the kind of ``Data`` saved; one writer may take several.
-writer_registry: Registry[Writer] = Registry("WriterRegistry", Writer, stamp=None)
+writer_registry: Registry[Writer[Any]] = Registry("WriterRegistry", Writer, stamp=None)

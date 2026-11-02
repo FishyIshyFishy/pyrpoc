@@ -47,22 +47,22 @@ class RecordingSaver:
         self.parameters = dict(parameters)
         self.devices = dict(devices)
         self.started_at = started_at
-        self.writers: dict[str, Writer] = {}
-        self.datasets: dict[str, Dataset] = {}
+        self.writers: dict[str, Writer[Any]] = {}
+        self.datasets: dict[str, Dataset[Any]] = {}
         self.runs: list[RunRecord] = []
 
     def prepare(self, outputs: dict[str, type[Data]]) -> None:
         """Create the output directory and a writer per output."""
         self.root.parent.mkdir(parents=True, exist_ok=True)
-        for output, spec in outputs.items():
-            self.writers[output] = writer_registry.get(spec.name)(
+        for output, kind in outputs.items():
+            self.writers[output] = writer_registry.get(kind.name)(
                 self.root, output, self.parameters
             )
 
-    def writer_for(self, output: str) -> Writer:
+    def writer_for(self, output: str) -> Writer[Any]:
         return self.writers[output]
 
-    def begin(self, datasets: dict[str, Dataset]) -> None:
+    def begin(self, datasets: dict[str, Dataset[Any]]) -> None:
         """Take the datasets the writers feed, which the metadata describes."""
         self.datasets = datasets
         for dataset in datasets.values():
@@ -106,11 +106,10 @@ class RecordingSaver:
         )
 
 
-def output_record(dataset: Dataset, writer: Writer) -> OutputRecord:
+def output_record(dataset: Dataset[Any], writer: Writer[Any]) -> OutputRecord:
     return OutputRecord(
-        kind=dataset.spec.name,
-        channels=list(dataset.channel_labels),
-        frames=len(dataset),
+        kind=dataset.kind.name,
+        published=dataset.published,
         files={key: path.name for key, path in writer.paths.items()},
         metadata=dict(dataset.metadata),
         notes=dataset.notes,

@@ -1,6 +1,6 @@
 """The datasets currently open, like a list of open documents. Not persisted.
 
-Authored data is filed here too: a mask from the mask editor is a ``Mask2D``
+Authored data is filed here too: a mask from the mask editor is a ``Mask``
 entry, so a parameter can select it by kind without either side naming the
 other. ``Dataset.origin`` says which kind of entry each one is.
 """
@@ -9,9 +9,12 @@ from __future__ import annotations
 
 import threading
 from collections.abc import Callable
+from typing import Any, TypeVar
 
 from pyrpoc.structs.data_library.data import Data
 from pyrpoc.structs.data_library.dataset import Dataset, Origin
+
+D = TypeVar("D", bound=Data)
 
 # Everything open together, in bytes. Big enough for hours of typical imaging,
 # small enough to leave a lab PC's RAM for the rest of the session.
@@ -31,34 +34,35 @@ class LibraryStore:
         self.limit_bytes = limit_bytes
         # Close the oldest finished entries whenever the total is over the limit.
         self.auto_purge = False
-        self._datasets: list[Dataset] = []
+        self._datasets: list[Dataset[Any]] = []
         self._subscribers: list[Callable[[], None]] = []
         self._lock = threading.RLock()
 
-    def add(self, dataset: Dataset) -> Dataset:
+    def add(self, dataset: Dataset[D]) -> Dataset[D]:
         with self._lock:
             self._datasets.append(dataset)
         self.notify()
         return dataset
 
-    def remove(self, dataset: Dataset) -> None:
+    def remove(self, dataset: Dataset[Any]) -> None:
         with self._lock:
             self._datasets.remove(dataset)
         self.notify()
 
-    def all(self) -> list[Dataset]:
+    def all(self) -> list[Dataset[Any]]:
         with self._lock:
             return list(self._datasets)
 
-    def by_id(self, dataset_id: str) -> Dataset | None:
+    def by_id(self, dataset_id: str, kind: type[D]) -> Dataset[D] | None:
+        """The open dataset with this id, if it holds ``kind``. Ids come from
+        saved sessions, so one may name a closed entry or another kind."""
         with self._lock:
-            return next((d for d in self._datasets if d.id == dataset_id), None)
+            return next((d for d in self._datasets if d.id == dataset_id and d.kind is kind), None)
 
-    def matching(self, *specs: type[Data]) -> list[Dataset]:
-        """Datasets of these kinds, newest first."""
-        wanted = set(specs)
+    def matching(self, kind: type[D]) -> list[Dataset[D]]:
+        """Datasets of this kind, newest first."""
         with self._lock:
-            return [d for d in reversed(self._datasets) if d.spec in wanted]
+            return [d for d in reversed(self._datasets) if d.kind is kind]
 
     def subscribe(self, callback: Callable[[], None]) -> None:
         with self._lock:
@@ -93,7 +97,7 @@ class LibraryStore:
                 "panel, or turn on auto-purge there, to acquire or load more."
             )
 
-    def purgeable(self) -> list[Dataset]:
+    def purgeable(self) -> list[Dataset[Any]]:
         """What auto-purge may close, oldest first: finished entries, never one
         still being written and never one the user drew, which exists nowhere
         else."""

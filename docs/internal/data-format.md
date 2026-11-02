@@ -13,10 +13,16 @@ for data files are in `pyrpoc/data_library/writers/`.
 A recording is one metadata file plus data files, all in the same folder:
 
 ```
-<stem>_meta.json        the entry point; names everything else
-<stem>_<channel>.tiff   Image2D: one multi-page float32 TIFF per channel, a page per frame
-<stem>_<output>.npz     Cube3D, Samples4D, Spectrum1D: `data` holds every frame on its leading axis
+<stem>_meta.json            the entry point; names everything else
+<stem>_<channel>.tiff       Image: one multi-page float32 TIFF per channel, a page per publish
+<stem>_<output>.npz         DecayHistogram, RawSamples, Spectrum: `data` holds every publish on
+                            its leading axis, `channels` the channel labels
+<stem>_<output>_tiles.json  Mosaic: the grid, beside one TIFF per channel with a page per image
 ```
+
+Every value a program publishes reaches the files, so a long continuous run is
+all on disk while the data library holds only its latest value. Loading a
+recording opens each output at the last value it was published.
 
 - **The stem.** `<stem>` is the save name. If a recording with that stem
   already exists, the new one takes the first free `<stem>_2`, `<stem>_3`, and
@@ -48,38 +54,26 @@ Each output has these fields:
 
 | Field | Type | Meaning |
 |---|---|---|
-| `kind` | string | The `Data` kind: `Image2D`, `Cube3D`, `Samples4D`, `Spectrum1D` or `Mask2D`. |
-| `channels` | list of strings | Channel labels, in axis order. |
-| `frames` | int | Frames written. |
-| `files` | object: key → file name | Where the frames are. The keys are what that kind's reader expects (channel labels for TIFF, the output name for NPZ). |
+| `kind` | string | The `Data` class name: `Image`, `DecayHistogram`, `RawSamples`, `Spectrum`, `Mosaic`, ... |
+| `published` | int | Values published into the output; the files hold every one. |
+| `files` | object: key → file name | Where the values are. The keys are what that kind's writer expects back (channel labels for TIFF, the output name for NPZ, channel labels plus `tiles` for a mosaic). |
 | `metadata` | object | What the program recorded with `ctx.describe`. |
 | `notes` | string | Free text the user added in the Data Library panel. |
 
-## Conventions inside an output's `metadata`
+## `Mosaic` files
 
-Some programs write structured metadata that a display relies on. These keys
-fall under the same promise as the fields above.
+A mosaic's grid is part of the noun, not a metadata convention. Its writer
+puts the whole plan in `<stem>_<output>_tiles.json` before the first image, so
+a mosaic cut short still says where its images belong, then appends each image
+as a page of its channel's TIFF. Page `i` was taken at entry `i` of the list.
 
-### `mosaic`: a tiled acquisition
-
-Written by the Mosaic and Mosaic Simulation programs on their `Image2D` output.
-Frame `i` of the output (page `i` of each channel's TIFF) is the tile whose
-`index` is `i`. The frames are ordinary images, so any viewer can open them;
-this key is what lets the Mosaic panel place them. It is written by
-`MosaicGroup.layout_metadata` (`plugins/programs/building_blocks/parameter_groups/mosaic.py`)
-and read by `plugins/data_panels/mosaic/layout.py`. The program and the panel
-share nothing but this table.
-
-| Field | Type | Meaning |
+| Field of each entry | Type | Meaning |
 |---|---|---|
-| `path` | string | How the stage walked the grid. `"snake"`: row 0 left to right, row 1 right to left, and so on. |
-| `x_tiles`, `y_tiles` | int | Tiles along the stage's x and y. |
-| `spacing_um` | number | Stage step between neighbouring tiles, the same in x and y. |
-| `tiles` | list of `{index, row, col, x_um, y_um}` | Every tile in acquisition order: its grid cell (`row` along stage y, `col` along stage x) and the stage position it was imaged at. |
+| `row`, `col` | int | Its grid cell: `row` along stage y, `col` along stage x. |
+| `x_um`, `y_um` | number | The stage position it was imaged at. |
 
-Tiles carry their own `row` and `col`, so a reader never re-derives the path
-from its name. Pixel size is not recorded: the Mosaic panel finds the overlap
-from the images themselves.
+Pixel size is not recorded: the Mosaic panel finds the overlap from the images
+themselves.
 
 ## Compatibility rules
 

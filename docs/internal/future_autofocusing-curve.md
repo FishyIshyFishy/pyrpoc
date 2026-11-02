@@ -8,41 +8,36 @@ change that touches no subsystem.
 
 ## Why it is easy
 
-- **One point per frame keeps the shape fixed.** `Dataset.append` stores frames
-  as a list, and `NpzWriter` saves them with `np.stack`, so every frame must
-  have the same shape. If the curve grew by a point each frame, the shape would
-  change. So the program publishes one `(z, metric)` point per step. The curve
-  is all of the dataset's frames, not its latest one.
-- **A panel can read every frame.** `Dataset.frames()` returns all of them, so a
-  data panel's `show_frame` can redraw the full curve on each new point.
+- **The curve is a noun.** A dataset holds one value, so the program publishes
+  the whole curve so far after each step, the way the mosaic programs publish
+  the mosaic so far. A panel then only ever draws its latest value.
 - **The program already makes one call per step.** `FocusRun.report` in
   `plugins/programs/autofocus/program.py` is where the extra `ctx.publish` goes.
 
 ## Steps
 
-1. **A data kind** in `structs/data_library/data.py`, e.g. `Curve1D`:
-   - It is `(C, 2)` float32, one `(x, y)` point per channel.
-   - Name the kind for its shape, not for autofocus, so other scans (a power
+1. **A data kind** in `structs/data_library/data.py`, e.g. `Curve`:
+   - An `ArrayData` with `axes = ("point", "xy")`: one `(x, y)` row per visit,
+     in visit order.
+   - Name the kind for what it is, not for autofocus, so other scans (a power
      sweep, a delay scan) can reuse it.
    - Add it to `DATA_KINDS`.
-   - Do not reuse `Spectrum1D`: its axis is a bin index, and pickers filter on
-     kind. A spectrum panel would then offer focus curves.
-2. **A writer.** Register the kind on `NpzWriter`
-   (`data_library/writers/npz.py`) with one more `@writer_registry.register`
-   line. The saved `data` is then `(N, C, 2)`.
-3. **A panel** in `plugins/data_panels/curve/`, with `renders = [Curve1D]`.
-   `show_frame` stacks `dataset.frames()` and plots `x` against `y` for each
-   channel.
+   - Do not reuse `Spectrum`: pickers filter on kind, so a spectrum panel
+     would then offer focus curves.
+2. **A writer.** Its saved file only needs the last value, since each publish
+   is the whole curve: a small writer that rewrites one `.npy` on each write,
+   or register the kind on `NpzWriter` and accept that it keeps every publish.
+3. **A panel** in `plugins/data_panels/curve/`, a `DataPanel[Curve]` with
+   `renders = Curve`. `show_value` plots the value's rows.
    - The hill climb visits z out of order, overshooting and coming back. Draw
      the points as a scatter, optionally joined in visit order so the path of
      the climb shows. Do not join them sorted by z.
    - Mark the best point.
 4. **The program.**
    - Add `"focus_curve": Curve1D` to `Autofocus.emits`.
-   - In `FocusRun.report`, call
-     `ctx.publish("focus_curve", np.array([[step.z_um, step.metric]]), channels=["tenengrad"])`.
-     It is one channel because the metric is already summed across the
-     detectors.
+   - In `FocusRun.report`, append `(step.z_um, step.metric)` to the points so
+     far and call `ctx.publish("focus_curve", Curve(np.array(points)))`. The
+     metric is already summed across the detectors, so there are no channels.
 5. **The format.** Add the kind to the layout list in
    [data-format.md](data-format.md). A new kind does not break old recordings.
 

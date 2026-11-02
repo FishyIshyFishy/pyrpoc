@@ -40,7 +40,7 @@ class DetailsDialog(QDialog):
 
     def __init__(
         self,
-        dataset: Dataset,
+        dataset: Dataset[Any],
         save_notes: Callable[[str], str | None],
         parent: QWidget,
     ):
@@ -66,17 +66,16 @@ class DetailsDialog(QDialog):
         buttons.rejected.connect(self.reject)
         root.addWidget(buttons)
 
-    def build_summary(self, dataset: Dataset) -> QFormLayout:
-        latest = dataset.latest()
+    def build_summary(self, dataset: Dataset[Any]) -> QFormLayout:
+        value = dataset.value
         rows = [
             ("Name", dataset.name),
-            ("Output", f"{dataset.output} ({dataset.spec.name})"),
+            ("Output", f"{dataset.output} ({dataset.kind.name})"),
             ("Program", dataset.provenance.program_key),
             ("Origin", dataset.origin.value),
             ("Started", local_time(dataset.provenance.started_at)),
-            ("Frames", str(len(dataset))),
-            ("Frame shape", "-" if latest is None else " × ".join(map(str, latest.shape))),
-            ("Channels", ", ".join(dataset.channel_labels) or "-"),
+            ("Published", str(dataset.published)),
+            ("Value", "-" if value is None else value.summary()),
             ("File", str(dataset.meta_path) if dataset.meta_path is not None else "Not saved"),
         ]
         form = QFormLayout()
@@ -86,7 +85,7 @@ class DetailsDialog(QDialog):
             form.addRow(f"{label}:", value)
         return form
 
-    def build_tree(self, dataset: Dataset) -> QTreeWidget:
+    def build_tree(self, dataset: Dataset[Any]) -> QTreeWidget:
         """Parameters, devices and what the program described, as they were
         when the recording started."""
         tree = QTreeWidget(self)

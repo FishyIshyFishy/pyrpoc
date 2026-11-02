@@ -38,7 +38,7 @@ class RecordingKey:
 
 class Recording:
     def __init__(
-        self, key: RecordingKey, datasets: dict[str, Dataset], saver: RecordingSaver | None
+        self, key: RecordingKey, datasets: dict[str, Dataset[Any]], saver: RecordingSaver | None
     ):
         self.key = key
         self.datasets = datasets

@@ -3,7 +3,8 @@ for the kinds of ``Data`` it saves."""
 
 from __future__ import annotations
 
+from .mosaic import MosaicWriter
 from .npz import NpzWriter
 from .tiff import TiffWriter
 
-__all__ = ["NpzWriter", "TiffWriter"]
+__all__ = ["MosaicWriter", "NpzWriter", "TiffWriter"]

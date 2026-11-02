@@ -9,6 +9,7 @@ import numpy as np
 
 from pyrpoc.plugins.devices import AndorCCD, SpectrumReadout
 from pyrpoc.plugins.devices.andor_ccd.device import AcceptedTimings, clipped
+from pyrpoc.structs.data_library.data import Spectrum
 from pyrpoc.structs.plugins.programs.program import Cancelled, RunContext
 
 
@@ -31,7 +32,7 @@ def read_spectrum(ctx: RunContext, ccd: AndorCCD, readout: SpectrumReadout, outp
         ccd.abort()
         raise
     averaged = counts.astype(np.float32) / readout.accumulations
-    ctx.publish(output, averaged[None, :], channels=["ccd"])
+    ctx.publish(output, Spectrum(averaged[None, :], ["ccd"]))
     if clipped(counts, readout.accumulations):
         ctx.status("spectrum saturated")
 

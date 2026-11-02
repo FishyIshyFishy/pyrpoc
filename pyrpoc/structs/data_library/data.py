@@ -1,91 +1,165 @@
-"""The kinds of data the application passes around.
+"""The nouns that travel through the data library, one class each.
 
-A ``Data`` subclass fixes an array's shape, dtype and axis meanings. Programs
-name the kind each output carries and data panels name the kinds they render,
-so a binding is checked before a run starts rather than inferred mid-flight.
+A ``Data`` instance is the thing itself: an ``Image`` holds its planes, a
+``Pixel`` its coordinates. Programs name the kind each output carries and data
+panels name the kind they render, so a binding is checked before a run starts
+rather than inferred mid-flight. A new kind of data is a new class here, with a
+writer if a program saves it and a data panel if someone looks at it.
 """
 
 from __future__ import annotations
+
+from collections.abc import Sequence
+from dataclasses import dataclass
+from typing import ClassVar
 
 import numpy as np
 
 
 class Data:
-    """Base kind. Subclasses fix ``ndim``, ``axes`` and a human name."""
+    """Base noun. ``name`` is the class name, which is what a recording's
+    ``kind`` field holds."""
 
-    name: str = "data"
-    ndim: int = 0
-    axes: tuple[str, ...] = ()
-    dtype = np.float32
+    name: ClassVar[str] = "Data"
 
-    @classmethod
-    def validate(cls, array: np.ndarray) -> None:
-        arr = np.asarray(array)
-        if arr.ndim != cls.ndim:
-            raise ValueError(
-                f"{cls.name} expects {cls.ndim} dimensions {cls.axes}, got shape {arr.shape}"
-            )
-        if any(size <= 0 for size in arr.shape):
-            raise ValueError(f"{cls.name} received an empty axis: shape {arr.shape}")
+    def __init_subclass__(cls) -> None:
+        super().__init_subclass__()
+        cls.name = cls.__name__
 
-    @classmethod
-    def coerce(cls, array: np.ndarray) -> np.ndarray:
-        cls.validate(array)
-        return np.asarray(array, dtype=cls.dtype)
+    @property
+    def nbytes(self) -> int:
+        """Memory held, which the data library totals against its limit."""
+        raise NotImplementedError
+
+    def summary(self) -> str:
+        """One line saying what this is, for the Details dialog."""
+        raise NotImplementedError
 
 
-class Image2D(Data):
-    """``(C, H, W)`` float32: one image per channel."""
+@dataclass(frozen=True, eq=False)
+class ArrayData(Data):
+    """A noun that is one array with named axes. When the first axis is
+    ``"channel"``, ``channels`` labels it; unlabelled channels are numbered.
+    Shared so array file formats can save any of them."""
 
-    name = "Image2D"
-    ndim = 3
+    axes: ClassVar[tuple[str, ...]] = ()
+    dtype: ClassVar[type[np.generic]] = np.float32
+
+    array: np.ndarray
+    channels: Sequence[str] = ()
+
+    def __post_init__(self) -> None:
+        array = np.asarray(self.array, dtype=self.dtype)
+        if array.ndim != len(self.axes):
+            raise ValueError(f"{self.name} expects axes {self.axes}, got shape {array.shape}")
+        if any(size <= 0 for size in array.shape):
+            raise ValueError(f"{self.name} received an empty axis: shape {array.shape}")
+        object.__setattr__(self, "array", array)
+        object.__setattr__(self, "channels", self.labels_for(array))
+
+    def labels_for(self, array: np.ndarray) -> tuple[str, ...]:
+        if self.axes[0] != "channel":
+            if self.channels:
+                raise ValueError(f"{self.name} has no channel axis to label")
+            return ()
+        count = array.shape[0]
+        if not self.channels:
+            return tuple(f"channel_{index}" for index in range(count))
+        if len(self.channels) != count:
+            raise ValueError(f"{self.name} has {count} channels but {len(self.channels)} labels")
+        return tuple(self.channels)
+
+    @property
+    def nbytes(self) -> int:
+        return self.array.nbytes
+
+    def summary(self) -> str:
+        shape = " × ".join(map(str, self.array.shape))
+        labels = f" ({', '.join(self.channels)})" if self.channels else ""
+        return f"{shape} along {', '.join(self.axes)}{labels}"
+
+
+class Image(ArrayData):
+    """One picture per channel."""
+
     axes = ("channel", "y", "x")
 
 
-class Cube3D(Data):
-    """``(H, W, B)`` float32: one value per pixel per bin (FLIM histograms)."""
+class DecayHistogram(ArrayData):
+    """Photon arrival times binned per pixel: what FLIM measures."""
 
-    name = "Cube3D"
-    ndim = 3
     axes = ("y", "x", "bin")
 
 
-class Samples4D(Data):
-    """``(C, H, W, S)`` float32: per-pixel raw samples, unaveraged."""
+class RawSamples(ArrayData):
+    """Every sample a detector took at each pixel, before averaging."""
 
-    name = "Samples4D"
-    ndim = 4
     axes = ("channel", "y", "x", "sample")
 
 
-class Spectrum1D(Data):
-    """``(C, W)`` float32: one spectrum per channel.
+class Spectrum(ArrayData):
+    """Intensity per wavelength bin, one spectrum per channel. Bins carry no
+    units: that is the spectrometer's calibration, not part of the kind."""
 
-    Channel-first like ``Image2D`` so ``Dataset.append`` fills in channel
-    labels and a multi-detector spectrometer needs no new kind. Bins carry no
-    units: that is the spectrometer's calibration, not a shape contract.
-    """
-
-    name = "Spectrum1D"
-    ndim = 2
     axes = ("channel", "wavelength")
 
 
-class Mask2D(Data):
-    """``(H, W)`` uint8: an authored region, 0 outside and non-zero inside.
+class Mask(ArrayData):
+    """An authored region: 0 outside, non-zero inside."""
 
-    Its own kind rather than a one-channel ``Image2D``, because pickers filter
-    on the kind: sharing one with acquired images would offer every run as a
-    mask. uint8 because a mask is a decision per pixel, not a measurement.
-    """
-
-    name = "Mask2D"
-    ndim = 2
     axes = ("y", "x")
     dtype = np.uint8
 
 
+@dataclass(frozen=True)
+class Pixel(Data):
+    """One pixel of an image: ``x`` along the fast axis, ``y`` along the slow.
+    Which image is the provenance of the dataset holding it."""
+
+    x: int
+    y: int
+
+    @property
+    def nbytes(self) -> int:
+        return 0
+
+    def summary(self) -> str:
+        return f"pixel ({self.x}, {self.y})"
+
+
+@dataclass(frozen=True)
+class MosaicTile:
+    """One stop of a mosaic's stage grid: ``row`` grows along stage y and
+    ``col`` along x."""
+
+    row: int
+    col: int
+    x_um: float
+    y_um: float
+
+
+@dataclass(frozen=True, eq=False)
+class Mosaic(Data):
+    """Images taken across a stage grid. ``tiles`` is the whole plan in
+    acquisition order and ``images[i]`` was taken at ``tiles[i]``, so a mosaic
+    still being acquired has fewer images than tiles."""
+
+    tiles: tuple[MosaicTile, ...]
+    images: tuple[Image, ...]
+
+    def __post_init__(self) -> None:
+        if len(self.images) > len(self.tiles):
+            raise ValueError(f"a mosaic of {len(self.tiles)} tiles got {len(self.images)} images")
+
+    @property
+    def nbytes(self) -> int:
+        return sum(image.nbytes for image in self.images)
+
+    def summary(self) -> str:
+        return f"{len(self.images)}/{len(self.tiles)} tiles"
+
+
 # Every kind a saved recording can name, so a file's kind string finds its class.
 DATA_KINDS: dict[str, type[Data]] = {
-    kind.name: kind for kind in (Image2D, Cube3D, Samples4D, Spectrum1D, Mask2D)
+    kind.name: kind for kind in (Image, DecayHistogram, RawSamples, Spectrum, Mask, Pixel, Mosaic)
 }

@@ -7,7 +7,7 @@ pixel index; wavelength calibration is not part of the recording.
 from __future__ import annotations
 
 from pyrpoc.plugins.devices import AndorCCD
-from pyrpoc.structs.data_library.data import Spectrum1D
+from pyrpoc.structs.data_library.data import Spectrum
 from pyrpoc.structs.plugins.programs.program import Program, RunContext, program_registry
 
 from ..building_blocks.functions.ccd_read import publish_spectrum
@@ -22,7 +22,7 @@ class Raman(Program):
     order = 10
     uses = [AndorCCD]
     params = [CcdReadoutGroup]
-    emits = {"spectrum": Spectrum1D}
+    emits = {"spectrum": Spectrum}
     runners = [Single(), Continuous()]
 
     def run(self, ctx: RunContext) -> None:

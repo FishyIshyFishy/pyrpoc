@@ -6,12 +6,12 @@ from collections.abc import Sequence
 
 import numpy as np
 
-from ..parameter_groups.modulation import Mask
+from ..parameter_groups.modulation import MaskBinding
 from ..parameter_groups.scan import ScanGroup
 
 
 def mask_ttl(
-    masks: Sequence[Mask], scan: ScanGroup, samples_per_pixel: int, device_name: str
+    masks: Sequence[MaskBinding], scan: ScanGroup, samples_per_pixel: int, device_name: str
 ) -> dict[str, np.ndarray]:
     """One flat boolean TTL signal per bound digital line, a sample for every
     raster sample. A mask that is all zero on the scan grid gets no line, so no

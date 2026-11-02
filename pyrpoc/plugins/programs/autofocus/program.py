@@ -10,7 +10,7 @@ from dataclasses import asdict
 from typing import Any
 
 from pyrpoc.plugins.devices import DAQ, DaqError, Galvo, PriorError, PriorStage
-from pyrpoc.structs.data_library.data import Image2D
+from pyrpoc.structs.data_library.data import Image
 from pyrpoc.structs.plugins.programs.program import (
     Cancelled,
     Program,
@@ -52,7 +52,7 @@ class FocusRun:
         self.ctx.check_cancel()
         move_z(self.stage, z_um, self.ctx.sleep)
         frame = self.raster.frame()
-        self.ctx.publish("intensity", frame, channels=self.raster.channel_labels)
+        self.ctx.publish("intensity", Image(frame, self.raster.channel_labels))
         return tenengrad(frame, self.raster.weights)
 
     def report(self, step: ClimbStep) -> None:
@@ -83,7 +83,7 @@ class Autofocus(Program):
     order = 13
     uses = [Galvo, DAQ, PriorStage]
     params = [ScanGroup, DaqGroup, RoiGroup, FocusSearchGroup]
-    emits = {"intensity": Image2D}
+    emits = {"intensity": Image}
     # Once only: each start is one complete search.
     runners = [Single()]
 

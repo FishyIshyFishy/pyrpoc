@@ -13,7 +13,7 @@ from .brightfield.program import Brightfield
 from .confocal.program import Confocal
 from .flim.program import FLIM
 from .galvo_pinpoint.program import GalvoPinpoint
-from .mosaic.program import Mosaic
+from .mosaic.program import StageMosaic
 from .mosaic_simulation.program import MosaicSimulation
 from .pinpoint_raman.program import PinpointRaman
 from .raman.program import Raman
@@ -27,7 +27,7 @@ __all__ = [
     "SplitConfocal",
     "FLIM",
     "GalvoPinpoint",
-    "Mosaic",
+    "StageMosaic",
     "Autofocus",
     "MosaicSimulation",
     "PinpointRaman",

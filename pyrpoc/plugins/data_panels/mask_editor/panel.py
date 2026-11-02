@@ -1,6 +1,6 @@
 """Authoring a mask from an acquired dataset.
 
-A finished mask is filed in the library as a ``Mask2D`` dataset, which is how
+A finished mask is filed in the library as a ``Mask`` dataset, which is how
 it reaches a program: the parameter that consumes masks asks the library by
 kind, so neither side names the other. ``Save mask...`` only exports a PNG.
 """
@@ -38,7 +38,7 @@ from PyQt6.QtWidgets import (
 from pyrpoc.plugins.data_panels.mask_editor.range_slider import RangeSlider
 from pyrpoc.plugins.data_panels.mask_editor.transforms import normalize_channels
 from pyrpoc.qt_components.table import horizontal_header, vertical_header
-from pyrpoc.structs.data_library.data import Image2D, Mask2D
+from pyrpoc.structs.data_library.data import Image, Mask
 from pyrpoc.structs.data_library.dataset import Dataset, Origin, Provenance, utc_now
 from pyrpoc.structs.data_library.library import Library
 from pyrpoc.structs.plugins.data_panels import DataPanel, data_panel_registry
@@ -71,13 +71,13 @@ def write_mask(path: str, mask: np.ndarray) -> Path:
 
 
 @data_panel_registry.register("mask_editor")
-class MaskEditorPanel(DataPanel):
+class MaskEditorPanel(DataPanel[Image]):
     """Draw thresholded polygon ROIs over an acquired image and file the mask."""
 
     display_name = "Mask editor"
     group = "Mask editors"
     order = 30
-    renders = [Image2D]
+    renders = Image
 
     def __init__(self, library: Library):
         super().__init__(library)
@@ -243,11 +243,11 @@ class MaskEditorPanel(DataPanel):
             control.blockSignals(False)
         self.write_thresholds(*self.default_thresholds())
 
-    def show_frame(self, dataset: Dataset, frame: np.ndarray) -> None:
-        """ROIs survive a same-shape frame, so the editor stays usable during a
+    def show_value(self, dataset: Dataset[Image], value: Image) -> None:
+        """ROIs survive a same-shape image, so the editor stays usable during a
         live run and across runs; a new shape resets it."""
         del dataset
-        scaled = normalize_channels(frame) * 255.0
+        scaled = normalize_channels(value.array) * 255.0
         if self._data.shape == scaled.shape:
             self.apply_new_data(scaled)
             self.update_view_image()
@@ -419,22 +419,23 @@ class MaskEditorPanel(DataPanel):
         dlg.exec()
 
     def add_to_library(self) -> None:
-        """File the drawn mask as a ``Mask2D`` dataset: how a mask gets used."""
+        """File the drawn mask as a ``Mask`` dataset: how a mask gets used."""
         mask = self.generate_mask(self._rois)
         if mask is None:
             QMessageBox.warning(self, "No ROI", "Draw at least one ROI before adding.")
             return
         dataset = Dataset(
             output="mask",
-            spec=Mask2D,
+            kind=Mask,
             provenance=Provenance(
                 program_key="mask_editor",
                 started_at=utc_now(),
                 name=self.name_edit.text().strip(),
             ),
             origin=Origin.AUTHORED,
+            writer=None,
         )
-        dataset.append(mask)
+        dataset.publish(Mask(mask))
         self.library.add(dataset)
         self.name_edit.clear()
 
