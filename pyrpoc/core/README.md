@@ -8,7 +8,7 @@ package builds on these nouns.
 ```
  ProgramInputs ──▶ Run ──▶ ProgramOutputs ──▶ Library ──▶ panels show them
        ▲                                                        │
-       └──────────── panels set program inputs ◀───────────────────┘
+       └────────────── panels set program inputs ◀──────────────┘
 ```
 
 Everything the software does is this loop:
