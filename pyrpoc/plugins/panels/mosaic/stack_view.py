@@ -38,7 +38,7 @@ class StackView(QWidget):
         root.addLayout(row)
 
     def take_frames(self, frames: Sequence[np.ndarray], mosaic: MosaicLayout | None) -> None:
-        """The dataset's frames so far; the slider follows a new one only if
+        """The program output's frames so far; the slider follows a new one only if
         it was already on the last."""
         following = self.slider.value() >= self.slider.maximum()
         self.frames, self.mosaic = frames, mosaic

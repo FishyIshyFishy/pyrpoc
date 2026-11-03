@@ -223,7 +223,7 @@ def refine_step(planes: list[tuple[np.ndarray, np.ndarray]], start: Offset, radi
 
 
 class Stitcher:
-    """One dataset's tiles. Pair registrations are kept, so a tile arriving
+    """One program output's tiles. Pair registrations are kept, so a tile arriving
     mid-run registers only against its acquired neighbours."""
 
     def __init__(self, layout: MosaicLayout):

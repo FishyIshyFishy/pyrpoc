@@ -13,7 +13,7 @@ from pyrpoc.core.registry import Registry
 from .data import Data
 
 if TYPE_CHECKING:  # pragma: no cover
-    from .dataset import Dataset
+    from .program_output import ProgramOutput
 
 D = TypeVar("D", bound=Data)
 
@@ -63,11 +63,11 @@ class Writer(Generic[D]):
         # What was written, keyed as ``read`` expects them back.
         self.paths: dict[str, Path] = {}
 
-    def write(self, dataset: Dataset[D], value: D) -> None:
+    def write(self, program_output: ProgramOutput[D], value: D) -> None:
         raise NotImplementedError
 
-    def finalize(self, dataset: Dataset[D], error: Exception | None) -> None:
-        del dataset, error
+    def finalize(self, program_output: ProgramOutput[D], error: Exception | None) -> None:
+        del program_output, error
 
     @classmethod
     def read(cls, kind: type[D], files: dict[str, Path]) -> D:

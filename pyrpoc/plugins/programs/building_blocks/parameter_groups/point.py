@@ -10,7 +10,6 @@ from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtWidgets import QDoubleSpinBox, QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
 from pyrpoc.core.data import Pixel
-from pyrpoc.core.dataset import Dataset
 from pyrpoc.core.program_inputs import (
     Editor,
     Field,
@@ -22,6 +21,7 @@ from pyrpoc.core.program_inputs import (
     decode_block,
     spec_field,
 )
+from pyrpoc.core.program_output import ProgramOutput
 
 from .scan import ScanGroup
 
@@ -44,7 +44,7 @@ class Point:
     pixel_y: int = -1
 
     @classmethod
-    def from_pick(cls, pick: Dataset[Pixel]) -> Point:
+    def from_pick(cls, pick: ProgramOutput[Pixel]) -> Point:
         """The position the picked pixel was measured at. The geometry comes
         from the clicked image's provenance, not the live block, which may have
         been edited since the image was taken."""

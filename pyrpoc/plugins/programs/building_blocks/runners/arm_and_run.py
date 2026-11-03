@@ -6,8 +6,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from pyrpoc.core.data import Pixel
-from pyrpoc.core.dataset import Dataset
 from pyrpoc.core.program_inputs import BlockMap, ParameterError
+from pyrpoc.core.program_output import ProgramOutput
 from pyrpoc.core.runner import Runner, RunnerContext, Toggle
 
 
@@ -20,7 +20,7 @@ class ArmAndRun(Runner):
     anything would stop the run starting, since the answer is what starts it.
     """
 
-    apply: Callable[[Dataset[Pixel], BlockMap], None]
+    apply: Callable[[ProgramOutput[Pixel], BlockMap], None]
     label: str
     icon: str | None
     tooltip: str
@@ -37,7 +37,7 @@ class ArmAndRun(Runner):
                 return
             ctx.request_pixel(on_pick)
 
-        def on_pick(pick: Dataset[Pixel] | None) -> None:
+        def on_pick(pick: ProgramOutput[Pixel] | None) -> None:
             toggle.set(False)
             if pick is None:
                 return

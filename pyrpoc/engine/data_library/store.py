@@ -1,8 +1,8 @@
-"""The datasets currently open, like a list of open documents. Not persisted.
+"""The program outputs currently open, like a list of open documents. Not persisted.
 
 Authored data is filed here too: a mask from the mask editor is a ``Mask``
 entry, so a parameter can select it by kind without either side naming the
-other. ``Dataset.origin`` says which kind of entry each one is.
+other. ``ProgramOutput.origin`` says which kind of entry each one is.
 """
 
 from __future__ import annotations
@@ -12,7 +12,7 @@ from collections.abc import Callable
 from typing import Any, TypeVar
 
 from pyrpoc.core.data import Data
-from pyrpoc.core.dataset import Dataset, Origin
+from pyrpoc.core.program_output import Origin, ProgramOutput
 
 D = TypeVar("D", bound=Data)
 
@@ -34,35 +34,35 @@ class LibraryStore:
         self.limit_bytes = limit_bytes
         # Close the oldest finished entries whenever the total is over the limit.
         self.auto_purge = False
-        self._datasets: list[Dataset[Any]] = []
+        self._outputs: list[ProgramOutput[Any]] = []
         self._subscribers: list[Callable[[], None]] = []
         self._lock = threading.RLock()
 
-    def add(self, dataset: Dataset[D]) -> Dataset[D]:
+    def add(self, program_output: ProgramOutput[D]) -> ProgramOutput[D]:
         with self._lock:
-            self._datasets.append(dataset)
+            self._outputs.append(program_output)
         self.notify()
-        return dataset
+        return program_output
 
-    def remove(self, dataset: Dataset[Any]) -> None:
+    def remove(self, program_output: ProgramOutput[Any]) -> None:
         with self._lock:
-            self._datasets.remove(dataset)
+            self._outputs.remove(program_output)
         self.notify()
 
-    def all(self) -> list[Dataset[Any]]:
+    def all(self) -> list[ProgramOutput[Any]]:
         with self._lock:
-            return list(self._datasets)
+            return list(self._outputs)
 
-    def by_id(self, dataset_id: str, kind: type[D]) -> Dataset[D] | None:
-        """The open dataset with this id, if it holds ``kind``. Ids come from
+    def by_id(self, output_id: str, kind: type[D]) -> ProgramOutput[D] | None:
+        """The open program output with this id, if it holds ``kind``. Ids come from
         saved sessions, so one may name a closed entry or another kind."""
         with self._lock:
-            return next((d for d in self._datasets if d.id == dataset_id and d.kind is kind), None)
+            return next((d for d in self._outputs if d.id == output_id and d.kind is kind), None)
 
-    def matching(self, kind: type[D]) -> list[Dataset[D]]:
-        """Datasets of this kind, newest first."""
+    def matching(self, kind: type[D]) -> list[ProgramOutput[D]]:
+        """Program outputs of this kind, newest first."""
         with self._lock:
-            return [d for d in reversed(self._datasets) if d.kind is kind]
+            return [d for d in reversed(self._outputs) if d.kind is kind]
 
     def subscribe(self, callback: Callable[[], None]) -> None:
         with self._lock:
@@ -82,7 +82,7 @@ class LibraryStore:
     def nbytes(self) -> int:
         """Memory held by every entry together."""
         with self._lock:
-            return sum(dataset.nbytes for dataset in self._datasets)
+            return sum(program_output.nbytes for program_output in self._outputs)
 
     @property
     def over_limit(self) -> bool:
@@ -97,17 +97,17 @@ class LibraryStore:
                 "panel, or turn on auto-purge there, to acquire or load more."
             )
 
-    def purgeable(self) -> list[Dataset[Any]]:
+    def purgeable(self) -> list[ProgramOutput[Any]]:
         """What auto-purge may close, oldest first: finished entries, never one
         still being written and never one the user drew, which exists nowhere
         else."""
         with self._lock:
             return [
-                dataset
-                for dataset in self._datasets
-                if dataset.finished and dataset.origin is not Origin.AUTHORED
+                program_output
+                for program_output in self._outputs
+                if program_output.finished and program_output.origin is not Origin.AUTHORED
             ]
 
     def __len__(self) -> int:
         with self._lock:
-            return len(self._datasets)
+            return len(self._outputs)

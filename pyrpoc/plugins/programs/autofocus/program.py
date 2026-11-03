@@ -81,7 +81,7 @@ class Autofocus(Program):
     display_name = "Autofocus"
     group = "Confocal Fluorescence"
     order = 13
-    uses = [Galvo, DAQ, PriorStage]
+    devices = [Galvo, DAQ, PriorStage]
     params = [ScanGroup, DaqGroup, RoiGroup, FocusSearchGroup]
     emits = {"intensity": Image}
     # Once only: each start is one complete search.

@@ -19,9 +19,9 @@ from PyQt6.QtWidgets import (
 )
 
 from pyrpoc.core.data import Image, Pixel
-from pyrpoc.core.dataset import Dataset, Origin
 from pyrpoc.core.library import Library
 from pyrpoc.core.panels import DataPanel, data_panel_registry
+from pyrpoc.core.program_output import Origin, ProgramOutput
 from pyrpoc.shared.widgets.levels import autoscale_levels, mono_levels
 
 LUT = pg.ColorMap(
@@ -81,8 +81,8 @@ class ImagePanel(DataPanel[Image]):
         scroll.setWidget(self._content)
         self.connect_source()
 
-    def show_value(self, dataset: Dataset[Image], value: Image) -> None:
-        del dataset
+    def show_value(self, program_output: ProgramOutput[Image], value: Image) -> None:
+        del program_output
         self.sync_channel_tiles(len(value.channels))
         for index, plane in enumerate(value.array):
             self.update_channel_image(index, plane)
@@ -172,8 +172,8 @@ class ImagePanel(DataPanel[Image]):
         if not self._picking or event.button() != Qt.MouseButton.LeftButton:
             return
         # What is on screen, which is what the user clicked on.
-        dataset, image = self.shown_dataset, self.shown_value
-        if dataset is None or image is None:
+        program_output, image = self.shown_output, self.shown_value
+        if program_output is None or image is None:
             return
         point = image_item.mapFromScene(event.scenePos())
         x, y = int(np.floor(point.x())), int(np.floor(point.y()))
@@ -181,7 +181,7 @@ class ImagePanel(DataPanel[Image]):
         if not (0 <= x < width and 0 <= y < height):
             return
         event.accept()
-        self.picked.emit(pick_of(dataset, x, y))
+        self.picked.emit(pick_of(program_output, x, y))
 
     def on_autoscale_toggled(self, index: int) -> None:
         image = self.shown_value
@@ -281,13 +281,13 @@ class ImagePanel(DataPanel[Image]):
         self._pending_state = []
 
 
-def pick_of(dataset: Dataset[Image], x: int, y: int) -> Dataset[Pixel]:
-    """Pixel ``(x, y)`` of ``dataset``, as a dataset of its own that keeps the
+def pick_of(program_output: ProgramOutput[Image], x: int, y: int) -> ProgramOutput[Pixel]:
+    """Pixel ``(x, y)`` of ``program_output``, as a program output of its own that keeps the
     image's provenance: a pixel only names a position in that acquisition."""
-    pick = Dataset(
-        output=dataset.output,
+    pick = ProgramOutput(
+        name=program_output.name,
         kind=Pixel,
-        provenance=dataset.provenance,
+        provenance=program_output.provenance,
         origin=Origin.AUTHORED,
         writer=None,
     )

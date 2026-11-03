@@ -17,7 +17,7 @@ class Confocal(Program):
     display_name = "Standard"
     group = "Confocal Fluorescence"
     order = 10
-    uses = [Galvo, DAQ]
+    devices = [Galvo, DAQ]
     params = [ScanGroup, FrameCountGroup, DaqGroup, ModulationGroup]
     emits = {"intensity": Image}
     runners = [Single(), Continuous()]

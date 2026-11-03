@@ -1,6 +1,6 @@
 """Simulation: frames out of thin air, no instruments required.
 
-Everything above the hardware boundary is real (the executor's thread, datasets,
+Everything above the hardware boundary is real (the executor's thread, program outputs,
 publishing, saving, the panels), so this exercises the software itself on any
 machine. A plane is a function of (seed, channel, frame index). Each run draws
 its own seed, so repeated runs show a different sample rather than a replay.
@@ -74,7 +74,7 @@ class Simulation(Program):
     display_name = "2D image"
     group = "Simulations"
     order = 20
-    uses = []
+    devices = []
     params = [FrameGroup, FrameCountGroup, SignalGroup, ModulationGroup, PacingGroup]
     emits = {"intensity": Image}
     runners = [Single(), Continuous()]

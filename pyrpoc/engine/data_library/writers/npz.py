@@ -8,7 +8,7 @@ from typing import Any
 import numpy as np
 
 from pyrpoc.core.data import ArrayData, DecayHistogram, RawSamples, Spectrum
-from pyrpoc.core.dataset import Dataset
+from pyrpoc.core.program_output import ProgramOutput
 from pyrpoc.core.saving import Writer, writer_registry
 
 
@@ -24,11 +24,11 @@ class NpzWriter(Writer[ArrayData]):
         self._buffer: list[np.ndarray] = []
         self._channels: tuple[str, ...] = ()
 
-    def write(self, dataset: Dataset[ArrayData], value: ArrayData) -> None:
+    def write(self, program_output: ProgramOutput[ArrayData], value: ArrayData) -> None:
         self._buffer.append(value.array)
         self._channels = tuple(value.channels)
 
-    def finalize(self, dataset: Dataset[ArrayData], error: Exception | None) -> None:
+    def finalize(self, program_output: ProgramOutput[ArrayData], error: Exception | None) -> None:
         if not self._buffer:
             return
         path = self.root.with_name(f"{self.root.name}_{self.output}.npz")

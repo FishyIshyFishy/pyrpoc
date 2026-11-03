@@ -9,8 +9,8 @@ from dataclasses import dataclass
 from typing import ClassVar
 
 from pyrpoc.core.data import Pixel
-from pyrpoc.core.dataset import Dataset
 from pyrpoc.core.program_inputs import BlockMap
+from pyrpoc.core.program_output import ProgramOutput
 
 
 class Control:
@@ -129,7 +129,7 @@ class RunnerContext(ABC):
         """Announce that ``params`` was changed outside the form."""
 
     @abstractmethod
-    def request_pixel(self, callback: Callable[[Dataset[Pixel] | None], None]) -> None:
+    def request_pixel(self, callback: Callable[[ProgramOutput[Pixel] | None], None]) -> None:
         """Ask for a pixel clicked on an image; ``callback`` gets it, or None if
         the request is cancelled. A new request cancels the old."""
 

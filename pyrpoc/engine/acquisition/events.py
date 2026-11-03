@@ -1,8 +1,8 @@
 """Qt in front of the executor: starting runs and reporting them on the GUI thread.
 
 Runs report on their worker threads; the signals here are what carries that
-onto the GUI thread. This is the only subscriber to each dataset a run opens,
-because ``Dataset.publish`` runs on the worker thread. Nothing here knows which
+onto the GUI thread. This is the only subscriber to each program output a run opens,
+because ``ProgramOutput.publish`` runs on the worker thread. Nothing here knows which
 program is selected or which runner asked.
 """
 

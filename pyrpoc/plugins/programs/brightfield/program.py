@@ -28,7 +28,7 @@ class Brightfield(Program):
     display_name = "Brightfield"
     group = "Brightfield"
     order = 50
-    uses = [ToupcamCamera]
+    devices = [ToupcamCamera]
     params = [CameraGroup, FrameCountGroup]
     emits = {"intensity": Image}
     runners = [Single(), Continuous()]

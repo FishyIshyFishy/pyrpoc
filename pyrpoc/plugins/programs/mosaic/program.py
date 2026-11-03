@@ -43,7 +43,7 @@ class StageMosaic(Program):
     display_name = "Mosaic"
     group = "Confocal Fluorescence"
     order = 12
-    uses = [Galvo, DAQ, PriorStage]
+    devices = [Galvo, DAQ, PriorStage]
     params = [ScanGroup, DaqGroup, ModulationGroup, MosaicGroup]
     emits = {"mosaic": Mosaic}
     # Once only: a mosaic is one pass over the grid, never repeated or looped.

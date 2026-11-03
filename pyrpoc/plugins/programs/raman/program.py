@@ -20,7 +20,7 @@ class Raman(Program):
     display_name = "Spectral readout"
     group = "Raman"
     order = 10
-    uses = [AndorCCD]
+    devices = [AndorCCD]
     params = [CcdReadoutGroup]
     emits = {"spectrum": Spectrum}
     runners = [Single(), Continuous()]

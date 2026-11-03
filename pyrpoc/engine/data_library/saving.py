@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from pyrpoc.core.data import Data
-from pyrpoc.core.dataset import Dataset, utc_now
+from pyrpoc.core.program_output import ProgramOutput, utc_now
 from pyrpoc.core.saving import Writer, writer_registry
 from pyrpoc.engine.data_library.format import (
     OutputRecord,
@@ -48,7 +48,7 @@ class RecordingSaver:
         self.devices = dict(devices)
         self.started_at = started_at
         self.writers: dict[str, Writer[Any]] = {}
-        self.datasets: dict[str, Dataset[Any]] = {}
+        self.outputs: dict[str, ProgramOutput[Any]] = {}
         self.runs: list[RunRecord] = []
 
     def prepare(self, outputs: dict[str, type[Data]]) -> None:
@@ -62,11 +62,11 @@ class RecordingSaver:
     def writer_for(self, output: str) -> Writer[Any]:
         return self.writers[output]
 
-    def begin(self, datasets: dict[str, Dataset[Any]]) -> None:
-        """Take the datasets the writers feed, which the metadata describes."""
-        self.datasets = datasets
-        for dataset in datasets.values():
-            dataset.meta_path = self.meta_path
+    def begin(self, outputs: dict[str, ProgramOutput[Any]]) -> None:
+        """Take the program outputs the writers feed, which the metadata describes."""
+        self.outputs = outputs
+        for program_output in outputs.values():
+            program_output.meta_path = self.meta_path
 
     def add_run(self, run_id: int, started_at: str) -> None:
         """Record a run joining, and put the recording on disk before its data."""
@@ -81,7 +81,7 @@ class RecordingSaver:
         self.write_metadata(ended_at=None, last_error=None)
 
     def finalize(self, error: Exception | None) -> None:
-        """Rewrite the metadata. The datasets are finalized first, so every
+        """Rewrite the metadata. The program outputs are finalized first, so every
         writer's paths are complete by now."""
         self.write_metadata(ended_at=utc_now(), last_error=str(error) if error else None)
 
@@ -100,17 +100,17 @@ class RecordingSaver:
             parameters=self.parameters,
             devices=self.devices,
             outputs={
-                output: output_record(dataset, self.writers[output])
-                for output, dataset in self.datasets.items()
+                output: output_record(program_output, self.writers[output])
+                for output, program_output in self.outputs.items()
             },
         )
 
 
-def output_record(dataset: Dataset[Any], writer: Writer[Any]) -> OutputRecord:
+def output_record(program_output: ProgramOutput[Any], writer: Writer[Any]) -> OutputRecord:
     return OutputRecord(
-        kind=dataset.kind.name,
-        published=dataset.published,
+        kind=program_output.kind.name,
+        published=program_output.published,
         files={key: path.name for key, path in writer.paths.items()},
-        metadata=dict(dataset.metadata),
-        notes=dataset.notes,
+        metadata=dict(program_output.metadata),
+        notes=program_output.notes,
     )

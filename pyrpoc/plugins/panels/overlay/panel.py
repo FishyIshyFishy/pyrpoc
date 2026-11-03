@@ -19,9 +19,9 @@ from PyQt6.QtWidgets import (
 )
 
 from pyrpoc.core.data import Image
-from pyrpoc.core.dataset import Dataset
 from pyrpoc.core.library import Library
 from pyrpoc.core.panels import DataPanel, data_panel_registry
+from pyrpoc.core.program_output import ProgramOutput
 from pyrpoc.shared.widgets.colors import color_for_index, color_map_from_rgb
 from pyrpoc.shared.widgets.levels import autoscale_levels, mono_levels
 
@@ -107,8 +107,8 @@ class OverlayPanel(DataPanel[Image]):
         shown = self.shown_value
         return None if shown is None else shown.array
 
-    def show_value(self, dataset: Dataset[Image], value: Image) -> None:
-        del dataset
+    def show_value(self, program_output: ProgramOutput[Image], value: Image) -> None:
+        del program_output
         arr = value.array
         self.sync_controls(arr.shape[0])
         for index in range(arr.shape[0]):

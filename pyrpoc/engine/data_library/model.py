@@ -3,7 +3,7 @@
 The ``LibraryStore`` holds the entries; this is where the Data Library panel's
 actions land, so the panel draws and forwards and keeps no bookkeeping of its
 own. It is also the ``Library`` every data panel and parameter editor reads,
-and it relays each dataset's new values to the GUI thread, so everything that
+and it relays each program output's new values to the GUI thread, so everything that
 reaches the library goes through one object.
 """
 
@@ -16,7 +16,7 @@ from typing import Any, TypeVar
 from PyQt6.QtCore import QObject, QTimer, pyqtSignal
 
 from pyrpoc.core.data import Data
-from pyrpoc.core.dataset import Dataset
+from pyrpoc.core.program_output import ProgramOutput
 
 from .format import RecordingError, load_recording, write_notes
 from .store import LibraryFull, LibraryStore
@@ -25,9 +25,9 @@ D = TypeVar("D", bound=Data)
 
 
 class LibraryModel(QObject):
-    # A dataset got a new value. Emitted from the thread that published; Qt
+    # A program output got a new value. Emitted from the thread that published; Qt
     # delivers it on the GUI thread, which is the only one panels may touch.
-    dataset_changed = pyqtSignal(object)
+    output_changed = pyqtSignal(object)
     auto_purge_changed = pyqtSignal(bool)
     # Why a recording could not be loaded. Reported, not raised: every caller
     # is a Qt slot.
@@ -43,26 +43,26 @@ class LibraryModel(QObject):
         self._purge_timer.setSingleShot(True)
         self._purge_timer.setInterval(0)
         self._purge_timer.timeout.connect(self.purge)
-        self.dataset_changed.connect(lambda _dataset: self.schedule_purge())
-        store.subscribe(self.relay_new_datasets)
+        self.output_changed.connect(lambda _output: self.schedule_purge())
+        store.subscribe(self.relay_new_outputs)
         store.subscribe(self.schedule_purge)
 
-    def relay_new_datasets(self) -> None:
-        """Follow every open dataset. Subscribing twice is a no-op, so this
+    def relay_new_outputs(self) -> None:
+        """Follow every open program output. Subscribing twice is a no-op, so this
         need not know which one was just added."""
-        for dataset in self.store.all():
-            dataset.subscribe(self.dataset_changed.emit)
+        for program_output in self.store.all():
+            program_output.subscribe(self.output_changed.emit)
 
-    def add(self, dataset: Dataset[D]) -> Dataset[D]:
-        return self.store.add(dataset)
+    def add(self, program_output: ProgramOutput[D]) -> ProgramOutput[D]:
+        return self.store.add(program_output)
 
-    def by_id(self, dataset_id: str, kind: type[D]) -> Dataset[D] | None:
-        return self.store.by_id(dataset_id, kind)
+    def by_id(self, output_id: str, kind: type[D]) -> ProgramOutput[D] | None:
+        return self.store.by_id(output_id, kind)
 
-    def matching(self, kind: type[D]) -> list[Dataset[D]]:
+    def matching(self, kind: type[D]) -> list[ProgramOutput[D]]:
         return self.store.matching(kind)
 
-    def all(self) -> list[Dataset[Any]]:
+    def all(self) -> list[ProgramOutput[Any]]:
         return self.store.all()
 
     def subscribe(self, callback: Callable[[], None]) -> None:
@@ -99,31 +99,31 @@ class LibraryModel(QObject):
         the library is full, as a new acquisition would be."""
         try:
             self.store.check_room()
-            datasets = load_recording(meta_path)
+            outputs = load_recording(meta_path)
         except (LibraryFull, RecordingError) as exc:
             self.load_failed.emit(str(exc))
             return
-        for dataset in datasets:
-            self.store.add(dataset)
+        for program_output in outputs:
+            self.store.add(program_output)
 
-    def set_notes(self, dataset: Dataset[Any], notes: str) -> str | None:
-        """Set ``dataset``'s notes, and write them into its recording if that
+    def set_notes(self, program_output: ProgramOutput[Any], notes: str) -> str | None:
+        """Set ``program_output``'s notes, and write them into its recording if that
         is on disk and finished; a recording still going writes them itself
         the next time it updates its metadata. Returns why the file could not
         be updated, or None; the notes are kept in memory either way."""
-        dataset.notes = notes
-        if dataset.meta_path is None or not dataset.finished:
+        program_output.notes = notes
+        if program_output.meta_path is None or not program_output.finished:
             return None
         try:
-            write_notes(dataset.meta_path, dataset.output, notes)
+            write_notes(program_output.meta_path, program_output.name, notes)
         except (RecordingError, OSError) as exc:
             return str(exc)
         return None
 
-    def close(self, dataset: Dataset[Any]) -> None:
-        """Drop ``dataset`` from memory. Files already saved stay on disk."""
-        dataset.unsubscribe(self.dataset_changed.emit)
-        self.store.remove(dataset)
+    def close(self, program_output: ProgramOutput[Any]) -> None:
+        """Drop ``program_output`` from memory. Files already saved stay on disk."""
+        program_output.unsubscribe(self.output_changed.emit)
+        self.store.remove(program_output)
 
     def schedule_purge(self) -> None:
         if self.store.auto_purge and not self._purge_timer.isActive():

@@ -13,9 +13,9 @@ import pyqtgraph as pg
 from PyQt6.QtWidgets import QCheckBox, QVBoxLayout
 
 from pyrpoc.core.data import Spectrum
-from pyrpoc.core.dataset import Dataset
 from pyrpoc.core.library import Library
 from pyrpoc.core.panels import DataPanel, data_panel_registry
+from pyrpoc.core.program_output import ProgramOutput
 from pyrpoc.shared.widgets.colors import color_for_index
 
 
@@ -61,13 +61,13 @@ class SpectrumPanel(DataPanel[Spectrum]):
         if y_changed:
             self._autoscale_box.setChecked(False)
 
-    def show_value(self, dataset: Dataset[Spectrum], value: Spectrum) -> None:
-        del dataset
+    def show_value(self, program_output: ProgramOutput[Spectrum], value: Spectrum) -> None:
+        del program_output
         arr = value.array
         self.sync_curves(arr.shape[0], list(value.channels))
         # TODO: an in-widget calibration (pixel -> nm, or Raman shift from an
         # excitation wavelength), kept with the widget or saved on its own, not
-        # in the dataset.
+        # in the program output.
         xs = np.arange(arr.shape[1], dtype=np.float32)
         for index, curve in enumerate(self._curves):
             curve.setData(xs, arr[index])

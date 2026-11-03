@@ -1,6 +1,6 @@
-"""Authoring a mask from an acquired dataset.
+"""Authoring a mask from an acquired program output.
 
-A finished mask is filed in the library as a ``Mask`` dataset, which is how
+A finished mask is filed in the library as a ``Mask`` program output, which is how
 it reaches a program: the parameter that consumes masks asks the library by
 kind, so neither side names the other. ``Save mask...`` only exports a PNG.
 """
@@ -36,9 +36,9 @@ from PyQt6.QtWidgets import (
 )
 
 from pyrpoc.core.data import Image, Mask
-from pyrpoc.core.dataset import Dataset, Origin, Provenance, utc_now
 from pyrpoc.core.library import Library
 from pyrpoc.core.panels import DataPanel, data_panel_registry
+from pyrpoc.core.program_output import Origin, ProgramOutput, Provenance, utc_now
 from pyrpoc.plugins.panels.mask_editor.range_slider import RangeSlider
 from pyrpoc.plugins.panels.mask_editor.transforms import normalize_channels
 from pyrpoc.shared.widgets.table import horizontal_header, vertical_header
@@ -244,10 +244,10 @@ class MaskEditorPanel(DataPanel[Image]):
             control.blockSignals(False)
         self.write_thresholds(*self.default_thresholds())
 
-    def show_value(self, dataset: Dataset[Image], value: Image) -> None:
+    def show_value(self, program_output: ProgramOutput[Image], value: Image) -> None:
         """ROIs survive a same-shape image, so the editor stays usable during a
         live run and across runs; a new shape resets it."""
-        del dataset
+        del program_output
         scaled = normalize_channels(value.array) * 255.0
         if self._data.shape == scaled.shape:
             self.apply_new_data(scaled)
@@ -420,13 +420,13 @@ class MaskEditorPanel(DataPanel[Image]):
         dlg.exec()
 
     def add_to_library(self) -> None:
-        """File the drawn mask as a ``Mask`` dataset: how a mask gets used."""
+        """File the drawn mask as a ``Mask`` program output: how a mask gets used."""
         mask = self.generate_mask(self._rois)
         if mask is None:
             QMessageBox.warning(self, "No ROI", "Draw at least one ROI before adding.")
             return
-        dataset = Dataset(
-            output="mask",
+        program_output = ProgramOutput(
+            name="mask",
             kind=Mask,
             provenance=Provenance(
                 program_key="mask_editor",
@@ -436,8 +436,8 @@ class MaskEditorPanel(DataPanel[Image]):
             origin=Origin.AUTHORED,
             writer=None,
         )
-        dataset.publish(Mask(mask))
-        self.library.add(dataset)
+        program_output.publish(Mask(mask))
+        self.library.add(program_output)
         self.name_edit.clear()
 
     def save_mask(self) -> None:

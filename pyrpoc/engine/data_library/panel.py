@@ -1,6 +1,6 @@
-"""The data library panel: every dataset this session has open.
+"""The data library panel: every program output this session has open.
 
-Size is shown against the library's limit because a dataset keeps every
+Size is shown against the library's limit because a program output keeps every
 frame, so a long continuous run is what can exhaust a machine. Past the limit,
 auto-purge closes the oldest finished entries; with it off, new acquisitions
 are refused until entries are closed.
@@ -26,8 +26,8 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
 )
 
-from pyrpoc.core.dataset import Dataset
 from pyrpoc.core.panels import Panel
+from pyrpoc.core.program_output import ProgramOutput
 from pyrpoc.shared.widgets.table import ListTable, horizontal_header, viewport_of
 
 from .details import DetailsDialog
@@ -62,8 +62,8 @@ class DataLibraryPanel(Panel):
         super().__init__()
         self.library = library
         self.save_folder = save_folder
-        # Datasets in table order, so a row number maps back to a dataset.
-        self.rows: list[Dataset[Any]] = []
+        # Program outputs in table order, so a row number maps back to a program output.
+        self.rows: list[ProgramOutput[Any]] = []
 
         root = QVBoxLayout(self)
         root.setContentsMargins(8, 4, 8, 8)
@@ -94,7 +94,7 @@ class DataLibraryPanel(Panel):
         self.library.subscribe(self.rebuild)
         self.library.auto_purge_changed.connect(self.auto_purge_check.setChecked)
         self.library.load_failed.connect(self.show_load_error)
-        self.library.dataset_changed.connect(self.on_dataset_changed)
+        self.library.output_changed.connect(self.on_output_changed)
         self.rebuild()
 
     def build_actions_row(self) -> QHBoxLayout:
@@ -127,16 +127,18 @@ class DataLibraryPanel(Panel):
     def rebuild(self) -> None:
         """Redraw every row, keeping the selection where the row survives.
         Membership changes are rare enough for a full rebuild."""
-        chosen = self.selected_dataset()
+        chosen = self.selected_output()
         self.rows = list(reversed(self.library.all()))
         self.table.setRowCount(len(self.rows))
-        for row, dataset in enumerate(self.rows):
-            self.table.set_cell(row, TIME, dataset.started_time)
-            name = self.table.set_cell(row, NAME, dataset.name)
-            tooltip = f"{dataset.name} · {dataset.kind.name}"
-            name.setToolTip(f"{tooltip}\n\n{dataset.notes}" if dataset.notes else tooltip)
-            self.table.set_cell(row, OUTPUT, dataset.output)
-            self.table.set_cell(row, SIZE, format_size(dataset.nbytes), right=True)
+        for row, program_output in enumerate(self.rows):
+            self.table.set_cell(row, TIME, program_output.started_time)
+            name = self.table.set_cell(row, NAME, program_output.run_name)
+            tooltip = f"{program_output.run_name} · {program_output.kind.name}"
+            name.setToolTip(
+                f"{tooltip}\n\n{program_output.notes}" if program_output.notes else tooltip
+            )
+            self.table.set_cell(row, OUTPUT, program_output.name)
+            self.table.set_cell(row, SIZE, format_size(program_output.nbytes), right=True)
 
         self.table.setVisible(bool(self.rows))
         self.empty_label.setVisible(not self.rows)
@@ -144,12 +146,12 @@ class DataLibraryPanel(Panel):
             self.table.selectRow(self.rows.index(chosen))
         self.refresh_actions()
 
-    def on_dataset_changed(self, dataset: Dataset[Any]) -> None:
+    def on_output_changed(self, program_output: ProgramOutput[Any]) -> None:
         """Update one cell and the total, not the whole table: a running
         acquisition appends several times a second, and a rebuild would drop the selection."""
-        if dataset in self.rows:
-            row = self.rows.index(dataset)
-            self.table.set_cell(row, SIZE, format_size(dataset.nbytes), right=True)
+        if program_output in self.rows:
+            row = self.rows.index(program_output)
+            self.table.set_cell(row, SIZE, format_size(program_output.nbytes), right=True)
             self.refresh_total()
 
     def refresh_total(self) -> None:
@@ -161,40 +163,42 @@ class DataLibraryPanel(Panel):
         warning = "color: palette(highlight); font-weight: bold;"
         self.total_label.setStyleSheet(warning if library.over_limit else "color: palette(mid);")
 
-    def selected_dataset(self) -> Dataset[Any] | None:
+    def selected_output(self) -> ProgramOutput[Any] | None:
         rows = {index.row() for index in self.table.selectedIndexes()}
         return self.rows[rows.pop()] if len(rows) == 1 else None
 
     def close_selected(self) -> None:
-        dataset = self.selected_dataset()
-        if dataset is not None:
-            self.library.close(dataset)
+        program_output = self.selected_output()
+        if program_output is not None:
+            self.library.close(program_output)
 
     def show_row_menu(self, position: QPoint) -> None:
         row = self.table.rowAt(position.y())
         if row < 0:
             return
         self.table.selectRow(row)
-        dataset = self.rows[row]
+        program_output = self.rows[row]
         menu = QMenu(self)
-        menu.addAction("Details…", lambda: self.show_details(dataset))
+        menu.addAction("Details…", lambda: self.show_details(program_output))
         folder = QAction("Show in folder", menu)
-        folder.setEnabled(dataset.meta_path is not None)
-        folder.triggered.connect(lambda: self.show_in_folder(dataset))
+        folder.setEnabled(program_output.meta_path is not None)
+        folder.triggered.connect(lambda: self.show_in_folder(program_output))
         menu.addAction(folder)
         menu.addSeparator()
-        menu.addAction("Close", lambda: self.library.close(dataset))
+        menu.addAction("Close", lambda: self.library.close(program_output))
         menu.exec(viewport_of(self.table).mapToGlobal(position))
 
-    def show_details(self, dataset: Dataset[Any]) -> None:
-        dialog = DetailsDialog(dataset, lambda notes: self.library.set_notes(dataset, notes), self)
-        if dialog.exec() and dataset in self.rows:
+    def show_details(self, program_output: ProgramOutput[Any]) -> None:
+        dialog = DetailsDialog(
+            program_output, lambda notes: self.library.set_notes(program_output, notes), self
+        )
+        if dialog.exec() and program_output in self.rows:
             # The notes show in the name's tooltip.
             self.rebuild()
 
-    def show_in_folder(self, dataset: Dataset[Any]) -> None:
-        if dataset.meta_path is not None:
-            QDesktopServices.openUrl(QUrl.fromLocalFile(str(dataset.meta_path.parent)))
+    def show_in_folder(self, program_output: ProgramOutput[Any]) -> None:
+        if program_output.meta_path is not None:
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(program_output.meta_path.parent)))
 
     def choose_recording(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
@@ -215,4 +219,4 @@ class DataLibraryPanel(Panel):
         self.refresh_total()
         self.total_label.setVisible(bool(self.rows))
         self.close_btn.setVisible(bool(self.rows))
-        self.close_btn.setEnabled(self.selected_dataset() is not None)
+        self.close_btn.setEnabled(self.selected_output() is not None)

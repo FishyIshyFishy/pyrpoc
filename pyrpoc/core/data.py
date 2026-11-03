@@ -107,7 +107,7 @@ class Mask(ArrayData):
 class Pixel(Data):
     """One pixel of an image: ``x`` along the fast axis, ``y`` along the slow."""
 
-    # Which image it is a pixel of is the provenance of the dataset holding it.
+    # Which image it is a pixel of is the provenance of the program output holding it.
     x: int
     y: int
 

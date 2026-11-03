@@ -10,8 +10,8 @@ from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtWidgets import QComboBox, QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
 from pyrpoc.core.data import Data
-from pyrpoc.core.dataset import Dataset
 from pyrpoc.core.library import Library
+from pyrpoc.core.program_output import ProgramOutput
 from pyrpoc.core.registry import Registry
 
 from .device import Device, make_instance_id
@@ -46,10 +46,10 @@ class Panel(QWidget):
 
 
 class SourcePicker(QWidget, Generic[D]):
-    """A dropdown naming one open dataset of kind ``renders``. "Latest" follows
+    """A dropdown naming one open program output of kind ``renders``. "Latest" follows
     the newest one."""
 
-    # The chosen dataset may have changed; the panel re-reads ``current()``.
+    # The chosen program output may have changed; the panel re-reads ``current()``.
     changed = pyqtSignal()
 
     def __init__(self, renders: type[D], library: Library, parent: QWidget):
@@ -74,8 +74,8 @@ class SourcePicker(QWidget, Generic[D]):
         self.combo.blockSignals(True)
         self.combo.clear()
         self.combo.addItem("Latest", None)
-        for dataset in self.library.matching(self.renders):
-            self.combo.addItem(dataset.label, dataset.id)
+        for program_output in self.library.matching(self.renders):
+            self.combo.addItem(program_output.label, program_output.id)
         if not self._follow_latest:
             self.combo.setCurrentIndex(max(self.combo.findData(current), 0))
         self.combo.blockSignals(False)
@@ -85,7 +85,7 @@ class SourcePicker(QWidget, Generic[D]):
         self._follow_latest = self.combo.currentData() is None
         self.changed.emit()
 
-    def current(self) -> Dataset[D] | None:
+    def current(self) -> ProgramOutput[D] | None:
         chosen = self.combo.currentData()
         if chosen is None:
             candidates = self.library.matching(self.renders)
@@ -94,7 +94,7 @@ class SourcePicker(QWidget, Generic[D]):
 
 
 class DataPanel(Panel, Generic[D]):
-    """A panel showing one open dataset of the kind it ``renders``: a source
+    """A panel showing one open program output of the kind it ``renders``: a source
     picker above a ``body`` the subclass fills through ``show_value``."""
 
     # The one kind of data this panel shows.
@@ -107,7 +107,7 @@ class DataPanel(Panel, Generic[D]):
     # on data, not a way to look at it.
     misc: ClassVar[bool] = False
 
-    # A ``Dataset[Pixel]`` the user clicked while picking. Every panel can be
+    # A ``ProgramOutput[Pixel]`` the user clicked while picking. Every panel can be
     # asked for one; panels that cannot provide pixels never emit it.
     picked = pyqtSignal(object)
 
@@ -120,7 +120,7 @@ class DataPanel(Panel, Generic[D]):
         self.source = SourcePicker(self.renders, library, self)
         root.addWidget(self.source)
         root.addWidget(self.body, 1)
-        self.shown_dataset: Dataset[D] | None = None
+        self.shown_output: ProgramOutput[D] | None = None
         self.shown_value: D | None = None
 
     def connect_source(self) -> None:
@@ -138,25 +138,25 @@ class DataPanel(Panel, Generic[D]):
     def library(self) -> Library:
         return self.source.library
 
-    def dataset(self) -> Dataset[D] | None:
+    def program_output(self) -> ProgramOutput[D] | None:
         return self.source.current()
 
     def refresh(self) -> None:
-        dataset = self.dataset()
-        if dataset is None:
-            self.shown_dataset = self.shown_value = None
+        program_output = self.program_output()
+        if program_output is None:
+            self.shown_output = self.shown_value = None
             self.clear()
             return
-        value = dataset.value
-        # A dataset with no value yet, as when a run has just started, leaves the
+        value = program_output.value
+        # A program output with no value yet, as when a run has just started, leaves the
         # last value on screen so levels and layout carry over.
         # Library changes re-announce the source even when nothing new arrived.
-        if value is None or (dataset is self.shown_dataset and value is self.shown_value):
+        if value is None or (program_output is self.shown_output and value is self.shown_value):
             return
-        self.shown_dataset, self.shown_value = dataset, value
-        self.show_value(dataset, value)
+        self.shown_output, self.shown_value = program_output, value
+        self.show_value(program_output, value)
 
-    def show_value(self, dataset: Dataset[D], value: D) -> None:
+    def show_value(self, program_output: ProgramOutput[D], value: D) -> None:
         raise NotImplementedError
 
     def clear(self) -> None:

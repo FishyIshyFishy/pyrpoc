@@ -27,7 +27,7 @@ class SplitConfocal(Program):
     display_name = "Intrapixel split"
     group = "Confocal Fluorescence"
     order = 11
-    uses = [Galvo, DAQ]
+    devices = [Galvo, DAQ]
     params = [ScanGroup, FrameCountGroup, DaqGroup, SplitGroup, ModulationGroup]
     emits = {"intensity": Image, "raw_pixel_stream": RawSamples}
     runners = [Single(), Continuous()]

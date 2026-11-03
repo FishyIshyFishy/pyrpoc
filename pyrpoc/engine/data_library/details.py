@@ -19,7 +19,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from pyrpoc.core.dataset import Dataset
+from pyrpoc.core.program_output import ProgramOutput
 
 
 def local_time(iso: str) -> str:
@@ -40,20 +40,20 @@ class DetailsDialog(QDialog):
 
     def __init__(
         self,
-        dataset: Dataset[Any],
+        program_output: ProgramOutput[Any],
         save_notes: Callable[[str], str | None],
         parent: QWidget,
     ):
         super().__init__(parent)
         self.save_notes = save_notes
-        self.setWindowTitle(f"{dataset.name} · {dataset.output}")
+        self.setWindowTitle(f"{program_output.run_name} · {program_output.name}")
         self.resize(560, 640)
 
         root = QVBoxLayout(self)
-        root.addLayout(self.build_summary(dataset))
-        root.addWidget(self.build_tree(dataset), 2)
+        root.addLayout(self.build_summary(program_output))
+        root.addWidget(self.build_tree(program_output), 2)
         root.addWidget(QLabel("Notes", self))
-        self.notes_edit = QPlainTextEdit(dataset.notes, self)
+        self.notes_edit = QPlainTextEdit(program_output.notes, self)
         self.notes_edit.setPlaceholderText(
             "What happened in this recording, and anything to remember."
         )
@@ -66,17 +66,22 @@ class DetailsDialog(QDialog):
         buttons.rejected.connect(self.reject)
         root.addWidget(buttons)
 
-    def build_summary(self, dataset: Dataset[Any]) -> QFormLayout:
-        value = dataset.value
+    def build_summary(self, program_output: ProgramOutput[Any]) -> QFormLayout:
+        value = program_output.value
         rows = [
-            ("Name", dataset.name),
-            ("Output", f"{dataset.output} ({dataset.kind.name})"),
-            ("Program", dataset.provenance.program_key),
-            ("Origin", dataset.origin.value),
-            ("Started", local_time(dataset.provenance.started_at)),
-            ("Published", str(dataset.published)),
+            ("Name", program_output.run_name),
+            ("Output", f"{program_output.name} ({program_output.kind.name})"),
+            ("Program", program_output.provenance.program_key),
+            ("Origin", program_output.origin.value),
+            ("Started", local_time(program_output.provenance.started_at)),
+            ("Published", str(program_output.published)),
             ("Value", "-" if value is None else value.summary()),
-            ("File", str(dataset.meta_path) if dataset.meta_path is not None else "Not saved"),
+            (
+                "File",
+                str(program_output.meta_path)
+                if program_output.meta_path is not None
+                else "Not saved",
+            ),
         ]
         form = QFormLayout()
         for label, text in rows:
@@ -85,15 +90,15 @@ class DetailsDialog(QDialog):
             form.addRow(f"{label}:", value)
         return form
 
-    def build_tree(self, dataset: Dataset[Any]) -> QTreeWidget:
+    def build_tree(self, program_output: ProgramOutput[Any]) -> QTreeWidget:
         """Parameters, devices and what the program described, as they were
         when the recording started."""
         tree = QTreeWidget(self)
         tree.setHeaderLabels(["Setting", "Value"])
         sections = {
-            "Parameters": dataset.provenance.parameters,
-            "Devices": dataset.provenance.devices,
-            "Program metadata": dataset.metadata,
+            "Parameters": program_output.provenance.parameters,
+            "Devices": program_output.provenance.devices,
+            "Program metadata": program_output.metadata,
         }
         for title, values in sections.items():
             section = QTreeWidgetItem(tree, [title, ""])

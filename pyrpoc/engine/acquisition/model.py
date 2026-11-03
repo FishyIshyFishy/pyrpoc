@@ -80,8 +80,8 @@ class Acquisition(QObject):
         instead of throwing."""
         missing: list[str] = []
         if self.selected_program is not None:
-            uses = list(program_registry.get(self.selected_program).uses)
-            missing = [cls.display_name for cls in claims.missing(uses, self.inventory.devices)]
+            devices = list(program_registry.get(self.selected_program).devices)
+            missing = [cls.display_name for cls in claims.missing(devices, self.inventory.devices)]
         if self.save.enabled and not self.save.filename:
             missing.append("a name to save under")
         return missing

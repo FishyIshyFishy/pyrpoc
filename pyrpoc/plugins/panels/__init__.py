@@ -1,4 +1,4 @@
-"""Panels that each show one open dataset, registered in
+"""Panels that each show one open program output, registered in
 ``data_panel_registry``. Importing this package registers them all."""
 
 from __future__ import annotations

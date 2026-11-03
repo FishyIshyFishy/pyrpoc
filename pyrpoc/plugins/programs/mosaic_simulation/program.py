@@ -43,7 +43,7 @@ class MosaicSimulation(Program):
     display_name = "Mosaic"
     group = "Simulations"
     order = 21
-    uses = []
+    devices = []
     params = [FrameGroup, MosaicGroup, SpecimenGroup, PacingGroup]
     emits = {"mosaic": Mosaic}
     runners = [Single()]

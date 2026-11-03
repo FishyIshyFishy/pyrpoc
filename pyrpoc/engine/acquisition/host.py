@@ -17,9 +17,9 @@ from typing import TYPE_CHECKING
 from PyQt6.QtCore import QObject, pyqtSignal
 
 from pyrpoc.core.data import Pixel
-from pyrpoc.core.dataset import Dataset
 from pyrpoc.core.program import Program
 from pyrpoc.core.program_inputs import BlockMap
+from pyrpoc.core.program_output import ProgramOutput
 from pyrpoc.core.runner import Control, RunnerContext
 from pyrpoc.engine.acquisition.executor import Run
 from pyrpoc.engine.acquisition.recording import Series
@@ -27,7 +27,7 @@ from pyrpoc.engine.acquisition.recording import Series
 if TYPE_CHECKING:  # pragma: no cover
     from .model import Acquisition
 
-PixelCallback = Callable[[Dataset[Pixel] | None], None]
+PixelCallback = Callable[[ProgramOutput[Pixel] | None], None]
 
 
 class RunnerSession(RunnerContext):
@@ -195,7 +195,7 @@ class RunnerHost(QObject):
             self.slot.failed.add(run)
 
     def forget(self, run: Run) -> None:
-        """Drop a finished run, so closing its datasets frees them."""
+        """Drop a finished run, so closing its program outputs frees them."""
         if self.slot is not None and run in self.slot.runs:
             self.slot.release(run)
 
@@ -211,7 +211,7 @@ class RunnerHost(QObject):
         if pending is not None:
             pending(None)
 
-    def on_picked(self, pick: Dataset[Pixel]) -> None:
+    def on_picked(self, pick: ProgramOutput[Pixel]) -> None:
         callback = self.end_pick()
         if callback is not None:
             callback(pick)

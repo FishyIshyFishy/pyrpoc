@@ -23,7 +23,7 @@ def describe_axis(name: str, step: AxisStep) -> str:
 
 class MosaicView(QWidget):
     """Stitches whatever tiles have arrived. Registrations are kept per
-    dataset, so a new tile costs only its own neighbours."""
+    program output, so a new tile costs only its own neighbours."""
 
     # The user changed the fallback overlap, so the tiles must be placed again.
     fallback_changed = pyqtSignal()
@@ -54,12 +54,12 @@ class MosaicView(QWidget):
         root.addLayout(row)
 
     def stitch(
-        self, dataset_id: str, frames: Sequence[np.ndarray], layout: MosaicLayout
+        self, output_id: str, frames: Sequence[np.ndarray], layout: MosaicLayout
     ) -> np.ndarray:
         """The tiles so far blended into one ``(C, H, W)`` image."""
-        if self.stitcher is None or dataset_id != self.stitched_id:
+        if self.stitcher is None or output_id != self.stitched_id:
             self.stitcher = Stitcher(layout)
-            self.stitched_id = dataset_id
+            self.stitched_id = output_id
         count = min(len(frames), len(layout.tiles))
         steps = self.stitcher.steps(frames, self.fallback.value() / 100.0)
         positions = tile_positions(layout, steps, count)

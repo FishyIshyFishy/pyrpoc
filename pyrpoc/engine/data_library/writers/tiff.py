@@ -8,7 +8,7 @@ import numpy as np
 import tifffile
 
 from pyrpoc.core.data import Image
-from pyrpoc.core.dataset import Dataset
+from pyrpoc.core.program_output import ProgramOutput
 from pyrpoc.core.saving import Writer, writer_registry
 
 
@@ -47,7 +47,7 @@ def read_pages(files: dict[str, Path]) -> list[Image]:
 class TiffWriter(Writer[Image]):
     """``<root>_<channel>.tiff``, appended float32, readable while the run goes."""
 
-    def write(self, dataset: Dataset[Image], value: Image) -> None:
+    def write(self, program_output: ProgramOutput[Image], value: Image) -> None:
         if not self.paths:
             self.paths = channel_paths(self.root, value)
         append_pages(self.paths, value)

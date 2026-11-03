@@ -1,4 +1,4 @@
-"""The data library: every dataset open in this session, and recordings on
+"""The data library: every program output open in this session, and recordings on
 disk. Importing this package registers the file formats."""
 
 from __future__ import annotations

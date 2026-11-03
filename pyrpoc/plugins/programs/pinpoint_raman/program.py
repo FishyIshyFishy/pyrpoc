@@ -22,7 +22,7 @@ class PinpointRaman(Program):
     display_name = "Pinpoint + spectral readout"
     group = "Raman"
     order = 20
-    uses = [Galvo, AndorCCD]
+    devices = [Galvo, AndorCCD]
     params = [PointGroup, CcdReadoutGroup]
     emits = {"spectrum": Spectrum}
     runners = [
@@ -41,7 +41,7 @@ class PinpointRaman(Program):
         readout = ctx.params[CcdReadoutGroup].to_readout()
 
         ctx.status(f"parking at {point.fast_v:.3f} / {point.slow_v:.3f} V")
-        # The DAQ is bound though ``uses`` does not name it: claims follow
+        # The DAQ is bound though ``devices`` does not name it: claims follow
         # ``backed_by``, and the mirrors are voltages on the card.
         park_galvos(ctx.devices[DAQ], ctx.devices[Galvo], point)
         publish_spectrum(ctx, ctx.devices[AndorCCD], readout, "spectrum")

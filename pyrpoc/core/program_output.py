@@ -1,4 +1,4 @@
-"""``Dataset``: one named output's latest value, where it came from, and who
+"""``ProgramOutput``: one named output's latest value, where it came from, and who
 is told when it changes."""
 
 from __future__ import annotations
@@ -39,7 +39,7 @@ class Provenance:
 
 
 class Origin(Enum):
-    """Where a dataset came from."""
+    """Where a program output came from."""
 
     ACQUIRED = "acquired"
     LOADED = "loaded"
@@ -47,21 +47,21 @@ class Origin(Enum):
     AUTHORED = "authored"
 
 
-class Dataset(Generic[D]):
+class ProgramOutput(Generic[D]):
     """One named output of one run: the latest value of one ``kind`` in memory,
     with every published value passed to its writer."""
 
     def __init__(
         self,
         *,
-        output: str,
+        name: str,
         kind: type[D],
         provenance: Provenance,
         origin: Origin,
         writer: Writer[D] | None,
     ):
-        self.id = f"{output}-{uuid4().hex[:12]}"
-        self.output = output
+        self.id = f"{name}-{uuid4().hex[:12]}"
+        self.name = name
         self.kind = kind
         self.provenance = provenance
         self.origin = origin
@@ -76,7 +76,7 @@ class Dataset(Generic[D]):
         # How many values were published into it; every one reached the writer.
         self.published = 0
 
-        self._subscribers: list[Callable[[Dataset[D]], None]] = []
+        self._subscribers: list[Callable[[ProgramOutput[D]], None]] = []
         self._lock = threading.RLock()
 
     @property
@@ -84,7 +84,8 @@ class Dataset(Generic[D]):
         return self.provenance.run_id
 
     @property
-    def name(self) -> str:
+    def run_name(self) -> str:
+        """What the run was called, or its program when it was not named."""
         return self.provenance.name or self.provenance.program_key
 
     @property
@@ -96,8 +97,8 @@ class Dataset(Generic[D]):
 
     @property
     def label(self) -> str:
-        """One line naming this dataset."""
-        return " · ".join((self.started_time, self.name, self.output))
+        """One line naming this program output."""
+        return " · ".join((self.started_time, self.run_name, self.name))
 
     @property
     def nbytes(self) -> int:
@@ -114,12 +115,12 @@ class Dataset(Generic[D]):
             self.writer.write(self, value)
         self.notify()
 
-    def subscribe(self, callback: Callable[[Dataset[D]], None]) -> None:
+    def subscribe(self, callback: Callable[[ProgramOutput[D]], None]) -> None:
         with self._lock:
             if callback not in self._subscribers:
                 self._subscribers.append(callback)
 
-    def unsubscribe(self, callback: Callable[[Dataset[D]], None]) -> None:
+    def unsubscribe(self, callback: Callable[[ProgramOutput[D]], None]) -> None:
         with self._lock:
             if callback in self._subscribers:
                 self._subscribers.remove(callback)
@@ -136,4 +137,4 @@ class Dataset(Generic[D]):
             self.writer.finalize(self, error)
 
     def __repr__(self) -> str:  # pragma: no cover - debugging aid
-        return f"<Dataset {self.output} {self.kind.name} published={self.published}>"
+        return f"<ProgramOutput {self.name} {self.kind.name} published={self.published}>"

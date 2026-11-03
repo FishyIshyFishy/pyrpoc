@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from pyrpoc.core.data import DATA_KINDS, Data
-from pyrpoc.core.dataset import Dataset, Origin, Provenance
+from pyrpoc.core.program_output import Origin, ProgramOutput, Provenance
 from pyrpoc.core.saving import writer_registry
 
 FORMAT = "pyrpoc-recording"
@@ -152,7 +152,7 @@ def decode_v1(raw: dict[str, Any]) -> RecordingRecord:
 DECODERS: dict[int, Callable[[dict[str, Any]], RecordingRecord]] = {1: decode_v1}
 
 
-def load_recording(meta_path: Path) -> list[Dataset[Any]]:
+def load_recording(meta_path: Path) -> list[ProgramOutput[Any]]:
     """Every output of the recording at ``meta_path``, each holding the last
     value it was published."""
     record = read_record(meta_path)
@@ -163,12 +163,12 @@ def load_recording(meta_path: Path) -> list[Dataset[Any]]:
 
 def load_output(
     meta_path: Path, record: RecordingRecord, output: str, entry: OutputRecord
-) -> Dataset[Any]:
+) -> ProgramOutput[Any]:
     kind = DATA_KINDS.get(entry.kind)
     if kind is None:
         raise RecordingError(f"{meta_path}: output {output!r} is of unknown kind {entry.kind!r}")
-    dataset = Dataset(
-        output=output,
+    program_output = ProgramOutput(
+        name=output,
         kind=kind,
         provenance=Provenance(
             program_key=record.program_key,
@@ -181,12 +181,12 @@ def load_output(
         origin=Origin.LOADED,
         writer=None,
     )
-    dataset.metadata = dict(entry.metadata)
-    dataset.notes = entry.notes
-    dataset.meta_path = meta_path
-    dataset.value = read_value(meta_path, output, kind, entry)
-    dataset.published = entry.published
-    return dataset
+    program_output.metadata = dict(entry.metadata)
+    program_output.notes = entry.notes
+    program_output.meta_path = meta_path
+    program_output.value = read_value(meta_path, output, kind, entry)
+    program_output.published = entry.published
+    return program_output
 
 
 def read_value(meta_path: Path, output: str, kind: type[Data], entry: OutputRecord) -> Data | None:

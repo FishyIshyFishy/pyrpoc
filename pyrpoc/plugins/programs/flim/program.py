@@ -53,7 +53,7 @@ class FLIM(Program):
     display_name = "FLIM"
     group = "FLIM"
     order = 40
-    uses = [Galvo, DAQ, TimeTagger]
+    devices = [Galvo, DAQ, TimeTagger]
     params = [ScanGroup, FrameCountGroup, DaqGroup, TriggerGroup, HistogramGroup]
     emits = {"intensity": Image, "histogram": DecayHistogram}
     runners = [Single(), Continuous()]

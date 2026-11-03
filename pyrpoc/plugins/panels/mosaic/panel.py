@@ -18,9 +18,9 @@ from PyQt6.QtWidgets import (
 )
 
 from pyrpoc.core.data import Mosaic
-from pyrpoc.core.dataset import Dataset
 from pyrpoc.core.library import Library
 from pyrpoc.core.panels import DataPanel, data_panel_registry
+from pyrpoc.core.program_output import ProgramOutput
 
 from .channels import ChannelStrip
 from .layout import layout_of
@@ -77,8 +77,8 @@ class MosaicPanel(DataPanel[Mosaic]):
         bar.addStretch(1)
         return bar
 
-    def show_value(self, dataset: Dataset[Mosaic], value: Mosaic) -> None:
-        del dataset
+    def show_value(self, program_output: ProgramOutput[Mosaic], value: Mosaic) -> None:
+        del program_output
         if not value.images:
             self.clear()
             return
@@ -87,15 +87,15 @@ class MosaicPanel(DataPanel[Mosaic]):
 
     def redraw(self) -> None:
         """Draw the mosaic in whichever view is chosen; the hidden one waits."""
-        dataset, mosaic = self.shown_dataset, self.shown_value
-        if dataset is None or mosaic is None or not mosaic.images:
+        program_output, mosaic = self.shown_output, self.shown_value
+        if program_output is None or mosaic is None or not mosaic.images:
             return
         frames = [image.array for image in mosaic.images]
         layout = layout_of(mosaic)
         if self.wants_mosaic:
             self.mosaic_button.setChecked(True)
             self.views.setCurrentWidget(self.mosaic)
-            self.show_planes(self.mosaic.stitch(dataset.id, frames, layout))
+            self.show_planes(self.mosaic.stitch(program_output.id, frames, layout))
         else:
             self.stack_button.setChecked(True)
             self.views.setCurrentWidget(self.stack)

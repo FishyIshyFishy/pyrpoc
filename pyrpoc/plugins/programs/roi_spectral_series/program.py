@@ -62,7 +62,7 @@ class RoiSpectralSeries(Program):
     display_name = "ROI sweep + spectral series"
     group = "Custom"
     order = 50
-    uses = [Galvo, AndorCCD]
+    devices = [Galvo, AndorCCD]
     params = [ScanGroup, DaqGroup, RoiGroup, FrameCountGroup, CcdReadoutGroup]
     emits = {"spectrum": Spectrum}
     # Once only: each start is one bleaching series of a set length.
@@ -77,7 +77,7 @@ class RoiSpectralSeries(Program):
         # Before the sweep, so the first read starts as soon as the region is swept.
         configure_spectrum(ctx, ccd, readout, "spectrum")
         times: list[list[float]] = []
-        # The DAQ is bound though ``uses`` does not name it: claims follow ``backed_by``.
+        # The DAQ is bound though ``devices`` does not name it: claims follow ``backed_by``.
         with sweeping(ctx.devices[DAQ], ctx.devices[Galvo], waveform, sample_rate_hz) as began:
             for _ in count_off(ctx, ctx.params[FrameCountGroup].num_frames, "spectrum"):
                 start = time.monotonic() - began

@@ -20,7 +20,7 @@ class GalvoPinpoint(Program):
     display_name = "Pinpoint"
     group = "Raman"
     order = 30
-    uses = [Galvo]
+    devices = [Galvo]
     params = [PointGroup]
     runners = [
         Single(),
@@ -35,6 +35,6 @@ class GalvoPinpoint(Program):
     def run(self, ctx: RunContext) -> None:
         point = ctx.params[PointGroup].target
         ctx.status(f"parking at {point.fast_v:.3f} / {point.slow_v:.3f} V")
-        # The DAQ is bound though ``uses`` does not name it: claims follow
+        # The DAQ is bound though ``devices`` does not name it: claims follow
         # ``backed_by``, and the mirrors are voltages on the card.
         park_galvos(ctx.devices[DAQ], ctx.devices[Galvo], point)

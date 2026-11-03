@@ -150,7 +150,7 @@ source_modules = [
   "pyrpoc.core.program_inputs",
   "pyrpoc.core.input_section",
   "pyrpoc.core.data",
-  "pyrpoc.core.dataset",
+  "pyrpoc.core.program_output",
   "pyrpoc.core.library",
   "pyrpoc.core.saving",
 ]

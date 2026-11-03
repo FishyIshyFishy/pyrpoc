@@ -20,8 +20,8 @@ class DeviceBusy(DeviceError):
         super().__init__("in use by another run: " + ", ".join(self.busy))
 
 
-def expand(uses: list[type[Device]]) -> list[type[Device]]:
-    """Every device class implied by ``uses``, following ``backed_by``:
+def expand(required: list[type[Device]]) -> list[type[Device]]:
+    """Every device class implied by ``required``, following ``backed_by``:
     declaration order first, then each backing device, with no duplicates."""
     ordered: list[type[Device]] = []
 
@@ -32,23 +32,26 @@ def expand(uses: list[type[Device]]) -> list[type[Device]]:
         if cls.backed_by is not None:
             add(cls.backed_by)
 
-    for cls in uses:
+    for cls in required:
         add(cls)
     return ordered
 
 
-def missing(uses: list[type[Device]], inventory: list[Device]) -> list[type[Device]]:
+def missing(required: list[type[Device]], inventory: list[Device]) -> list[type[Device]]:
     """Which required device classes have no instance configured."""
-    return [cls for cls in expand(uses) if not any(isinstance(device, cls) for device in inventory)]
+    return [
+        cls for cls in expand(required) if not any(isinstance(device, cls) for device in inventory)
+    ]
 
 
-def resolve(uses: list[type[Device]], inventory: list[Device]) -> dict[type[Device], Device]:
+def resolve(required: list[type[Device]], inventory: list[Device]) -> dict[type[Device], Device]:
     """Bind each required class to an instance, or raise naming what is absent."""
-    absent = missing(uses, inventory)
+    absent = missing(required, inventory)
     if absent:
         raise MissingDevice([cls.display_name for cls in absent])
     return {
-        cls: next(device for device in inventory if isinstance(device, cls)) for cls in expand(uses)
+        cls: next(device for device in inventory if isinstance(device, cls))
+        for cls in expand(required)
     }
 
 

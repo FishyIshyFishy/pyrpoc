@@ -24,7 +24,6 @@ from PyQt6.QtWidgets import (
 )
 
 from pyrpoc.core.data import Mask
-from pyrpoc.core.dataset import Dataset
 from pyrpoc.core.library import Library
 from pyrpoc.core.program_inputs import (
     Editor,
@@ -35,6 +34,7 @@ from pyrpoc.core.program_inputs import (
     block,
     spec_field,
 )
+from pyrpoc.core.program_output import ProgramOutput
 
 
 @dataclass(frozen=True)
@@ -124,8 +124,8 @@ M = TypeVar("M", bound=MaskRef)
 def resolve_mask(mask: M, library: Library) -> M:
     """``mask`` with its pixels. One whose entry is not open refuses the run:
     acquiring without a mask the user bound is worse than not acquiring."""
-    dataset = library.by_id(mask.source_id, Mask)
-    value = dataset.value if dataset is not None else None
+    program_output = library.by_id(mask.source_id, Mask)
+    value = program_output.value if program_output is not None else None
     if value is None:
         raise ParameterError(f"mask '{mask.describe()}' is not open")
     return replace(mask, array=value.array)
@@ -144,7 +144,7 @@ class MaskSourceCombo(QComboBox):
     """
 
     def __init__(
-        self, sources: Callable[[], list[Dataset[Mask]]], blank: str | None, parent: QWidget
+        self, sources: Callable[[], list[ProgramOutput[Mask]]], blank: str | None, parent: QWidget
     ):
         super().__init__(parent)
         self._sources = sources
@@ -159,9 +159,9 @@ class MaskSourceCombo(QComboBox):
         if self._blank is not None:
             self.addItem(self._blank, "")
         found = False
-        for dataset in self._sources():
-            self.addItem(dataset.label, dataset.id)
-            if dataset.id == chosen:
+        for program_output in self._sources():
+            self.addItem(program_output.label, program_output.id)
+            if program_output.id == chosen:
                 self.setCurrentIndex(self.count() - 1)
                 found = True
         if chosen and not found:
@@ -224,7 +224,7 @@ class MaskTable(QWidget):
         row.addStretch(1)
         return row
 
-    def sources(self) -> list[Dataset[Mask]]:
+    def sources(self) -> list[ProgramOutput[Mask]]:
         """The mask entries currently open, newest first."""
         return self.library.matching(Mask)
 
@@ -235,8 +235,8 @@ class MaskTable(QWidget):
         if binding.source_id:
             source.addItem(binding.source_label or binding.source_id, binding.source_id)
         else:
-            for dataset in self.sources():
-                source.addItem(dataset.label, dataset.id)
+            for program_output in self.sources():
+                source.addItem(program_output.label, program_output.id)
         source.currentIndexChanged.connect(self.changed)
         self.table.setCellWidget(index, 0, source)
 
@@ -259,14 +259,14 @@ class MaskTable(QWidget):
             line += 1
         return line
 
-    def next_source(self) -> Dataset[Mask] | None:
+    def next_source(self) -> ProgramOutput[Mask] | None:
         """The newest mask no row has taken, or the newest if all are taken, so a
         second row does not default to the first row's mask."""
         taken = {row.source.currentData() for row in self.rows}
         available = self.sources()
-        for dataset in available:
-            if dataset.id not in taken:
-                return dataset
+        for program_output in available:
+            if program_output.id not in taken:
+                return program_output
         return available[0] if available else None
 
     def on_add_clicked(self) -> None:
@@ -298,14 +298,14 @@ class MaskTable(QWidget):
         closed is kept: the run resolves it and refuses to start without it."""
         out: list[MaskBinding] = []
         for row in self.rows:
-            dataset_id = row.source.currentData()
-            if not dataset_id:
+            output_id = row.source.currentData()
+            if not output_id:
                 continue
-            dataset = self.library.by_id(dataset_id, Mask)
-            label = dataset.label if dataset is not None else row.source.currentText()
+            program_output = self.library.by_id(output_id, Mask)
+            label = program_output.label if program_output is not None else row.source.currentText()
             out.append(
                 MaskBinding(
-                    source_id=dataset_id,
+                    source_id=output_id,
                     source_label=label.removesuffix(CLOSED_SUFFIX),
                     port=row.port.value(),
                     line=row.line.value(),

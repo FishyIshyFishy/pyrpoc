@@ -6,8 +6,8 @@ import nidaqmx as nx
 import nidaqmx.errors
 
 from pyrpoc.core.data import Pixel
-from pyrpoc.core.dataset import Dataset
 from pyrpoc.core.program_inputs import BlockMap
+from pyrpoc.core.program_output import ProgramOutput
 from pyrpoc.plugins.devices import DAQ, DaqError, Galvo
 
 from ..parameter_groups import Point, PointGroup
@@ -30,6 +30,6 @@ def park_galvos(daq: DAQ, galvo: Galvo, point: Point) -> None:
         raise DaqError(f"could not park the galvos: {exc}") from exc
 
 
-def aim_at_pixel(pick: Dataset[Pixel], params: BlockMap) -> None:
+def aim_at_pixel(pick: ProgramOutput[Pixel], params: BlockMap) -> None:
     """Point the galvos at the picked pixel: its volts become the target."""
     params[PointGroup].target = Point.from_pick(pick)

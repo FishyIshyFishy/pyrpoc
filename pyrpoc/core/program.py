@@ -8,8 +8,8 @@ from collections.abc import Callable, Iterator, Mapping
 from typing import Any, TypeVar
 
 from pyrpoc.core.data import Data
-from pyrpoc.core.dataset import Dataset
 from pyrpoc.core.device import Device
+from pyrpoc.core.program_output import ProgramOutput
 from pyrpoc.core.registry import Registry
 
 from .runner import Runner
@@ -56,7 +56,7 @@ class Program:
     order: int
 
     # Device classes to claim. Claims propagate along ``backed_by``.
-    uses: list[type[Device]] = []
+    devices: list[type[Device]] = []
 
     # Parameter blocks, in form order. Declaring a block shares it with every
     # other program that declares it.
@@ -81,35 +81,36 @@ class RunContext:
         *,
         params: Any,
         devices: Mapping[type[Device], Device],
-        datasets: dict[str, Dataset[Any]],
+        outputs: dict[str, ProgramOutput[Any]],
         cancel: threading.Event,
         on_status: Callable[[str], None],
     ):
         self.params = params
         self.devices = DeviceMap(devices)
-        self.datasets = datasets
+        self.outputs = outputs
         self._cancel = cancel
         self._on_status = on_status
 
-    def dataset_for(self, output: str) -> Dataset[Any]:
-        if output not in self.datasets:
+    def output_for(self, output: str) -> ProgramOutput[Any]:
+        if output not in self.outputs:
             raise KeyError(
-                f"{output!r} is not declared in emits; this program declares "
-                f"{sorted(self.datasets)}"
+                f"{output!r} is not declared in emits; this program declares {sorted(self.outputs)}"
             )
-        return self.datasets[output]
+        return self.outputs[output]
 
     def publish(self, output: str, value: Data) -> None:
         """Make ``value``, of the kind ``emits`` declares, the current value of
         one of this run's outputs."""
-        dataset = self.dataset_for(output)
-        if type(value) is not dataset.kind:
-            raise TypeError(f"{output!r} carries {dataset.kind.name}, not {type(value).name}")
-        dataset.publish(value)
+        program_output = self.output_for(output)
+        if type(value) is not program_output.kind:
+            raise TypeError(
+                f"{output!r} carries {program_output.kind.name}, not {type(value).name}"
+            )
+        program_output.publish(value)
 
     def describe(self, output: str, **metadata: Any) -> None:
         """Record per-output metadata, set once rather than per frame."""
-        self.dataset_for(output).metadata.update(metadata)
+        self.output_for(output).metadata.update(metadata)
 
     def status(self, text: str) -> None:
         self._on_status(text)

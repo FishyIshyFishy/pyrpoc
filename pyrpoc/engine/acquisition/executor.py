@@ -2,7 +2,7 @@
 
 Pure Python, no Qt, so runs can be driven without a QApplication. The
 executor never knows what a program does; it owns what a program deliberately
-does not: the recording each run writes into (a dataset per declared output,
+does not: the recording each run writes into (a program output per declared output,
 and its files; see ``recording.py``), the save policy, and which devices each
 run holds. Runs may overlap as long as they hold no device in common.
 """
@@ -15,9 +15,9 @@ from dataclasses import dataclass, replace
 from typing import Any
 
 from pyrpoc.core import program_inputs as P
-from pyrpoc.core.dataset import Dataset, Origin, Provenance, utc_now
 from pyrpoc.core.device import Device
 from pyrpoc.core.program import Cancelled, Program, RunContext
+from pyrpoc.core.program_output import Origin, ProgramOutput, Provenance, utc_now
 from pyrpoc.core.saving import SaveTarget
 from pyrpoc.engine.acquisition.recording import Recording, RecordingKey, Series
 from pyrpoc.engine.data_library.saving import RecordingSaver
@@ -51,8 +51,8 @@ class Run:
         return self.provenance.run_id
 
     @property
-    def datasets(self) -> dict[str, Dataset[Any]]:
-        return self.recording.datasets
+    def outputs(self) -> dict[str, ProgramOutput[Any]]:
+        return self.recording.outputs
 
     def stop(self) -> None:
         """Ask the program to stop at its next cancellation point. A blocking
@@ -96,7 +96,7 @@ class Executor:
         ``MissingDevice``, ``DeviceBusy``, ``ParameterError`` or, for a new
         recording, ``LibraryFull`` before anything starts."""
         with self._lock:
-            devices = claims.resolve(list(program.uses), inventory)
+            devices = claims.resolve(list(program.devices), inventory)
             self.leases.check(devices.values())
             params = self.resolve_params(program, blocks)
             self._run_id += 1
@@ -148,10 +148,10 @@ class Executor:
         self, program: Program, key: RecordingKey, provenance: Provenance
     ) -> Recording:
         saver = self.build_saver(program, provenance, key.save)
-        datasets = self.open_datasets(program, provenance, saver)
+        outputs = self.open_outputs(program, provenance, saver)
         if saver is not None:
-            saver.begin(datasets)
-        return Recording(key, datasets, saver)
+            saver.begin(outputs)
+        return Recording(key, outputs, saver)
 
     def end_series(self, series: Series) -> None:
         """No more runs join ``series``. Its recording closes now if idle,
@@ -205,12 +205,12 @@ class Executor:
         saver.prepare(dict(program.emits))
         return saver
 
-    def open_datasets(
+    def open_outputs(
         self, program: Program, provenance: Provenance, saver: RecordingSaver | None
-    ) -> dict[str, Dataset[Any]]:
-        datasets: dict[str, Dataset[Any]] = {
-            output: Dataset(
-                output=output,
+    ) -> dict[str, ProgramOutput[Any]]:
+        outputs: dict[str, ProgramOutput[Any]] = {
+            output: ProgramOutput(
+                name=output,
                 kind=kind,
                 provenance=provenance,
                 origin=Origin.ACQUIRED,
@@ -218,15 +218,15 @@ class Executor:
             )
             for output, kind in program.emits.items()
         }
-        for dataset in datasets.values():
-            self.library.add(dataset)
-        return datasets
+        for program_output in outputs.values():
+            self.library.add(program_output)
+        return outputs
 
     def launch(self, run: Run, params: P.BlockMap) -> None:
         ctx = RunContext(
             params=params,
             devices=run.devices,
-            datasets=run.datasets,
+            outputs=run.outputs,
             cancel=run.cancel,
             on_status=lambda text: self.callbacks.on_status(run, text),
         )

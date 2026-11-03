@@ -21,8 +21,8 @@ from pyrpoc.app.application import Application
 from pyrpoc.app.device_docks import DeviceDocks
 from pyrpoc.app.menubar import MainMenuBar
 from pyrpoc.app.theme.manager import ThemeController
-from pyrpoc.core.dataset import Dataset
 from pyrpoc.core.panels import DataPanel, has_panel
+from pyrpoc.core.program_output import ProgramOutput
 from pyrpoc.core.registry import grouped
 from pyrpoc.engine.acquisition.panel import AcquisitionPanel
 from pyrpoc.engine.data_library.panel import DataLibraryPanel
@@ -87,7 +87,7 @@ class MainWindow(QWidget):
         self.menubar.device_requested.connect(self.add_device)
         self.build_panels()
 
-        self.app.library.dataset_changed.connect(self.on_dataset_changed)
+        self.app.library.output_changed.connect(self.on_output_changed)
 
         layout = QVBoxLayout(self)
         layout.setMenuBar(self.menubar)
@@ -196,11 +196,11 @@ class MainWindow(QWidget):
         runners.picking_changed.disconnect(panel.set_picking)
         panel.picked.disconnect(runners.on_picked)
 
-    def on_dataset_changed(self, dataset: Dataset) -> None:
-        """Refresh every panel showing this dataset. An added panel exists
+    def on_output_changed(self, program_output: ProgramOutput) -> None:
+        """Refresh every panel showing this program output. An added panel exists
         exactly as long as its dock, so there is no unseen panel to skip."""
         for panel in self.panels:
-            if panel.dataset() is dataset:
+            if panel.program_output() is program_output:
                 panel.refresh()
 
     def assign_ordinal(self, panel: DataPanel) -> None:

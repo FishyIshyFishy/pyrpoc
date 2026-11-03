@@ -39,9 +39,9 @@ Everything the software does is this loop:
 | Noun | Definition |
 |---|---|
 | **Device** | A piece of hardware the microscope has. Found through `device_registry`. |
-| **Program** | A declaration of one experiment: the devices it needs, the program inputs it reads (laid out in input sections), the program outputs it emits, and the runners that can start it. Its `run` does the work. *(Devices from phase 2: today `uses`. Program inputs and input sections from phase 5: today parameter blocks in `params`.)* |
+| **Program** | A declaration of one experiment: the devices it needs, the program inputs it reads (laid out in input sections), the program outputs it emits, and the runners that can start it. Its `run` does the work. *(Program inputs and input sections from phase 5: today parameter blocks in `params`.)* |
 | **Run** | One execution of a program. It gets a frozen copy of the program's inputs, claims its devices, and publishes into its program outputs. |
-| **RunContext** | What a running program is handed: its input values, its devices, its program outputs, and cancel. *(From phase 2 its outputs are reached with `output_for`: today `dataset_for`.)* |
+| **RunContext** | What a running program is handed: its input values, its devices, its program outputs, and cancel. It reaches an output with `output_for`. |
 | **Runner** | A way to start a program (once, continuously, arm and run). It's declared by the program, and its controls are drawn by whichever panel shows the program. |
 
 ### Program inputs: user → program
@@ -52,7 +52,7 @@ Everything the software does is this loop:
 | **InputSection** | A labelled list of program inputs. Purely layout: how a panel groups a program's inputs on screen. *(From phase 5: today `Section`, one per parameter block.)* |
 | **ProgramInputs** | The collection of current values for every program input, by key. Any panel may read it, set a value (validated by the input's rules) or subscribe. It's saved in the session, and a run's values go into its recording. *(From phase 4: today `BlockStore`, held by the acquisition.)* |
 | **InputRequest** | A panel or runner asking for a value of one type that another panel can supply. Whichever supplying panel the user acts in answers it. There's no storage: it's a question with one answer. *(From phase 3: today `RunnerContext.request_pixel`.)* |
-| **PixelPick** | The value a click on an image supplies: the program output clicked on, plus `x` and `y` in its pixels. *(From phase 3: today a `Pixel` dataset.)* |
+| **PixelPick** | The value a click on an image supplies: the program output clicked on, plus `x` and `y` in its pixels. *(From phase 3: today a `Pixel` program output.)* |
 | **Mask** | A drawn region, as a program input value. The Mask Editor supplies it; ROI and Modulation inputs hold it. *(From phase 6: today a `Mask` is data in the Library.)* |
 
 ### Program outputs: program → user
@@ -60,7 +60,7 @@ Everything the software does is this loop:
 | Noun | Definition |
 |---|---|
 | **Data** | One value a program produced: an image, a spectrum, a mosaic. Immutable. **Only programs make it.** *(From phase 6: today panels also make `Mask` and `Pixel` data.)* |
-| **ProgramOutput** | One named output of one run. It holds the latest `Data`, where it came from (`Provenance`), and its writer. Every published value reaches its files; memory holds only the latest. *(From phase 2: today `Dataset`.)* |
+| **ProgramOutput** | One named output of one run. It holds the latest `Data`, where it came from (`Provenance`), and its writer. Every published value reaches its files; memory holds only the latest. |
 | **Library** | The program outputs that are open: acquired now, or loaded from disk. Nothing else. *(From phase 6: today it also holds masks and picked pixels.)* |
 | **Recording** | One run's program outputs on disk, opened through its `_meta.json`. |
 | **SaveTarget, Writer** | Where a run saves, and how each kind of `Data` is written and read. |
@@ -100,7 +100,7 @@ Everything the software does is this loop:
 | `input_requests.py` | `InputRequest`, `InputRequests` (protocol), `PixelPick` *(from phase 3)* |
 | `mask.py` | `Mask`, as a program input value *(from phase 6)* |
 | `data.py` | `Data`, `ArrayData`, `Image`, `DecayHistogram`, `RawSamples`, `Spectrum`, `Mosaic`, `DATA_KINDS` *(today also `Mask` and `Pixel`)* |
-| `program_output.py` | `ProgramOutput`, `Provenance`, `Origin` *(from phase 2: today `dataset.py` with `Dataset`)* |
+| `program_output.py` | `ProgramOutput`, `Provenance`, `Origin` |
 | `library.py` | `Library` (protocol) |
 | `saving.py` | `SaveTarget`, `Writer` + `writer_registry` |
 | `panels.py` | `Panel`, `DataPanel`, `SourcePicker`, `DevicePanel` + their registries. The only file here that uses Qt. |

@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from pyrpoc.core.data import Mosaic, MosaicTile
-from pyrpoc.core.dataset import Dataset
+from pyrpoc.core.program_output import ProgramOutput
 from pyrpoc.core.saving import Writer, writer_registry
 
 from .tiff import append_pages, channel_paths, read_pages
@@ -29,7 +29,7 @@ class MosaicWriter(Writer[Mosaic]):
         self.channel_files: dict[str, Path] = {}
         self.images_written = 0
 
-    def write(self, dataset: Dataset[Mosaic], value: Mosaic) -> None:
+    def write(self, program_output: ProgramOutput[Mosaic], value: Mosaic) -> None:
         if not self.paths:
             tiles = self.root.with_name(f"{self.root.name}_{self.output}_tiles.json")
             tiles.write_text(json.dumps([asdict(tile) for tile in value.tiles], indent=2))
