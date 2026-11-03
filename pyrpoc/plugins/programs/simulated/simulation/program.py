@@ -14,19 +14,15 @@ from functools import reduce
 import numpy as np
 
 from pyrpoc.core.data import Image
-from pyrpoc.core.program import Program, RunContext, program_registry
+from pyrpoc.core.program import Program, RunContext
 
-from ..building_blocks.functions.run_loops import count_off
-from ..building_blocks.functions.synthetic_detector import sim_labels, with_noise
-from ..building_blocks.parameter_groups import (
-    FrameCountGroup,
-    FrameGroup,
-    MaskBinding,
-    ModulationGroup,
-    PacingGroup,
-    SignalGroup,
-)
-from ..building_blocks.runners import Continuous, Single
+from ...building_blocks.functions.run_loops import count_off
+from ...building_blocks.parameter_groups import FrameCountGroup, MaskBinding, ModulationGroup
+from ...building_blocks.runners import Continuous, Single
+from ..frame import FrameGroup
+from ..pacing import PacingGroup
+from ..signal import SignalGroup
+from ..synthetic_detector import sim_labels, with_noise
 from .planes import PLANES
 
 
@@ -69,7 +65,6 @@ def synthetic_frame(
     return with_noise(frame, signal.noise_level, seed=seed, index=frame_index)
 
 
-@program_registry.register("simulation")
 class Simulation(Program):
     display_name = "2D image"
     group = "Simulations"

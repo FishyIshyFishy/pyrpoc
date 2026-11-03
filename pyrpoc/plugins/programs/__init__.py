@@ -14,11 +14,9 @@ from .confocal.program import Confocal
 from .flim.program import FLIM
 from .galvo_pinpoint.program import GalvoPinpoint
 from .mosaic.program import StageMosaic
-from .mosaic_simulation.program import MosaicSimulation
 from .pinpoint_raman.program import PinpointRaman
 from .raman.program import Raman
 from .roi_spectral_series.program import RoiSpectralSeries
-from .simulation.program import Simulation
 from .split_confocal.program import SplitConfocal
 
 __all__ = [
@@ -29,10 +27,8 @@ __all__ = [
     "GalvoPinpoint",
     "StageMosaic",
     "Autofocus",
-    "MosaicSimulation",
     "PinpointRaman",
     "Raman",
     "RoiSpectralSeries",
-    "Simulation",
     "Brightfield",
 ]

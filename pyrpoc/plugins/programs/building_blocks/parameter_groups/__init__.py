@@ -10,17 +10,13 @@ from .camera import CameraGroup
 from .ccd_readout import CcdReadoutGroup
 from .daq import DaqGroup
 from .focus_search import FocusSearchGroup
-from .frame import FrameGroup
 from .frame_count import FrameCountGroup
 from .histogram import HistogramGroup
 from .modulation import MaskBinding, MaskRef, MasksField, ModulationGroup
 from .mosaic import MosaicGroup
-from .pacing import PacingGroup
 from .point import Point, PointField, PointGroup
 from .roi import RoiGroup
 from .scan import ScanGroup
-from .signal import PATTERNS, SignalGroup
-from .specimen import SpecimenGroup
 from .split import SplitGroup
 from .trigger import TriggerGroup
 
@@ -30,22 +26,17 @@ __all__ = [
     "DaqGroup",
     "FocusSearchGroup",
     "FrameCountGroup",
-    "FrameGroup",
     "HistogramGroup",
     "MaskBinding",
     "MaskRef",
     "MasksField",
     "ModulationGroup",
     "MosaicGroup",
-    "PacingGroup",
-    "PATTERNS",
     "Point",
     "PointField",
     "PointGroup",
     "RoiGroup",
     "ScanGroup",
-    "SignalGroup",
-    "SpecimenGroup",
     "SplitGroup",
     "TriggerGroup",
 ]

@@ -7,17 +7,15 @@ from __future__ import annotations
 import numpy as np
 
 from pyrpoc.core.data import Image, Mosaic, MosaicTile
-from pyrpoc.core.program import Program, RunContext, program_registry
+from pyrpoc.core.program import Program, RunContext
 
-from ..building_blocks.functions.run_loops import grow, walk
-from ..building_blocks.functions.synthetic_detector import sim_labels, with_noise
-from ..building_blocks.parameter_groups import (
-    FrameGroup,
-    MosaicGroup,
-    PacingGroup,
-    SpecimenGroup,
-)
-from ..building_blocks.runners import Single
+from ...building_blocks.functions.run_loops import grow, walk
+from ...building_blocks.parameter_groups import MosaicGroup
+from ...building_blocks.runners import Single
+from ..frame import FrameGroup
+from ..pacing import PacingGroup
+from ..specimen import SpecimenGroup
+from ..synthetic_detector import sim_labels, with_noise
 from .slide import slide_patch
 
 
@@ -38,7 +36,6 @@ def tile_frame(
     return with_noise(frame, specimen.noise_level, seed=seed, index=index)
 
 
-@program_registry.register("mosaic_simulation")
 class MosaicSimulation(Program):
     display_name = "Mosaic"
     group = "Simulations"

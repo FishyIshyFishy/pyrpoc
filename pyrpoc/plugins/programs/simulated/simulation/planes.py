@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from ..building_blocks.functions.synthetic_detector import seeded_rng
+from ..synthetic_detector import seeded_rng
 
 # Blobs per channel in the "cells" pattern.
 BLOB_COUNT = 14

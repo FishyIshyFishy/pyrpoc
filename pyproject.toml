@@ -125,13 +125,19 @@ layers = ["programs | panels", "devices"]
 [[tool.importlinter.contracts]]
 name = "Programs never import each other; they share through building_blocks"
 type = "independence"
-modules = ["pyrpoc.plugins.programs.*.program"]
+modules = [
+  "pyrpoc.plugins.programs.*.program",
+  "pyrpoc.plugins.programs.simulated.*.program",
+]
 
 [[tool.importlinter.contracts]]
 name = "Building blocks never import a program"
 type = "forbidden"
 source_modules = ["pyrpoc.plugins.programs.building_blocks"]
-forbidden_modules = ["pyrpoc.plugins.programs.*.program"]
+forbidden_modules = [
+  "pyrpoc.plugins.programs.*.program",
+  "pyrpoc.plugins.programs.simulated.*.program",
+]
 
 [[tool.importlinter.contracts]]
 name = "The engine never names a plugin; it finds plugins through registries"

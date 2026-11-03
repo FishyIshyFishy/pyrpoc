@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from ..building_blocks.functions.synthetic_detector import seeded_rng
+from ..synthetic_detector import seeded_rng
 
 # The slide's lattice: each cell holds its own blobs, drawn from its own seed.
 CELL_PIXELS = 48

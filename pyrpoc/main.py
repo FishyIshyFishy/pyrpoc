@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import logging
 import os
 import sys
@@ -95,11 +96,34 @@ def warn_unconnected(window: QWidget, failed: list[Device]) -> None:
     )
 
 
+def parse_args() -> tuple[argparse.Namespace, list[str]]:
+    """pyrpoc's own flags, and the rest of the command line, which is Qt's."""
+    parser = argparse.ArgumentParser(prog="pyrpoc")
+    parser.add_argument(
+        "--simulated",
+        action="store_true",
+        help="add programs that fake their data, for working without instruments",
+    )
+    return parser.parse_known_args()
+
+
+def add_simulations() -> None:
+    """Register the simulated programs."""
+    # Imported here, not at the top: importing the package registers its
+    # parameter blocks, which must not exist without --simulated.
+    from pyrpoc.plugins.programs.simulated import register
+
+    register()
+
+
 def main() -> int:
     logging.basicConfig(level=logging.INFO)
     sys.excepthook = report_uncaught
     configure_qt_fontdir()
-    qt_app = QApplication(sys.argv)
+    args, qt_args = parse_args()
+    if args.simulated:
+        add_simulations()
+    qt_app = QApplication([sys.argv[0], *qt_args])
     # The native Windows 11 style pads every combo and menu row heavily; Fusion
     # is compact and looks the same on every platform under the theme stylesheet.
     qt_app.setStyle("Fusion")
