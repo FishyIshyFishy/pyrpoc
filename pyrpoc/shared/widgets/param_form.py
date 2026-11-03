@@ -197,9 +197,9 @@ BUILDERS: dict[type, Callable[[Any, QWidget], P.Editor]] = {
 }
 
 
-def build_field(spec: P.Field, parent: QWidget, context: P.FieldContext) -> P.Editor:
+def build_field(spec: P.Field, parent: QWidget) -> P.Editor:
     """The field's own editor if it has one, otherwise the form's."""
-    field = spec.editor(parent, context) or BUILDERS[type(spec)](spec, parent)
+    field = spec.editor(parent) or BUILDERS[type(spec)](spec, parent)
     if spec.tooltip:
         field.widget.setToolTip(spec.tooltip)
     return field
@@ -261,10 +261,7 @@ class ParamForm(QWidget):
         parent: QWidget,
         *,
         cards: bool,
-        context: P.FieldContext,
     ):
-        """``context`` is what the owner can offer fields that build their own
-        editor, such as the open data for a field whose value names it."""
         super().__init__(parent)
         self.values = values
         self.fields: dict[str, P.Editor] = {}
@@ -276,19 +273,17 @@ class ParamForm(QWidget):
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(8)
         for section in form_sections:
-            root.addWidget(self.build_section(section, cards=cards, context=context))
+            root.addWidget(self.build_section(section, cards=cards))
         root.addStretch(1)
         self.reload()
 
-    def build_section(
-        self, section: FormSection, *, cards: bool, context: P.FieldContext
-    ) -> QWidget:
+    def build_section(self, section: FormSection, *, cards: bool) -> QWidget:
         body = QWidget(self)
         form = QFormLayout(body)
         form.setContentsMargins(4, 4, 4, 4)
         keys: list[str] = []
         for key, spec in section.rows:
-            field = build_field(spec, body, context)
+            field = build_field(spec, body)
             field.connect(lambda key=key: self.on_field_changed(key))
             self.fields[key] = field
             keys.append(key)

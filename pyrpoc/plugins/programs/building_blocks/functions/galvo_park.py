@@ -1,15 +1,13 @@
-"""Parking the galvos at one point, typed or picked off an image."""
+"""Parking the galvos at one point."""
 
 from __future__ import annotations
 
 import nidaqmx as nx
 import nidaqmx.errors
 
-from pyrpoc.core.input_requests import PixelPick
-from pyrpoc.core.program_inputs import ProgramInputs
 from pyrpoc.plugins.devices import DAQ, DaqError, Galvo
 
-from ..program_inputs import TARGET, Point
+from ..program_inputs import Point
 from .daq_tasks import add_galvo_channels
 
 
@@ -25,8 +23,3 @@ def park_galvos(daq: DAQ, galvo: Galvo, point: Point) -> None:
             task.write([point.fast_v, point.slow_v])
     except nidaqmx.errors.Error as exc:
         raise DaqError(f"could not park the galvos: {exc}") from exc
-
-
-def aim_at_pixel(pick: PixelPick, inputs: ProgramInputs) -> None:
-    """Point the galvos at the picked pixel: its volts become the target."""
-    inputs.set(TARGET.key, Point.from_pick(pick))

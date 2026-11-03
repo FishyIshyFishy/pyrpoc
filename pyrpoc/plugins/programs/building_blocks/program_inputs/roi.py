@@ -10,7 +10,6 @@ from pyrpoc.core.mask import Mask
 from pyrpoc.core.program_inputs import (
     Editor,
     Field,
-    FieldContext,
     ProgramInputValues,
     declare,
     float_input,
@@ -26,6 +25,8 @@ CENTER = "Center region"
 class RegionMaskField(Field):
     """One mask, or None for the centred rectangle."""
 
+    accepts = Mask
+
     def coerce(self, value: Any) -> Mask | None:
         # A region saved before masks were held inline names a library entry,
         # which did not outlive its session: it comes back as the rectangle.
@@ -36,11 +37,8 @@ class RegionMaskField(Field):
     def encode(self, value: Mask | None) -> Any:
         return None if value is None else value.to_dict()
 
-    def editor(self, parent: Any, context: FieldContext) -> Editor:
-        # Narrows for the type checker: every form holding masks can make requests.
-        if context.requests is None:
-            raise ValueError("a mask field needs the input requests")
-        cell = MaskCell(context.requests, CENTER, parent)
+    def editor(self, parent: Any) -> Editor:
+        cell = MaskCell(CENTER, parent)
         return Editor(
             cell,
             get=cell.value,
@@ -54,7 +52,7 @@ class RegionMaskField(Field):
 MASK = declare(
     "roi.mask",
     RegionMaskField(
-        "Mask",
+        "Region mask",
         "One connected region drawn in the Mask Editor, or the centred rectangle. "
         "Each row is scanned only across the region, plus the scan's extra steps",
     ),

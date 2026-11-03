@@ -5,7 +5,6 @@ from __future__ import annotations
 
 from PyQt6.QtCore import QObject, pyqtSignal
 
-from pyrpoc.app.input_requests import OpenInputRequests
 from pyrpoc.engine.acquisition.program_inputs import ProgramInputsStore
 from pyrpoc.engine.acquisition.runs import Runs
 from pyrpoc.engine.data_library.model import LibraryModel
@@ -14,8 +13,7 @@ from pyrpoc.engine.device_inventory.inventory import DeviceInventory
 
 
 class Application(QObject):
-    """The app's working state: its three collections, the open input requests,
-    and the runs."""
+    """The app's working state: its three collections and the runs."""
 
     # Working state worth autosaving changed.
     state_changed = pyqtSignal()
@@ -25,8 +23,6 @@ class Application(QObject):
         self.inventory = DeviceInventory(self)
         self.library = LibraryModel(LibraryStore(LIBRARY_LIMIT_BYTES), self)
         self.inputs = ProgramInputsStore()
-        # Handed to every panel and runner, so any of them can ask and any panel answer.
-        self.requests = OpenInputRequests()
         self.runs = Runs(self.inventory, self.library, self.inputs, self)
 
         self.inventory.edited.connect(self.state_changed.emit)

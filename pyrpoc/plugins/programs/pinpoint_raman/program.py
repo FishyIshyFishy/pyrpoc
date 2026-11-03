@@ -8,14 +8,14 @@ from pyrpoc.core.program import Program, RunContext, program_registry
 from pyrpoc.plugins.devices import DAQ, AndorCCD, Galvo
 
 from ..building_blocks.functions.ccd_read import publish_spectrum
-from ..building_blocks.functions.galvo_park import aim_at_pixel, park_galvos
+from ..building_blocks.functions.galvo_park import park_galvos
 from ..building_blocks.program_inputs import (
     CCD_READOUT_SECTION,
     POINT_SECTION,
     TARGET,
     spectrum_readout,
 )
-from ..building_blocks.runners import ArmAndRun, Continuous, Single
+from ..building_blocks.runners import Continuous, RunOnPick, Single
 
 
 @program_registry.register("pinpoint_raman")
@@ -29,11 +29,11 @@ class PinpointRaman(Program):
     runners = [
         Single(),
         Continuous(),
-        ArmAndRun(
-            aim_at_pixel,
-            label="Acquire at point…",
+        RunOnPick(
+            TARGET,
+            label="Acquire on pick",
             icon=None,
-            tooltip="Arm, then click a pixel to read a spectrum there",
+            tooltip="While on, each pixel picked into Target reads a spectrum there",
         ),
     ]
 

@@ -19,11 +19,8 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
 )
 
-from pyrpoc.core.input_requests import InputRequests
-from pyrpoc.core.library import Library
 from pyrpoc.core.panels import Panel
 from pyrpoc.core.program import program_registry
-from pyrpoc.core.program_inputs import FieldContext
 from pyrpoc.core.registry import grouped
 from pyrpoc.core.runner import Control
 from pyrpoc.shared.widgets.grouped_combo import GroupedComboBox
@@ -41,15 +38,11 @@ class AcquisitionPanel(Panel):
 
     display_name = "Acquisition"
 
-    def __init__(
-        self, runs: Runs, inputs: ProgramInputsStore, requests: InputRequests, library: Library
-    ):
+    def __init__(self, runs: Runs, inputs: ProgramInputsStore):
         super().__init__()
         self.runs = runs
         self.inputs = inputs
-        self.requests = requests
-        self.library = library
-        self.host = RunnerHost(runs, inputs, requests, self)
+        self.host = RunnerHost(runs, inputs, self)
         self.selected_program: str | None = None
         self.form: ParamForm | None = None
         # Each rendered control, its button, and the watcher keeping them in line.
@@ -128,7 +121,6 @@ class AcquisitionPanel(Panel):
         self.inputs.subscribe(self.on_input_changed)
         self.host.controls_changed.connect(self.render_controls)
         self.host.status.connect(self.show_status)
-        self.requests.subscribe(self.on_requests_changed)
         runs = self.runs.events
         runs.run_started.connect(lambda _run: self.on_run_started())
         runs.run_status.connect(lambda _run, text: self.show_status(text))
@@ -155,7 +147,6 @@ class AcquisitionPanel(Panel):
             self.inputs,
             self,
             cards=True,
-            context=FieldContext(requests=self.requests),
         )
         self.form.invalid.connect(self.show_status)
         self.scroll_area.setWidget(self.form)
@@ -163,7 +154,7 @@ class AcquisitionPanel(Panel):
         self.state_changed.emit()
 
     def on_input_changed(self, key: str) -> None:
-        """Show a value set elsewhere, such as by a runner applying a pick."""
+        """Show a value set elsewhere, such as a mask drawn in a Mask Editor."""
         if self.form is not None:
             self.form.show_value(key)
 
@@ -181,7 +172,7 @@ class AcquisitionPanel(Panel):
         self.apply_enabled()
         if missing:
             self.show_status("needs " + ", ".join(missing))
-        elif announce and not self.host.running and not self.host.awaiting:
+        elif announce and not self.host.running:
             self.show_status("ready")
 
     def show_status(self, text: str) -> None:
@@ -229,10 +220,6 @@ class AcquisitionPanel(Panel):
         ready = not self.blockers() and not self.host.running
         for control, button, _ in self.control_buttons:
             button.setEnabled(ready and control.enabled)
-
-    def on_requests_changed(self) -> None:
-        if not self.host.awaiting and not self.host.running:
-            self.refresh_readiness()
 
     def choose_directory(self) -> None:
         start = str(self.runs.save.folder)

@@ -1,10 +1,10 @@
-"""The Mask Editor: draw a mask over an acquired image, and send it to a mask
-input that asks for one."""
+"""The Mask Editor: draw a mask over an acquired image, straight into a mask input."""
 
 from __future__ import annotations
 
 from dataclasses import replace
 from pathlib import Path
+from typing import Any
 
 import cv2
 import numpy as np
@@ -32,13 +32,14 @@ from PyQt6.QtWidgets import (
 )
 
 from pyrpoc.core.data import Image
-from pyrpoc.core.input_requests import InputRequests
 from pyrpoc.core.library import Library
 from pyrpoc.core.mask import Mask
 from pyrpoc.core.panels import DataPanel, data_panel_registry
+from pyrpoc.core.program_inputs import ProgramInputs
 from pyrpoc.core.program_output import ProgramOutput
 from pyrpoc.plugins.panels.mask_editor.range_slider import RangeSlider
 from pyrpoc.plugins.panels.mask_editor.transforms import normalize_channels
+from pyrpoc.shared.widgets.input_target import InputTargetCombo
 from pyrpoc.shared.widgets.table import horizontal_header, vertical_header
 
 from .canvas import MaskImageView, MaskRoi, Threshold
@@ -70,19 +71,17 @@ def write_mask(path: str, mask: np.ndarray) -> Path:
 
 @data_panel_registry.register("mask_editor")
 class MaskEditorPanel(DataPanel[Image]):
-    """Draw thresholded polygon ROIs over an acquired image, and send the mask
-    they make to a mask input."""
+    """Draw thresholded polygon ROIs over an acquired image. The mask they make is written
+    into the chosen mask input after every edit."""
 
     display_name = "Mask editor"
     group = "Mask editors"
     order = 30
     misc = True
     renders = Image
-    # Send answers a mask input's request with the drawn mask.
-    supplies = (Mask,)
 
-    def __init__(self, library: Library, requests: InputRequests):
-        super().__init__(library, requests)
+    def __init__(self, library: Library, inputs: ProgramInputs):
+        super().__init__(library, inputs)
         self.setObjectName("maskEditorRoot")
         self.setStyleSheet(
             "#maskEditorRoot, #maskEditorRoot QWidget { background: transparent; }"
@@ -109,7 +108,6 @@ class MaskEditorPanel(DataPanel[Image]):
         self.rebuild_channel_boxes()
         self.reset_threshold_controls()
         self.update_view_image()
-        self.requests_changed()
         self.connect_source()
 
     def build_channels_row(self) -> QHBoxLayout:
@@ -157,26 +155,26 @@ class MaskEditorPanel(DataPanel[Image]):
 
     def build_name_row(self) -> QHBoxLayout:
         row = QHBoxLayout()
+        row.addWidget(QLabel("Draw into:", self))
+        self.target_combo = InputTargetCombo(Mask, self.inputs, self)
+        self.target_combo.setToolTip(
+            "The mask input this editor writes. Every ROI you add, delete or re-threshold "
+            "updates it at once."
+        )
+        self.target_combo.chosen.connect(self.on_target_chosen)
+        row.addWidget(self.target_combo, 1)
         row.addWidget(QLabel("Name:", self))
         self.name_edit = QLineEdit(self)
         self.name_edit.setPlaceholderText("what this mask is of")
-        self.name_edit.returnPressed.connect(self.send_mask)
+        self.name_edit.editingFinished.connect(self.put_mask)
         row.addWidget(self.name_edit, 1)
-        self.send_btn = QPushButton("Send", self)
-        self.send_btn.clicked.connect(self.send_mask)
-        row.addWidget(self.send_btn)
         return row
 
-    def requests_changed(self) -> None:
-        """Light up Send while a mask input is waiting for a mask."""
-        waiting = self.requests.is_open(Mask)
-        self.send_btn.setEnabled(waiting)
-        self.send_btn.setDefault(waiting)
-        self.send_btn.setToolTip(
-            "Send this mask to the input waiting for it"
-            if waiting
-            else "Press Take from Mask Editor on a mask input first"
-        )
+    def on_target_chosen(self) -> None:
+        # Only with ROIs drawn: choosing an input must not wipe the mask it already holds.
+        if self._rois:
+            self.put_mask()
+        self.state_changed.emit()
 
     def build_button_row(self) -> QHBoxLayout:
         row = QHBoxLayout()
@@ -344,6 +342,7 @@ class MaskEditorPanel(DataPanel[Image]):
             threshold = Threshold(float(low), float(high), self._channel_visibility.copy())
         self._rois.append(MaskRoi(points=points, threshold=threshold))
         self.sync_rois()
+        self.put_mask()
 
     def sync_rois(self) -> None:
         """Rebuild the ROI table and the drawn outlines together."""
@@ -389,6 +388,7 @@ class MaskEditorPanel(DataPanel[Image]):
         changed = replace(threshold, low=float(low), high=float(high))
         self._rois[row] = replace(self._rois[row], threshold=changed)
         self.sync_rois()
+        self.put_mask()
 
     def delete_roi(self, row: int) -> None:
         # A frame of a new shape while the menu was open clears the ROIs.
@@ -396,6 +396,7 @@ class MaskEditorPanel(DataPanel[Image]):
             return
         del self._rois[row]
         self.sync_rois()
+        self.put_mask()
 
     def rois(self) -> list[MaskRoi]:
         return self._rois
@@ -430,16 +431,25 @@ class MaskEditorPanel(DataPanel[Image]):
         dlg.resize(max(320, self._w), max(240, self._h))
         dlg.exec()
 
-    def send_mask(self) -> None:
-        """Answer the waiting mask input with the drawn mask."""
-        if not self.requests.is_open(Mask):
+    def put_mask(self) -> None:
+        """Write the drawn mask into the chosen input; no ROIs leaves it empty."""
+        # Called on the user's edits only, never on a new frame, so a live run's frames do not
+        # rewrite the input under it.
+        target = self.target_combo.target
+        if target is None:
             return
         mask = self.generate_mask(self._rois)
-        if mask is None:
-            QMessageBox.warning(self, "No ROI", "Draw at least one ROI before sending.")
-            return
-        self.requests.answer(Mask(mask, self.name_edit.text().strip()))
-        self.name_edit.clear()
+        target.put(self.inputs, None if mask is None else Mask(mask, self.name_edit.text().strip()))
+
+    def detach(self) -> None:
+        super().detach()
+        self.target_combo.detach()
+
+    def export_persistence_state(self) -> dict[str, Any]:
+        return {"target": self.target_combo.export_state()}
+
+    def import_persistence_state(self, state: dict[str, Any]) -> None:
+        self.target_combo.import_state(state.get("target"))
 
     def save_mask(self) -> None:
         mask = self.generate_mask(self._rois)

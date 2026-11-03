@@ -8,20 +8,25 @@ from typing import Any
 import numpy as np
 import pyqtgraph as pg
 from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QCursor
 from PyQt6.QtWidgets import (
     QCheckBox,
     QGridLayout,
     QHBoxLayout,
+    QLabel,
     QScrollArea,
+    QToolTip,
     QVBoxLayout,
     QWidget,
 )
 
 from pyrpoc.core.data import Image
-from pyrpoc.core.input_requests import InputRequests, PixelPick
 from pyrpoc.core.library import Library
 from pyrpoc.core.panels import DataPanel, data_panel_registry
+from pyrpoc.core.pixel_pick import PixelPick
+from pyrpoc.core.program_inputs import ParameterError, ProgramInputs
 from pyrpoc.core.program_output import ProgramOutput
+from pyrpoc.shared.widgets.input_target import InputTargetCombo
 from pyrpoc.shared.widgets.levels import autoscale_levels, mono_levels
 
 LUT = pg.ColorMap(
@@ -57,11 +62,9 @@ class ImagePanel(DataPanel[Image]):
     group = "2D Image Views"
     order = 21
     renders = Image
-    # A click on a pixel answers a pixel request.
-    supplies = (PixelPick,)
 
-    def __init__(self, library: Library, requests: InputRequests):
-        super().__init__(library, requests)
+    def __init__(self, library: Library, inputs: ProgramInputs):
+        super().__init__(library, inputs)
         pg.setConfigOptions(imageAxisOrder="row-major")
         self._tiles: list[ChannelTile] = []
         self._pending_state: list[TileState] = []
@@ -69,6 +72,7 @@ class ImagePanel(DataPanel[Image]):
 
         outer = QVBoxLayout(self.body)
         outer.setContentsMargins(0, 0, 0, 0)
+        outer.addLayout(self.build_click_row())
         scroll = QScrollArea(self.body)
         scroll.setWidgetResizable(True)
         outer.addWidget(scroll)
@@ -136,8 +140,8 @@ class ImagePanel(DataPanel[Image]):
 
     def build_plot(self, parent: QWidget) -> tuple[pg.PlotWidget, pg.ImageItem]:
         """A tile's plot and image, wired to answer a click."""
-        # Wired at build rather than when a pick is requested, because a tile can appear after
-        # arming.
+        # Wired at build rather than when a click target is chosen, because a tile can appear after
+        # choosing one.
         plot = pg.PlotWidget(parent)
         plot.setMenuEnabled(False)
         plot.hideButtons()
@@ -152,17 +156,29 @@ class ImagePanel(DataPanel[Image]):
         scene.sigMouseClicked.connect(lambda event: self.on_scene_clicked(event, image_item))
         return plot, image_item
 
+    def build_click_row(self) -> QHBoxLayout:
+        row = QHBoxLayout()
+        row.setContentsMargins(0, 0, 0, 0)
+        row.addWidget(QLabel("Click sets:", self.body))
+        self.click_target = InputTargetCombo(PixelPick, self.inputs, self.body)
+        self.click_target.setToolTip("The program input a left click on a pixel sets")
+        self.click_target.chosen.connect(self.on_click_target_chosen)
+        row.addWidget(self.click_target)
+        row.addStretch(1)
+        return row
+
     @property
     def armed(self) -> bool:
-        """Whether a click on a pixel would answer a pixel request."""
-        return self.requests.is_open(PixelPick)
+        """Whether a click on a pixel sets a program input."""
+        return self.click_target.target is not None
 
-    def requests_changed(self) -> None:
+    def on_click_target_chosen(self) -> None:
         for tile in self._tiles:
             self.apply_pick_cursor(tile)
+        self.state_changed.emit()
 
     def apply_pick_cursor(self, tile: ChannelTile) -> None:
-        """Show a crosshair over the plot while a pixel request is open."""
+        """Show a crosshair over the plot while a click sets a program input."""
         # Over the plot only: it means "clicking here moves hardware", so it must not appear where
         # a click does nothing.
         if self.armed:
@@ -171,27 +187,40 @@ class ImagePanel(DataPanel[Image]):
             tile.plot.unsetCursor()
 
     def on_scene_clicked(self, event: Any, image_item: pg.ImageItem) -> None:
-        """Answer the pixel request with the pixel under a left click."""
+        """Put the pixel under a left click into the click target."""
         if not self.armed or event.button() != Qt.MouseButton.LeftButton:
             return
         point = image_item.mapFromScene(event.scenePos())
-        if self.answer_pixel(int(np.floor(point.x())), int(np.floor(point.y()))):
+        if self.pick_pixel(int(np.floor(point.x())), int(np.floor(point.y()))):
             event.accept()
 
-    def answer_pixel(self, x: int, y: int) -> bool:
-        """Answer the pixel request with pixel ``(x, y)`` of the image on screen,
-        returning whether it is a pixel of that image."""
+    def pick_pixel(self, x: int, y: int) -> bool:
+        """Put pixel ``(x, y)`` of the image on screen into the click target, returning
+        whether it is a pixel of that image."""
         # Checked against the frame: a click just outside the pixels is still
         # inside the view box, and an out-of-range pixel would park the galvos
         # outside the scan.
-        program_output, image = self.shown_output, self.shown_value
-        if program_output is None or image is None:
+        program_output, image, target = (
+            self.shown_output,
+            self.shown_value,
+            self.click_target.target,
+        )
+        if program_output is None or image is None or target is None:
             return False
         _, height, width = image.array.shape
         if not (0 <= x < width and 0 <= y < height):
             return False
-        self.requests.answer(PixelPick(program_output, x, y))
+        # The boundary where a click meets an input's rules: an image with no scan geometry
+        # names no galvo position.
+        try:
+            target.put(self.inputs, PixelPick(program_output, x, y))
+        except ParameterError as exc:
+            QToolTip.showText(QCursor.pos(), str(exc), self)
         return True
+
+    def detach(self) -> None:
+        super().detach()
+        self.click_target.detach()
 
     def on_autoscale_toggled(self, index: int) -> None:
         image = self.shown_value
@@ -246,6 +275,7 @@ class ImagePanel(DataPanel[Image]):
 
     def export_persistence_state(self) -> dict[str, Any]:
         return {
+            "click_target": self.click_target.export_state(),
             "channels": [
                 {
                     "index": index,
@@ -254,11 +284,14 @@ class ImagePanel(DataPanel[Image]):
                     "max_val": tile.max_val,
                 }
                 for index, tile in enumerate(self._tiles)
-            ]
+            ],
         }
 
     def import_persistence_state(self, state: dict[str, Any]) -> None:
         """Take saved tile settings from session JSON, skipping malformed rows."""
+        self.click_target.import_state(state.get("click_target"))
+        for tile in self._tiles:
+            self.apply_pick_cursor(tile)
         # Applied once tiles exist, since none do yet.
         channels = state.get("channels", [])
         if not isinstance(channels, list):

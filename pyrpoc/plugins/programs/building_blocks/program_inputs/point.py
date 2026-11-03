@@ -9,12 +9,11 @@ from typing import Any
 from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtWidgets import QDoubleSpinBox, QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
-from pyrpoc.core.input_requests import PixelPick
 from pyrpoc.core.input_section import InputSection
+from pyrpoc.core.pixel_pick import PixelPick
 from pyrpoc.core.program_inputs import (
     Editor,
     Field,
-    FieldContext,
     ParameterError,
     declare,
 )
@@ -172,14 +171,20 @@ class PointField(Field):
     # ``coerce`` takes a live ``Point`` as well as JSON, since every value is re-checked before a
     # run.
 
+    accepts = PixelPick
+
     def coerce(self, value: Any) -> Point:
         return Point.from_value(value)
 
     def encode(self, value: Point) -> Any:
         return value.to_dict()
 
-    def editor(self, parent: Any, context: FieldContext) -> Editor:
-        del context
+    def place(self, value: Point, slot: str, item: PixelPick) -> Point:
+        """The position the picked pixel was measured at."""
+        del value, slot
+        return Point.from_pick(item)
+
+    def editor(self, parent: Any) -> Editor:
         picker = PointPicker(parent)
         return Editor(
             picker,
@@ -195,7 +200,11 @@ class PointField(Field):
 # the detector are configured independently.
 TARGET = declare(
     "point.target",
-    PointField("Target", "Galvo position to park at. Pick it off an image, or type volts directly"),
+    PointField(
+        "Target",
+        "Galvo position to park at. Type volts, or click a pixel in an image panel whose "
+        "'Click sets' is Target",
+    ),
     Point(),
 )
 

@@ -6,7 +6,6 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QDialog, QDialogButtonBox, QVBoxLayout, QWidget
 
 from pyrpoc.core.device import Device
-from pyrpoc.core.program_inputs import FieldContext
 from pyrpoc.shared.widgets.param_form import ConfigValues, ParamForm, config_form_section
 
 from .inventory import DeviceInventory
@@ -28,7 +27,6 @@ class ConfigureDialog(QDialog):
             ConfigValues(device),
             self,
             cards=False,
-            context=FieldContext(),
         )
         form.changed.connect(inventory.device_changed)
         layout.addWidget(form)

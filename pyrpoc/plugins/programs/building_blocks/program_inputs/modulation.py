@@ -4,7 +4,7 @@ with the port and line it drives."""
 from __future__ import annotations
 
 from collections.abc import Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
 import numpy as np
@@ -20,10 +20,9 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from pyrpoc.core.input_requests import InputRequests
 from pyrpoc.core.input_section import InputSection
 from pyrpoc.core.mask import Mask
-from pyrpoc.core.program_inputs import Editor, Field, FieldContext, ParameterError, declare
+from pyrpoc.core.program_inputs import Editor, Field, ParameterError, declare
 
 from .mask_cell import MaskCell
 
@@ -36,9 +35,14 @@ class MaskBinding:
     port: int
     line: int
 
+    @property
+    def line_name(self) -> str:
+        """The port and line it drives, as a mask is placed by them."""
+        return f"port{self.port}/line{self.line}"
+
     def channel(self, device_name: str) -> str:
         """The NI-DAQ channel string this mask drives."""
-        return f"{device_name}/port{self.port}/line{self.line}"
+        return f"{device_name}/{self.line_name}"
 
     def on_grid(self, height: int, width: int) -> np.ndarray:
         """The lit pixels on a ``(height, width)`` grid; none for a row with no mask."""
@@ -79,9 +83,8 @@ class MaskTable(QWidget):
 
     changed = pyqtSignal()
 
-    def __init__(self, requests: InputRequests, parent: QWidget):
+    def __init__(self, parent: QWidget):
         super().__init__(parent)
-        self.requests = requests
         self.rows: list[MaskRow] = []
 
         root = QVBoxLayout(self)
@@ -101,7 +104,7 @@ class MaskTable(QWidget):
         self.table.setMinimumHeight(90)
         root.addWidget(self.table)
         root.addLayout(self.build_buttons())
-        self.hint = QLabel("Add a row, then take its mask from a Mask Editor.", self)
+        self.hint = QLabel("Draw a mask in a Mask Editor and choose a line there.", self)
         self.hint.setStyleSheet("color: palette(mid);")
         root.addWidget(self.hint)
 
@@ -119,7 +122,7 @@ class MaskTable(QWidget):
     def add_row(self, binding: MaskBinding) -> None:
         index = self.table.rowCount()
         self.table.insertRow(index)
-        cell = MaskCell(self.requests, "no mask", self.table)
+        cell = MaskCell("no mask", self.table)
         cell.set_value(binding.mask)
         cell.changed.connect(self.changed)
         self.table.setCellWidget(index, 0, cell)
@@ -136,17 +139,8 @@ class MaskTable(QWidget):
         self.table.resizeRowsToContents()
         self.refresh_hint()
 
-    def next_free_line(self) -> int:
-        """The lowest line no row drives."""
-        # So two rows never silently share one.
-        used = {row.line.value() for row in self.rows}
-        line = 0
-        while line in used:
-            line += 1
-        return line
-
     def on_add_clicked(self) -> None:
-        self.add_row(MaskBinding(None, 0, self.next_free_line()))
+        self.add_row(MaskBinding(None, 0, next_free_line(self.value())))
         self.changed.emit()
 
     def on_remove_clicked(self) -> None:
@@ -185,7 +179,10 @@ class MaskTable(QWidget):
 
 @dataclass(frozen=True)
 class MasksField(Field):
-    """The Modulation table: a mask, its port and its line, one row per mask."""
+    """The Modulation table: a mask, its port and its line, one row per mask. A mask is
+    placed by the line it drives: an existing row's, or the next free line's."""
+
+    accepts = Mask
 
     def coerce(self, value: Any) -> tuple[MaskBinding, ...]:
         if value is None:
@@ -197,11 +194,23 @@ class MasksField(Field):
     def encode(self, value: tuple[MaskBinding, ...]) -> Any:
         return [binding.to_dict() for binding in value]
 
-    def editor(self, parent: Any, context: FieldContext) -> Editor:
-        # Narrows for the type checker: every form holding masks can make requests.
-        if context.requests is None:
-            raise ValueError("a masks field needs the input requests")
-        table = MaskTable(context.requests, parent)
+    def slots(self, value: tuple[MaskBinding, ...]) -> tuple[str, ...]:
+        free = MaskBinding(None, 0, next_free_line(value))
+        return (*(binding.line_name for binding in value), free.line_name)
+
+    def place(
+        self, value: tuple[MaskBinding, ...], slot: str, item: Mask | None
+    ) -> tuple[MaskBinding, ...]:
+        """``value`` with the row driving line ``slot`` holding ``item``, adding the row if
+        no row drives it yet."""
+        rows = [replace(b, mask=item) if b.line_name == slot else b for b in value]
+        if all(binding.line_name != slot for binding in value):
+            port, line = slot.removeprefix("port").split("/line")
+            rows.append(MaskBinding(item, int(port), int(line)))
+        return tuple(rows)
+
+    def editor(self, parent: Any) -> Editor:
+        table = MaskTable(parent)
         return Editor(
             table,
             get=table.value,
@@ -215,11 +224,21 @@ class MasksField(Field):
 MASKS = declare(
     "modulation.masks",
     MasksField(
-        "Masks",
+        "Modulation masks",
         "Masks driving digital output lines during the scan. "
-        "Draw one in the Mask Editor, then take it here",
+        "Draw one in a Mask Editor and choose its line there",
     ),
     (),
 )
 
 MODULATION_SECTION = InputSection("Modulation", (MASKS,))
+
+
+def next_free_line(bindings: tuple[MaskBinding, ...]) -> int:
+    """The lowest line on port 0 no row drives."""
+    # So two rows never silently share one.
+    used = {binding.line for binding in bindings if binding.port == 0}
+    line = 0
+    while line in used:
+        line += 1
+    return line

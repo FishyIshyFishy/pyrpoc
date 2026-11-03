@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from .arm_and_run import ArmAndRun
 from .continuous import Continuous
+from .run_on_pick import RunOnPick
 from .single import Single
 
-__all__ = ["ArmAndRun", "Continuous", "Single"]
+__all__ = ["Continuous", "RunOnPick", "Single"]

@@ -9,9 +9,9 @@ from __future__ import annotations
 from pyrpoc.core.program import Program, RunContext, program_registry
 from pyrpoc.plugins.devices import DAQ, Galvo
 
-from ..building_blocks.functions.galvo_park import aim_at_pixel, park_galvos
+from ..building_blocks.functions.galvo_park import park_galvos
 from ..building_blocks.program_inputs import POINT_SECTION, TARGET
-from ..building_blocks.runners import ArmAndRun, Single
+from ..building_blocks.runners import RunOnPick, Single
 
 
 @program_registry.register("galvo_pinpoint")
@@ -23,11 +23,11 @@ class GalvoPinpoint(Program):
     sections = [POINT_SECTION]
     runners = [
         Single(),
-        ArmAndRun(
-            aim_at_pixel,
-            label="Park at point…",
+        RunOnPick(
+            TARGET,
+            label="Park on pick",
             icon=None,
-            tooltip="Arm, then click a pixel to park the beam there",
+            tooltip="While on, each pixel picked into Target parks the beam there",
         ),
     ]
 
