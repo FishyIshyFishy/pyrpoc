@@ -123,7 +123,7 @@ class AcquisitionPanel(Panel):
         runners = self.acquisition.host
         runners.controls_changed.connect(self.render_controls)
         runners.status.connect(self.show_status)
-        runners.picking_changed.connect(self.on_picking_changed)
+        self.acquisition.requests.subscribe(self.on_requests_changed)
         runs = self.acquisition.events
         runs.run_started.connect(lambda _run: self.on_run_started())
         runs.run_status.connect(lambda _run, text: self.show_status(text))
@@ -166,7 +166,7 @@ class AcquisitionPanel(Panel):
         self.apply_enabled()
         if missing:
             self.show_status("needs " + ", ".join(missing))
-        elif announce and not self.acquisition.host.running and not self.acquisition.host.picking:
+        elif announce and not self.acquisition.host.running and not self.acquisition.host.awaiting:
             self.show_status("ready")
 
     def show_status(self, text: str) -> None:
@@ -215,8 +215,8 @@ class AcquisitionPanel(Panel):
         for control, button, _ in self.control_buttons:
             button.setEnabled(ready and control.enabled)
 
-    def on_picking_changed(self, active: bool) -> None:
-        if not active and not self.acquisition.host.running:
+    def on_requests_changed(self) -> None:
+        if not self.acquisition.host.awaiting and not self.acquisition.host.running:
             self.refresh_readiness()
 
     def choose_directory(self) -> None:

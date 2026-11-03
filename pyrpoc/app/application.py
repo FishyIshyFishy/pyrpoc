@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from PyQt6.QtCore import QObject, pyqtSignal
 
+from pyrpoc.app.input_requests import OpenInputRequests
 from pyrpoc.engine.acquisition.model import Acquisition
 from pyrpoc.engine.data_library.model import LibraryModel
 from pyrpoc.engine.data_library.store import LIBRARY_LIMIT_BYTES, LibraryStore
@@ -22,7 +23,9 @@ class Application(QObject):
         super().__init__()
         self.inventory = DeviceInventory(self)
         self.library = LibraryModel(LibraryStore(LIBRARY_LIMIT_BYTES), self)
-        self.acquisition = Acquisition(self.inventory, self.library, self)
+        # Handed to every panel and runner, so any of them can ask and any panel answer.
+        self.requests = OpenInputRequests()
+        self.acquisition = Acquisition(self.inventory, self.library, self.requests, self)
         # A restored session replaces this with the program it had selected.
         self.acquisition.select_program(program_registry.keys()[0])
 

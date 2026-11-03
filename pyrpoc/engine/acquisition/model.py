@@ -7,6 +7,7 @@ from __future__ import annotations
 from PyQt6.QtCore import QObject, pyqtSignal
 
 from pyrpoc.core import program_inputs as P
+from pyrpoc.core.input_requests import InputRequests
 from pyrpoc.core.program import program_registry
 from pyrpoc.core.program_inputs import block_registry
 from pyrpoc.core.saving import SaveTarget
@@ -27,10 +28,17 @@ class Acquisition(QObject):
     # Something worth remembering changed.
     edited = pyqtSignal()
 
-    def __init__(self, inventory: DeviceInventory, library: LibraryModel, parent: QObject):
+    def __init__(
+        self,
+        inventory: DeviceInventory,
+        library: LibraryModel,
+        requests: InputRequests,
+        parent: QObject,
+    ):
         super().__init__(parent)
         self.inventory = inventory
         self.library = library
+        self.requests = requests
         self.selected_program: str | None = None
         # One instance per block class, shared by every program declaring it,
         # so switching modality keeps the settings you made.

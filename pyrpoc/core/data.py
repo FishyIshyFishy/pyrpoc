@@ -104,22 +104,6 @@ class Mask(ArrayData):
 
 
 @dataclass(frozen=True)
-class Pixel(Data):
-    """One pixel of an image: ``x`` along the fast axis, ``y`` along the slow."""
-
-    # Which image it is a pixel of is the provenance of the program output holding it.
-    x: int
-    y: int
-
-    @property
-    def nbytes(self) -> int:
-        return 0
-
-    def summary(self) -> str:
-        return f"pixel ({self.x}, {self.y})"
-
-
-@dataclass(frozen=True)
 class MosaicTile:
     """One stop of a mosaic's stage grid: ``row`` grows along stage y and
     ``col`` along x."""
@@ -152,5 +136,5 @@ class Mosaic(Data):
 
 # Every kind a saved recording can name, so a file's kind string finds its class.
 DATA_KINDS: dict[str, type[Data]] = {
-    kind.name: kind for kind in (Image, DecayHistogram, RawSamples, Spectrum, Mask, Pixel, Mosaic)
+    kind.name: kind for kind in (Image, DecayHistogram, RawSamples, Spectrum, Mask, Mosaic)
 }

@@ -1,10 +1,5 @@
 """The dock manager: three fixed panels, one dock per added data panel, and
-the device panels ``DeviceDocks`` keeps.
-
-The fixed panels hide when unchecked in the menu; an added panel is destroyed,
-so it exists exactly as long as its dock does. The window owns the added
-panels and connects each to the model; the model never holds a widget.
-"""
+the device panels ``DeviceDocks`` keeps."""
 
 from __future__ import annotations
 
@@ -164,16 +159,14 @@ class MainWindow(QWidget):
 
     def add_panel_of_type(self, key: str) -> None:
         """Add one, from the menu."""
-        self.add_panel(data_panel_registry.get(key)(self.app.library))
+        self.add_panel(data_panel_registry.get(key)(self.app.library, self.app.requests))
 
     def add_panel(self, panel: DataPanel) -> None:
         self.add_panel_dock(panel)
-        self.connect_panel(panel)
         self.refresh_panels_menu()
         self.panels_changed.emit()
 
     def remove_panel(self, panel: DataPanel) -> None:
-        self.disconnect_panel(panel)
         panel.detach()
         self.remove_panel_dock(panel)
         self.refresh_panels_menu()
@@ -182,19 +175,6 @@ class MainWindow(QWidget):
     def clear_panels(self) -> None:
         for panel in self.panels:
             self.remove_panel(panel)
-
-    def connect_panel(self, panel: DataPanel) -> None:
-        """Let ``panel`` answer pick requests, starting in whatever mode a
-        pending request has already set."""
-        runners = self.app.acquisition.host
-        runners.picking_changed.connect(panel.set_picking)
-        panel.picked.connect(runners.on_picked)
-        panel.set_picking(runners.picking)
-
-    def disconnect_panel(self, panel: DataPanel) -> None:
-        runners = self.app.acquisition.host
-        runners.picking_changed.disconnect(panel.set_picking)
-        panel.picked.disconnect(runners.on_picked)
 
     def on_output_changed(self, program_output: ProgramOutput) -> None:
         """Refresh every panel showing this program output. An added panel exists

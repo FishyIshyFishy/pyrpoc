@@ -70,7 +70,7 @@ def restore_devices(state: SessionState, app: Application) -> list[Device]:
 def restore_panels(state: SessionState, app: Application, window: MainWindow) -> None:
     for row in state.views:
         try:
-            panel = data_panel_registry.get(row.key)(app.library)
+            panel = data_panel_registry.get(row.key)(app.library, app.requests)
             if row.instance_id:
                 panel.instance_id = row.instance_id
             panel.user_label = row.user_label

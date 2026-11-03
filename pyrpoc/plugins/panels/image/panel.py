@@ -1,5 +1,4 @@
-"""One tile per channel, with a per-tile autoscale and LUT. Clicking a
-pixel answers a pixel request."""
+"""The image panel: one tile per channel, each with its own autoscale and LUT."""
 
 from __future__ import annotations
 
@@ -18,10 +17,11 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from pyrpoc.core.data import Image, Pixel
+from pyrpoc.core.data import Image
+from pyrpoc.core.input_requests import InputRequests, PixelPick
 from pyrpoc.core.library import Library
 from pyrpoc.core.panels import DataPanel, data_panel_registry
-from pyrpoc.core.program_output import Origin, ProgramOutput
+from pyrpoc.core.program_output import ProgramOutput
 from pyrpoc.shared.widgets.levels import autoscale_levels, mono_levels
 
 LUT = pg.ColorMap(
@@ -57,16 +57,15 @@ class ImagePanel(DataPanel[Image]):
     group = "2D Image Views"
     order = 21
     renders = Image
+    # A click on a pixel answers a pixel request.
+    supplies = (PixelPick,)
 
-    def __init__(self, library: Library):
-        super().__init__(library)
+    def __init__(self, library: Library, requests: InputRequests):
+        super().__init__(library, requests)
         pg.setConfigOptions(imageAxisOrder="row-major")
         self._tiles: list[ChannelTile] = []
         self._pending_state: list[TileState] = []
         self._suspend_lut_signal = False
-        # Held here rather than per tile because tiles come and go with the
-        # channel count.
-        self._picking = False
 
         outer = QVBoxLayout(self.body)
         outer.setContentsMargins(0, 0, 0, 0)
@@ -152,36 +151,45 @@ class ImagePanel(DataPanel[Image]):
         scene.sigMouseClicked.connect(lambda event: self.on_scene_clicked(event, image_item))
         return plot, image_item
 
-    def set_picking(self, picking: bool) -> None:
-        self._picking = picking
+    @property
+    def armed(self) -> bool:
+        """Whether a click on a pixel would answer a pixel request."""
+        return self.requests.is_open(PixelPick)
+
+    def requests_changed(self) -> None:
         for tile in self._tiles:
             self.apply_pick_cursor(tile)
 
     def apply_pick_cursor(self, tile: ChannelTile) -> None:
         """Crosshair over the plot only: it means "clicking here moves
         hardware", so it must not appear where a click does nothing."""
-        if self._picking:
+        if self.armed:
             tile.plot.setCursor(Qt.CursorShape.CrossCursor)
         else:
             tile.plot.unsetCursor()
 
     def on_scene_clicked(self, event: Any, image_item: pg.ImageItem) -> None:
-        """Report the pixel under a left click. Bounds are checked against the
-        frame: a click just outside the pixels is still inside the view box,
-        and an out-of-range index would park the galvos outside the scan."""
-        if not self._picking or event.button() != Qt.MouseButton.LeftButton:
-            return
-        # What is on screen, which is what the user clicked on.
-        program_output, image = self.shown_output, self.shown_value
-        if program_output is None or image is None:
+        """Answer the pixel request with the pixel under a left click."""
+        if not self.armed or event.button() != Qt.MouseButton.LeftButton:
             return
         point = image_item.mapFromScene(event.scenePos())
-        x, y = int(np.floor(point.x())), int(np.floor(point.y()))
+        if self.answer_pixel(int(np.floor(point.x())), int(np.floor(point.y()))):
+            event.accept()
+
+    def answer_pixel(self, x: int, y: int) -> bool:
+        """Answer the pixel request with pixel ``(x, y)`` of the image on screen,
+        returning whether it is a pixel of that image."""
+        # Checked against the frame: a click just outside the pixels is still
+        # inside the view box, and an out-of-range pixel would park the galvos
+        # outside the scan.
+        program_output, image = self.shown_output, self.shown_value
+        if program_output is None or image is None:
+            return False
         _, height, width = image.array.shape
         if not (0 <= x < width and 0 <= y < height):
-            return
-        event.accept()
-        self.picked.emit(pick_of(program_output, x, y))
+            return False
+        self.requests.answer(PixelPick(program_output, x, y))
+        return True
 
     def on_autoscale_toggled(self, index: int) -> None:
         image = self.shown_value
@@ -279,17 +287,3 @@ class ImagePanel(DataPanel[Image]):
             tile.autoscale_box.blockSignals(False)
             self.apply_levels(tile, saved.min_val, max(saved.max_val, saved.min_val + 1e-12))
         self._pending_state = []
-
-
-def pick_of(program_output: ProgramOutput[Image], x: int, y: int) -> ProgramOutput[Pixel]:
-    """Pixel ``(x, y)`` of ``program_output``, as a program output of its own that keeps the
-    image's provenance: a pixel only names a position in that acquisition."""
-    pick = ProgramOutput(
-        name=program_output.name,
-        kind=Pixel,
-        provenance=program_output.provenance,
-        origin=Origin.AUTHORED,
-        writer=None,
-    )
-    pick.publish(Pixel(x, y))
-    return pick

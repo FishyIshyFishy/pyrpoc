@@ -1,25 +1,16 @@
-"""The selected program's runners, as the screen sees them.
-
-Selecting a program detaches the previous one's runners and attaches the new
-one's, each through its own ``RunnerSession``; detaching drops the session, so its controls
-and callbacks go with it, a pending pick is cancelled, and the runs it started
-are stopped. A runner's request for a picked ``Pixel`` goes out as ``picking_changed``
-to whatever displays are listening, and the first ``on_picked`` answers it.
-Pick state never reaches the saved session: a relaunch that came
-back armed would point a hardware trigger at the next stray click.
-"""
+"""``RunnerHost``: attaches the selected program's runners, each program through
+its own ``RunnerSession``, and drops them again when another is selected."""
 
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, TypeVar
 
 from PyQt6.QtCore import QObject, pyqtSignal
 
-from pyrpoc.core.data import Pixel
+from pyrpoc.core.input_requests import InputRequest
 from pyrpoc.core.program import Program
 from pyrpoc.core.program_inputs import BlockMap
-from pyrpoc.core.program_output import ProgramOutput
 from pyrpoc.core.runner import Control, RunnerContext
 from pyrpoc.engine.acquisition.executor import Run
 from pyrpoc.engine.acquisition.recording import Series
@@ -27,13 +18,12 @@ from pyrpoc.engine.acquisition.recording import Series
 if TYPE_CHECKING:  # pragma: no cover
     from .model import Acquisition
 
-PixelCallback = Callable[[ProgramOutput[Pixel] | None], None]
+T = TypeVar("T")
 
 
 class RunnerSession(RunnerContext):
     """The context one program's runners were attached with, and the runs they
-    started. ``closed`` is set before the host lets go of it, so a runner
-    holding a stale slot finds every request refused."""
+    started. Once ``closed``, every request through it is refused."""
 
     def __init__(self, host: RunnerHost, key: str, program: type[Program]):
         self.host = host
@@ -45,6 +35,7 @@ class RunnerSession(RunnerContext):
         self.runs: list[Run] = []
         self.failed: set[Run] = set()
         self.series: Series | None = None
+        self.pending: InputRequest[Any] | None = None
         self.closed = False
 
     @property
@@ -79,14 +70,23 @@ class RunnerSession(RunnerContext):
             self.host.acquisition.params_written.emit()
             self.host.acquisition.edited.emit()
 
-    def request_pixel(self, callback: PixelCallback) -> None:
+    @property
+    def awaiting(self) -> bool:
+        """Whether this context's input request is still open."""
+        return self.pending is not None and self.pending.open
+
+    def request(self, kind: type[T], prompt: str, on_answer: Callable[[T | None], None]) -> None:
         if self.closed:
-            callback(None)
+            on_answer(None)
             return
-        self.host.request_pick(callback)
+        self.cancel_request()
+        self.pending = self.host.acquisition.requests.request(kind, prompt, on_answer)
+        self.host.status.emit(prompt)
 
     def cancel_request(self) -> None:
-        self.host.cancel_pick()
+        pending, self.pending = self.pending, None
+        if pending is not None:
+            self.host.acquisition.requests.cancel(pending)
 
     def add_control(self, control: Control) -> None:
         if self.closed:
@@ -116,25 +116,21 @@ class RunnerSession(RunnerContext):
 
 
 class RunnerHost(QObject):
-    """Attaches the selected program's runners and routes what they ask for."""
+    """Attaches the selected program's runners and starts the runs they ask for."""
 
     # The control list changed; the view re-renders from ``controls``.
     controls_changed = pyqtSignal()
     status = pyqtSignal(str)
-    # A pixel was requested (True) or the request ended (False); displays
-    # offer a pick or stop offering.
-    picking_changed = pyqtSignal(bool)
 
     def __init__(self, acquisition: Acquisition):
         super().__init__(acquisition)
         self.acquisition = acquisition
         self.slot: RunnerSession | None = None
-        self._pick: PixelCallback | None = None
 
         acquisition.events.run_failed.connect(self.note_failure)
         acquisition.events.run_finished.connect(self.forget)
-        acquisition.inventory.changed.connect(self.check_pick_blockers)
-        acquisition.save_changed.connect(self.check_pick_blockers)
+        acquisition.inventory.changed.connect(self.check_request_blockers)
+        acquisition.save_changed.connect(self.check_request_blockers)
 
     @property
     def controls(self) -> list[Control]:
@@ -146,8 +142,9 @@ class RunnerHost(QObject):
         return self.slot is not None and self.slot.running
 
     @property
-    def picking(self) -> bool:
-        return self._pick is not None
+    def awaiting(self) -> bool:
+        """Whether the selected program's runners are waiting on an input request."""
+        return self.slot is not None and self.slot.awaiting
 
     def attach(self, key: str, program: type[Program]) -> None:
         """Replace whatever is attached with ``program``'s runners."""
@@ -162,7 +159,7 @@ class RunnerHost(QObject):
         slot, self.slot = self.slot, None
         if slot is None:
             return
-        self.cancel_pick()
+        slot.cancel_request()
         slot.closed = True
         # Nothing else can reach these runs to stop them once the slot is gone.
         for run in slot.runs:
@@ -199,36 +196,13 @@ class RunnerHost(QObject):
         if self.slot is not None and run in self.slot.runs:
             self.slot.release(run)
 
-    def request_pick(self, callback: PixelCallback) -> None:
-        self.cancel_pick()
-        self._pick = callback
-        self.status.emit("waiting for a pick on a display")
-        self.picking_changed.emit(True)
-
-    def cancel_pick(self) -> None:
-        """End the pending request, if there is one. Its callback gets None."""
-        pending = self.end_pick()
-        if pending is not None:
-            pending(None)
-
-    def on_picked(self, pick: ProgramOutput[Pixel]) -> None:
-        callback = self.end_pick()
-        if callback is not None:
-            callback(pick)
-
-    def end_pick(self) -> PixelCallback | None:
-        """Disarm every display before anything that can fail, so no path out
-        of a pick leaves a live cursor behind."""
-        callback, self._pick = self._pick, None
-        if callback is not None:
-            self.picking_changed.emit(False)
-        return callback
-
-    def check_pick_blockers(self) -> None:
-        """A pending pick starts a run, so it cannot outlive what the run needs."""
-        if self._pick is None:
+    def check_request_blockers(self) -> None:
+        """An open request starts a run once answered, so it cannot outlive what
+        the run needs."""
+        slot = self.slot
+        if slot is None or not slot.awaiting:
             return
         missing = self.acquisition.blockers()
         if missing:
-            self.cancel_pick()
+            slot.cancel_request()
             self.status.emit("needs " + ", ".join(missing))

@@ -9,7 +9,7 @@ from typing import Any, ClassVar
 from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtWidgets import QDoubleSpinBox, QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
-from pyrpoc.core.data import Pixel
+from pyrpoc.core.input_requests import PixelPick
 from pyrpoc.core.program_inputs import (
     Editor,
     Field,
@@ -21,7 +21,6 @@ from pyrpoc.core.program_inputs import (
     decode_block,
     spec_field,
 )
-from pyrpoc.core.program_output import ProgramOutput
 
 from .scan import ScanGroup
 
@@ -44,22 +43,19 @@ class Point:
     pixel_y: int = -1
 
     @classmethod
-    def from_pick(cls, pick: ProgramOutput[Pixel]) -> Point:
-        """The position the picked pixel was measured at. The geometry comes
-        from the clicked image's provenance, not the live block, which may have
-        been edited since the image was taken."""
-        pixel = pick.value
-        # Narrows for the type checker: a pick is made holding its pixel.
-        if pixel is None:
-            raise RuntimeError(f"{pick.label} holds no pixel")
-        raw = pick.provenance.parameters.get(block_name(ScanGroup))
+    def from_pick(cls, pick: PixelPick) -> Point:
+        """The position the picked pixel was measured at."""
+        # From the clicked image's provenance, not the live block, which may have
+        # been edited since the image was taken.
+        image = pick.output
+        raw = image.provenance.parameters.get(block_name(ScanGroup))
         if raw is None:
             raise ParameterError(
-                f"{pick.label} was not acquired with a scan geometry, "
+                f"{image.label} was not acquired with a scan geometry, "
                 "so a pixel does not name a position"
             )
-        fast_v, slow_v = decode_block(ScanGroup, raw).voltage_at(pixel.x, pixel.y)
-        return cls(fast_v, slow_v, pick.id, pick.label, pixel.x, pixel.y)
+        fast_v, slow_v = decode_block(ScanGroup, raw).voltage_at(pick.x, pick.y)
+        return cls(fast_v, slow_v, image.id, image.label, pick.x, pick.y)
 
     @property
     def picked(self) -> bool:

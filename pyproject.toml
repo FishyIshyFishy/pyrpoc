@@ -155,6 +155,7 @@ source_modules = [
   "pyrpoc.core.runner",
   "pyrpoc.core.program_inputs",
   "pyrpoc.core.input_section",
+  "pyrpoc.core.input_requests",
   "pyrpoc.core.data",
   "pyrpoc.core.program_output",
   "pyrpoc.core.library",

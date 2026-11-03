@@ -10,6 +10,7 @@ from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtWidgets import QComboBox, QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
 from pyrpoc.core.data import Data
+from pyrpoc.core.input_requests import InputRequests
 from pyrpoc.core.library import Library
 from pyrpoc.core.program_output import ProgramOutput
 from pyrpoc.core.registry import Registry
@@ -24,6 +25,8 @@ class Panel(QWidget):
 
     display_name: str = "Panel"
     registry_key: str = "panel"
+    # The kinds of value this panel can answer an input request for.
+    supplies: ClassVar[tuple[type, ...]] = ()
 
     def __init__(self) -> None:
         super().__init__()
@@ -107,12 +110,10 @@ class DataPanel(Panel, Generic[D]):
     # on data, not a way to look at it.
     misc: ClassVar[bool] = False
 
-    # A ``ProgramOutput[Pixel]`` the user clicked while picking. Every panel can be
-    # asked for one; panels that cannot provide pixels never emit it.
-    picked = pyqtSignal(object)
-
-    def __init__(self, library: Library):
+    def __init__(self, library: Library, requests: InputRequests):
         super().__init__()
+        self.requests = requests
+        requests.subscribe(self.requests_changed)
         root = QVBoxLayout(self)
         root.setContentsMargins(4, 4, 4, 4)
         root.setSpacing(4)
@@ -131,8 +132,9 @@ class DataPanel(Panel, Generic[D]):
         self.refresh()
 
     def detach(self) -> None:
-        """Stop following the library."""
+        """Stop following the library and the input requests."""
         self.library.unsubscribe(self.source.refresh_sources)
+        self.requests.unsubscribe(self.requests_changed)
 
     @property
     def library(self) -> Library:
@@ -162,9 +164,8 @@ class DataPanel(Panel, Generic[D]):
     def clear(self) -> None:
         raise NotImplementedError
 
-    def set_picking(self, picking: bool) -> None:
-        """Offer the user a pixel to click, or stop offering."""
-        del picking
+    def requests_changed(self) -> None:
+        """An input request opened or closed."""
 
 
 data_panel_registry: Registry[DataPanel[Any]] = Registry("DataPanelRegistry", DataPanel)

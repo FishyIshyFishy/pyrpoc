@@ -43,7 +43,7 @@ class Origin(Enum):
 
     ACQUIRED = "acquired"
     LOADED = "loaded"
-    # Made by the user, like a mask or a picked pixel: work that exists nowhere else.
+    # Made by the user, like a mask: work that exists nowhere else.
     AUTHORED = "authored"
 
 
