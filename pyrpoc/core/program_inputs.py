@@ -5,10 +5,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Generic, Protocol, TypeVar
-
-if TYPE_CHECKING:  # pragma: no cover
-    from pyrpoc.core.input_requests import InputRequests
+from typing import Any, Generic, Protocol, TypeVar
 
 
 class ParameterError(Exception):
@@ -31,10 +28,17 @@ class Field:
         """JSON-safe -> value, raising ``ParameterError`` on bad input."""
         return self.coerce(raw)
 
-    def editor(self, parent: Any, context: FieldContext) -> Editor | None:
-        """A custom widget for this field, or None for the form's default."""
-        del parent, context
+    def editor(self, parent: Any, values: FieldValues) -> Editor | None:
+        """A custom widget for this field, or None for the form's default. ``values`` is the
+        form's, for an editor that shows other fields' values beside its own."""
+        del parent, values
         return None
+
+
+class FieldValues(Protocol):
+    """The values a form shows, by key."""
+
+    def get(self, key: str) -> Any: ...
 
 
 @dataclass
@@ -49,14 +53,6 @@ class Editor:
     connect: Callable[[Callable[[], None]], object]
     summary: Callable[[], str]
     spec: Field
-
-
-@dataclass(frozen=True)
-class FieldContext:
-    """What a field's editor can draw on: the input requests, or None for a
-    device configuration, which makes none."""
-
-    requests: InputRequests | None = None
 
 
 @dataclass(frozen=True)

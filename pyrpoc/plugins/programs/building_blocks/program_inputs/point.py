@@ -9,12 +9,12 @@ from typing import Any
 from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtWidgets import QDoubleSpinBox, QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
-from pyrpoc.core.input_requests import PixelPick
 from pyrpoc.core.input_section import InputSection
+from pyrpoc.core.pixel_pick import PixelPick
 from pyrpoc.core.program_inputs import (
     Editor,
     Field,
-    FieldContext,
+    FieldValues,
     ParameterError,
     declare,
 )
@@ -39,12 +39,11 @@ class Point:
     @classmethod
     def from_pick(cls, pick: PixelPick) -> Point:
         """The position the picked pixel was measured at."""
-        # From the clicked image's provenance, not the current inputs, which may
-        # have been edited since the image was taken.
-        image = pick.output
-        scan = ScanGeometry.from_parameters(image.provenance.parameters, image.label)
+        # From the clicked image's inputs, not the current ones, which may have been edited
+        # since the image was taken.
+        scan = ScanGeometry.from_parameters(pick.parameters, pick.source_label)
         fast_v, slow_v = scan.voltage_at(pick.x, pick.y)
-        return cls(fast_v, slow_v, image.id, image.label, pick.x, pick.y)
+        return cls(fast_v, slow_v, pick.source_id, pick.source_label, pick.x, pick.y)
 
     @property
     def picked(self) -> bool:
@@ -178,8 +177,8 @@ class PointField(Field):
     def encode(self, value: Point) -> Any:
         return value.to_dict()
 
-    def editor(self, parent: Any, context: FieldContext) -> Editor:
-        del context
+    def editor(self, parent: Any, values: FieldValues) -> Editor:
+        del values
         picker = PointPicker(parent)
         return Editor(
             picker,

@@ -1,48 +1,48 @@
-"""The Mask Editor: draw a mask over an acquired image, and send it to a mask
-input that asks for one."""
+"""The Mask Editor: draw masks over an acquired image. It holds the list of drawn masks,
+which programs read."""
 
 from __future__ import annotations
 
+import itertools
 from dataclasses import replace
 from pathlib import Path
+from typing import Any
 
 import cv2
 import numpy as np
 from PyQt6.QtCore import QPoint, QPointF, QRectF, Qt
-from PyQt6.QtGui import QAction, QImage, QPixmap
+from PyQt6.QtGui import QAction, QImage, QPalette, QPixmap, QResizeEvent
 from PyQt6.QtWidgets import (
+    QBoxLayout,
     QCheckBox,
     QDialog,
     QFileDialog,
     QGraphicsPixmapItem,
     QGraphicsScene,
     QHBoxLayout,
-    QHeaderView,
     QLabel,
     QLayout,
-    QLineEdit,
     QMenu,
     QMessageBox,
     QPushButton,
-    QSizePolicy,
+    QScrollArea,
     QSpinBox,
-    QTableWidget,
-    QTableWidgetItem,
     QVBoxLayout,
+    QWidget,
 )
 
 from pyrpoc.core.data import Image
-from pyrpoc.core.input_requests import InputRequests
 from pyrpoc.core.library import Library
-from pyrpoc.core.mask import Mask
+from pyrpoc.core.mask import MASKS, Mask
 from pyrpoc.core.panels import DataPanel, data_panel_registry
+from pyrpoc.core.program_inputs import ProgramInputs
 from pyrpoc.core.program_output import ProgramOutput
 from pyrpoc.plugins.panels.mask_editor.range_slider import RangeSlider
 from pyrpoc.plugins.panels.mask_editor.transforms import normalize_channels
-from pyrpoc.shared.widgets.table import horizontal_header, vertical_header
 
 from .canvas import MaskImageView, MaskRoi, Threshold
 from .dialog import RoiThresholdDialog
+from .sidebar import MaskPicker, RegionList, hint, section_title
 
 CHANNEL_COLORS = tuple(
     np.array(rgb, dtype=np.float32)
@@ -58,6 +58,16 @@ CHANNEL_COLORS = tuple(
     )
 )
 
+# The sidebar's width beside the image, and the narrowest the image may get beside it.
+SIDEBAR_WIDTH = 260
+MIN_CANVAS_WIDTH = 320
+# Below this width, a sidebar under the image stacks its two columns.
+TWO_COLUMN_WIDTH = 480
+# While the sidebar is under the image: the tallest a list may get, and the share of the
+# panel's height the sidebar may take before it scrolls.
+LIST_HEIGHT_BELOW = 140
+SIDEBAR_SHARE_BELOW = 0.45
+
 
 def write_mask(path: str, mask: np.ndarray) -> Path:
     """Export a 2-D mask to an image file; nothing here reads it back."""
@@ -70,82 +80,169 @@ def write_mask(path: str, mask: np.ndarray) -> Path:
 
 @data_panel_registry.register("mask_editor")
 class MaskEditorPanel(DataPanel[Image]):
-    """Draw thresholded polygon ROIs over an acquired image, and send the mask
-    they make to a mask input."""
+    """Draw thresholded polygon ROIs over an acquired image, one set per mask. Every edit
+    rewrites the mask being drawn in the drawn masks, which programs read."""
 
     display_name = "Mask editor"
     group = "Mask editors"
     order = 30
     misc = True
     renders = Image
-    # Send answers a mask input's request with the drawn mask.
-    supplies = (Mask,)
 
-    def __init__(self, library: Library, requests: InputRequests):
-        super().__init__(library, requests)
-        self.setObjectName("maskEditorRoot")
-        self.setStyleSheet(
-            "#maskEditorRoot, #maskEditorRoot QWidget { background: transparent; }"
-            "#maskEditorRoot QGraphicsView, #maskEditorRoot QTableWidget"
-            " { background: transparent; }"
-        )
+    def __init__(self, library: Library, inputs: ProgramInputs):
+        super().__init__(library, inputs)
+        # The ROIs of each mask, by id, and the mask being drawn on: "" until one is chosen.
+        self.drafts: dict[str, list[MaskRoi]] = {}
+        self.current = ""
         self._rois: list[MaskRoi] = []
         self.apply_new_data(None)
 
-        column = QVBoxLayout(self.body)
-        column.addLayout(self.build_channels_row())
-        column.addLayout(self.build_threshold_row())
         self.scene = QGraphicsScene(self)
         self.image_item = QGraphicsPixmapItem()
         self.scene.addItem(self.image_item)
         self.image_view = MaskImageView(self.scene, self)
-        self.image_view.setMinimumSize(480, 320)
-        column.addWidget(self.image_view, 1)
-        self.roi_table = self.build_roi_table()
-        column.addWidget(self.roi_table)
-        column.addLayout(self.build_name_row())
-        column.addLayout(self.build_button_row())
+        self.image_view.setMinimumSize(200, 200)
+        self.sidebar = QWidget()
+        self.columns = QBoxLayout(QBoxLayout.Direction.TopToBottom, self.sidebar)
+        self.columns.setContentsMargins(0, 0, 0, 0)
+        self.columns.setSpacing(16)
+        self.columns.addWidget(self.build_masks_column(), 1)
+        self.columns.addWidget(self.build_details_column(), 1)
+        self.split = QBoxLayout(QBoxLayout.Direction.LeftToRight, self.body)
+        self.split.setContentsMargins(0, 4, 0, 0)
+        self.split.setSpacing(12)
+        self.split.addWidget(self.image_view, 1)
+        self.split.addWidget(self.build_sidebar_scroll())
 
         self.rebuild_channel_boxes()
         self.reset_threshold_controls()
         self.update_view_image()
-        self.requests_changed()
+        inputs.subscribe(self.on_input_changed)
+        self.show_masks()
         self.connect_source()
+        self.arrange()
 
-    def build_channels_row(self) -> QHBoxLayout:
+    def build_sidebar_scroll(self) -> QScrollArea:
+        """The sidebar in a frameless scroll area, so a small dock scrolls it rather than
+        refusing to shrink."""
+        self.sidebar_scroll = QScrollArea(self.body)
+        self.sidebar_scroll.setWidget(self.sidebar)
+        self.sidebar_scroll.setWidgetResizable(True)
+        self.sidebar_scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+        self.sidebar_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        # Painted by the panel behind it, so the sidebar sits on the panel's own background.
+        self.sidebar_scroll.setStyleSheet(
+            "QScrollArea, QScrollArea > QWidget > QWidget { background: transparent; }"
+        )
+        return self.sidebar_scroll
+
+    def build_masks_column(self) -> QWidget:
+        """The drawn masks, with New, Delete and Export under them."""
+        column = QWidget(self.sidebar)
+        layout = QVBoxLayout(column)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(section_title("Masks", column))
+        self.mask_picker = MaskPicker(column)
+        self.mask_picker.chosen.connect(self.choose_mask)
+        self.mask_picker.renamed.connect(self.rename_mask)
+        layout.addWidget(self.mask_picker, 1)
+        self.masks_hint = hint("Draw on the image to start a mask.", column)
+        layout.addWidget(self.masks_hint)
+        buttons = QHBoxLayout()
+        new_btn = QPushButton("New", column)
+        new_btn.setToolTip("Start another mask")
+        new_btn.clicked.connect(self.new_mask)
+        self.delete_btn = QPushButton("Delete", column)
+        self.delete_btn.setToolTip("Delete the selected mask")
+        self.delete_btn.clicked.connect(self.delete_mask)
+        self.export_btn = QPushButton("Export…", column)
+        self.export_btn.setToolTip("Save the selected mask as an image file")
+        self.export_btn.clicked.connect(self.save_mask)
+        for button in (new_btn, self.delete_btn, self.export_btn):
+            buttons.addWidget(button)
+        layout.addLayout(buttons)
+        layout.addStretch(0)
+        return column
+
+    def build_details_column(self) -> QWidget:
+        """The selected mask's regions, then how new regions are drawn."""
+        column = QWidget(self.sidebar)
+        layout = QVBoxLayout(column)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(section_title("Regions", column))
+        self.region_list = RegionList(column)
+        self.region_list.customContextMenuRequested.connect(self.show_roi_menu)
+        layout.addWidget(self.region_list, 1)
+        self.regions_hint = hint("Drag on the image to add a region.", column)
+        layout.addWidget(self.regions_hint)
+        layout.addSpacing(12)
+        layout.addWidget(section_title("Drawing", column))
+        layout.addLayout(self.build_channels_row(column))
+        layout.addLayout(self.build_threshold_rows(column))
+        layout.addStretch(0)
+        return column
+
+    def build_channels_row(self, parent: QWidget) -> QHBoxLayout:
         self.channels_row = QHBoxLayout()
-        self.channels_row.addWidget(QLabel("Channels:", self))
+        self.channels_row.addWidget(QLabel("Show", parent))
         self.channel_boxes: list[QCheckBox] = []
         return self.channels_row
 
-    def build_threshold_row(self) -> QHBoxLayout:
-        """The threshold controls: a checkbox turning thresholds on, and a span between two
-        handles, each with its number beside it."""
+    def build_threshold_rows(self, parent: QWidget) -> QVBoxLayout:
+        """A checkbox turning thresholds on, the span between two handles, and the span's ends
+        as numbers."""
         # Off by default, so a drawn shape is the mask unless a threshold is asked for.
-        self.apply_thresholds = QCheckBox("Apply thresholds", self)
+        self.apply_thresholds = QCheckBox("Keep only pixels in range", parent)
         self.apply_thresholds.setToolTip(
-            "On: an ROI drawn now keeps only the pixels inside the span. "
-            "Off: it keeps every pixel of the drawn shape."
+            "On: a region drawn now keeps only the pixels inside the span, on the shown "
+            "channels. Off: it keeps every pixel of the drawn shape."
         )
         self.apply_thresholds.toggled.connect(self.on_apply_thresholds_toggled)
-        self.low_spin = QSpinBox(self)
-        self.high_spin = QSpinBox(self)
-        for spin in (self.low_spin, self.high_spin):
-            spin.setFixedWidth(74)
-            spin.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            spin.valueChanged.connect(self.on_threshold_changed)
-        self.threshold_slider = RangeSlider(self)
+        self.threshold_slider = RangeSlider(parent)
         self.threshold_slider.setToolTip("Pixels inside the accented span count toward the mask.")
         self.threshold_slider.values_changed.connect(self.on_slider_changed)
-
+        self.low_spin = QSpinBox(parent)
+        self.high_spin = QSpinBox(parent)
+        ends = QHBoxLayout()
+        for label, spin in (("Low", self.low_spin), ("High", self.high_spin)):
+            spin.valueChanged.connect(self.on_threshold_changed)
+            ends.addWidget(QLabel(label, parent))
+            ends.addWidget(spin, 1)
         self.enable_threshold_controls(False)
+        rows = QVBoxLayout()
+        rows.addWidget(self.apply_thresholds)
+        rows.addWidget(self.threshold_slider)
+        rows.addLayout(ends)
+        return rows
 
-        row = QHBoxLayout()
-        row.addWidget(self.apply_thresholds)
-        row.addWidget(self.low_spin)
-        row.addWidget(self.threshold_slider, 1)
-        row.addWidget(self.high_spin)
-        return row
+    def resizeEvent(self, event: QResizeEvent | None) -> None:
+        super().resizeEvent(event)
+        self.arrange()
+
+    def arrange(self) -> None:
+        """Put the sidebar beside the image in a wide dock, and under it in a tall one."""
+        # The panel's size, not the body's, which is laid out only after this runs.
+        width, height = self.width(), self.height() - self.source.height()
+        beside = width >= SIDEBAR_WIDTH + MIN_CANVAS_WIDTH and width >= 0.9 * height
+        if beside:
+            self.split.setDirection(QBoxLayout.Direction.LeftToRight)
+            self.columns.setDirection(QBoxLayout.Direction.TopToBottom)
+            self.sidebar_scroll.setFixedWidth(SIDEBAR_WIDTH)
+            self.sidebar_scroll.setMaximumHeight(16_777_215)
+        else:
+            self.split.setDirection(QBoxLayout.Direction.TopToBottom)
+            two = width >= TWO_COLUMN_WIDTH
+            direction = (
+                QBoxLayout.Direction.LeftToRight if two else QBoxLayout.Direction.TopToBottom
+            )
+            self.columns.setDirection(direction)
+            self.sidebar_scroll.setMinimumWidth(0)
+            self.sidebar_scroll.setMaximumWidth(16_777_215)
+            fits = self.sidebar.sizeHint().height()
+            self.sidebar_scroll.setMaximumHeight(min(fits, int(height * SIDEBAR_SHARE_BELOW)))
+        list_height = 16_777_215 if beside else LIST_HEIGHT_BELOW
+        self.mask_picker.setMaximumHeight(list_height)
+        self.region_list.setMaximumHeight(list_height)
 
     def enable_threshold_controls(self, enabled: bool) -> None:
         for control in (self.low_spin, self.high_spin, self.threshold_slider):
@@ -155,67 +252,56 @@ class MaskEditorPanel(DataPanel[Image]):
         self.enable_threshold_controls(checked)
         self.update_view_image()
 
-    def build_name_row(self) -> QHBoxLayout:
-        row = QHBoxLayout()
-        row.addWidget(QLabel("Name:", self))
-        self.name_edit = QLineEdit(self)
-        self.name_edit.setPlaceholderText("what this mask is of")
-        self.name_edit.returnPressed.connect(self.send_mask)
-        row.addWidget(self.name_edit, 1)
-        self.send_btn = QPushButton("Send", self)
-        self.send_btn.clicked.connect(self.send_mask)
-        row.addWidget(self.send_btn)
-        return row
+    def masks(self) -> tuple[Mask, ...]:
+        return self.inputs.get(MASKS.key)
 
-    def requests_changed(self) -> None:
-        """Light up Send while a mask input is waiting for a mask."""
-        waiting = self.requests.is_open(Mask)
-        self.send_btn.setEnabled(waiting)
-        self.send_btn.setDefault(waiting)
-        self.send_btn.setToolTip(
-            "Send this mask to the input waiting for it"
-            if waiting
-            else "Press Take from Mask Editor on a mask input first"
-        )
+    def show_masks(self) -> None:
+        masks = self.masks()
+        self.mask_picker.show_masks(masks, self.current)
+        # An empty list is replaced by its hint, so the sidebar says what to do instead of
+        # showing a blank box.
+        self.mask_picker.setVisible(bool(masks))
+        self.masks_hint.setVisible(not masks)
 
-    def build_button_row(self) -> QHBoxLayout:
-        row = QHBoxLayout()
-        preview_btn = QPushButton("Preview", self)
-        preview_btn.clicked.connect(self.preview_mask)
-        save_btn = QPushButton("Save mask...", self)
-        save_btn.setToolTip("Export a PNG. Not needed to use the mask here.")
-        save_btn.clicked.connect(self.save_mask)
-        row.addWidget(preview_btn)
-        row.addWidget(save_btn)
-        row.addStretch(1)
-        return row
+    def on_input_changed(self, key: str) -> None:
+        """Follow the drawn masks, which another Mask Editor may have changed."""
+        if key != MASKS.key:
+            return
+        ids = {mask.id for mask in self.masks()}
+        self.drafts = {mask_id: rois for mask_id, rois in self.drafts.items() if mask_id in ids}
+        if self.current and self.current not in ids:
+            self.choose_mask("")
+        self.show_masks()
+        self.update_view_image()
 
-    def build_roi_table(self) -> QTableWidget:
-        """A read-only table of the drawn ROIs and their thresholds."""
-        # Thresholds change through the row's context menu, so an editable cell would promise an
-        # edit that does nothing.
-        table = QTableWidget(0, 3, self)
-        table.setHorizontalHeaderLabels(["Low", "High", "Channels"])
-        table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        table.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
-        table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
-        table.setCornerButtonEnabled(False)
-        horizontal_header(table).setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
-        horizontal_header(table).setHighlightSections(False)
-        vertical_header(table).setHighlightSections(False)
-        table.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
-        table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
-        table.customContextMenuRequested.connect(self.show_roi_menu)
-        return table
+    def choose_mask(self, mask_id: str) -> None:
+        """Draw on mask ``mask_id`` from now on; "" draws on none until an ROI starts one."""
+        self.current = mask_id
+        self._rois = self.drafts.setdefault(mask_id, []) if mask_id else []
+        self.sync_rois()
+        self.update_view_image()
+        self.state_changed.emit()
 
-    def fit_roi_table_height(self) -> None:
-        """Size the table to its rows, up to five."""
-        # So it neither swallows the image nor leaves an empty slab under it.
-        header = horizontal_header(self.roi_table).height()
-        row_height = vertical_header(self.roi_table).defaultSectionSize()
-        rows = min(max(self.roi_table.rowCount(), 1), 5)
-        self.roi_table.setFixedHeight(header + rows * row_height + 4)
+    def new_mask(self) -> None:
+        """Add an empty mask on the image's grid, and draw on it."""
+        mask = Mask(np.zeros((self._h, self._w), dtype=np.uint8), self.free_label(), Mask.new_id())
+        # Chosen before it is written, so the list selects it when it hears of it.
+        self.drafts[mask.id] = []
+        self.choose_mask(mask.id)
+        self.inputs.set(MASKS.key, (*self.masks(), mask))
+
+    def free_label(self) -> str:
+        taken = {mask.label for mask in self.masks()}
+        return next(f"mask {n}" for n in itertools.count(1) if f"mask {n}" not in taken)
+
+    def delete_mask(self) -> None:
+        gone = self.current
+        if gone:
+            self.inputs.set(MASKS.key, tuple(mask for mask in self.masks() if mask.id != gone))
+
+    def rename_mask(self, mask_id: str, label: str) -> None:
+        masks = tuple(replace(m, label=label) if m.id == mask_id else m for m in self.masks())
+        self.inputs.set(MASKS.key, masks)
 
     def apply_new_data(self, image_data: np.ndarray | None) -> None:
         """Take a ``(C, H, W)`` frame, or a blank one when nothing is bound."""
@@ -233,7 +319,7 @@ class MaskEditorPanel(DataPanel[Image]):
         clear_layout_after(self.channels_row, 1)
         self.channel_boxes = []
         for idx in range(self._data.shape[0]):
-            box = QCheckBox(f"C{idx + 1}", self)
+            box = QCheckBox(f"C{idx + 1}", self.sidebar)
             box.setChecked(True)
             box.toggled.connect(lambda checked, i=idx: self.on_channel_toggled(i, checked))
             self.channel_boxes.append(box)
@@ -270,13 +356,18 @@ class MaskEditorPanel(DataPanel[Image]):
         self.reset_to(None)
 
     def reset_to(self, scaled: np.ndarray | None) -> None:
-        """Start over on ``scaled``: no ROIs, fresh channels and thresholds."""
+        """Start over on ``scaled``: fresh channels and thresholds, keeping only the ROIs of
+        masks drawn on a grid of its shape."""
+        # An ROI is in pixels of the image it was drawn on, so on another grid it is misplaced.
         self.apply_new_data(scaled)
-        self._rois.clear()
+        on_grid = {m.id for m in self.masks() if m.array.shape == (self._h, self._w)}
+        self.drafts = {mask_id: rois for mask_id, rois in self.drafts.items() if mask_id in on_grid}
+        self._rois = self.drafts.setdefault(self.current, []) if self.current else []
         self.sync_rois()
         self.rebuild_channel_boxes()
         self.reset_threshold_controls()
         self.update_view_image()
+        self.image_view.fit()
 
     def clamp_scene_point(self, point: QPointF) -> QPointF:
         x = min(max(point.x(), 0.0), float(self._w - 1))
@@ -312,6 +403,8 @@ class MaskEditorPanel(DataPanel[Image]):
         return (high, low) if high < low else (low, high)
 
     def update_view_image(self) -> None:
+        """Draw the shown channels, whiten what a threshold keeps, and tint the pixels of the
+        mask being drawn."""
         display = np.zeros((self._h, self._w, 3), dtype=np.float32)
         low, high = self.coerced_thresholds()
         active = np.zeros((self._h, self._w), dtype=bool)
@@ -326,44 +419,58 @@ class MaskEditorPanel(DataPanel[Image]):
         # Whitening shows what a threshold keeps; with none, the image is left plain.
         if self.apply_thresholds.isChecked():
             display[active] = 255
+        lit = self.current_pixels()
+        if lit is not None:
+            # The mask itself, not just the outlines, so a thresholded region shows what it keeps.
+            tint = self.palette().color(QPalette.ColorRole.Highlight)
+            display[lit] = display[lit] * 0.45 + np.array(tint.getRgb()[:3]) * 0.55
 
-        rgb = display.astype(np.uint8)
+        rgb = np.ascontiguousarray(display.astype(np.uint8))
         qimg = QImage(rgb.tobytes(), self._w, self._h, 3 * self._w, QImage.Format.Format_RGB888)
         self._display_qimage = qimg.copy()
         self.image_item.setPixmap(QPixmap.fromImage(self._display_qimage))
         self.scene.setSceneRect(QRectF(self._display_qimage.rect()))
+
+    def current_pixels(self) -> np.ndarray | None:
+        """The lit pixels of the mask being drawn, if it is on this image's grid."""
+        mask = next((m for m in self.masks() if m.id == self.current), None)
+        if mask is None or mask.array.shape != (self._h, self._w):
+            return None
+        return mask.array > 0
 
     def add_roi(self, points: list[tuple[float, float]]) -> None:
         """File a drawn polygon. A click without a drag gives fewer than three
         points, which is not a region."""
         if len(points) < 3:
             return
+        if not self.current:
+            self.new_mask()
         threshold = None
         if self.apply_thresholds.isChecked():
             low, high = self.coerced_thresholds()
             threshold = Threshold(float(low), float(high), self._channel_visibility.copy())
         self._rois.append(MaskRoi(points=points, threshold=threshold))
         self.sync_rois()
+        self.put_mask()
 
     def sync_rois(self) -> None:
-        """Rebuild the ROI table and the drawn outlines together."""
+        """Rebuild the region list and the drawn outlines together."""
         # Both are numbered by position, so editing either in place would put them out of step.
-        self.roi_table.setRowCount(len(self._rois))
-        for row, roi in enumerate(self._rois):
-            for col, text in enumerate(threshold_cells(roi.threshold)):
-                item = QTableWidgetItem(text)
-                item.setFlags(Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsEnabled)
-                self.roi_table.setItem(row, col, item)
-        self.fit_roi_table_height()
+        self.region_list.show_regions(self._rois)
+        self.region_list.setVisible(bool(self._rois))
+        self.regions_hint.setVisible(not self._rois)
+        self.delete_btn.setEnabled(bool(self.current))
+        self.export_btn.setEnabled(bool(self.current))
         self.image_view.set_rois(self._rois)
 
     def show_roi_menu(self, pos: QPoint) -> None:
-        row = self.roi_table.rowAt(pos.y())
-        viewport = self.roi_table.viewport()
-        if row < 0 or viewport is None:
+        item = self.region_list.itemAt(pos)
+        viewport = self.region_list.viewport()
+        if item is None or viewport is None:
             return
-        self.roi_table.selectRow(row)
-        menu = QMenu(self.roi_table)
+        row = self.region_list.row(item)
+        self.region_list.setCurrentRow(row)
+        menu = QMenu(self.region_list)
         # Connected rather than read from exec()'s return: Qt hides the menu
         # before it emits, so the dialog opens with the menu already gone.
         change = QAction("Change thresholds...", menu)
@@ -389,6 +496,7 @@ class MaskEditorPanel(DataPanel[Image]):
         changed = replace(threshold, low=float(low), high=float(high))
         self._rois[row] = replace(self._rois[row], threshold=changed)
         self.sync_rois()
+        self.put_mask()
 
     def delete_roi(self, row: int) -> None:
         # A frame of a new shape while the menu was open clears the ROIs.
@@ -396,6 +504,7 @@ class MaskEditorPanel(DataPanel[Image]):
             return
         del self._rois[row]
         self.sync_rois()
+        self.put_mask()
 
     def rois(self) -> list[MaskRoi]:
         return self._rois
@@ -413,51 +522,62 @@ class MaskEditorPanel(DataPanel[Image]):
             return None
         return mask_from_rois(rois, self._data)
 
-    def preview_mask(self) -> None:
-        mask = self.generate_mask(self._rois)
-        if mask is None:
-            QMessageBox.warning(self, "No ROI", "Draw at least one ROI before previewing.")
-            return
-        qimg = QImage(
-            mask.tobytes(), self._w, self._h, self._w, QImage.Format.Format_Grayscale8
-        ).copy()
-        dlg = QDialog(self)
-        dlg.setWindowTitle("Mask Preview")
-        layout = QVBoxLayout(dlg)
-        label = QLabel(dlg)
-        label.setPixmap(QPixmap.fromImage(qimg))
-        layout.addWidget(label)
-        dlg.resize(max(320, self._w), max(240, self._h))
-        dlg.exec()
+    def put_mask(self) -> None:
+        """Rewrite the mask being drawn from its ROIs; with none, it is left empty."""
+        # Called on the user's edits only, never on a new frame, so a live run's frames do not
+        # rewrite the masks under it.
+        drawn = self.generate_mask(self._rois)
+        array = np.zeros((self._h, self._w), dtype=np.uint8) if drawn is None else drawn
+        masks = self.masks()
+        self.inputs.set(
+            MASKS.key, tuple(replace(m, array=array) if m.id == self.current else m for m in masks)
+        )
 
-    def send_mask(self) -> None:
-        """Answer the waiting mask input with the drawn mask."""
-        if not self.requests.is_open(Mask):
-            return
-        mask = self.generate_mask(self._rois)
-        if mask is None:
-            QMessageBox.warning(self, "No ROI", "Draw at least one ROI before sending.")
-            return
-        self.requests.answer(Mask(mask, self.name_edit.text().strip()))
-        self.name_edit.clear()
+    def detach(self) -> None:
+        super().detach()
+        self.inputs.unsubscribe(self.on_input_changed)
+
+    def export_persistence_state(self) -> dict[str, Any]:
+        rois = {mask_id: [roi.to_dict() for roi in rois] for mask_id, rois in self.drafts.items()}
+        return {"current": self.current, "rois": rois}
+
+    def import_persistence_state(self, state: dict[str, Any]) -> None:
+        """Take each mask's ROIs and the mask being drawn from session JSON, skipping ROIs
+        that are malformed or belong to a mask that is gone."""
+        ids = {mask.id for mask in self.masks()}
+        saved = state.get("rois")
+        for mask_id, rows in saved.items() if isinstance(saved, dict) else ():
+            if mask_id in ids and isinstance(rows, list):
+                self.drafts[mask_id] = list(filter(None, map(saved_roi, rows)))
+        current = state.get("current")
+        self.choose_mask(current if current in ids else "")
+        self.show_masks()
 
     def save_mask(self) -> None:
-        mask = self.generate_mask(self._rois)
+        mask = next((m for m in self.masks() if m.id == self.current), None)
         if mask is None:
-            QMessageBox.warning(self, "No ROI", "Draw at least one ROI before saving.")
+            QMessageBox.warning(self, "No mask", "Select a mask to export.")
             return
         path, _ = QFileDialog.getSaveFileName(
-            self, "Save Mask", "", "PNG (*.png);;TIFF (*.tif *.tiff);;All Files (*)"
+            self, "Export Mask", mask.label, "PNG (*.png);;TIFF (*.tif *.tiff);;All Files (*)"
         )
         if not path:
             return
         # A file boundary: an unwritable path or an unknown extension.
         try:
-            written = write_mask(path, mask)
+            written = write_mask(path, np.where(mask.array > 0, 255, 0).astype(np.uint8))
         except (OSError, cv2.error) as exc:
-            QMessageBox.critical(self, "Save Failed", f"Failed to save mask to {path}: {exc}")
+            QMessageBox.critical(self, "Export Failed", f"Failed to save mask to {path}: {exc}")
             return
-        QMessageBox.information(self, "Mask Saved", f"Wrote a mask to {written}.")
+        QMessageBox.information(self, "Mask Exported", f"Wrote a mask to {written}.")
+
+
+def saved_roi(raw: Any) -> MaskRoi | None:
+    """An ROI from session JSON, or None for one that is malformed."""
+    try:
+        return MaskRoi.from_dict(raw)
+    except ValueError:
+        return None
 
 
 def mask_from_rois(rois: list[MaskRoi], data: np.ndarray) -> np.ndarray:
@@ -488,18 +608,11 @@ def in_range(data: np.ndarray, threshold: Threshold) -> np.ndarray:
     return active
 
 
-def threshold_cells(threshold: Threshold | None) -> tuple[str, str, str]:
-    """An ROI's Low, High and Channels cells; dashes for a shape kept whole."""
-    if threshold is None:
-        return "-", "-", "-"
-    channels = ",".join(str(i + 1) for i, on in enumerate(threshold.active_channels) if on)
-    return f"{threshold.low:.1f}", f"{threshold.high:.1f}", channels or "-"
-
-
 def clear_layout_after(layout: QLayout, keep: int) -> None:
     """Delete every item in ``layout`` past the first ``keep``."""
     while layout.count() > keep:
         item = layout.takeAt(keep)
         widget = item.widget() if item is not None else None
         if widget is not None:
+            widget.hide()
             widget.deleteLater()

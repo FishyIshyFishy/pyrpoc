@@ -18,9 +18,10 @@ from PyQt6.QtWidgets import (
 )
 
 from pyrpoc.core.data import Image
-from pyrpoc.core.input_requests import InputRequests, PixelPick
 from pyrpoc.core.library import Library
 from pyrpoc.core.panels import DataPanel, data_panel_registry
+from pyrpoc.core.pixel_pick import PICK, PixelPick
+from pyrpoc.core.program_inputs import ProgramInputs
 from pyrpoc.core.program_output import ProgramOutput
 from pyrpoc.shared.widgets.levels import autoscale_levels, mono_levels
 
@@ -57,11 +58,9 @@ class ImagePanel(DataPanel[Image]):
     group = "2D Image Views"
     order = 21
     renders = Image
-    # A click on a pixel answers a pixel request.
-    supplies = (PixelPick,)
 
-    def __init__(self, library: Library, requests: InputRequests):
-        super().__init__(library, requests)
+    def __init__(self, library: Library, inputs: ProgramInputs):
+        super().__init__(library, inputs)
         pg.setConfigOptions(imageAxisOrder="row-major")
         self._tiles: list[ChannelTile] = []
         self._pending_state: list[TileState] = []
@@ -131,13 +130,10 @@ class ImagePanel(DataPanel[Image]):
         hist_widget.item.sigLevelsChanged.connect(
             lambda _item, i=index: self.on_lut_levels_changed(i)
         )
-        self.apply_pick_cursor(tile)
         return tile
 
     def build_plot(self, parent: QWidget) -> tuple[pg.PlotWidget, pg.ImageItem]:
-        """A tile's plot and image, wired to answer a click."""
-        # Wired at build rather than when a pick is requested, because a tile can appear after
-        # arming.
+        """A tile's plot and image, wired to pick the pixel under a click."""
         plot = pg.PlotWidget(parent)
         plot.setMenuEnabled(False)
         plot.hideButtons()
@@ -152,35 +148,17 @@ class ImagePanel(DataPanel[Image]):
         scene.sigMouseClicked.connect(lambda event: self.on_scene_clicked(event, image_item))
         return plot, image_item
 
-    @property
-    def armed(self) -> bool:
-        """Whether a click on a pixel would answer a pixel request."""
-        return self.requests.is_open(PixelPick)
-
-    def requests_changed(self) -> None:
-        for tile in self._tiles:
-            self.apply_pick_cursor(tile)
-
-    def apply_pick_cursor(self, tile: ChannelTile) -> None:
-        """Show a crosshair over the plot while a pixel request is open."""
-        # Over the plot only: it means "clicking here moves hardware", so it must not appear where
-        # a click does nothing.
-        if self.armed:
-            tile.plot.setCursor(Qt.CursorShape.CrossCursor)
-        else:
-            tile.plot.unsetCursor()
-
     def on_scene_clicked(self, event: Any, image_item: pg.ImageItem) -> None:
-        """Answer the pixel request with the pixel under a left click."""
-        if not self.armed or event.button() != Qt.MouseButton.LeftButton:
+        """Pick the pixel under a left click."""
+        if event.button() != Qt.MouseButton.LeftButton:
             return
         point = image_item.mapFromScene(event.scenePos())
-        if self.answer_pixel(int(np.floor(point.x())), int(np.floor(point.y()))):
+        if self.pick_pixel(int(np.floor(point.x())), int(np.floor(point.y()))):
             event.accept()
 
-    def answer_pixel(self, x: int, y: int) -> bool:
-        """Answer the pixel request with pixel ``(x, y)`` of the image on screen,
-        returning whether it is a pixel of that image."""
+    def pick_pixel(self, x: int, y: int) -> bool:
+        """Set the pick to pixel ``(x, y)`` of the image on screen, returning whether it is a
+        pixel of that image."""
         # Checked against the frame: a click just outside the pixels is still
         # inside the view box, and an out-of-range pixel would park the galvos
         # outside the scan.
@@ -190,7 +168,7 @@ class ImagePanel(DataPanel[Image]):
         _, height, width = image.array.shape
         if not (0 <= x < width and 0 <= y < height):
             return False
-        self.requests.answer(PixelPick(program_output, x, y))
+        self.inputs.set(PICK.key, PixelPick.on(program_output, x, y))
         return True
 
     def on_autoscale_toggled(self, index: int) -> None:
@@ -254,7 +232,7 @@ class ImagePanel(DataPanel[Image]):
                     "max_val": tile.max_val,
                 }
                 for index, tile in enumerate(self._tiles)
-            ]
+            ],
         }
 
     def import_persistence_state(self, state: dict[str, Any]) -> None:

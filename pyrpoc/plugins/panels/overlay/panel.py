@@ -19,9 +19,9 @@ from PyQt6.QtWidgets import (
 )
 
 from pyrpoc.core.data import Image
-from pyrpoc.core.input_requests import InputRequests
 from pyrpoc.core.library import Library
 from pyrpoc.core.panels import DataPanel, data_panel_registry
+from pyrpoc.core.program_inputs import ProgramInputs
 from pyrpoc.core.program_output import ProgramOutput
 from pyrpoc.shared.widgets.colors import color_for_index, color_map_from_rgb
 from pyrpoc.shared.widgets.levels import autoscale_levels, mono_levels
@@ -61,8 +61,8 @@ class OverlayPanel(DataPanel[Image]):
     order = 20
     renders = Image
 
-    def __init__(self, library: Library, requests: InputRequests):
-        super().__init__(library, requests)
+    def __init__(self, library: Library, inputs: ProgramInputs):
+        super().__init__(library, inputs)
         pg.setConfigOptions(imageAxisOrder="row-major")
         self._controls: list[ChannelControl] = []
         self._pending_state: list[ControlState] = []

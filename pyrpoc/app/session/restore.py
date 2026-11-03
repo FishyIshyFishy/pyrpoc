@@ -81,7 +81,7 @@ def restore_devices(state: WorkingState, app: Application) -> list[Device]:
 def restore_panels(state: ScreenState, app: Application, window: MainWindow) -> None:
     for row in state.views:
         try:
-            panel = data_panel_registry.get(row.key)(app.library, app.requests)
+            panel = data_panel_registry.get(row.key)(app.library, app.inputs)
             if row.instance_id:
                 panel.instance_id = row.instance_id
             panel.user_label = row.user_label
@@ -99,11 +99,12 @@ def apply(state: SessionState, app: Application, window: MainWindow) -> None:
     window.clear_panels()
     app.inventory.clear()
     reopen = restore_devices(working, app)
+    # Before the panels, since a panel's saved target names a slot of an input's value.
+    app.inputs.clear()
+    app.inputs.load_dict(working.program_inputs)
     restore_panels(screen, app, window)
     for device in reopen:
         window.device_docks.open(device)
-    app.inputs.clear()
-    app.inputs.load_dict(working.program_inputs)
     app.runs.set_save(
         name=working.save.name, directory=working.save.directory, enabled=working.save.enabled
     )

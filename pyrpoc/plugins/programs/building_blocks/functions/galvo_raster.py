@@ -9,7 +9,7 @@ import numpy as np
 from pyrpoc.core.program import RunContext
 from pyrpoc.plugins.devices import DAQ, Galvo
 
-from ..program_inputs import MASKS, SAMPLE_RATE_HZ, ScanGeometry
+from ..program_inputs import SAMPLE_RATE_HZ, ScanGeometry, mask_bindings
 from .daq_tasks import acquire
 from .mask_ttl import mask_ttl
 
@@ -52,7 +52,7 @@ class Raster:
         sample_rate_hz = ctx.inputs[SAMPLE_RATE_HZ]
         daq = ctx.devices[DAQ]
         samples_per_pixel = pixel_samples(scan.dwell_time_us, sample_rate_hz)
-        ttl = mask_ttl(ctx.inputs[MASKS], scan, samples_per_pixel, daq.config.device_name)
+        ttl = mask_ttl(mask_bindings(ctx.inputs), scan, samples_per_pixel, daq.config.device_name)
         waveform = raster_waveform(scan, samples_per_pixel)
         return cls(daq, ctx.devices[Galvo], scan, sample_rate_hz, samples_per_pixel, waveform, ttl)
 

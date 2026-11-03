@@ -10,8 +10,8 @@ from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtWidgets import QComboBox, QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
 from pyrpoc.core.data import Data
-from pyrpoc.core.input_requests import InputRequests
 from pyrpoc.core.library import Library
+from pyrpoc.core.program_inputs import ProgramInputs
 from pyrpoc.core.program_output import ProgramOutput
 from pyrpoc.core.registry import Registry
 
@@ -25,8 +25,6 @@ class Panel(QWidget):
 
     display_name: str = "Panel"
     registry_key: str = "panel"
-    # The kinds of value this panel can answer an input request for.
-    supplies: ClassVar[tuple[type, ...]] = ()
     # Its own screen state changed, so the session is worth saving.
     state_changed = pyqtSignal()
 
@@ -112,10 +110,9 @@ class DataPanel(Panel, Generic[D]):
     # on data, not a way to look at it.
     misc: ClassVar[bool] = False
 
-    def __init__(self, library: Library, requests: InputRequests):
+    def __init__(self, library: Library, inputs: ProgramInputs):
         super().__init__()
-        self.requests = requests
-        requests.subscribe(self.requests_changed)
+        self.inputs = inputs
         root = QVBoxLayout(self)
         root.setContentsMargins(4, 4, 4, 4)
         root.setSpacing(4)
@@ -134,9 +131,8 @@ class DataPanel(Panel, Generic[D]):
         self.refresh()
 
     def detach(self) -> None:
-        """Stop following the library and the input requests."""
+        """Stop following the library."""
         self.library.unsubscribe(self.source.refresh_sources)
-        self.requests.unsubscribe(self.requests_changed)
 
     @property
     def library(self) -> Library:
@@ -165,9 +161,6 @@ class DataPanel(Panel, Generic[D]):
 
     def clear(self) -> None:
         raise NotImplementedError
-
-    def requests_changed(self) -> None:
-        """An input request opened or closed."""
 
 
 data_panel_registry: Registry[DataPanel[Any]] = Registry("DataPanelRegistry", DataPanel)

@@ -4,11 +4,9 @@ its own ``RunnerSession``, and drops them again when another is selected."""
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any, TypeVar
 
 from PyQt6.QtCore import QObject, pyqtSignal
 
-from pyrpoc.core.input_requests import InputRequest, InputRequests
 from pyrpoc.core.program import Program
 from pyrpoc.core.program_inputs import ProgramInputs
 from pyrpoc.core.runner import Control, RunnerContext
@@ -16,12 +14,10 @@ from pyrpoc.engine.acquisition.executor import Run
 from pyrpoc.engine.acquisition.recording import Series
 from pyrpoc.engine.acquisition.runs import Runs
 
-T = TypeVar("T")
-
 
 class RunnerSession(RunnerContext):
     """The context one program's runners are attached with, and the runs they started; once
-    ``closed``, it refuses every request."""
+    ``closed``, it starts nothing and tells its runners nothing."""
 
     def __init__(self, host: RunnerHost, key: str, program: type[Program]):
         self.host = host
@@ -30,10 +26,10 @@ class RunnerSession(RunnerContext):
         self.controls: list[Control] = []
         self.started: list[Callable[[], None]] = []
         self.ended: list[Callable[[bool], None]] = []
+        self.input_watchers: list[Callable[[str], None]] = []
         self.runs: list[Run] = []
         self.failed: set[Run] = set()
         self.series: Series | None = None
-        self.pending: InputRequest[Any] | None = None
         self.closed = False
 
     @property
@@ -63,23 +59,14 @@ class RunnerSession(RunnerContext):
     def inputs(self) -> ProgramInputs:
         return self.host.inputs
 
-    @property
-    def awaiting(self) -> bool:
-        """Whether this context's input request is still open."""
-        return self.pending is not None and self.pending.open
+    def on_input_changed(self, callback: Callable[[str], None]) -> None:
+        self.input_watchers.append(callback)
 
-    def request(self, kind: type[T], prompt: str, on_answer: Callable[[T | None], None]) -> None:
-        if self.closed:
-            on_answer(None)
-            return
-        self.cancel_request()
-        self.pending = self.host.requests.request(kind, prompt, on_answer)
-        self.host.status.emit(prompt)
-
-    def cancel_request(self) -> None:
-        pending, self.pending = self.pending, None
-        if pending is not None:
-            self.host.requests.cancel(pending)
+    def input_changed(self, key: str) -> None:
+        """Tell this context's runners that the program input ``key`` changed."""
+        if not self.closed:
+            for callback in list(self.input_watchers):
+                callback(key)
 
     def add_control(self, control: Control) -> None:
         if self.closed:
@@ -115,16 +102,15 @@ class RunnerHost(QObject):
     controls_changed = pyqtSignal()
     status = pyqtSignal(str)
 
-    def __init__(self, runs: Runs, inputs: ProgramInputs, requests: InputRequests, parent: QObject):
+    def __init__(self, runs: Runs, inputs: ProgramInputs, parent: QObject):
         super().__init__(parent)
         self.runs = runs
         self.inputs = inputs
-        self.requests = requests
         self.slot: RunnerSession | None = None
 
         runs.events.run_failed.connect(self.note_failure)
         runs.events.run_finished.connect(self.forget)
-        runs.readiness_changed.connect(self.check_request_blockers)
+        inputs.subscribe(self.on_input_changed)
 
     @property
     def controls(self) -> list[Control]:
@@ -134,11 +120,6 @@ class RunnerHost(QObject):
     def running(self) -> bool:
         """Whether a run the selected program's runners started is going."""
         return self.slot is not None and self.slot.running
-
-    @property
-    def awaiting(self) -> bool:
-        """Whether the selected program's runners are waiting on an input request."""
-        return self.slot is not None and self.slot.awaiting
 
     def attach(self, key: str, program: type[Program]) -> None:
         """Replace whatever is attached with ``program``'s runners."""
@@ -153,7 +134,6 @@ class RunnerHost(QObject):
         slot, self.slot = self.slot, None
         if slot is None:
             return
-        slot.cancel_request()
         slot.closed = True
         # Nothing else can reach these runs to stop them once the slot is gone.
         for run in slot.runs:
@@ -182,13 +162,6 @@ class RunnerHost(QObject):
         if self.slot is not None and run in self.slot.runs:
             self.slot.release(run)
 
-    def check_request_blockers(self) -> None:
-        """Withdraw an open request once something its run needs is missing."""
-        # An answered request starts a run, so it cannot outlive what the run needs.
-        slot = self.slot
-        if slot is None or not slot.awaiting:
-            return
-        missing = self.runs.blockers(slot.key)
-        if missing:
-            slot.cancel_request()
-            self.status.emit("needs " + ", ".join(missing))
+    def on_input_changed(self, key: str) -> None:
+        if self.slot is not None:
+            self.slot.input_changed(key)

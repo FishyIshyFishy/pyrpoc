@@ -8,7 +8,7 @@ package builds on these nouns.
 ```
  ProgramInputs ──▶ Run ──▶ ProgramOutputs ──▶ Library ──▶ panels show them
        ▲                                                        │
-       └──── panels set program inputs, or answer input requests ◀┘
+       └──────────── panels set program inputs ◀───────────────────┘
 ```
 
 Everything the software does is this loop:
@@ -16,6 +16,14 @@ Everything the software does is this loop:
 2. A run publishes program outputs.
 3. Outputs sit in the Library, where panels show them.
 4. What the user does in panels sets program inputs.
+
+Collections are the only place parts of the app meet. The Acquisition panel
+is a view of the selected program's inputs; other panels never depend on
+which program is selected. A panel that makes something programs use, like
+the Mask Editor's masks or a click on an image, writes it into one program
+input declared in core beside its type. How a program uses it is that
+program's own inputs, like the line each mask drives. Runners may watch the
+program inputs, as arm and run waits for the next pick.
 
 **Two words used throughout:**
 - **Collection.** Something the app keeps in memory while it runs, holding
@@ -47,9 +55,8 @@ Everything the software does is this loop:
 | **ProgramInput** | The declaration of one value a program reads, like dwell time or a mask. It has a key, a label, a default and rules for valid values. **The same key means the same value in every program that declares it.** That's how a setting carries across modality changes. Declared once, next to the code that shares it, e.g. `DWELL_TIME_US = float_input("scan.dwell_time_us", ...)`; a second declaration of a key with other rules fails. |
 | **InputSection** | A labelled list of program inputs. Purely layout: how a panel groups a program's inputs on screen. |
 | **ProgramInputs** | The collection of current values for every program input, by key. Any panel may read it, set a value (validated by the input's rules) or subscribe. It's saved in the session, and a run's values go into its recording. The app's one collection is `ProgramInputsStore` (`engine/acquisition/program_inputs.py`). |
-| **InputRequest** | A panel or runner asking for a value of one type that another panel can supply. Whichever supplying panel the user acts in answers it. There's no storage: it's a question with one answer. The app keeps the open requests (`app/input_requests.py`), at most one per type, and hands them to every panel and runner. |
-| **PixelPick** | The value a click on an image supplies: the program output clicked on, plus `x` and `y` in its pixels. |
-| **Mask** | A drawn region, as a program input value. The Mask Editor supplies it; ROI and Modulation inputs hold it. It carries a label saying what it was drawn on. Held inline: in the session and in recordings it is its label, its shape and its pixels, packed one bit each and base64-encoded. |
+| **PixelPick** | The last click on one pixel of an image: the pixel, and the image's id, label and the inputs it was acquired with. Image panels write it into `PICK`; no program shows it, and arm and run turns the next one into what its program reads, such as galvo volts. |
+| **Mask** | A drawn region, with a label and an id that stays the same through edits. `MASKS` holds every drawn mask, in order. Only a Mask Editor edits it; programs that use masks show it read-only and say what each mask does with their own inputs. Held inline: in the session and in recordings each is its id, label, shape and pixels, packed one bit each and base64-encoded. |
 
 ### Program outputs: program → user
 
@@ -65,7 +72,7 @@ Everything the software does is this loop:
 
 | Noun | Definition |
 |---|---|
-| **Panel** | A dock widget: something the user sees and acts in. It reads the collections, calls their operations, and may answer input requests for the types it `supplies`. **The Acquisition panel is one.** |
+| **Panel** | A dock widget: something the user sees and acts in. It reads the collections and calls their operations. **The Acquisition panel is one.** |
 | **DataPanel** | A panel that shows one program output of the kind it `renders`, chosen with a source dropdown. |
 
 ## The rules
@@ -73,7 +80,7 @@ Everything the software does is this loop:
 1. **Data flows one way.** Only a run or loading a recording creates a
    `ProgramOutput`.
 2. **Panels never call programs, and programs never call panels.** They meet
-   only through ProgramInputs, InputRequests and the Library.
+   only through ProgramInputs and the Library.
 3. **Every panel is equal.** None is special in code. The app hands each
    panel the collections it needs.
 4. **Working state and screen state are separate.** The session saves them
@@ -88,10 +95,10 @@ Everything the software does is this loop:
 | `device_config.py` | `DeviceConfig`: a device's settings, a dataclass whose fields carry their value rules |
 | `program.py` | `Program`, `RunContext` + `program_registry` |
 | `runner.py` | `Runner`, `RunnerContext`, `Control`, `Button`, `Toggle` |
-| `program_inputs.py` | `ProgramInput` + `program_input_registry`, the value rules (int, float, choice, ...), `ProgramInputValues` (a run's values), `ProgramInputs` (protocol), `Editor`, `FieldContext` |
+| `program_inputs.py` | `ProgramInput` + `program_input_registry`, the value rules (int, float, choice, ...), `ProgramInputValues` (a run's values), `ProgramInputs` (protocol), `Editor`, `FieldValues` |
 | `input_section.py` | `InputSection` |
-| `input_requests.py` | `InputRequest`, `InputRequests` (protocol), `PixelPick` |
-| `mask.py` | `Mask`, as a program input value |
+| `pixel_pick.py` | `PixelPick`, and `PICK`, the program input holding the last one |
+| `mask.py` | `Mask`, and `MASKS`, the program input holding every drawn mask |
 | `data.py` | `Data`, `ArrayData`, `Image`, `DecayHistogram`, `RawSamples`, `Spectrum`, `Mosaic` and its `MosaicTile`, `DATA_KINDS` |
 | `program_output.py` | `ProgramOutput`, `Provenance`, `Origin` |
 | `library.py` | `Library` (protocol) |

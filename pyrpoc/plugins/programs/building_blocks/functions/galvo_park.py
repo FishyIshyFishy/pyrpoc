@@ -5,7 +5,7 @@ from __future__ import annotations
 import nidaqmx as nx
 import nidaqmx.errors
 
-from pyrpoc.core.input_requests import PixelPick
+from pyrpoc.core.pixel_pick import PixelPick
 from pyrpoc.core.program_inputs import ProgramInputs
 from pyrpoc.plugins.devices import DAQ, DaqError, Galvo
 

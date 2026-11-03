@@ -1,5 +1,5 @@
-"""Modulation: masks that drive digital lines during a scan, one row per mask
-with the port and line it drives."""
+"""Modulation: each drawn mask drives one digital line during a scan, on the port and line
+set beside it."""
 
 from __future__ import annotations
 
@@ -8,31 +8,53 @@ from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
-from PyQt6.QtCore import pyqtSignal
-from PyQt6.QtWidgets import (
-    QHBoxLayout,
-    QHeaderView,
-    QLabel,
-    QPushButton,
-    QSpinBox,
-    QTableWidget,
-    QVBoxLayout,
-    QWidget,
+from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtWidgets import QGridLayout, QLabel, QSpinBox, QWidget
+
+from pyrpoc.core.input_section import InputSection
+from pyrpoc.core.mask import MASKS, Mask
+from pyrpoc.core.program_inputs import (
+    Editor,
+    Field,
+    FieldValues,
+    ParameterError,
+    ProgramInputValues,
+    declare,
 )
 
-from pyrpoc.core.input_requests import InputRequests
-from pyrpoc.core.input_section import InputSection
-from pyrpoc.core.mask import Mask
-from pyrpoc.core.program_inputs import Editor, Field, FieldContext, ParameterError, declare
+# Wide enough for four digits, so a port or line box stays small beside the mask's name.
+SPIN_WIDTH = 56
 
-from .mask_cell import MaskCell
+
+@dataclass(frozen=True)
+class MaskLine:
+    """The port and line one drawn mask drives, by the mask's id."""
+
+    mask_id: str
+    port: int
+    line: int
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"mask_id": self.mask_id, "port": self.port, "line": self.line}
+
+    @classmethod
+    def from_value(cls, raw: Any) -> MaskLine:
+        """A line from the form (already a ``MaskLine``) or from JSON (a dict)."""
+        if isinstance(raw, MaskLine):
+            return raw
+        if not isinstance(raw, dict):
+            raise ParameterError("a mask's line must be an object with a mask id, port and line")
+        try:
+            return cls(str(raw["mask_id"]), int(raw["port"]), int(raw["line"]))
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ParameterError(f"a mask's port and line must be integers: {exc}") from exc
 
 
 @dataclass(frozen=True, eq=False)
 class MaskBinding:
-    """One mask wired to one digital output line. A row with no mask drives nothing."""
+    """One drawn mask and the digital line it drives."""
 
-    mask: Mask | None
+    mask: Mask
     port: int
     line: int
 
@@ -41,167 +63,119 @@ class MaskBinding:
         return f"{device_name}/port{self.port}/line{self.line}"
 
     def on_grid(self, height: int, width: int) -> np.ndarray:
-        """The lit pixels on a ``(height, width)`` grid; none for a row with no mask."""
-        if self.mask is None:
-            return np.zeros((height, width), dtype=bool)
         return self.mask.on_grid(height, width)
 
-    def to_dict(self) -> dict[str, Any]:
-        mask = None if self.mask is None else self.mask.to_dict()
-        return {"mask": mask, "port": self.port, "line": self.line}
 
-    @classmethod
-    def from_value(cls, raw: Any) -> MaskBinding:
-        """A binding from the form (already a ``MaskBinding``) or from JSON (a dict)."""
-        if isinstance(raw, MaskBinding):
-            return raw
-        if not isinstance(raw, dict):
-            raise ParameterError("a mask row must be an object with a mask, port and line")
-        try:
-            port, line = int(raw.get("port", 0)), int(raw.get("line", 0))
-        except (TypeError, ValueError) as exc:
-            raise ParameterError(f"a mask's port and line must be integers: {exc}") from exc
-        # A row saved before masks were held inline names a library entry, which
-        # did not outlive its session: it comes back without a mask.
-        mask = raw.get("mask")
-        return cls(None if mask is None else Mask.from_dict(mask), port, line)
+def bind_lines(masks: tuple[Mask, ...], lines: tuple[MaskLine, ...]) -> tuple[MaskBinding, ...]:
+    """Each mask with its line: the one set for it, or else the lowest line on port 0 no
+    other mask drives."""
+    # The form shows exactly this, so a mask drives the line the user sees beside it.
+    present = {mask.id for mask in masks}
+    chosen = {line.mask_id: line for line in lines if line.mask_id in present}
+    used = {(line.port, line.line) for line in chosen.values()}
+    bindings = []
+    for mask in masks:
+        if mask.id in chosen:
+            bindings.append(MaskBinding(mask, chosen[mask.id].port, chosen[mask.id].line))
+            continue
+        free = next(line for line in range(len(used) + 1) if (0, line) not in used)
+        used.add((0, free))
+        bindings.append(MaskBinding(mask, 0, free))
+    return tuple(bindings)
 
 
-@dataclass
-class MaskRow:
-    cell: MaskCell
-    port: QSpinBox
-    line: QSpinBox
+def mask_bindings(values: ProgramInputValues) -> tuple[MaskBinding, ...]:
+    """The drawn masks and the lines they drive, as a run was given them."""
+    return bind_lines(values[MASKS], values[MASK_LINES])
 
 
-class MaskTable(QWidget):
-    """A mask and the port and line it drives, one row per binding."""
+class MaskLinesTable(QWidget):
+    """One row per drawn mask: its name, then the port and line it drives. The rows follow
+    the Mask Editor's masks; only the port and line are edited here."""
 
     changed = pyqtSignal()
 
-    def __init__(self, requests: InputRequests, parent: QWidget):
+    def __init__(self, values: FieldValues, parent: QWidget):
         super().__init__(parent)
-        self.requests = requests
-        self.rows: list[MaskRow] = []
+        self.values = values
+        self.spins: list[tuple[str, QSpinBox, QSpinBox]] = []
+        self.grid = QGridLayout(self)
+        self.grid.setContentsMargins(0, 0, 0, 0)
+        self.grid.setHorizontalSpacing(8)
+        self.grid.setVerticalSpacing(4)
+        self.grid.setColumnStretch(0, 1)
 
-        root = QVBoxLayout(self)
-        root.setContentsMargins(0, 0, 0, 0)
-        root.setSpacing(4)
-        self.table = QTableWidget(0, 3, self)
-        self.table.setHorizontalHeaderLabels(["Mask", "Port", "Line"])
-        rows = self.table.verticalHeader()
-        header = self.table.horizontalHeader()
-        # Narrows for the type checker: a table builds both headers itself.
-        if rows is None or header is None:
-            raise RuntimeError("QTableWidget was built without headers")
-        rows.setVisible(False)
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
-        self.table.setMinimumHeight(90)
-        root.addWidget(self.table)
-        root.addLayout(self.build_buttons())
-        self.hint = QLabel("Add a row, then take its mask from a Mask Editor.", self)
-        self.hint.setStyleSheet("color: palette(mid);")
-        root.addWidget(self.hint)
+    def masks(self) -> tuple[Mask, ...]:
+        return self.values.get(MASKS.key)
 
-    def build_buttons(self) -> QHBoxLayout:
-        row = QHBoxLayout()
-        add_btn = QPushButton("Add mask", self)
-        remove_btn = QPushButton("Remove", self)
-        add_btn.clicked.connect(self.on_add_clicked)
-        remove_btn.clicked.connect(self.on_remove_clicked)
-        row.addWidget(add_btn)
-        row.addWidget(remove_btn)
-        row.addStretch(1)
-        return row
-
-    def add_row(self, binding: MaskBinding) -> None:
-        index = self.table.rowCount()
-        self.table.insertRow(index)
-        cell = MaskCell(self.requests, "no mask", self.table)
-        cell.set_value(binding.mask)
-        cell.changed.connect(self.changed)
-        self.table.setCellWidget(index, 0, cell)
-
-        spins = []
-        for column, value in ((1, binding.port), (2, binding.line)):
-            spin = QSpinBox(self.table)
-            spin.setRange(0, 1024)
-            spin.setValue(value)
-            spin.valueChanged.connect(self.changed)
-            self.table.setCellWidget(index, column, spin)
-            spins.append(spin)
-        self.rows.append(MaskRow(cell, *spins))
-        self.table.resizeRowsToContents()
-        self.refresh_hint()
-
-    def next_free_line(self) -> int:
-        """The lowest line no row drives."""
-        # So two rows never silently share one.
-        used = {row.line.value() for row in self.rows}
-        line = 0
-        while line in used:
-            line += 1
-        return line
-
-    def on_add_clicked(self) -> None:
-        self.add_row(MaskBinding(None, 0, self.next_free_line()))
-        self.changed.emit()
-
-    def on_remove_clicked(self) -> None:
-        index = self.table.currentRow()
-        if index < 0:
-            return
-        self.table.removeRow(index)
-        del self.rows[index]
-        self.refresh_hint()
-        self.changed.emit()
-
-    def refresh_hint(self) -> None:
-        self.hint.setVisible(not self.rows)
-
-    def value(self) -> tuple[MaskBinding, ...]:
+    def value(self) -> tuple[MaskLine, ...]:
         return tuple(
-            MaskBinding(row.cell.value(), row.port.value(), row.line.value()) for row in self.rows
+            MaskLine(mask_id, port.value(), line.value()) for mask_id, port, line in self.spins
         )
 
-    def set_value(self, bindings: tuple[MaskBinding, ...]) -> None:
-        self.table.setRowCount(0)
-        self.rows = []
-        for binding in bindings:
-            self.add_row(binding)
-        self.refresh_hint()
+    def set_value(self, lines: tuple[MaskLine, ...]) -> None:
+        """Show a row for each drawn mask, with the line it drives."""
+        while (item := self.grid.takeAt(0)) is not None:
+            widget = item.widget()
+            if widget is not None:
+                widget.hide()
+                widget.deleteLater()
+        self.spins = []
+        bindings = bind_lines(self.masks(), lines)
+        if not bindings:
+            self.grid.addWidget(muted("No masks to assign.", self))
+            return
+        for column, text in ((1, "Port"), (2, "Line")):
+            self.grid.addWidget(muted(text, self), 0, column, Qt.AlignmentFlag.AlignHCenter)
+        for row, binding in enumerate(bindings, start=1):
+            name = QLabel(binding.mask.label or "mask", self)
+            name.setToolTip(binding.mask.describe())
+            port, line = self.spin(binding.port), self.spin(binding.line)
+            self.grid.addWidget(name, row, 0)
+            self.grid.addWidget(port, row, 1)
+            self.grid.addWidget(line, row, 2)
+            self.spins.append((binding.mask.id, port, line))
+
+    def spin(self, value: int) -> QSpinBox:
+        """A compact number box: typed, scrolled or stepped with the arrow keys."""
+        spin = QSpinBox(self)
+        spin.setRange(0, 1024)
+        spin.setValue(value)
+        spin.setButtonSymbols(QSpinBox.ButtonSymbols.NoButtons)
+        spin.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        spin.setFixedWidth(SPIN_WIDTH)
+        spin.valueChanged.connect(self.changed)
+        return spin
 
     def summary(self) -> str:
-        """How many masks will drive a line, and how many rows have none."""
-        if not self.rows:
-            return "none"
-        live = sum(1 for row in self.rows if row.cell.value() is not None)
-        empty = len(self.rows) - live
-        text = f"{live} mask" + ("" if live == 1 else "s")
-        return text + (f", {empty} empty" if empty else "")
+        bindings = bind_lines(self.masks(), self.value())
+        parts = [f"{b.mask.label or 'mask'} → port{b.port}/line{b.line}" for b in bindings]
+        return ", ".join(parts) or "none"
+
+
+def muted(text: str, parent: QWidget) -> QLabel:
+    label = QLabel(text, parent)
+    label.setEnabled(False)
+    return label
 
 
 @dataclass(frozen=True)
-class MasksField(Field):
-    """The Modulation table: a mask, its port and its line, one row per mask."""
+class MaskLinesField(Field):
+    """The port and line each drawn mask drives, by mask id. A mask with none set drives the
+    next free line on port 0."""
 
-    def coerce(self, value: Any) -> tuple[MaskBinding, ...]:
+    def coerce(self, value: Any) -> tuple[MaskLine, ...]:
         if value is None:
             return ()
-        if isinstance(value, (str, bytes)) or not isinstance(value, Iterable):
-            raise ParameterError(f"{self.label}: expected a list of masks")
-        return tuple(MaskBinding.from_value(row) for row in value)
+        if isinstance(value, (str, bytes, dict)) or not isinstance(value, Iterable):
+            raise ParameterError(f"{self.label}: expected a list of mask lines")
+        return tuple(MaskLine.from_value(each) for each in value)
 
-    def encode(self, value: tuple[MaskBinding, ...]) -> Any:
-        return [binding.to_dict() for binding in value]
+    def encode(self, value: tuple[MaskLine, ...]) -> Any:
+        return [line.to_dict() for line in value]
 
-    def editor(self, parent: Any, context: FieldContext) -> Editor:
-        # Narrows for the type checker: every form holding masks can make requests.
-        if context.requests is None:
-            raise ValueError("a masks field needs the input requests")
-        table = MaskTable(context.requests, parent)
+    def editor(self, parent: Any, values: FieldValues) -> Editor:
+        table = MaskLinesTable(values, parent)
         return Editor(
             table,
             get=table.value,
@@ -212,14 +186,10 @@ class MasksField(Field):
         )
 
 
-MASKS = declare(
-    "modulation.masks",
-    MasksField(
-        "Masks",
-        "Masks driving digital output lines during the scan. "
-        "Draw one in the Mask Editor, then take it here",
-    ),
+MASK_LINES = declare(
+    "modulation.lines",
+    MaskLinesField("Lines", "The digital output line each drawn mask drives during the scan"),
     (),
 )
 
-MODULATION_SECTION = InputSection("Modulation", (MASKS,))
+MODULATION_SECTION = InputSection("Modulation", (MASKS, MASK_LINES))

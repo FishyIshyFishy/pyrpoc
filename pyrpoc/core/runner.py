@@ -6,11 +6,9 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import ClassVar, TypeVar
+from typing import ClassVar
 
 from pyrpoc.core.program_inputs import ProgramInputs
-
-T = TypeVar("T")
 
 
 class Control:
@@ -125,13 +123,8 @@ class RunnerContext(ABC):
         """The program inputs, which a runner may set."""
 
     @abstractmethod
-    def request(self, kind: type[T], prompt: str, on_answer: Callable[[T | None], None]) -> None:
-        """Ask the panels for a value of ``kind``; ``on_answer`` gets it, or None
-        if the request is cancelled. A new request cancels the old."""
-
-    @abstractmethod
-    def cancel_request(self) -> None:
-        """Withdraw this context's open request, if it has one."""
+    def on_input_changed(self, callback: Callable[[str], None]) -> None:
+        """Call ``callback(key)`` after each change to a program input, whoever made it."""
 
     @abstractmethod
     def add_control(self, control: Control) -> None: ...

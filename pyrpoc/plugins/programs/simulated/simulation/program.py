@@ -17,10 +17,10 @@ from pyrpoc.core.program import Program, RunContext
 from ...building_blocks.functions.run_loops import count_off
 from ...building_blocks.program_inputs import (
     FRAME_COUNT_SECTION,
-    MASKS,
     MODULATION_SECTION,
     NUM_FRAMES,
     MaskBinding,
+    mask_bindings,
 )
 from ...building_blocks.runners import Continuous, Single
 from ..frame import FRAME_SECTION, FrameShape
@@ -88,7 +88,7 @@ class Simulation(Program):
         frame_shape = FrameShape.from_inputs(ctx.inputs)
         signal = SyntheticSignal.from_inputs(ctx.inputs)
         interval_ms = ctx.inputs[FRAME_INTERVAL_MS]
-        lit = lit_pixels(ctx.inputs[MASKS], frame_shape)
+        lit = lit_pixels(mask_bindings(ctx.inputs), frame_shape)
         labels = sim_labels(frame_shape.channels)
         # Fixed for the run so its frames stay one drifting sample.
         seed = int(np.random.default_rng().integers(2**32))

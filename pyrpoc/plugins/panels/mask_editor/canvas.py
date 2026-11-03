@@ -7,11 +7,26 @@ from __future__ import annotations
 
 import random
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from PyQt6.QtCore import QPointF, Qt
-from PyQt6.QtGui import QColor, QMouseEvent, QPainter, QPainterPath, QPen, QWheelEvent
-from PyQt6.QtWidgets import QGraphicsPathItem, QGraphicsScene, QGraphicsTextItem, QGraphicsView
+from PyQt6.QtGui import (
+    QColor,
+    QMouseEvent,
+    QPainter,
+    QPainterPath,
+    QPalette,
+    QPen,
+    QResizeEvent,
+    QWheelEvent,
+)
+from PyQt6.QtWidgets import (
+    QFrame,
+    QGraphicsPathItem,
+    QGraphicsScene,
+    QGraphicsTextItem,
+    QGraphicsView,
+)
 
 if TYPE_CHECKING:  # pragma: no cover
     from .panel import MaskEditorPanel
@@ -35,14 +50,51 @@ class MaskRoi:
     points: list[tuple[float, float]]
     threshold: Threshold | None
 
+    def to_dict(self) -> dict[str, Any]:
+        threshold = self.threshold
+        return {
+            "points": [list(point) for point in self.points],
+            "threshold": None
+            if threshold is None
+            else {
+                "low": threshold.low,
+                "high": threshold.high,
+                "channels": threshold.active_channels,
+            },
+        }
+
+    @classmethod
+    def from_dict(cls, raw: Any) -> MaskRoi:
+        """An ROI from ``to_dict``'s JSON, raising ``ValueError`` if it is not one."""
+        try:
+            points = [(float(x), float(y)) for x, y in raw["points"]]
+            saved = raw["threshold"]
+            threshold = (
+                None
+                if saved is None
+                else Threshold(
+                    float(saved["low"]), float(saved["high"]), [bool(c) for c in saved["channels"]]
+                )
+            )
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ValueError(f"not a saved ROI: {exc}") from exc
+        return cls(points, threshold)
+
 
 class MaskImageView(QGraphicsView):
+    """The image, fitted to the view until the wheel zooms it, with every ROI outlined."""
+
     def __init__(self, scene: QGraphicsScene, editor: MaskEditorPanel):
         super().__init__(scene)
         self.gscene = scene
         self.editor = editor
         self.setRenderHints(self.renderHints() | QPainter.RenderHint.Antialiasing)
         self.setMouseTracking(True)
+        self.setFrameShape(QFrame.Shape.NoFrame)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.setBackgroundBrush(self.palette().color(QPalette.ColorRole.Base))
+        # Off once the wheel zooms, so a resize does not undo the user's zoom.
+        self.fitting = True
 
         self._drawing = False
         self._current_points: list[QPointF] = []
@@ -61,7 +113,18 @@ class MaskImageView(QGraphicsView):
         if event is None:
             return
         factor = 1.15 if event.angleDelta().y() > 0 else 0.87
+        self.fitting = False
         self.scale(factor, factor)
+
+    def fit(self) -> None:
+        """Show the whole image, as large as the view allows, and keep it fitted."""
+        self.fitting = True
+        self.fitInView(self.gscene.sceneRect(), Qt.AspectRatioMode.KeepAspectRatio)
+
+    def resizeEvent(self, event: QResizeEvent | None) -> None:
+        super().resizeEvent(event)
+        if self.fitting:
+            self.fitInView(self.gscene.sceneRect(), Qt.AspectRatioMode.KeepAspectRatio)
 
     def mousePressEvent(self, event: QMouseEvent | None) -> None:
         if event is None or event.button() != Qt.MouseButton.LeftButton:

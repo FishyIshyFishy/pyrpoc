@@ -28,9 +28,11 @@ from pyrpoc.core import program_inputs as P
 from pyrpoc.core.device import Device
 from pyrpoc.core.device_config import DeviceConfig, config_fields
 from pyrpoc.core.input_section import InputSection
+from pyrpoc.core.mask import MasksField
 from pyrpoc.core.program_inputs import ParameterError
 
 from .cards import BaseCardWidget
+from .mask_list import MaskList
 
 CHANNEL_BUTTON_CSS = (
     "QToolButton {"
@@ -186,7 +188,21 @@ def build_channels(spec: P.ChannelsField, parent: QWidget) -> P.Editor:
     )
 
 
+def build_masks(spec: MasksField, parent: QWidget) -> P.Editor:
+    """A read-out: masks are drawn and edited in a Mask Editor, never here."""
+    widget = MaskList(parent)
+    return P.Editor(
+        widget,
+        get=widget.value,
+        set=widget.set_value,
+        connect=lambda _cb: None,
+        summary=widget.summary,
+        spec=spec,
+    )
+
+
 BUILDERS: dict[type, Callable[[Any, QWidget], P.Editor]] = {
+    MasksField: build_masks,
     P.IntField: build_int,
     P.FloatField: build_float,
     P.TextField: build_text,
@@ -197,9 +213,9 @@ BUILDERS: dict[type, Callable[[Any, QWidget], P.Editor]] = {
 }
 
 
-def build_field(spec: P.Field, parent: QWidget, context: P.FieldContext) -> P.Editor:
+def build_field(spec: P.Field, parent: QWidget, values: P.FieldValues) -> P.Editor:
     """The field's own editor if it has one, otherwise the form's."""
-    field = spec.editor(parent, context) or BUILDERS[type(spec)](spec, parent)
+    field = spec.editor(parent, values) or BUILDERS[type(spec)](spec, parent)
     if spec.tooltip:
         field.widget.setToolTip(spec.tooltip)
     return field
@@ -261,10 +277,7 @@ class ParamForm(QWidget):
         parent: QWidget,
         *,
         cards: bool,
-        context: P.FieldContext,
     ):
-        """``context`` is what the owner can offer fields that build their own
-        editor, such as the open data for a field whose value names it."""
         super().__init__(parent)
         self.values = values
         self.fields: dict[str, P.Editor] = {}
@@ -276,19 +289,17 @@ class ParamForm(QWidget):
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(8)
         for section in form_sections:
-            root.addWidget(self.build_section(section, cards=cards, context=context))
+            root.addWidget(self.build_section(section, cards=cards))
         root.addStretch(1)
         self.reload()
 
-    def build_section(
-        self, section: FormSection, *, cards: bool, context: P.FieldContext
-    ) -> QWidget:
+    def build_section(self, section: FormSection, *, cards: bool) -> QWidget:
         body = QWidget(self)
         form = QFormLayout(body)
         form.setContentsMargins(4, 4, 4, 4)
         keys: list[str] = []
         for key, spec in section.rows:
-            field = build_field(spec, body, context)
+            field = build_field(spec, body, self.values)
             field.connect(lambda key=key: self.on_field_changed(key))
             self.fields[key] = field
             keys.append(key)

@@ -126,7 +126,7 @@ class MainWindow(QWidget):
     def build_panels(self) -> None:
         app = self.app
         self.fixed_panels = {
-            DockKey.ACQUISITION: AcquisitionPanel(app.runs, app.inputs, app.requests, app.library),
+            DockKey.ACQUISITION: AcquisitionPanel(app.runs, app.inputs),
             DockKey.DEVICES: DevicesPanel(app.inventory),
             DockKey.DATA: DataLibraryPanel(app.library, lambda: app.runs.save.folder),
         }
@@ -165,7 +165,7 @@ class MainWindow(QWidget):
 
     def add_panel_of_type(self, key: str) -> None:
         """Add one, from the menu."""
-        self.add_panel(data_panel_registry.get(key)(self.app.library, self.app.requests))
+        self.add_panel(data_panel_registry.get(key)(self.app.library, self.app.inputs))
 
     def add_panel(self, panel: DataPanel) -> None:
         self.add_panel_dock(panel)
