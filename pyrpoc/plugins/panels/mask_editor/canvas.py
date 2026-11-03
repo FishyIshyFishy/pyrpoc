@@ -10,8 +10,23 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from PyQt6.QtCore import QPointF, Qt
-from PyQt6.QtGui import QColor, QMouseEvent, QPainter, QPainterPath, QPen, QWheelEvent
-from PyQt6.QtWidgets import QGraphicsPathItem, QGraphicsScene, QGraphicsTextItem, QGraphicsView
+from PyQt6.QtGui import (
+    QColor,
+    QMouseEvent,
+    QPainter,
+    QPainterPath,
+    QPalette,
+    QPen,
+    QResizeEvent,
+    QWheelEvent,
+)
+from PyQt6.QtWidgets import (
+    QFrame,
+    QGraphicsPathItem,
+    QGraphicsScene,
+    QGraphicsTextItem,
+    QGraphicsView,
+)
 
 if TYPE_CHECKING:  # pragma: no cover
     from .panel import MaskEditorPanel
@@ -67,12 +82,19 @@ class MaskRoi:
 
 
 class MaskImageView(QGraphicsView):
+    """The image, fitted to the view until the wheel zooms it, with every ROI outlined."""
+
     def __init__(self, scene: QGraphicsScene, editor: MaskEditorPanel):
         super().__init__(scene)
         self.gscene = scene
         self.editor = editor
         self.setRenderHints(self.renderHints() | QPainter.RenderHint.Antialiasing)
         self.setMouseTracking(True)
+        self.setFrameShape(QFrame.Shape.NoFrame)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.setBackgroundBrush(self.palette().color(QPalette.ColorRole.Base))
+        # Off once the wheel zooms, so a resize does not undo the user's zoom.
+        self.fitting = True
 
         self._drawing = False
         self._current_points: list[QPointF] = []
@@ -91,7 +113,18 @@ class MaskImageView(QGraphicsView):
         if event is None:
             return
         factor = 1.15 if event.angleDelta().y() > 0 else 0.87
+        self.fitting = False
         self.scale(factor, factor)
+
+    def fit(self) -> None:
+        """Show the whole image, as large as the view allows, and keep it fitted."""
+        self.fitting = True
+        self.fitInView(self.gscene.sceneRect(), Qt.AspectRatioMode.KeepAspectRatio)
+
+    def resizeEvent(self, event: QResizeEvent | None) -> None:
+        super().resizeEvent(event)
+        if self.fitting:
+            self.fitInView(self.gscene.sceneRect(), Qt.AspectRatioMode.KeepAspectRatio)
 
     def mousePressEvent(self, event: QMouseEvent | None) -> None:
         if event is None or event.button() != Qt.MouseButton.LeftButton:

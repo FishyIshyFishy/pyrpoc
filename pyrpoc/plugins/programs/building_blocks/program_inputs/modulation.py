@@ -8,16 +8,8 @@ from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
-from PyQt6.QtCore import pyqtSignal
-from PyQt6.QtWidgets import (
-    QHeaderView,
-    QLabel,
-    QSpinBox,
-    QTableWidget,
-    QTableWidgetItem,
-    QVBoxLayout,
-    QWidget,
-)
+from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtWidgets import QGridLayout, QLabel, QSpinBox, QWidget
 
 from pyrpoc.core.input_section import InputSection
 from pyrpoc.core.mask import MASKS, Mask
@@ -29,6 +21,9 @@ from pyrpoc.core.program_inputs import (
     ProgramInputValues,
     declare,
 )
+
+# Wide enough for four digits, so a port or line box stays small beside the mask's name.
+SPIN_WIDTH = 56
 
 
 @dataclass(frozen=True)
@@ -95,7 +90,7 @@ def mask_bindings(values: ProgramInputValues) -> tuple[MaskBinding, ...]:
 
 
 class MaskLinesTable(QWidget):
-    """One row per drawn mask, its name beside the port and line it drives. The rows follow
+    """One row per drawn mask: its name, then the port and line it drives. The rows follow
     the Mask Editor's masks; only the port and line are edited here."""
 
     changed = pyqtSignal()
@@ -104,25 +99,11 @@ class MaskLinesTable(QWidget):
         super().__init__(parent)
         self.values = values
         self.spins: list[tuple[str, QSpinBox, QSpinBox]] = []
-
-        root = QVBoxLayout(self)
-        root.setContentsMargins(0, 0, 0, 0)
-        self.table = QTableWidget(0, 3, self)
-        self.table.setHorizontalHeaderLabels(["Mask", "Port", "Line"])
-        rows = self.table.verticalHeader()
-        header = self.table.horizontalHeader()
-        # Narrows for the type checker: a table builds both headers itself.
-        if rows is None or header is None:
-            raise RuntimeError("QTableWidget was built without headers")
-        rows.setVisible(False)
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
-        self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        root.addWidget(self.table)
-        self.hint = QLabel("Each mask drawn in a Mask Editor gets a row here.", self)
-        self.hint.setEnabled(False)
-        root.addWidget(self.hint)
+        self.grid = QGridLayout(self)
+        self.grid.setContentsMargins(0, 0, 0, 0)
+        self.grid.setHorizontalSpacing(8)
+        self.grid.setVerticalSpacing(4)
+        self.grid.setColumnStretch(0, 1)
 
     def masks(self) -> tuple[Mask, ...]:
         return self.values.get(MASKS.key)
@@ -134,23 +115,35 @@ class MaskLinesTable(QWidget):
 
     def set_value(self, lines: tuple[MaskLine, ...]) -> None:
         """Show a row for each drawn mask, with the line it drives."""
-        bindings = bind_lines(self.masks(), lines)
-        self.table.setRowCount(len(bindings))
+        while (item := self.grid.takeAt(0)) is not None:
+            widget = item.widget()
+            if widget is not None:
+                widget.hide()
+                widget.deleteLater()
         self.spins = []
-        for row, binding in enumerate(bindings):
-            self.table.setItem(row, 0, QTableWidgetItem(binding.mask.describe()))
+        bindings = bind_lines(self.masks(), lines)
+        if not bindings:
+            self.grid.addWidget(muted("No masks to assign.", self))
+            return
+        for column, text in ((1, "Port"), (2, "Line")):
+            self.grid.addWidget(muted(text, self), 0, column, Qt.AlignmentFlag.AlignHCenter)
+        for row, binding in enumerate(bindings, start=1):
+            name = QLabel(binding.mask.label or "mask", self)
+            name.setToolTip(binding.mask.describe())
             port, line = self.spin(binding.port), self.spin(binding.line)
-            self.table.setCellWidget(row, 1, port)
-            self.table.setCellWidget(row, 2, line)
+            self.grid.addWidget(name, row, 0)
+            self.grid.addWidget(port, row, 1)
+            self.grid.addWidget(line, row, 2)
             self.spins.append((binding.mask.id, port, line))
-        self.table.setVisible(bool(bindings))
-        self.table.resizeRowsToContents()
-        self.hint.setVisible(not bindings)
 
     def spin(self, value: int) -> QSpinBox:
-        spin = QSpinBox(self.table)
+        """A compact number box: typed, scrolled or stepped with the arrow keys."""
+        spin = QSpinBox(self)
         spin.setRange(0, 1024)
         spin.setValue(value)
+        spin.setButtonSymbols(QSpinBox.ButtonSymbols.NoButtons)
+        spin.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        spin.setFixedWidth(SPIN_WIDTH)
         spin.valueChanged.connect(self.changed)
         return spin
 
@@ -158,6 +151,12 @@ class MaskLinesTable(QWidget):
         bindings = bind_lines(self.masks(), self.value())
         parts = [f"{b.mask.label or 'mask'} → port{b.port}/line{b.line}" for b in bindings]
         return ", ".join(parts) or "none"
+
+
+def muted(text: str, parent: QWidget) -> QLabel:
+    label = QLabel(text, parent)
+    label.setEnabled(False)
+    return label
 
 
 @dataclass(frozen=True)
