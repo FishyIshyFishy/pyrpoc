@@ -4,32 +4,29 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from pyrpoc.core.input_section import InputSection
 from pyrpoc.core.program_inputs import ProgramInputValues, int_input
 
 FRAME_TRIGGER_PFI = int_input(
-    "trigger.frame_trigger_pfi",
+    "frame_trigger_pfi",
     "Frame Trigger PFI Line",
     0,
     minimum=0,
     tooltip="PFI line that exports the AO start trigger (frame marker)",
 )
 PIXEL_CLOCK_CTR = int_input(
-    "trigger.pixel_clock_ctr",
+    "pixel_clock_ctr",
     "Pixel Clock Counter",
     0,
     minimum=0,
     tooltip="Counter used to generate the pixel clock",
 )
 PIXEL_CLOCK_PFI = int_input(
-    "trigger.pixel_clock_pfi",
+    "pixel_clock_pfi",
     "Pixel Clock PFI Line",
     1,
     minimum=0,
     tooltip="PFI line that outputs the pixel clock",
 )
-
-TRIGGER_SECTION = InputSection("Triggers", (FRAME_TRIGGER_PFI, PIXEL_CLOCK_CTR, PIXEL_CLOCK_PFI))
 
 
 @dataclass(frozen=True)

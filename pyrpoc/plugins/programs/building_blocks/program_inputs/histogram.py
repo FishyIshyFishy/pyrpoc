@@ -4,41 +4,36 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from pyrpoc.core.input_section import InputSection
 from pyrpoc.core.program_inputs import ProgramInputValues, float_input, int_input
 
 LASER_FREQUENCY_MHZ = float_input(
-    "histogram.laser_frequency_mhz",
+    "laser_frequency_mhz",
     "Laser Frequency MHz",
     80.0,
     minimum=0.001,
     tooltip="Laser repetition rate in MHz",
 )
 HISTOGRAM_BINS = int_input(
-    "histogram.histogram_bins",
+    "histogram_bins",
     "Histogram Bins",
     125,
     minimum=2,
     tooltip="Number of decay-histogram bins per pixel",
 )
 HISTOGRAM_BINWIDTH_PS = int_input(
-    "histogram.histogram_binwidth_ps",
+    "histogram_binwidth_ps",
     "Histogram Bin Width (ps)",
     100,
     minimum=1,
     tooltip="Bin width in ps (bins x width should span one laser period)",
 )
 FRAME_SETTLE_S = float_input(
-    "histogram.frame_settle_s",
+    "frame_settle_s",
     "Frame Settle (s)",
     5e-3,
     minimum=0.0,
     step=1e-3,
     tooltip="Wait after the scan so the last photons reach the measurement",
-)
-
-HISTOGRAM_SECTION = InputSection(
-    "Histogram", (LASER_FREQUENCY_MHZ, HISTOGRAM_BINS, HISTOGRAM_BINWIDTH_PS, FRAME_SETTLE_S)
 )
 
 

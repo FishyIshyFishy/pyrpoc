@@ -12,12 +12,12 @@ from pathlib import Path
 from typing import Any
 
 from pyrpoc.core.program_inputs import ParameterError
-from pyrpoc.engine.data_library.format import legacy_input_key
+from pyrpoc.engine.data_library.format import legacy_input_key, unsectioned_input_key
 
 log = logging.getLogger(__name__)
 
 # Bump when the shape changes, and add the step from the old shape to UPGRADES.
-SCHEMA_VERSION = 10
+SCHEMA_VERSION = 11
 
 # What malformed session JSON raises on its way into the application.
 BAD_STATE = (KeyError, TypeError, ValueError, ParameterError)
@@ -159,10 +159,25 @@ def upgrade_v9(raw: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def upgrade_v10(raw: dict[str, Any]) -> dict[str, Any]:
+    """A version 10 session, with program input keys that name their section, as version 11."""
+    working = as_object(raw.get("working"))
+    inputs = as_object(working.get("program_inputs"))
+    return {
+        **raw,
+        "schema_version": 11,
+        "working": {
+            **working,
+            "program_inputs": {unsectioned_input_key(key): value for key, value in inputs.items()},
+        },
+    }
+
+
 # Each step turns a session of its key's version into the next version.
 UPGRADES: dict[int, Callable[[dict[str, Any]], dict[str, Any]]] = {
     8: upgrade_v8,
     9: upgrade_v9,
+    10: upgrade_v10,
 }
 
 

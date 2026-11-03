@@ -7,18 +7,15 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Any
 
-import numpy as np
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import QGridLayout, QLabel, QSpinBox, QWidget
 
-from pyrpoc.core.input_section import InputSection
 from pyrpoc.core.mask import MASKS, Mask
 from pyrpoc.core.program_inputs import (
     Editor,
     Field,
     FieldValues,
     ParameterError,
-    ProgramInputValues,
     declare,
 )
 
@@ -33,6 +30,10 @@ class MaskLine:
     mask_id: str
     port: int
     line: int
+
+    def channel(self, device_name: str) -> str:
+        """The NI-DAQ channel string this line is."""
+        return f"{device_name}/port{self.port}/line{self.line}"
 
     def to_dict(self) -> dict[str, Any]:
         return {"mask_id": self.mask_id, "port": self.port, "line": self.line}
@@ -50,43 +51,21 @@ class MaskLine:
             raise ParameterError(f"a mask's port and line must be integers: {exc}") from exc
 
 
-@dataclass(frozen=True, eq=False)
-class MaskBinding:
-    """One drawn mask and the digital line it drives."""
-
-    mask: Mask
-    port: int
-    line: int
-
-    def channel(self, device_name: str) -> str:
-        """The NI-DAQ channel string this mask drives."""
-        return f"{device_name}/port{self.port}/line{self.line}"
-
-    def on_grid(self, height: int, width: int) -> np.ndarray:
-        return self.mask.on_grid(height, width)
-
-
-def bind_lines(masks: tuple[Mask, ...], lines: tuple[MaskLine, ...]) -> tuple[MaskBinding, ...]:
-    """Each mask with its line: the one set for it, or else the lowest line on port 0 no
-    other mask drives."""
+def lines_for(masks: tuple[Mask, ...], lines: tuple[MaskLine, ...]) -> tuple[MaskLine, ...]:
+    """The line each mask drives, in the masks' order: the one set for it, or else the lowest
+    line on port 0 no other mask drives."""
     # The form shows exactly this, so a mask drives the line the user sees beside it.
     present = {mask.id for mask in masks}
     chosen = {line.mask_id: line for line in lines if line.mask_id in present}
     used = {(line.port, line.line) for line in chosen.values()}
-    bindings = []
+    out = []
     for mask in masks:
-        if mask.id in chosen:
-            bindings.append(MaskBinding(mask, chosen[mask.id].port, chosen[mask.id].line))
-            continue
-        free = next(line for line in range(len(used) + 1) if (0, line) not in used)
-        used.add((0, free))
-        bindings.append(MaskBinding(mask, 0, free))
-    return tuple(bindings)
-
-
-def mask_bindings(values: ProgramInputValues) -> tuple[MaskBinding, ...]:
-    """The drawn masks and the lines they drive, as a run was given them."""
-    return bind_lines(values[MASKS], values[MASK_LINES])
+        if mask.id not in chosen:
+            free = next(line for line in range(len(used) + 1) if (0, line) not in used)
+            used.add((0, free))
+            chosen[mask.id] = MaskLine(mask.id, 0, free)
+        out.append(chosen[mask.id])
+    return tuple(out)
 
 
 class MaskLinesTable(QWidget):
@@ -121,20 +100,22 @@ class MaskLinesTable(QWidget):
                 widget.hide()
                 widget.deleteLater()
         self.spins = []
-        bindings = bind_lines(self.masks(), lines)
-        if not bindings:
+        masks = self.masks()
+        if not masks:
             self.grid.addWidget(muted("No masks to assign.", self))
             return
         for column, text in ((1, "Port"), (2, "Line")):
             self.grid.addWidget(muted(text, self), 0, column, Qt.AlignmentFlag.AlignHCenter)
-        for row, binding in enumerate(bindings, start=1):
-            name = QLabel(binding.mask.label or "mask", self)
-            name.setToolTip(binding.mask.describe())
-            port, line = self.spin(binding.port), self.spin(binding.line)
+        for row, (mask, mask_line) in enumerate(
+            zip(masks, lines_for(masks, lines), strict=True), start=1
+        ):
+            name = QLabel(mask.label or "mask", self)
+            name.setToolTip(mask.describe())
+            port, line = self.spin(mask_line.port), self.spin(mask_line.line)
             self.grid.addWidget(name, row, 0)
             self.grid.addWidget(port, row, 1)
             self.grid.addWidget(line, row, 2)
-            self.spins.append((binding.mask.id, port, line))
+            self.spins.append((mask.id, port, line))
 
     def spin(self, value: int) -> QSpinBox:
         """A compact number box: typed, scrolled or stepped with the arrow keys."""
@@ -148,8 +129,11 @@ class MaskLinesTable(QWidget):
         return spin
 
     def summary(self) -> str:
-        bindings = bind_lines(self.masks(), self.value())
-        parts = [f"{b.mask.label or 'mask'} → port{b.port}/line{b.line}" for b in bindings]
+        masks = self.masks()
+        parts = [
+            f"{mask.label or 'mask'} → port{line.port}/line{line.line}"
+            for mask, line in zip(masks, lines_for(masks, self.value()), strict=True)
+        ]
         return ", ".join(parts) or "none"
 
 
@@ -187,9 +171,7 @@ class MaskLinesField(Field):
 
 
 MASK_LINES = declare(
-    "modulation.lines",
-    MaskLinesField("Lines", "The digital output line each drawn mask drives during the scan"),
+    "mask_lines",
+    MaskLinesField("Mask Lines", "The digital output line each drawn mask drives during the scan"),
     (),
 )
-
-MODULATION_SECTION = InputSection("Modulation", (MASKS, MASK_LINES))

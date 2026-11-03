@@ -7,15 +7,23 @@ from __future__ import annotations
 import numpy as np
 
 from pyrpoc.core.data import Image, Mosaic, MosaicTile
+from pyrpoc.core.input_section import InputSection
 from pyrpoc.core.program import Program, RunContext
 
 from ...building_blocks.functions.run_loops import grow, walk
-from ...building_blocks.program_inputs import MOSAIC_SECTION, MosaicGrid
+from ...building_blocks.program_inputs import (
+    TILE_SPACING_UM,
+    X_PIXELS,
+    X_TILES,
+    Y_PIXELS,
+    Y_TILES,
+    MosaicGrid,
+)
 from ...building_blocks.runners import Single
-from ..frame import FRAME_SECTION, FrameShape
-from ..pacing import FRAME_INTERVAL_MS, PACING_SECTION
-from ..specimen import SPECIMEN_SECTION, SyntheticSlide
-from ..synthetic_detector import sim_labels, with_noise
+from ..frame import SIMULATED_CHANNELS, FrameShape
+from ..pacing import FRAME_INTERVAL_MS
+from ..specimen import UM_PER_PIXEL, SyntheticSlide
+from ..synthetic_detector import NOISE_LEVEL, sim_labels, with_noise
 from .slide import slide_patch
 
 
@@ -41,7 +49,12 @@ class MosaicSimulation(Program):
     group = "Simulations"
     order = 21
     devices = []
-    sections = [FRAME_SECTION, MOSAIC_SECTION, SPECIMEN_SECTION, PACING_SECTION]
+    sections = [
+        InputSection("Frame", (X_PIXELS, Y_PIXELS, SIMULATED_CHANNELS)),
+        InputSection("Mosaic", (X_TILES, Y_TILES, TILE_SPACING_UM)),
+        InputSection("Specimen", (UM_PER_PIXEL, NOISE_LEVEL)),
+        InputSection("Pacing", (FRAME_INTERVAL_MS,)),
+    ]
     emits = {"mosaic": Mosaic}
     runners = [Single()]
 

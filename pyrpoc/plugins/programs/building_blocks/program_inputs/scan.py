@@ -9,7 +9,6 @@ from typing import Any
 
 import numpy as np
 
-from pyrpoc.core.input_section import InputSection
 from pyrpoc.core.program_inputs import (
     ParameterError,
     ProgramInputValues,
@@ -18,59 +17,57 @@ from pyrpoc.core.program_inputs import (
     values_from_parameters,
 )
 
-X_PIXELS = int_input("scan.x_pixels", "X Pixels", 512, minimum=8, tooltip="Number of pixels in X")
-Y_PIXELS = int_input("scan.y_pixels", "Y Pixels", 512, minimum=8, tooltip="Number of pixels in Y")
+X_PIXELS = int_input("x_pixels", "X Pixels", 512, minimum=8, tooltip="Number of pixels in X")
+Y_PIXELS = int_input("y_pixels", "Y Pixels", 512, minimum=8, tooltip="Number of pixels in Y")
 EXTRA_LEFT = int_input(
-    "scan.extra_left",
+    "extra_left",
     "Extra Steps Left",
     300,
     minimum=0,
     tooltip="Extra scan steps at the left edge",
 )
 EXTRA_RIGHT = int_input(
-    "scan.extra_right",
+    "extra_right",
     "Extra Steps Right",
     20,
     minimum=0,
     tooltip="Extra scan steps at the right edge",
 )
 FAST_AXIS_OFFSET = float_input(
-    "scan.fast_axis_offset", "Fast Axis Offset", 0.0, tooltip="Fast-axis offset"
+    "fast_axis_offset", "Fast Axis Offset", 0.0, tooltip="Fast-axis offset"
 )
 FAST_AXIS_AMPLITUDE = float_input(
-    "scan.fast_axis_amplitude",
+    "fast_axis_amplitude",
     "Fast Axis Amplitude",
     1.0,
     minimum=1e-6,
     tooltip="Fast-axis amplitude",
 )
 SLOW_AXIS_OFFSET = float_input(
-    "scan.slow_axis_offset", "Slow Axis Offset", 0.0, tooltip="Slow-axis offset"
+    "slow_axis_offset", "Slow Axis Offset", 0.0, tooltip="Slow-axis offset"
 )
 SLOW_AXIS_AMPLITUDE = float_input(
-    "scan.slow_axis_amplitude",
+    "slow_axis_amplitude",
     "Slow Axis Amplitude",
     1.0,
     minimum=1e-6,
     tooltip="Slow-axis amplitude",
 )
 DWELL_TIME_US = float_input(
-    "scan.dwell_time_us", "Dwell Time (us)", 2.0, minimum=0.1, tooltip="Pixel dwell time"
+    "dwell_time_us", "Dwell Time (us)", 2.0, minimum=0.1, tooltip="Pixel dwell time"
 )
 
-SCAN_SECTION = InputSection(
-    "Scan",
-    (
-        X_PIXELS,
-        Y_PIXELS,
-        EXTRA_LEFT,
-        EXTRA_RIGHT,
-        FAST_AXIS_OFFSET,
-        FAST_AXIS_AMPLITUDE,
-        SLOW_AXIS_OFFSET,
-        SLOW_AXIS_AMPLITUDE,
-        DWELL_TIME_US,
-    ),
+# The inputs ``ScanGeometry`` is made from.
+SCAN_GEOMETRY_INPUTS = (
+    X_PIXELS,
+    Y_PIXELS,
+    EXTRA_LEFT,
+    EXTRA_RIGHT,
+    FAST_AXIS_OFFSET,
+    FAST_AXIS_AMPLITUDE,
+    SLOW_AXIS_OFFSET,
+    SLOW_AXIS_AMPLITUDE,
+    DWELL_TIME_US,
 )
 
 
@@ -107,12 +104,12 @@ class ScanGeometry:
     def from_parameters(cls, parameters: Mapping[str, Any], source: str) -> ScanGeometry:
         """The scan a recording's ``parameters`` describe. Raises ``ParameterError``
         naming ``source`` if they describe none."""
-        if any(each.key not in parameters for each in SCAN_SECTION.inputs):
+        if any(each.key not in parameters for each in SCAN_GEOMETRY_INPUTS):
             raise ParameterError(
                 f"{source} was not acquired with a scan geometry, "
                 "so a pixel does not name a position"
             )
-        return cls.from_inputs(values_from_parameters(SCAN_SECTION.inputs, parameters))
+        return cls.from_inputs(values_from_parameters(SCAN_GEOMETRY_INPUTS, parameters))
 
     @property
     def total_x(self) -> int:

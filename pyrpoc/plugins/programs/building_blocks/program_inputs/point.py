@@ -9,7 +9,6 @@ from typing import Any
 from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtWidgets import QDoubleSpinBox, QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
-from pyrpoc.core.input_section import InputSection
 from pyrpoc.core.pixel_pick import PixelPick
 from pyrpoc.core.program_inputs import (
     Editor,
@@ -190,12 +189,8 @@ class PointField(Field):
         )
 
 
-# Its own section rather than part of the detector's, because the galvos and
-# the detector are configured independently.
-TARGET = declare(
-    "point.target",
+GALVO_TARGET = declare(
+    "galvo_target",
     PointField("Target", "Galvo position to park at. Pick it off an image, or type volts directly"),
     Point(),
 )
-
-POINT_SECTION = InputSection("Point", (TARGET,))

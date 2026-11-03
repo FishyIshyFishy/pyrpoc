@@ -4,15 +4,16 @@ and read a spectrum there."""
 from __future__ import annotations
 
 from pyrpoc.core.data import Spectrum
+from pyrpoc.core.input_section import InputSection
 from pyrpoc.core.program import Program, RunContext, program_registry
 from pyrpoc.plugins.devices import DAQ, AndorCCD, Galvo
 
 from ..building_blocks.functions.ccd_read import publish_spectrum
 from ..building_blocks.functions.galvo_park import aim_at_pixel, park_galvos
 from ..building_blocks.program_inputs import (
-    CCD_READOUT_SECTION,
-    POINT_SECTION,
-    TARGET,
+    CCD_EXPOSURE_S,
+    CCD_FRAMES_TO_AVERAGE,
+    GALVO_TARGET,
     spectrum_readout,
 )
 from ..building_blocks.runners import ArmAndRun, Continuous, Single
@@ -24,7 +25,10 @@ class PinpointRaman(Program):
     group = "Raman"
     order = 20
     devices = [Galvo, AndorCCD]
-    sections = [POINT_SECTION, CCD_READOUT_SECTION]
+    sections = [
+        InputSection("Point", (GALVO_TARGET,)),
+        InputSection("CCD Readout", (CCD_EXPOSURE_S, CCD_FRAMES_TO_AVERAGE)),
+    ]
     emits = {"spectrum": Spectrum}
     runners = [
         Single(),
@@ -38,7 +42,7 @@ class PinpointRaman(Program):
     ]
 
     def run(self, ctx: RunContext) -> None:
-        point = ctx.inputs[TARGET]
+        point = ctx.inputs[GALVO_TARGET]
         readout = spectrum_readout(ctx.inputs)
 
         ctx.status(f"parking at {point.fast_v:.3f} / {point.slow_v:.3f} V")

@@ -6,34 +6,40 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
 from functools import reduce
 
 import numpy as np
 
 from pyrpoc.core.data import Image
+from pyrpoc.core.input_section import InputSection
+from pyrpoc.core.mask import MASKS, Mask
 from pyrpoc.core.program import Program, RunContext
 
 from ...building_blocks.functions.run_loops import count_off
 from ...building_blocks.program_inputs import (
-    FRAME_COUNT_SECTION,
-    MODULATION_SECTION,
+    MASK_LINES,
     NUM_FRAMES,
-    MaskBinding,
-    mask_bindings,
+    X_PIXELS,
+    Y_PIXELS,
 )
 from ...building_blocks.runners import Continuous, Single
-from ..frame import FRAME_SECTION, FrameShape
-from ..pacing import FRAME_INTERVAL_MS, PACING_SECTION
-from ..signal import SIGNAL_SECTION, SyntheticSignal
-from ..synthetic_detector import sim_labels, with_noise
+from ..frame import SIMULATED_CHANNELS, FrameShape
+from ..pacing import FRAME_INTERVAL_MS
+from ..signal import (
+    DRIFT_PIXELS_PER_FRAME,
+    MASK_GAIN,
+    SIGNAL_LEVEL,
+    SIGNAL_PATTERN,
+    SyntheticSignal,
+)
+from ..synthetic_detector import NOISE_LEVEL, sim_labels, with_noise
 from .planes import PLANES
 
 
-def lit_pixels(masks: Sequence[MaskBinding], frame_shape: FrameShape) -> np.ndarray | None:
-    """Every bound mask on the frame, OR-ed into one plane, or None for no
-    masks. Ports and lines are ignored: there are no digital lines here, but
-    which pixels are illuminated can still be checked."""
+def lit_pixels(masks: tuple[Mask, ...], frame_shape: FrameShape) -> np.ndarray | None:
+    """Every drawn mask on the frame, OR-ed into one plane, or None for no masks."""
+    # Ports and lines are ignored: there are no digital lines here, but which pixels are
+    # illuminated can still be checked.
     planes = [mask.on_grid(frame_shape.y_pixels, frame_shape.x_pixels) for mask in masks]
     return reduce(np.logical_or, planes) if planes else None
 
@@ -75,11 +81,14 @@ class Simulation(Program):
     order = 20
     devices = []
     sections = [
-        FRAME_SECTION,
-        FRAME_COUNT_SECTION,
-        SIGNAL_SECTION,
-        MODULATION_SECTION,
-        PACING_SECTION,
+        InputSection("Frame", (X_PIXELS, Y_PIXELS, SIMULATED_CHANNELS)),
+        InputSection("Frames", (NUM_FRAMES,)),
+        InputSection(
+            "Signal",
+            (SIGNAL_PATTERN, SIGNAL_LEVEL, NOISE_LEVEL, DRIFT_PIXELS_PER_FRAME, MASK_GAIN),
+        ),
+        InputSection("Modulation", (MASKS, MASK_LINES)),
+        InputSection("Pacing", (FRAME_INTERVAL_MS,)),
     ]
     emits = {"intensity": Image}
     runners = [Single(), Continuous()]
@@ -88,7 +97,7 @@ class Simulation(Program):
         frame_shape = FrameShape.from_inputs(ctx.inputs)
         signal = SyntheticSignal.from_inputs(ctx.inputs)
         interval_ms = ctx.inputs[FRAME_INTERVAL_MS]
-        lit = lit_pixels(mask_bindings(ctx.inputs), frame_shape)
+        lit = lit_pixels(ctx.inputs[MASKS], frame_shape)
         labels = sim_labels(frame_shape.channels)
         # Fixed for the run so its frames stay one drifting sample.
         seed = int(np.random.default_rng().integers(2**32))

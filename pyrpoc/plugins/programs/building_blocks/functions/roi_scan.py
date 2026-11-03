@@ -12,9 +12,10 @@ from typing import Any
 import cv2
 import numpy as np
 
+from pyrpoc.core.mask import Mask
 from pyrpoc.core.program_inputs import ParameterError
 
-from ..program_inputs import ScanGeometry, ScanRegion
+from ..program_inputs import ScanGeometry
 
 
 @dataclass(frozen=True)
@@ -60,14 +61,15 @@ def centre_rectangle(scan: ScanGeometry, fraction: float) -> np.ndarray:
     return region
 
 
-def roi_region(roi: ScanRegion, scan: ScanGeometry) -> np.ndarray:
-    """The region as booleans on the scan grid, which must be one 8-connected area."""
+def roi_region(masks: tuple[Mask, ...], center_fraction: float, scan: ScanGeometry) -> np.ndarray:
+    """The drawn masks together as booleans on the scan grid, or with none, the centred
+    rectangle ``center_fraction`` of the scan wide and high. It must be one 8-connected area."""
     # One area, so its rows are consecutive and the slow axis never jumps a gap.
-    if not roi.masks:
-        region = centre_rectangle(scan, roi.center_fraction)
+    if not masks:
+        region = centre_rectangle(scan, center_fraction)
     else:
         # Every drawn mask together, so a region drawn as several shapes is still one region.
-        region = np.logical_or.reduce([m.on_grid(scan.y_pixels, scan.x_pixels) for m in roi.masks])
+        region = np.logical_or.reduce([m.on_grid(scan.y_pixels, scan.x_pixels) for m in masks])
     # The count includes the background's label.
     labels, _ = cv2.connectedComponents(region.astype(np.uint8), connectivity=8)
     if labels < 2:
@@ -81,9 +83,9 @@ def roi_region(roi: ScanRegion, scan: ScanGeometry) -> np.ndarray:
     return region
 
 
-def region_source(roi: ScanRegion) -> str:
+def region_source(masks: tuple[Mask, ...]) -> str:
     """What the region was drawn from, for the recording."""
-    return ", ".join(mask.describe() for mask in roi.masks) or "center"
+    return ", ".join(mask.describe() for mask in masks) or "center"
 
 
 def row_spans(region: np.ndarray) -> list[RowSpan]:

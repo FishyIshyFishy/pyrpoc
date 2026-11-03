@@ -186,16 +186,10 @@ program_input_registry: dict[str, ProgramInput[Any]] = {}
 
 
 def declare(key: str, rule: Field, default: T) -> ProgramInput[T]:
-    """The program input ``key``, shared by every program that declares it."""
-    existing = program_input_registry.get(key)
-    if existing is not None:
-        # The same key must mean the same value everywhere it is declared.
-        if type(existing.rule) is not type(rule):
-            raise TypeError(
-                f"program input {key!r} is declared as both {type(existing.rule).__name__} "
-                f"and {type(rule).__name__}"
-            )
-        return existing
+    """The program input ``key``, which every program that reads it imports from here."""
+    # Declared once, so a key can never mean two values: a second program imports the first's.
+    if key in program_input_registry:
+        raise ValueError(f"program input {key!r} is already declared")
     program_input = ProgramInput(key, rule, default)
     program_input_registry[key] = program_input
     return program_input

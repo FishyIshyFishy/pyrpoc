@@ -4,25 +4,22 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from pyrpoc.core.input_section import InputSection
 from pyrpoc.core.program_inputs import ProgramInputValues, int_input
 
 T0_SAMPLES = int_input(
-    "split.t0_samples",
+    "t0_samples",
     "t0 Samples",
     1,
     minimum=1,
     tooltip="Number of samples in the first subpixel window",
 )
 T1_SAMPLES = int_input(
-    "split.t1_samples",
+    "t1_samples",
     "t1 Samples",
     0,
     minimum=0,
     tooltip="Number of samples to discard between t0 and t2",
 )
-
-SPLIT_SECTION = InputSection("Split", (T0_SAMPLES, T1_SAMPLES))
 
 
 @dataclass(frozen=True)

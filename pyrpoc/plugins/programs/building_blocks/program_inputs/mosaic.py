@@ -6,18 +6,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from pyrpoc.core.data import MosaicTile
-from pyrpoc.core.input_section import InputSection
 from pyrpoc.core.program_inputs import ProgramInputValues, float_input, int_input
 
-X_TILES = int_input(
-    "mosaic.x_tiles", "X Tiles", 3, minimum=1, tooltip="Tiles along the stage's x axis"
-)
-Y_TILES = int_input(
-    "mosaic.y_tiles", "Y Tiles", 3, minimum=1, tooltip="Tiles along the stage's y axis"
-)
+X_TILES = int_input("x_tiles", "X Tiles", 3, minimum=1, tooltip="Tiles along the stage's x axis")
+Y_TILES = int_input("y_tiles", "Y Tiles", 3, minimum=1, tooltip="Tiles along the stage's y axis")
 # One spacing serves both axes; the display finds the overlap from the images.
-SPACING_UM = float_input(
-    "mosaic.spacing_um",
+TILE_SPACING_UM = float_input(
+    "tile_spacing_um",
     "Spacing (um)",
     100.0,
     minimum=0.001,
@@ -25,8 +20,6 @@ SPACING_UM = float_input(
     decimals=3,
     tooltip="Stage step between neighbouring tiles, in both x and y",
 )
-
-MOSAIC_SECTION = InputSection("Mosaic", (X_TILES, Y_TILES, SPACING_UM))
 
 
 @dataclass(frozen=True)
@@ -39,7 +32,7 @@ class MosaicGrid:
 
     @classmethod
     def from_inputs(cls, values: ProgramInputValues) -> MosaicGrid:
-        return cls(values[X_TILES], values[Y_TILES], values[SPACING_UM])
+        return cls(values[X_TILES], values[Y_TILES], values[TILE_SPACING_UM])
 
     def snake(self, centre_um: tuple[float, float]) -> tuple[MosaicTile, ...]:
         """The grid centred on ``centre_um``, rows in turn and each the reverse

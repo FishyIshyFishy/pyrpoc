@@ -4,11 +4,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from pyrpoc.core.input_section import InputSection
 from pyrpoc.core.program_inputs import ProgramInputValues, float_input
 
+from .synthetic_detector import NOISE_LEVEL
+
 UM_PER_PIXEL = float_input(
-    "specimen.um_per_pixel",
+    "um_per_pixel",
     "Pixel Size (um)",
     0.5,
     minimum=0.001,
@@ -16,16 +17,6 @@ UM_PER_PIXEL = float_input(
     decimals=4,
     tooltip="Stage distance one pixel spans; with the spacing, sets the tile overlap",
 )
-NOISE_LEVEL = float_input(
-    "specimen.noise_level",
-    "Noise Level",
-    0.03,
-    minimum=0.0,
-    step=0.01,
-    tooltip="Gaussian noise added per pixel",
-)
-
-SPECIMEN_SECTION = InputSection("Specimen", (UM_PER_PIXEL, NOISE_LEVEL))
 
 
 @dataclass(frozen=True)

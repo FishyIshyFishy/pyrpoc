@@ -9,6 +9,7 @@ from typing import Any
 import cv2
 import numpy as np
 
+from pyrpoc.core.mask import MASKS
 from pyrpoc.core.program import RunContext
 from pyrpoc.core.program_inputs import ParameterError
 from pyrpoc.plugins.devices import DAQ, Galvo
@@ -23,7 +24,7 @@ from ..building_blocks.functions.roi_scan import (
     roi_waveform,
     row_spans,
 )
-from ..building_blocks.program_inputs import SAMPLE_RATE_HZ, ScanGeometry, ScanRegion
+from ..building_blocks.program_inputs import CENTER_REGION_FRACTION, SAMPLE_RATE_HZ, ScanGeometry
 
 
 def place_rows(
@@ -79,7 +80,7 @@ class RoiRaster:
         scan = ScanGeometry.from_inputs(ctx.inputs)
         sample_rate_hz = ctx.inputs[SAMPLE_RATE_HZ]
         samples_per_pixel = pixel_samples(scan.dwell_time_us, sample_rate_hz)
-        region = roi_region(ScanRegion.from_inputs(ctx.inputs), scan)
+        region = roi_region(ctx.inputs[MASKS], ctx.inputs[CENTER_REGION_FRACTION], scan)
         spans = row_spans(region)
         box = Box.around(spans)
         return cls(

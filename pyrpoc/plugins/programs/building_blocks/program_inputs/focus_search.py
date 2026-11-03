@@ -4,11 +4,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from pyrpoc.core.input_section import InputSection
 from pyrpoc.core.program_inputs import ProgramInputValues, float_input
 
-SEARCH_RANGE_UM = float_input(
-    "focus_search.search_range_um",
+FOCUS_SEARCH_RANGE_UM = float_input(
+    "focus_search_range_um",
     "Search Range (um)",
     50.0,
     minimum=0.001,
@@ -16,8 +15,8 @@ SEARCH_RANGE_UM = float_input(
     decimals=3,
     tooltip="The search never moves z further than this from where it started",
 )
-INITIAL_STEP_UM = float_input(
-    "focus_search.initial_step_um",
+FOCUS_INITIAL_STEP_UM = float_input(
+    "focus_initial_step_um",
     "Initial Step (um)",
     5.0,
     minimum=0.001,
@@ -25,18 +24,14 @@ INITIAL_STEP_UM = float_input(
     decimals=3,
     tooltip="The first z step; it halves each time neither direction improves focus",
 )
-FINAL_STEP_UM = float_input(
-    "focus_search.final_step_um",
+FOCUS_FINAL_STEP_UM = float_input(
+    "focus_final_step_um",
     "Final Step (um)",
     0.5,
     minimum=0.001,
     step=0.1,
     decimals=3,
     tooltip="The search stops once the step would halve below this",
-)
-
-FOCUS_SEARCH_SECTION = InputSection(
-    "Focus Search", (SEARCH_RANGE_UM, INITIAL_STEP_UM, FINAL_STEP_UM)
 )
 
 
@@ -50,4 +45,8 @@ class FocusSearch:
 
     @classmethod
     def from_inputs(cls, values: ProgramInputValues) -> FocusSearch:
-        return cls(values[SEARCH_RANGE_UM], values[INITIAL_STEP_UM], values[FINAL_STEP_UM])
+        return cls(
+            values[FOCUS_SEARCH_RANGE_UM],
+            values[FOCUS_INITIAL_STEP_UM],
+            values[FOCUS_FINAL_STEP_UM],
+        )

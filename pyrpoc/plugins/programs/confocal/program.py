@@ -3,17 +3,18 @@
 from __future__ import annotations
 
 from pyrpoc.core.data import Image
+from pyrpoc.core.input_section import InputSection
+from pyrpoc.core.mask import MASKS
 from pyrpoc.core.program import Program, RunContext, program_registry
 from pyrpoc.plugins.devices import DAQ, Galvo
 
 from ..building_blocks.functions.galvo_raster import Raster
 from ..building_blocks.functions.run_loops import count_off
 from ..building_blocks.program_inputs import (
-    DAQ_SECTION,
-    FRAME_COUNT_SECTION,
-    MODULATION_SECTION,
+    MASK_LINES,
     NUM_FRAMES,
-    SCAN_SECTION,
+    SAMPLE_RATE_HZ,
+    SCAN_GEOMETRY_INPUTS,
 )
 from ..building_blocks.runners import Continuous, Single
 
@@ -24,7 +25,12 @@ class Confocal(Program):
     group = "Confocal Fluorescence"
     order = 10
     devices = [Galvo, DAQ]
-    sections = [SCAN_SECTION, FRAME_COUNT_SECTION, DAQ_SECTION, MODULATION_SECTION]
+    sections = [
+        InputSection("Scan", SCAN_GEOMETRY_INPUTS),
+        InputSection("Frames", (NUM_FRAMES,)),
+        InputSection("DAQ", (SAMPLE_RATE_HZ,)),
+        InputSection("Modulation", (MASKS, MASK_LINES)),
+    ]
     emits = {"intensity": Image}
     runners = [Single(), Continuous()]
 
