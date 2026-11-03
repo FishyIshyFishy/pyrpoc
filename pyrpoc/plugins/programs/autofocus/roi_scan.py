@@ -23,11 +23,11 @@ from ..building_blocks.functions.roi_scan import (
     roi_waveform,
     row_spans,
 )
-from ..building_blocks.parameter_groups import DaqGroup, RoiGroup, ScanGroup
+from ..building_blocks.program_inputs import SAMPLE_RATE_HZ, ScanGeometry, ScanRegion
 
 
 def place_rows(
-    raw: np.ndarray, scan: ScanGroup, spans: list[RowSpan], samples_per_pixel: int, box: Box
+    raw: np.ndarray, scan: ScanGeometry, spans: list[RowSpan], samples_per_pixel: int, box: Box
 ) -> np.ndarray:
     """A raw ``(channels, samples)`` stream as a ``(C, H, W)`` frame of ``box``:
     each pixel the mean of its samples, extra steps dropped, unscanned pixels 0."""
@@ -64,7 +64,7 @@ class RoiRaster:
 
     daq: DAQ
     galvo: Galvo
-    scan: ScanGroup
+    scan: ScanGeometry
     sample_rate_hz: float
     samples_per_pixel: int
     spans: list[RowSpan]
@@ -74,10 +74,10 @@ class RoiRaster:
 
     @classmethod
     def for_run(cls, ctx: RunContext) -> RoiRaster:
-        scan = ctx.params[ScanGroup]
-        sample_rate_hz = ctx.params[DaqGroup].sample_rate_hz
+        scan = ScanGeometry.from_inputs(ctx.inputs)
+        sample_rate_hz = ctx.inputs[SAMPLE_RATE_HZ]
         samples_per_pixel = pixel_samples(scan.dwell_time_us, sample_rate_hz)
-        region = roi_region(ctx.params[RoiGroup], scan)
+        region = roi_region(ScanRegion.from_inputs(ctx.inputs), scan)
         spans = row_spans(region)
         box = Box.around(spans)
         return cls(

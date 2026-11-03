@@ -11,7 +11,7 @@ from pyrpoc.core.program import Program, RunContext, program_registry
 from pyrpoc.plugins.devices import AndorCCD
 
 from ..building_blocks.functions.ccd_read import publish_spectrum
-from ..building_blocks.parameter_groups import CcdReadoutGroup
+from ..building_blocks.program_inputs import CCD_READOUT_SECTION, spectrum_readout
 from ..building_blocks.runners import Continuous, Single
 
 
@@ -21,10 +21,10 @@ class Raman(Program):
     group = "Raman"
     order = 10
     devices = [AndorCCD]
-    params = [CcdReadoutGroup]
+    sections = [CCD_READOUT_SECTION]
     emits = {"spectrum": Spectrum}
     runners = [Single(), Continuous()]
 
     def run(self, ctx: RunContext) -> None:
-        readout = ctx.params[CcdReadoutGroup].to_readout()
+        readout = spectrum_readout(ctx.inputs)
         publish_spectrum(ctx, ctx.devices[AndorCCD], readout, "spectrum")

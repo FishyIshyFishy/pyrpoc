@@ -6,10 +6,10 @@ import nidaqmx as nx
 import nidaqmx.errors
 
 from pyrpoc.core.input_requests import PixelPick
-from pyrpoc.core.program_inputs import ProgramInputs, block_name
+from pyrpoc.core.program_inputs import ProgramInputs
 from pyrpoc.plugins.devices import DAQ, DaqError, Galvo
 
-from ..parameter_groups import Point, PointGroup
+from ..program_inputs import TARGET, Point
 from .daq_tasks import add_galvo_channels
 
 
@@ -31,4 +31,4 @@ def park_galvos(daq: DAQ, galvo: Galvo, point: Point) -> None:
 
 def aim_at_pixel(pick: PixelPick, inputs: ProgramInputs) -> None:
     """Point the galvos at the picked pixel: its volts become the target."""
-    inputs.set(f"{block_name(PointGroup)}.target", Point.from_pick(pick))
+    inputs.set(TARGET.key, Point.from_pick(pick))

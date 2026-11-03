@@ -11,7 +11,7 @@ from pyrpoc.core.program import Program, RunContext, program_registry
 from pyrpoc.plugins.devices import DAQ, Galvo
 
 from ..building_blocks.functions.galvo_park import aim_at_pixel, park_galvos
-from ..building_blocks.parameter_groups import PointGroup
+from ..building_blocks.program_inputs import POINT_SECTION, TARGET
 from ..building_blocks.runners import ArmAndRun, Single
 
 
@@ -21,7 +21,7 @@ class GalvoPinpoint(Program):
     group = "Raman"
     order = 30
     devices = [Galvo]
-    params = [PointGroup]
+    sections = [POINT_SECTION]
     runners = [
         Single(),
         ArmAndRun(
@@ -33,7 +33,7 @@ class GalvoPinpoint(Program):
     ]
 
     def run(self, ctx: RunContext) -> None:
-        point = ctx.params[PointGroup].target
+        point = ctx.inputs[TARGET]
         ctx.status(f"parking at {point.fast_v:.3f} / {point.slow_v:.3f} V")
         # The DAQ is bound though ``devices`` does not name it: claims follow
         # ``backed_by``, and the mirrors are voltages on the card.

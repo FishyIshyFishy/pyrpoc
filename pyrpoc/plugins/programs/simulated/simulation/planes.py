@@ -96,7 +96,7 @@ def flat_plane(
     return np.full((y_pixels, x_pixels), 0.5, dtype=np.float32)
 
 
-# Keyed by ``PATTERNS``, the choices ``SignalGroup.pattern`` offers.
+# Keyed by ``PATTERNS``, the choices ``SyntheticSignal.pattern`` offers.
 PLANES = {
     "cells": cells_plane,
     "rings": rings_plane,

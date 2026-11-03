@@ -8,7 +8,7 @@ from uuid import uuid4
 
 from pyrpoc.core.registry import Registry
 
-from . import program_inputs as P
+from . import device_config as C
 
 
 def make_instance_id(prefix: str) -> str:
@@ -45,8 +45,8 @@ class Device:
     # this link, so claiming the galvo claims its DAQ.
     backed_by: type[Device] | None = None
 
-    # The block describing this device's wiring and calibration.
-    config_cls: type[P.Group]
+    # The configuration describing this device's wiring and calibration.
+    config_cls: type[C.DeviceConfig]
 
     def __init__(self, instance_id: str | None = None):
         self.instance_id = instance_id or make_instance_id(self.registry_key)
@@ -108,14 +108,14 @@ class Device:
         return True
 
     def export_state(self) -> dict[str, Any]:
-        return {"config": P.encode_block(self.config), "last_test_ok": self.last_test_ok}
+        return {"config": C.encode_config(self.config), "last_test_ok": self.last_test_ok}
 
     def import_state(self, raw: dict[str, Any]) -> None:
         """Restore from session JSON; a malformed entry leaves that part at its
         default."""
         config = raw.get("config")
         if isinstance(config, dict):
-            self.config = P.decode_block(self.config_cls, config)
+            self.config = C.decode_config(self.config_cls, config)
         value = raw.get("last_test_ok")
         self.last_test_ok = value if isinstance(value, bool) else None
 

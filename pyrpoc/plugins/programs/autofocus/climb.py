@@ -7,7 +7,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from ..building_blocks.parameter_groups import FocusSearchGroup
+from ..building_blocks.program_inputs import FocusSearch
 
 
 @dataclass(frozen=True)
@@ -33,7 +33,7 @@ def climb(
     measure: Callable[[float], float],
     report: Callable[[ClimbStep], None],
     start_z_um: float,
-    search: FocusSearchGroup,
+    search: FocusSearch,
 ) -> ClimbResult:
     """Climb from ``start_z_um`` within its search range. ``measure`` scores a z;
     ``report`` is told of every measurement as it is made."""

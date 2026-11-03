@@ -17,16 +17,22 @@ from pyrpoc.core.data import Image
 from pyrpoc.core.program import Program, RunContext
 
 from ...building_blocks.functions.run_loops import count_off
-from ...building_blocks.parameter_groups import FrameCountGroup, MaskBinding, ModulationGroup
+from ...building_blocks.program_inputs import (
+    FRAME_COUNT_SECTION,
+    MASKS,
+    MODULATION_SECTION,
+    NUM_FRAMES,
+    MaskBinding,
+)
 from ...building_blocks.runners import Continuous, Single
-from ..frame import FrameGroup
-from ..pacing import PacingGroup
-from ..signal import SignalGroup
+from ..frame import FRAME_SECTION, FrameShape
+from ..pacing import FRAME_INTERVAL_MS, PACING_SECTION
+from ..signal import SIGNAL_SECTION, SyntheticSignal
 from ..synthetic_detector import sim_labels, with_noise
 from .planes import PLANES
 
 
-def lit_pixels(masks: Sequence[MaskBinding], frame_shape: FrameGroup) -> np.ndarray | None:
+def lit_pixels(masks: Sequence[MaskBinding], frame_shape: FrameShape) -> np.ndarray | None:
     """Every bound mask on the frame, OR-ed into one plane, or None for no
     masks. Ports and lines are ignored: there are no digital lines here, but
     which pixels are illuminated can still be checked."""
@@ -35,8 +41,8 @@ def lit_pixels(masks: Sequence[MaskBinding], frame_shape: FrameGroup) -> np.ndar
 
 
 def synthetic_frame(
-    frame_shape: FrameGroup,
-    signal: SignalGroup,
+    frame_shape: FrameShape,
+    signal: SyntheticSignal,
     *,
     seed: int,
     frame_index: int,
@@ -70,20 +76,26 @@ class Simulation(Program):
     group = "Simulations"
     order = 20
     devices = []
-    params = [FrameGroup, FrameCountGroup, SignalGroup, ModulationGroup, PacingGroup]
+    sections = [
+        FRAME_SECTION,
+        FRAME_COUNT_SECTION,
+        SIGNAL_SECTION,
+        MODULATION_SECTION,
+        PACING_SECTION,
+    ]
     emits = {"intensity": Image}
     runners = [Single(), Continuous()]
 
     def run(self, ctx: RunContext) -> None:
-        frame_shape = ctx.params[FrameGroup]
-        signal = ctx.params[SignalGroup]
-        interval_ms = ctx.params[PacingGroup].frame_interval_ms
-        lit = lit_pixels(ctx.params[ModulationGroup].masks, frame_shape)
+        frame_shape = FrameShape.from_inputs(ctx.inputs)
+        signal = SyntheticSignal.from_inputs(ctx.inputs)
+        interval_ms = ctx.inputs[FRAME_INTERVAL_MS]
+        lit = lit_pixels(ctx.inputs[MASKS], frame_shape)
         labels = sim_labels(frame_shape.channels)
         # Fixed for the run so its frames stay one drifting sample.
         seed = int(np.random.default_rng().integers(2**32))
 
-        for index in count_off(ctx, ctx.params[FrameCountGroup].num_frames, "frame"):
+        for index in count_off(ctx, ctx.inputs[NUM_FRAMES], "frame"):
             frame = synthetic_frame(frame_shape, signal, seed=seed, frame_index=index, lit=lit)
             ctx.publish("intensity", Image(frame, labels))
             ctx.sleep(interval_ms / 1000.0)

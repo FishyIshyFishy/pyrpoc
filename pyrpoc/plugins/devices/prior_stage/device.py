@@ -13,7 +13,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Literal
 
-from pyrpoc.core import program_inputs as P
+from pyrpoc.core import device_config as C
 from pyrpoc.core.device import Device, device_registry
 
 from .sdk import PriorError, PriorSession
@@ -36,8 +36,8 @@ class MotionProfile:
 
 
 @dataclass
-class PriorConfig(P.Group):
-    com_port: int = P.int_field(
+class PriorConfig(C.DeviceConfig):
+    com_port: int = C.int_field(
         "COM Port", 4, minimum=1, maximum=256, tooltip="COM port of the Prior controller (4 = COM4)"
     )
 

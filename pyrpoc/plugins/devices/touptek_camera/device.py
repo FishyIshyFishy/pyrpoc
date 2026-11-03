@@ -3,7 +3,7 @@
 The session stays open between runs; the app opens it at launch and closes it
 on exit. Only one process can hold the camera, so ToupView cannot use it
 while pyrpoc is running. Exposure and gain belong to the program, not here:
-this block only says which camera to open.
+this configuration only says which camera to open.
 """
 
 from __future__ import annotations
@@ -14,7 +14,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from pyrpoc.core import program_inputs as P
+from pyrpoc.core import device_config as C
 from pyrpoc.core.device import Device, device_registry
 
 from .sdk import ToupcamError, ToupcamSession, row_pitch, unpack_rgb24
@@ -26,8 +26,8 @@ FRAME_MARGIN_S = 2.0
 
 
 @dataclass
-class ToupcamConfig(P.Group):
-    camera: str = P.text_field(
+class ToupcamConfig(C.DeviceConfig):
+    camera: str = C.text_field(
         "Camera",
         "",
         tooltip="Name (e.g. U3CMOS08500KPA) or id of the camera to open; blank opens the first",

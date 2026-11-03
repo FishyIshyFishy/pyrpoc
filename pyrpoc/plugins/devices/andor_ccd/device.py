@@ -31,7 +31,7 @@ from typing import Any, Literal
 
 import numpy as np
 
-from pyrpoc.core import program_inputs as P
+from pyrpoc.core import device_config as C
 from pyrpoc.core.device import Device, device_registry
 
 from .sdk import ACQUIRING, IDLE, AndorError, AndorSession, Temperature, code_name
@@ -55,14 +55,14 @@ POLL_S = 0.02
 
 
 @dataclass
-class AndorCcdConfig(P.Group):
-    dll_path: str = P.path_field(
+class AndorCcdConfig(C.DeviceConfig):
+    dll_path: str = C.path_field(
         "SDK DLL",
         r"C:\Program Files\Andor SDK\atmcd64d.dll",
         dialog_filter="Andor SDK (atmcd64d.dll)",
         tooltip="atmcd64d.dll from the standalone Andor SDK, not the one in Andor SOLIS",
     )
-    target_temp_c: int = P.int_field(
+    target_temp_c: int = C.int_field(
         "Target Temperature (°C)",
         -70,
         minimum=-120,

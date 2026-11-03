@@ -7,7 +7,7 @@ from __future__ import annotations
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, replace
 from dataclasses import field as dc_field
-from typing import Any, ClassVar, TypeVar
+from typing import Any, TypeVar
 
 import numpy as np
 from PyQt6.QtCore import pyqtSignal
@@ -24,15 +24,14 @@ from PyQt6.QtWidgets import (
 )
 
 from pyrpoc.core.data import Mask
+from pyrpoc.core.input_section import InputSection
 from pyrpoc.core.library import Library
 from pyrpoc.core.program_inputs import (
     Editor,
     Field,
     FieldContext,
-    Group,
     ParameterError,
-    block,
-    spec_field,
+    declare,
 )
 from pyrpoc.core.program_output import ProgramOutput
 
@@ -364,17 +363,14 @@ class MasksField(Field):
         )
 
 
-@block
-@dataclass
-class ModulationGroup(Group):
-    label: ClassVar[str] = "Modulation"
+MASKS = declare(
+    "modulation.masks",
+    MasksField(
+        "Masks",
+        "Masks driving digital output lines during the scan. "
+        "Draw one in the Mask Editor to add it here",
+    ),
+    (),
+)
 
-    masks: tuple[MaskBinding, ...] = spec_field(
-        None,
-        MasksField(
-            "Masks",
-            "Masks driving digital output lines during the scan. "
-            "Draw one in the Mask Editor to add it here",
-        ),
-        factory=tuple,
-    )
+MODULATION_SECTION = InputSection("Modulation", (MASKS,))

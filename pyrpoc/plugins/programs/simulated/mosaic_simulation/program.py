@@ -10,17 +10,17 @@ from pyrpoc.core.data import Image, Mosaic, MosaicTile
 from pyrpoc.core.program import Program, RunContext
 
 from ...building_blocks.functions.run_loops import grow, walk
-from ...building_blocks.parameter_groups import MosaicGroup
+from ...building_blocks.program_inputs import MOSAIC_SECTION, MosaicGrid
 from ...building_blocks.runners import Single
-from ..frame import FrameGroup
-from ..pacing import PacingGroup
-from ..specimen import SpecimenGroup
+from ..frame import FRAME_SECTION, FrameShape
+from ..pacing import FRAME_INTERVAL_MS, PACING_SECTION
+from ..specimen import SPECIMEN_SECTION, SyntheticSlide
 from ..synthetic_detector import sim_labels, with_noise
 from .slide import slide_patch
 
 
 def tile_frame(
-    index: int, tile: MosaicTile, *, frame_shape: FrameGroup, specimen: SpecimenGroup, seed: int
+    index: int, tile: MosaicTile, *, frame_shape: FrameShape, specimen: SyntheticSlide, seed: int
 ) -> np.ndarray:
     """One ``(C, H, W)`` tile centred on the tile's stage position. Each channel
     is its own slide, as each detector sees its own stain."""
@@ -41,16 +41,16 @@ class MosaicSimulation(Program):
     group = "Simulations"
     order = 21
     devices = []
-    params = [FrameGroup, MosaicGroup, SpecimenGroup, PacingGroup]
+    sections = [FRAME_SECTION, MOSAIC_SECTION, SPECIMEN_SECTION, PACING_SECTION]
     emits = {"mosaic": Mosaic}
     runners = [Single()]
 
     def run(self, ctx: RunContext) -> None:
-        frame_shape = ctx.params[FrameGroup]
-        specimen = ctx.params[SpecimenGroup]
-        interval_ms = ctx.params[PacingGroup].frame_interval_ms
+        frame_shape = FrameShape.from_inputs(ctx.inputs)
+        specimen = SyntheticSlide.from_inputs(ctx.inputs)
+        interval_ms = ctx.inputs[FRAME_INTERVAL_MS]
         # A virtual stage, centred where the real one would start.
-        tiles = ctx.params[MosaicGroup].snake((0.0, 0.0))
+        tiles = MosaicGrid.from_inputs(ctx.inputs).snake((0.0, 0.0))
         labels = sim_labels(frame_shape.channels)
         # Fixed for the run so every tile is cut from the same slide.
         seed = int(np.random.default_rng().integers(2**31))

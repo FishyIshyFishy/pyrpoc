@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from ..building_blocks.parameter_groups import SplitGroup
+from ..building_blocks.program_inputs import SplitWindows
 
 
 def gated_to_t0(
@@ -19,7 +19,7 @@ def gated_to_t0(
     return gated
 
 
-def split_frame(samples: np.ndarray, split: SplitGroup) -> np.ndarray:
+def split_frame(samples: np.ndarray, split: SplitWindows) -> np.ndarray:
     """``(C, H, W, S)`` samples as a ``(C*2, H, W)`` frame, the t0 and t2 means
     of each channel interleaved. A t2 window with no samples left reads zero."""
     early = samples[..., : split.t0_samples].mean(axis=3)

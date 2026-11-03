@@ -12,7 +12,7 @@ from pyrpoc.plugins.devices import DAQ, DaqError, Galvo
 
 from ..building_blocks.functions.daq_tasks import clock_galvos, play, scan_timeout
 from ..building_blocks.functions.galvo_raster import raster_waveform
-from ..building_blocks.parameter_groups import ScanGroup, TriggerGroup
+from ..building_blocks.program_inputs import ScanGeometry, TriggerLines
 
 
 def pixel_samples(dwell_time_us: float, sample_rate_hz: float) -> int:
@@ -22,7 +22,7 @@ def pixel_samples(dwell_time_us: float, sample_rate_hz: float) -> int:
 
 
 def add_pixel_clock(
-    task: nx.Task, device_name: str, triggers: TriggerGroup, samples_per_pixel: int, pixels: int
+    task: nx.Task, device_name: str, triggers: TriggerLines, samples_per_pixel: int, pixels: int
 ) -> None:
     """A pulse every ``samples_per_pixel`` galvo-clock ticks, armed on the galvo
     start. Divided down from that clock, pixel boundaries stay locked to galvo
@@ -39,7 +39,7 @@ def add_pixel_clock(
 
 
 def flim_scan(
-    daq: DAQ, galvo: Galvo, scan: ScanGroup, sample_rate_hz: float, triggers: TriggerGroup
+    daq: DAQ, galvo: Galvo, scan: ScanGeometry, sample_rate_hz: float, triggers: TriggerLines
 ) -> None:
     """One raster, exporting the galvo start trigger as the frame marker and
     driving the pixel clock alongside."""

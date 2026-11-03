@@ -14,8 +14,7 @@ import numpy as np
 
 from pyrpoc.core.program_inputs import ParameterError
 
-from ..parameter_groups.roi import RoiGroup
-from ..parameter_groups.scan import ScanGroup
+from ..program_inputs import ScanGeometry, ScanRegion
 
 
 @dataclass(frozen=True)
@@ -50,7 +49,7 @@ class Box:
         return plane[self.top : self.top + self.height, self.left : self.left + self.width]
 
 
-def centre_rectangle(scan: ScanGroup, fraction: float) -> np.ndarray:
+def centre_rectangle(scan: ScanGeometry, fraction: float) -> np.ndarray:
     """A centred rectangle covering ``fraction`` of the grid's width and height."""
     height = max(1, round(scan.y_pixels * fraction))
     width = max(1, round(scan.x_pixels * fraction))
@@ -61,7 +60,7 @@ def centre_rectangle(scan: ScanGroup, fraction: float) -> np.ndarray:
     return region
 
 
-def roi_region(roi: RoiGroup, scan: ScanGroup) -> np.ndarray:
+def roi_region(roi: ScanRegion, scan: ScanGeometry) -> np.ndarray:
     """The region as booleans on the scan grid. It must be one 8-connected
     area, so its rows are consecutive and the slow axis never jumps a gap."""
     if roi.mask is None:
@@ -80,7 +79,7 @@ def roi_region(roi: RoiGroup, scan: ScanGroup) -> np.ndarray:
     return region
 
 
-def region_source(roi: RoiGroup) -> str:
+def region_source(roi: ScanRegion) -> str:
     """What the region was drawn from, for the recording."""
     return "center" if roi.mask is None else roi.mask.describe()
 
@@ -95,12 +94,12 @@ def row_spans(region: np.ndarray) -> list[RowSpan]:
     return spans
 
 
-def swept_columns(scan: ScanGroup, span: RowSpan) -> np.ndarray:
+def swept_columns(scan: ScanGeometry, span: RowSpan) -> np.ndarray:
     """The columns one row sweeps: its span with the extra steps either side."""
     return np.arange(span.x0 - scan.extra_left, span.x1 + 1 + scan.extra_right)
 
 
-def roi_waveform(scan: ScanGroup, spans: list[RowSpan], samples_per_pixel: int) -> np.ndarray:
+def roi_waveform(scan: ScanGeometry, spans: list[RowSpan], samples_per_pixel: int) -> np.ndarray:
     """The ``(fast, slow)`` AO waveform: each row's sweep in turn, holding
     ``samples_per_pixel`` per pixel."""
     columns = [swept_columns(scan, span) for span in spans]

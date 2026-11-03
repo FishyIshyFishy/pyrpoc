@@ -1,40 +1,34 @@
-"""Point: where a point acquisition parks the galvos, and which pixel said so.
-Its own field type and picker widget, since a point is volts plus provenance."""
+"""The point a point acquisition parks the galvos at, and the pixel it was
+picked from, with its own rules and editor."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, ClassVar
+from typing import Any
 
 from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtWidgets import QDoubleSpinBox, QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
 from pyrpoc.core.input_requests import PixelPick
+from pyrpoc.core.input_section import InputSection
 from pyrpoc.core.program_inputs import (
     Editor,
     Field,
     FieldContext,
-    Group,
     ParameterError,
-    block,
-    block_name,
-    decode_block,
-    spec_field,
+    declare,
 )
 
-from .scan import ScanGroup
+from .scan import ScanGeometry
 
 
 @dataclass(frozen=True)
 class Point:
-    """One parked galvo position.
+    """One parked galvo position in volts, and the image and pixel it was picked
+    from, which a typed point has none of."""
 
-    Volts are the parameter, so a run reproduces from its saved parameters
-    alone: a pixel only means something against the scan geometry of the image
-    it was picked from. The source and pixel are provenance on top; a point
-    typed by hand has none, which is what the defaults mean.
-    """
-
+    # Volts are what a run reads, so it reproduces from its saved parameters
+    # alone: a pixel only means something against the scan it was picked from.
     fast_v: float = 0.0
     slow_v: float = 0.0
     source_id: str = ""
@@ -45,16 +39,11 @@ class Point:
     @classmethod
     def from_pick(cls, pick: PixelPick) -> Point:
         """The position the picked pixel was measured at."""
-        # From the clicked image's provenance, not the live block, which may have
-        # been edited since the image was taken.
+        # From the clicked image's provenance, not the current inputs, which may
+        # have been edited since the image was taken.
         image = pick.output
-        raw = image.provenance.parameters.get(block_name(ScanGroup))
-        if raw is None:
-            raise ParameterError(
-                f"{image.label} was not acquired with a scan geometry, "
-                "so a pixel does not name a position"
-            )
-        fast_v, slow_v = decode_block(ScanGroup, raw).voltage_at(pick.x, pick.y)
+        scan = ScanGeometry.from_parameters(image.provenance.parameters, image.label)
+        fast_v, slow_v = scan.voltage_at(pick.x, pick.y)
         return cls(fast_v, slow_v, image.id, image.label, pick.x, pick.y)
 
     @property
@@ -202,18 +191,12 @@ class PointField(Field):
         )
 
 
-@block
-@dataclass
-class PointGroup(Group):
-    """Where a point acquisition happens. Separate from the detector's block
-    because the galvos and the detector are configured independently."""
+# Its own section rather than part of the detector's, because the galvos and
+# the detector are configured independently.
+TARGET = declare(
+    "point.target",
+    PointField("Target", "Galvo position to park at. Pick it off an image, or type volts directly"),
+    Point(),
+)
 
-    label: ClassVar[str] = "Point"
-
-    target: Point = spec_field(
-        None,
-        PointField(
-            "Target", "Galvo position to park at. Pick it off an image, or type volts directly"
-        ),
-        factory=Point,
-    )
+POINT_SECTION = InputSection("Point", (TARGET,))

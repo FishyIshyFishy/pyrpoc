@@ -1,24 +1,22 @@
-"""Region: the part of the scan grid a region scan covers, either one authored
-mask or a centred rectangle. The mask is a library reference, so it has its
-own field type and picker, shared with Modulation's table."""
+"""The region a region scan covers: one drawn mask, or a centred rectangle."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, ClassVar
+from typing import Any
 
 from PyQt6.QtWidgets import QWidget
 
 from pyrpoc.core.data import Mask
+from pyrpoc.core.input_section import InputSection
 from pyrpoc.core.library import Library
 from pyrpoc.core.program_inputs import (
     Editor,
     Field,
     FieldContext,
-    Group,
-    block,
-    float_field,
-    spec_field,
+    ProgramInputValues,
+    declare,
+    float_input,
 )
 
 from .modulation import CLOSED_SUFFIX, MaskRef, MaskSourceCombo, resolve_mask
@@ -80,26 +78,38 @@ class RegionMaskField(Field):
         )
 
 
-@block
-@dataclass
-class RoiGroup(Group):
-    label: ClassVar[str] = "Region"
+MASK = declare(
+    "roi.mask",
+    RegionMaskField(
+        "Mask",
+        "One connected region drawn in the Mask Editor, or the centred rectangle. "
+        "Each row is scanned only across the region, plus the scan's extra steps",
+    ),
+    None,
+)
+CENTER_FRACTION = float_input(
+    "roi.center_fraction",
+    "Center Fraction",
+    0.25,
+    minimum=0.01,
+    maximum=1.0,
+    step=0.05,
+    decimals=3,
+    tooltip="Width and height of the centred rectangle, as a fraction of the scan, "
+    "when no mask is chosen",
+)
 
-    mask: MaskRef | None = spec_field(
-        None,
-        RegionMaskField(
-            "Mask",
-            "One connected region drawn in the Mask Editor, or the centred rectangle. "
-            "Each row is scanned only across the region, plus the scan's extra steps",
-        ),
-    )
-    center_fraction: float = float_field(
-        "Center Fraction",
-        0.25,
-        minimum=0.01,
-        maximum=1.0,
-        step=0.05,
-        decimals=3,
-        tooltip="Width and height of the centred rectangle, as a fraction of the scan, "
-        "when no mask is chosen",
-    )
+REGION_SECTION = InputSection("Region", (MASK, CENTER_FRACTION))
+
+
+@dataclass(frozen=True)
+class ScanRegion:
+    """The part of the scan grid a region scan covers: a mask, or the centred
+    rectangle ``center_fraction`` of the scan wide and high."""
+
+    mask: MaskRef | None
+    center_fraction: float
+
+    @classmethod
+    def from_inputs(cls, values: ProgramInputValues) -> ScanRegion:
+        return cls(values[MASK], values[CENTER_FRACTION])

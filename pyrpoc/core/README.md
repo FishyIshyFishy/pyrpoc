@@ -39,7 +39,7 @@ Everything the software does is this loop:
 | Noun | Definition |
 |---|---|
 | **Device** | A piece of hardware the microscope has. Found through `device_registry`. |
-| **Program** | A declaration of one experiment: the devices it needs, the program inputs it reads (laid out in input sections), the program outputs it emits, and the runners that can start it. Its `run` does the work. *(Program inputs and input sections from phase 5: today parameter blocks in `params`.)* |
+| **Program** | A declaration of one experiment: the devices it needs, the program inputs it reads (laid out in input sections), the program outputs it emits, and the runners that can start it. Its `run` does the work. |
 | **Run** | One execution of a program. It gets a frozen copy of the program's inputs, claims its devices, and publishes into its program outputs. |
 | **RunContext** | What a running program is handed: its input values, its devices, its program outputs, and cancel. It reaches an output with `output_for`. |
 | **Runner** | A way to start a program (once, continuously, arm and run). It's declared by the program, and its controls are drawn by whichever panel shows the program. |
@@ -48,9 +48,9 @@ Everything the software does is this loop:
 
 | Noun | Definition |
 |---|---|
-| **ProgramInput** | The declaration of one value a program reads, like dwell time or a mask. It has a key, a label, a default and rules for valid values. **The same key means the same value in every program that declares it.** That's how a setting carries across modality changes. *(From phase 5: today one field of a parameter block, keyed by its dotted path such as `ScanGroup.dwell_us`.)* |
-| **InputSection** | A labelled list of program inputs. Purely layout: how a panel groups a program's inputs on screen. *(From phase 5: today `Section`, one per parameter block.)* |
-| **ProgramInputs** | The collection of current values for every program input, by key. Any panel may read it, set a value (validated by the input's rules) or subscribe. It's saved in the session, and a run's values go into its recording. The app's one collection is `ProgramInputsStore` (`engine/acquisition/program_inputs.py`). *(Keyed by `<Block>.<field>` until phase 5.)* |
+| **ProgramInput** | The declaration of one value a program reads, like dwell time or a mask. It has a key, a label, a default and rules for valid values. **The same key means the same value in every program that declares it.** That's how a setting carries across modality changes. Declared once, next to the code that shares it, e.g. `DWELL_TIME_US = float_input("scan.dwell_time_us", ...)`; a second declaration of a key with other rules fails. |
+| **InputSection** | A labelled list of program inputs. Purely layout: how a panel groups a program's inputs on screen. |
+| **ProgramInputs** | The collection of current values for every program input, by key. Any panel may read it, set a value (validated by the input's rules) or subscribe. It's saved in the session, and a run's values go into its recording. The app's one collection is `ProgramInputsStore` (`engine/acquisition/program_inputs.py`). |
 | **InputRequest** | A panel or runner asking for a value of one type that another panel can supply. Whichever supplying panel the user acts in answers it. There's no storage: it's a question with one answer. The app keeps the open requests (`app/input_requests.py`), at most one per type, and hands them to every panel and runner. |
 | **PixelPick** | The value a click on an image supplies: the program output clicked on, plus `x` and `y` in its pixels. |
 | **Mask** | A drawn region, as a program input value. The Mask Editor supplies it; ROI and Modulation inputs hold it. *(From phase 6: today a `Mask` is data in the Library.)* |
@@ -89,10 +89,11 @@ Everything the software does is this loop:
 |---|---|
 | `registry.py` | `Registry` |
 | `device.py` | `Device` + `device_registry` |
+| `device_config.py` | `DeviceConfig`: a device's settings, a dataclass whose fields carry their value rules |
 | `program.py` | `Program`, `RunContext` + `program_registry` |
 | `runner.py` | `Runner`, `RunnerContext`, `Control`, `Button`, `Toggle` |
-| `program_inputs.py` | The value rules (int, float, choice, ...), `Editor`, `FieldContext`. `ProgramInputs` (protocol). *(Today also parameter blocks: `Group`, `BlockMap`, `block_registry`. `ProgramInput` from phase 5.)* |
-| `input_section.py` | `Section` *(`InputSection` from phase 5)* |
+| `program_inputs.py` | `ProgramInput` + `program_input_registry`, the value rules (int, float, choice, ...), `ProgramInputValues` (a run's values), `ProgramInputs` (protocol), `Editor`, `FieldContext` |
+| `input_section.py` | `InputSection` |
 | `input_requests.py` | `InputRequest`, `InputRequests` (protocol), `PixelPick` |
 | `mask.py` | `Mask`, as a program input value *(from phase 6)* |
 | `data.py` | `Data`, `ArrayData`, `Image`, `DecayHistogram`, `RawSamples`, `Spectrum`, `Mosaic`, `DATA_KINDS` *(today also `Mask`)* |

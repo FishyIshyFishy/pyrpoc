@@ -9,6 +9,8 @@ from typing import Any, TypeVar
 
 from pyrpoc.core.data import Data
 from pyrpoc.core.device import Device
+from pyrpoc.core.input_section import InputSection
+from pyrpoc.core.program_inputs import ProgramInput, ProgramInputValues
 from pyrpoc.core.program_output import ProgramOutput
 from pyrpoc.core.registry import Registry
 
@@ -46,8 +48,9 @@ class DeviceMap(Mapping[type[Device], Device]):
 
 
 class Program:
-    """One experiment: the devices it uses, its parameter blocks, its outputs,
-    the runners that start it, and ``run``, which does the work."""
+    """One experiment: the devices it uses, the program inputs it reads (laid out
+    in input sections), its outputs, the runners that start it, and ``run``,
+    which does the work."""
 
     display_name: str = "Program"
 
@@ -58,9 +61,8 @@ class Program:
     # Device classes to claim. Claims propagate along ``backed_by``.
     devices: list[type[Device]] = []
 
-    # Parameter blocks, in form order. Declaring a block shares it with every
-    # other program that declares it.
-    params: list[type] = []
+    # The program inputs it reads, grouped as a panel shows them.
+    sections: list[InputSection] = []
 
     # Named outputs, and the kind of ``Data`` each one carries.
     emits: dict[str, type[Data]] = {}
@@ -71,21 +73,26 @@ class Program:
     def run(self, ctx: RunContext) -> None:
         raise NotImplementedError
 
+    @classmethod
+    def inputs(cls) -> list[ProgramInput[Any]]:
+        """Every program input it reads, in section order."""
+        return [each for section in cls.sections for each in section.inputs]
+
 
 class RunContext:
-    """What a running program is handed: its parameters, its devices, its
+    """What a running program is handed: its input values, its devices, its
     outputs, status and cancel."""
 
     def __init__(
         self,
         *,
-        params: Any,
+        inputs: ProgramInputValues,
         devices: Mapping[type[Device], Device],
         outputs: dict[str, ProgramOutput[Any]],
         cancel: threading.Event,
         on_status: Callable[[str], None],
     ):
-        self.params = params
+        self.inputs = inputs
         self.devices = DeviceMap(devices)
         self.outputs = outputs
         self._cancel = cancel

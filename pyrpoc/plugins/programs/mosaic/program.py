@@ -13,11 +13,12 @@ from pyrpoc.plugins.devices import DAQ, Galvo, PriorStage
 
 from ..building_blocks.functions.galvo_raster import Raster
 from ..building_blocks.functions.run_loops import grow, walk
-from ..building_blocks.parameter_groups import (
-    DaqGroup,
-    ModulationGroup,
-    MosaicGroup,
-    ScanGroup,
+from ..building_blocks.program_inputs import (
+    DAQ_SECTION,
+    MODULATION_SECTION,
+    MOSAIC_SECTION,
+    SCAN_SECTION,
+    MosaicGrid,
 )
 from ..building_blocks.runners import Single
 
@@ -44,7 +45,7 @@ class StageMosaic(Program):
     group = "Confocal Fluorescence"
     order = 12
     devices = [Galvo, DAQ, PriorStage]
-    params = [ScanGroup, DaqGroup, ModulationGroup, MosaicGroup]
+    sections = [SCAN_SECTION, DAQ_SECTION, MODULATION_SECTION, MOSAIC_SECTION]
     emits = {"mosaic": Mosaic}
     # Once only: a mosaic is one pass over the grid, never repeated or looped.
     runners = [Single()]
@@ -52,7 +53,7 @@ class StageMosaic(Program):
     def run(self, ctx: RunContext) -> None:
         stage = ctx.devices[PriorStage]
         origin = stage.xy_position()
-        tiles = ctx.params[MosaicGroup].snake(origin)
+        tiles = MosaicGrid.from_inputs(ctx.inputs).snake(origin)
         try:
             image_tiles(ctx, stage, tiles)
         except Cancelled:

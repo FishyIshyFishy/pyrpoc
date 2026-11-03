@@ -11,9 +11,7 @@ import numpy as np
 from pyrpoc.core.program import RunContext
 from pyrpoc.plugins.devices import DAQ, Galvo
 
-from ..parameter_groups.daq import DaqGroup
-from ..parameter_groups.modulation import ModulationGroup
-from ..parameter_groups.scan import ScanGroup
+from ..program_inputs import MASKS, SAMPLE_RATE_HZ, ScanGeometry
 from .daq_tasks import acquire
 from .mask_ttl import mask_ttl
 
@@ -24,7 +22,7 @@ def pixel_samples(dwell_time_us: float, sample_rate_hz: float) -> int:
     return max(1, int(dwell_time_us * 1e-6 * sample_rate_hz))
 
 
-def raster_waveform(scan: ScanGroup, samples_per_pixel: int) -> np.ndarray:
+def raster_waveform(scan: ScanGeometry, samples_per_pixel: int) -> np.ndarray:
     """The ``(fast, slow)`` AO waveform for one frame: the fast axis sweeps the
     overscan-padded width each line, holding ``samples_per_pixel`` per pixel."""
     fast_axis = scan.fast_volts(np.arange(-scan.extra_left, scan.x_pixels + scan.extra_right))
@@ -41,7 +39,7 @@ class Raster:
 
     daq: DAQ
     galvo: Galvo
-    scan: ScanGroup
+    scan: ScanGeometry
     sample_rate_hz: float
     samples_per_pixel: int
     waveform: np.ndarray
@@ -49,13 +47,11 @@ class Raster:
 
     @classmethod
     def for_run(cls, ctx: RunContext) -> Raster:
-        scan = ctx.params[ScanGroup]
-        sample_rate_hz = ctx.params[DaqGroup].sample_rate_hz
+        scan = ScanGeometry.from_inputs(ctx.inputs)
+        sample_rate_hz = ctx.inputs[SAMPLE_RATE_HZ]
         daq = ctx.devices[DAQ]
         samples_per_pixel = pixel_samples(scan.dwell_time_us, sample_rate_hz)
-        ttl = mask_ttl(
-            ctx.params[ModulationGroup].masks, scan, samples_per_pixel, daq.config.device_name
-        )
+        ttl = mask_ttl(ctx.inputs[MASKS], scan, samples_per_pixel, daq.config.device_name)
         waveform = raster_waveform(scan, samples_per_pixel)
         return cls(daq, ctx.devices[Galvo], scan, sample_rate_hz, samples_per_pixel, waveform, ttl)
 

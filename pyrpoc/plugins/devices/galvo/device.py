@@ -8,22 +8,22 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from pyrpoc.core import program_inputs as P
+from pyrpoc.core import device_config as C
 from pyrpoc.core.device import Device, device_registry
 
 from ..daq.device import DAQ
 
 
 @dataclass
-class GalvoConfig(P.Group):
-    fast_ao: int = P.int_field(
+class GalvoConfig(C.DeviceConfig):
+    fast_ao: int = C.int_field(
         "Fast Axis AO",
         0,
         minimum=0,
         maximum=31,
         tooltip="Analog output channel for the fast (X) galvo",
     )
-    slow_ao: int = P.int_field(
+    slow_ao: int = C.int_field(
         "Slow Axis AO",
         1,
         minimum=0,

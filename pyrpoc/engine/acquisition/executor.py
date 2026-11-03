@@ -14,9 +14,10 @@ from collections.abc import Callable
 from dataclasses import dataclass, replace
 from typing import Any
 
-from pyrpoc.core import program_inputs as P
 from pyrpoc.core.device import Device
+from pyrpoc.core.device_config import encode_config
 from pyrpoc.core.program import Cancelled, Program, RunContext
+from pyrpoc.core.program_inputs import ProgramInputValues
 from pyrpoc.core.program_output import Origin, ProgramOutput, Provenance, utc_now
 from pyrpoc.core.saving import SaveTarget
 from pyrpoc.engine.acquisition.program_inputs import ProgramInputsStore
@@ -71,7 +72,7 @@ class RunCallbacks:
 
 
 def device_state(devices: dict[type[Device], Device]) -> dict[str, Any]:
-    return {cls.__name__: P.encode_block(device.config) for cls, device in devices.items()}
+    return {cls.__name__: encode_config(device.config) for cls, device in devices.items()}
 
 
 class Executor:
@@ -99,12 +100,12 @@ class Executor:
         with self._lock:
             devices = claims.resolve(list(program.devices), inventory)
             self.leases.check(devices.values())
-            params = self.resolve_params(program, inputs)
+            values = self.resolve_inputs(program, inputs)
             self._run_id += 1
             key = RecordingKey(
                 program_key=program_key,
                 # One encoding, shared by the recording and the session file.
-                parameters=inputs.encode_blocks(list(program.params)),
+                parameters=inputs.encode(program.inputs()),
                 devices=device_state(devices),
                 # A copy: the app edits its save target in place.
                 save=replace(save),
@@ -124,7 +125,7 @@ class Executor:
             if recording.saver is not None:
                 recording.saver.add_run(run.id, provenance.started_at)
             self.leases.take(run.id, devices.values())
-            self.launch(run, params)
+            self.launch(run, values)
         if stale is not None:
             self.close(stale)
         return run
@@ -179,13 +180,13 @@ class Executor:
             if recording.last_run is not None:
                 self.callbacks.on_failed(recording.last_run, message)
 
-    def resolve_params(self, program: Program, inputs: ProgramInputsStore) -> P.BlockMap:
-        """The program's declared blocks, checked and resolved against the open
-        data, as copies the run keeps however the inputs change meanwhile."""
+    def resolve_inputs(self, program: Program, inputs: ProgramInputsStore) -> ProgramInputValues:
+        """The values of the program's inputs, checked and resolved against the
+        open data, which the run keeps however the inputs change meanwhile."""
         # Resolving here means a mask that is no longer open stops the run here.
-        declared = list(program.params)
+        declared = program.inputs()
         inputs.validate(declared)
-        return inputs.blocks_for(declared, self.library)
+        return inputs.values_for(declared, self.library)
 
     @staticmethod
     def build_saver(
@@ -222,9 +223,9 @@ class Executor:
             self.library.add(program_output)
         return outputs
 
-    def launch(self, run: Run, params: P.BlockMap) -> None:
+    def launch(self, run: Run, values: ProgramInputValues) -> None:
         ctx = RunContext(
-            params=params,
+            inputs=values,
             devices=run.devices,
             outputs=run.outputs,
             cancel=run.cancel,

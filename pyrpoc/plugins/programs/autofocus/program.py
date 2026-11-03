@@ -19,7 +19,14 @@ from pyrpoc.core.program import (
 from pyrpoc.plugins.devices import DAQ, DaqError, Galvo, PriorError, PriorStage
 
 from ..building_blocks.functions.roi_scan import region_source
-from ..building_blocks.parameter_groups import DaqGroup, FocusSearchGroup, RoiGroup, ScanGroup
+from ..building_blocks.program_inputs import (
+    DAQ_SECTION,
+    FOCUS_SEARCH_SECTION,
+    REGION_SECTION,
+    SCAN_SECTION,
+    FocusSearch,
+    ScanRegion,
+)
 from ..building_blocks.runners import Single
 from .climb import ClimbResult, ClimbStep, climb
 from .roi_scan import RoiRaster
@@ -82,7 +89,7 @@ class Autofocus(Program):
     group = "Confocal Fluorescence"
     order = 13
     devices = [Galvo, DAQ, PriorStage]
-    params = [ScanGroup, DaqGroup, RoiGroup, FocusSearchGroup]
+    sections = [SCAN_SECTION, DAQ_SECTION, REGION_SECTION, FOCUS_SEARCH_SECTION]
     emits = {"intensity": Image}
     # Once only: each start is one complete search.
     runners = [Single()]
@@ -90,11 +97,16 @@ class Autofocus(Program):
     def run(self, ctx: RunContext) -> None:
         stage = ctx.devices[PriorStage]
         raster = RoiRaster.for_run(ctx)
-        ctx.describe("intensity", roi=raster.layout_metadata(region_source(ctx.params[RoiGroup])))
+        ctx.describe(
+            "intensity",
+            roi=raster.layout_metadata(region_source(ScanRegion.from_inputs(ctx.inputs))),
+        )
         start_z_um = stage.z_position()
         focus = FocusRun(ctx, stage, raster, start_z_um)
         try:
-            result = climb(focus.measure, focus.report, start_z_um, ctx.params[FocusSearchGroup])
+            result = climb(
+                focus.measure, focus.report, start_z_um, FocusSearch.from_inputs(ctx.inputs)
+            )
             focus.finish(result)
         except (Cancelled, DaqError, PriorError):
             return_to_start(stage, start_z_um)

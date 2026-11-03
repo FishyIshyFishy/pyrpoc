@@ -9,7 +9,12 @@ from pyrpoc.core.program import Program, RunContext, program_registry
 from pyrpoc.plugins.devices import ToupcamCamera
 
 from ..building_blocks.functions.run_loops import count_off
-from ..building_blocks.parameter_groups import CameraGroup, FrameCountGroup
+from ..building_blocks.program_inputs import (
+    CAMERA_SECTION,
+    FRAME_COUNT_SECTION,
+    NUM_FRAMES,
+    CameraSettings,
+)
 from ..building_blocks.runners import Continuous, Single
 
 
@@ -29,20 +34,20 @@ class Brightfield(Program):
     group = "Brightfield"
     order = 50
     devices = [ToupcamCamera]
-    params = [CameraGroup, FrameCountGroup]
+    sections = [CAMERA_SECTION, FRAME_COUNT_SECTION]
     emits = {"intensity": Image}
     runners = [Single(), Continuous()]
 
     def run(self, ctx: RunContext) -> None:
         camera = ctx.devices[ToupcamCamera]
-        settings = ctx.params[CameraGroup]
+        settings = CameraSettings.from_inputs(ctx.inputs)
         camera.start(
             exposure_us=round(settings.exposure_ms * 1000),
             gain_pct=settings.gain_pct,
             binned=settings.binned,
         )
         try:
-            for _ in count_off(ctx, ctx.params[FrameCountGroup].num_frames, "frame"):
+            for _ in count_off(ctx, ctx.inputs[NUM_FRAMES], "frame"):
                 ctx.publish("intensity", Image(to_grey(camera.grab(ctx.sleep)), ["brightfield"]))
         finally:
             camera.stop()

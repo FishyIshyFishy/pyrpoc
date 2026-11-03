@@ -1,9 +1,5 @@
-"""Pinpoint Raman: park the galvos at one point and read a spectrum there.
-
-The point comes from ``PointGroup``, typed or set by an ``ArmAndRun`` runner
-from a clicked pixel; ``run`` does not know a display exists. The parking is
-left in place when the run ends, so a continuous run keeps reading the same spot.
-"""
+"""Pinpoint Raman: park the galvos at one point, typed or picked off an image,
+and read a spectrum there."""
 
 from __future__ import annotations
 
@@ -13,7 +9,12 @@ from pyrpoc.plugins.devices import DAQ, AndorCCD, Galvo
 
 from ..building_blocks.functions.ccd_read import publish_spectrum
 from ..building_blocks.functions.galvo_park import aim_at_pixel, park_galvos
-from ..building_blocks.parameter_groups import CcdReadoutGroup, PointGroup
+from ..building_blocks.program_inputs import (
+    CCD_READOUT_SECTION,
+    POINT_SECTION,
+    TARGET,
+    spectrum_readout,
+)
 from ..building_blocks.runners import ArmAndRun, Continuous, Single
 
 
@@ -23,7 +24,7 @@ class PinpointRaman(Program):
     group = "Raman"
     order = 20
     devices = [Galvo, AndorCCD]
-    params = [PointGroup, CcdReadoutGroup]
+    sections = [POINT_SECTION, CCD_READOUT_SECTION]
     emits = {"spectrum": Spectrum}
     runners = [
         Single(),
@@ -37,8 +38,8 @@ class PinpointRaman(Program):
     ]
 
     def run(self, ctx: RunContext) -> None:
-        point = ctx.params[PointGroup].target
-        readout = ctx.params[CcdReadoutGroup].to_readout()
+        point = ctx.inputs[TARGET]
+        readout = spectrum_readout(ctx.inputs)
 
         ctx.status(f"parking at {point.fast_v:.3f} / {point.slow_v:.3f} V")
         # The DAQ is bound though ``devices`` does not name it: claims follow

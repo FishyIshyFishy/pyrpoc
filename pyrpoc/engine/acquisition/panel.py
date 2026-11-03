@@ -20,7 +20,6 @@ from PyQt6.QtWidgets import (
 )
 
 from pyrpoc.core.input_requests import InputRequests
-from pyrpoc.core.input_section import sections
 from pyrpoc.core.library import Library
 from pyrpoc.core.panels import Panel
 from pyrpoc.core.program import program_registry
@@ -29,7 +28,7 @@ from pyrpoc.core.registry import grouped
 from pyrpoc.core.runner import Control
 from pyrpoc.shared.widgets.grouped_combo import GroupedComboBox
 from pyrpoc.shared.widgets.icons import asset_icon
-from pyrpoc.shared.widgets.param_form import ParamForm
+from pyrpoc.shared.widgets.param_form import ParamForm, input_form_section
 
 from .host import RunnerHost
 from .program_inputs import ProgramInputsStore
@@ -152,7 +151,7 @@ class AcquisitionPanel(Panel):
             self.program_combo.setCurrentIndex(index)
             self.program_combo.blockSignals(False)
         self.form = ParamForm(
-            sections(program_registry.get(key).params),
+            [input_form_section(each) for each in program_registry.get(key).sections],
             self.inputs,
             self,
             cards=True,

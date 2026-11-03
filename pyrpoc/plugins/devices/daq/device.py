@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from pyrpoc.core import program_inputs as P
+from pyrpoc.core import device_config as C
 from pyrpoc.core.device import Device, DeviceError, device_registry
 
 
@@ -18,9 +18,9 @@ class DaqError(DeviceError):
 
 
 @dataclass
-class DaqConfig(P.Group):
-    device_name: str = P.text_field("DAQ Device", "Dev1", tooltip="NI-DAQ device name (e.g. Dev1)")
-    ai_channels: tuple[int, ...] = P.channels_field(
+class DaqConfig(C.DeviceConfig):
+    device_name: str = C.text_field("DAQ Device", "Dev1", tooltip="NI-DAQ device name (e.g. Dev1)")
+    ai_channels: tuple[int, ...] = C.channels_field(
         "Active AI Channels",
         num_channels=9,
         tooltip="Which analog input channels are connected and should be read",

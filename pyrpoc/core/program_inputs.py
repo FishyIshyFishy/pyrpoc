@@ -1,14 +1,11 @@
-"""Program parameters: field specs, the blocks (``Group``) that hold them, and
-``BlockStore``, which holds one instance of every block."""
+"""Program inputs: the rules values follow, ``ProgramInput`` declarations, the
+values one run was given, and the ``ProgramInputs`` protocol."""
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable, Iterator, Mapping
-from dataclasses import dataclass, fields, replace
-from dataclasses import field as dc_field
-from typing import TYPE_CHECKING, Any, ClassVar, Protocol, TypeVar
-
-from pyrpoc.core.registry import Registry
+from collections.abc import Callable, Iterable, Mapping, Sequence
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any, Generic, Protocol, TypeVar
 
 if TYPE_CHECKING:  # pragma: no cover
     from pyrpoc.core.library import Library
@@ -181,71 +178,79 @@ class ChannelsField(Field):
         return list(value)
 
 
-def spec_field(default: Any, spec: Field, *, factory=None):
-    """A dataclass field carrying its spec."""
-    if factory is not None:
-        return dc_field(default_factory=factory, metadata={"param": spec})
-    return dc_field(default=default, metadata={"param": spec})
+T = TypeVar("T")
 
 
-def int_field(label, default, *, minimum=None, maximum=None, step=1, tooltip=""):
-    return spec_field(default, IntField(label, tooltip, minimum, maximum, step))
+@dataclass(frozen=True, eq=False)
+class ProgramInput(Generic[T]):
+    """The declaration of one value a program reads: its key, the rules its
+    values follow (which carry its label), and its default."""
+
+    key: str
+    rule: Field
+    default: T
 
 
-def float_field(label, default, *, minimum=None, maximum=None, step=0.1, decimals=6, tooltip=""):
-    return spec_field(default, FloatField(label, tooltip, minimum, maximum, step, decimals))
+# Every declared program input, by key.
+program_input_registry: dict[str, ProgramInput[Any]] = {}
 
 
-def text_field(label, default="", *, tooltip=""):
-    return spec_field(default, TextField(label, tooltip))
+def declare(key: str, rule: Field, default: T) -> ProgramInput[T]:
+    """The program input ``key``, shared by every program that declares it."""
+    existing = program_input_registry.get(key)
+    if existing is not None:
+        # The same key must mean the same value everywhere it is declared.
+        if type(existing.rule) is not type(rule):
+            raise TypeError(
+                f"program input {key!r} is declared as both {type(existing.rule).__name__} "
+                f"and {type(rule).__name__}"
+            )
+        return existing
+    program_input = ProgramInput(key, rule, default)
+    program_input_registry[key] = program_input
+    return program_input
 
 
-def path_field(label, default="", *, dialog_filter="All Files (*)", tooltip=""):
-    return spec_field(default, PathField(label, tooltip, dialog_filter))
+def int_input(
+    key, label, default, *, minimum=None, maximum=None, step=1, tooltip=""
+) -> ProgramInput[int]:
+    return declare(key, IntField(label, tooltip, minimum, maximum, step), default)
 
 
-def bool_field(label, default=False, *, tooltip=""):
-    return spec_field(default, BoolField(label, tooltip))
+def float_input(
+    key, label, default, *, minimum=None, maximum=None, step=0.1, decimals=6, tooltip=""
+) -> ProgramInput[float]:
+    return declare(key, FloatField(label, tooltip, minimum, maximum, step, decimals), default)
 
 
-def choice_field(label, default, *, choices, tooltip=""):
-    return spec_field(default, ChoiceField(label, tooltip, tuple(choices)))
+def bool_input(key, label, default, *, tooltip="") -> ProgramInput[bool]:
+    return declare(key, BoolField(label, tooltip), default)
 
 
-def channels_field(label, *, num_channels=9, default=None, tooltip=""):
-    resolved = tuple(range(num_channels)) if default is None else tuple(default)
-    return spec_field(None, ChannelsField(label, tooltip, num_channels), factory=lambda: resolved)
+def choice_input(key, label, default, *, choices, tooltip="") -> ProgramInput[str]:
+    return declare(key, ChoiceField(label, tooltip, tuple(choices)), default)
 
 
-# A dataclass with no fields, so every block type-checks as a dataclass
-# instance and ``dataclasses.replace`` accepts it.
-@dataclass
-class Group:
-    """Base for parameter blocks: a dataclass whose fields carry their spec.
-    ``label`` is the block's section heading."""
+class ProgramInputValues:
+    """The value of each program input one run was given."""
 
-    label: ClassVar[str] = ""
+    def __init__(self, values: Mapping[str, Any]):
+        self._values = dict(values)
 
-
-B = TypeVar("B", bound=Group)
-
-
-def instance_of(value: object, cls: type[B]) -> B:
-    """``value`` typed as ``cls``, raising if it is not one."""
-    if not isinstance(value, cls):
-        raise TypeError(f"{value!r} is stored under {cls.__name__} but is not one")
-    return value
+    def __getitem__(self, program_input: ProgramInput[T]) -> T:
+        if program_input.key not in self._values:
+            raise KeyError(
+                f"{program_input.key!r} is not an input of this program; it declares "
+                f"{sorted(self._values)}"
+            )
+        return self._values[program_input.key]
 
 
-def block_fields(block_or_cls: Any) -> list[tuple[str, Field]]:
-    """``(name, spec)`` for every parameter field on a block."""
-    return [(f.name, f.metadata["param"]) for f in fields(block_or_cls) if "param" in f.metadata]
-
-
-def block_name(block_or_cls: Any) -> str:
-    """The serialisation and addressing key for a block: its class name."""
-    cls = block_or_cls if isinstance(block_or_cls, type) else type(block_or_cls)
-    return cls.__name__
+def values_from_parameters(
+    inputs: Sequence[ProgramInput[Any]], parameters: Mapping[str, Any]
+) -> ProgramInputValues:
+    """``inputs`` as a recording's ``parameters`` hold them, which must name every one."""
+    return ProgramInputValues({each.key: each.rule.decode(parameters[each.key]) for each in inputs})
 
 
 class ProgramInputs(Protocol):
@@ -265,76 +270,3 @@ class ProgramInputs(Protocol):
         ...
 
     def unsubscribe(self, callback: Callable[[str], None]) -> None: ...
-
-
-class BlockMap(Mapping):
-    """The blocks one run was given, keyed by class."""
-
-    def __init__(self, blocks: Mapping[type, Group]):
-        self._blocks: dict[type, Group] = dict(blocks)
-
-    def __getitem__(self, key: type[B]) -> B:
-        if key not in self._blocks:
-            raise KeyError(
-                f"{key.__name__!r} is not in this program's params; "
-                f"it declares {sorted(block_name(c) for c in self._blocks)}"
-            )
-        return instance_of(self._blocks[key], key)
-
-    def __iter__(self) -> Iterator[type]:
-        return iter(self._blocks)
-
-    def __len__(self) -> int:
-        return len(self._blocks)
-
-    def __repr__(self) -> str:  # pragma: no cover - debugging aid
-        return f"BlockMap({sorted(block_name(c) for c in self._blocks)})"
-
-
-def split_path(path: str) -> tuple[str, str]:
-    """``"ScanGroup.dwell_time_us"`` as its block name and field name."""
-    name, _, attr = path.partition(".")
-    if not attr:
-        raise KeyError(f"{path!r} is not a <Block>.<field> path")
-    return name, attr
-
-
-def encode_block(block: Any) -> dict[str, Any]:
-    return {name: spec.encode(getattr(block, name)) for name, spec in block_fields(block)}
-
-
-def decode_block(cls: type, raw: Mapping[str, Any]) -> Any:
-    """Build a block from a plain dict, coercing every value. Missing keys
-    take the field's default."""
-    kwargs = {name: spec.decode(raw[name]) for name, spec in block_fields(cls) if name in raw}
-    return cls(**kwargs)
-
-
-def validate_block(block: Any) -> None:
-    """Re-run every field's coercion against the values currently held."""
-    for name, spec in block_fields(block):
-        spec.coerce(getattr(block, name))
-
-
-def resolve_block(block: B, library: Library) -> B:
-    """A copy of ``block`` as a run should see it."""
-    # Always a copy, so a run keeps what it started with while the form edits the
-    # shared block; field values are immutable, so shallow is enough.
-    changes: dict[str, Any] = {}
-    for name, spec in block_fields(block):
-        value = getattr(block, name)
-        resolved = spec.resolve(value, library)
-        if resolved is not value:
-            changes[name] = resolved
-    return replace(block, **changes)
-
-
-# Keyed by class name, a block's identity in the form, session and metadata.
-block_registry: Registry[Group] = Registry("BlockRegistry", Group, stamp=None)
-
-R = TypeVar("R", bound=type)
-
-
-def block(cls: R) -> R:
-    """Register a parameter block under its class name."""
-    return block_registry.register(cls.__name__)(cls)

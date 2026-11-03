@@ -6,6 +6,7 @@ from __future__ import annotations
 import importlib.metadata
 import json
 import os
+import re
 from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -16,7 +17,7 @@ from pyrpoc.core.program_output import Origin, ProgramOutput, Provenance
 from pyrpoc.core.saving import writer_registry
 
 FORMAT = "pyrpoc-recording"
-FORMAT_VERSION = 1
+FORMAT_VERSION = 2
 META_SUFFIX = "_meta.json"
 
 
@@ -115,8 +116,32 @@ def optional_str(value: Any) -> str | None:
     return None if value is None else str(value)
 
 
+def legacy_input_key(path: str) -> str:
+    """The program input key that replaced ``<Block>.<field>``, as in
+    ``"ScanGroup.dwell_time_us"`` to ``"scan.dwell_time_us"``."""
+    block, _, field = path.partition(".")
+    prefix = re.sub(r"(?<!^)(?=[A-Z])", "_", block.removesuffix("Group")).lower()
+    return f"{prefix}.{field}"
+
+
 def decode_v1(raw: dict[str, Any]) -> RecordingRecord:
-    """Unknown fields are ignored: later versions of format 1 may add some."""
+    """Format 1, whose parameters are one object per block."""
+    parameters = {
+        legacy_input_key(f"{block}.{field}"): value
+        for block, values in raw["parameters"].items()
+        for field, value in values.items()
+    }
+    return decode_record(raw, parameters)
+
+
+def decode_v2(raw: dict[str, Any]) -> RecordingRecord:
+    """Format 2, whose parameters are keyed by program input."""
+    return decode_record(raw, dict(raw["parameters"]))
+
+
+def decode_record(raw: dict[str, Any], parameters: dict[str, Any]) -> RecordingRecord:
+    """Every field but the parameters, which differ between formats. Unknown
+    fields are ignored, so a format may add some."""
     return RecordingRecord(
         pyrpoc_version=str(raw["pyrpoc_version"]),
         program_key=str(raw["program_key"]),
@@ -133,7 +158,7 @@ def decode_v1(raw: dict[str, Any]) -> RecordingRecord:
             )
             for run in raw["runs"]
         ],
-        parameters=dict(raw["parameters"]),
+        parameters=parameters,
         devices=dict(raw["devices"]),
         outputs={
             str(output): OutputRecord(
@@ -149,7 +174,10 @@ def decode_v1(raw: dict[str, Any]) -> RecordingRecord:
 
 
 # Keyed by ``format_version``. Entries are added, never removed.
-DECODERS: dict[int, Callable[[dict[str, Any]], RecordingRecord]] = {1: decode_v1}
+DECODERS: dict[int, Callable[[dict[str, Any]], RecordingRecord]] = {
+    1: decode_v1,
+    2: decode_v2,
+}
 
 
 def load_recording(meta_path: Path) -> list[ProgramOutput[Any]]:

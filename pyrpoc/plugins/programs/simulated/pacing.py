@@ -1,23 +1,16 @@
-"""How long a simulated acquisition takes."""
+"""How long a simulated frame takes."""
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import ClassVar
+from pyrpoc.core.input_section import InputSection
+from pyrpoc.core.program_inputs import int_input
 
-from pyrpoc.core.program_inputs import Group, block, int_field
+FRAME_INTERVAL_MS = int_input(
+    "pacing.frame_interval_ms",
+    "Frame Interval (ms)",
+    100,
+    minimum=0,
+    tooltip="Pause between frames, standing in for acquisition time",
+)
 
-
-@block
-@dataclass
-class PacingGroup(Group):
-    """Simulation's stand-in for how long an acquisition takes."""
-
-    label: ClassVar[str] = "Pacing"
-
-    frame_interval_ms: int = int_field(
-        "Frame Interval (ms)",
-        100,
-        minimum=0,
-        tooltip="Pause between frames, standing in for acquisition time",
-    )
+PACING_SECTION = InputSection("Pacing", (FRAME_INTERVAL_MS,))

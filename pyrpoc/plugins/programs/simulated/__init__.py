@@ -1,5 +1,5 @@
 """Programs that fake their data, for working without instruments, with the
-parameter blocks and fake detector only they use. Only ``pyrpoc --simulated``
+program inputs and fake detector only they use. Only ``pyrpoc --simulated``
 imports this package."""
 
 from __future__ import annotations

@@ -3,39 +3,35 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
-from typing import Any, TypeVar
+from typing import Any
 
-from pyrpoc.core import program_inputs as P
 from pyrpoc.core.library import Library
-
-B = TypeVar("B", bound=P.Group)
+from pyrpoc.core.program_inputs import (
+    ParameterError,
+    ProgramInput,
+    ProgramInputValues,
+    program_input_registry,
+)
 
 
 class ProgramInputsStore:
-    """Every program input's current value, keyed by ``<Block>.<field>``. One
-    value per key, shared by every program that declares it."""
+    """Every program input's current value, by key: one value per key, shared by
+    every program that declares it."""
 
     def __init__(self) -> None:
         self._values: dict[str, Any] = {}
         self._subscribers: list[Callable[[str], None]] = []
 
-    @staticmethod
-    def spec(key: str) -> P.Field:
-        """The rules for the input at ``key``."""
-        name, attr = P.split_path(key)
-        return dict(P.block_fields(P.block_registry.get(name)))[attr]
-
     def get(self, key: str) -> Any:
         """The current value, which is the input's default until one is set."""
         if key not in self._values:
-            name, attr = P.split_path(key)
-            self._values[key] = getattr(P.block_registry.get(name)(), attr)
+            self._values[key] = program_input_registry[key].default
         return self._values[key]
 
     def set(self, key: str, value: Any) -> None:
         """Check ``value`` against the input's rules, store it and tell every
         subscriber. Raises ``ParameterError`` for a value the rules refuse."""
-        self._values[key] = self.spec(key).coerce(value)
+        self._values[key] = program_input_registry[key].rule.coerce(value)
         for callback in list(self._subscribers):
             callback(key)
 
@@ -47,35 +43,40 @@ class ProgramInputsStore:
         if callback in self._subscribers:
             self._subscribers.remove(callback)
 
-    def block(self, cls: type[B]) -> B:
-        """A new ``cls`` holding the current values of its inputs."""
-        return cls(**{name: self.get(f"{cls.__name__}.{name}") for name, _ in P.block_fields(cls)})
+    def validate(self, inputs: Sequence[ProgramInput[Any]]) -> None:
+        """Re-check the current value of each of ``inputs`` against its rules."""
+        for each in inputs:
+            each.rule.coerce(self.get(each.key))
 
-    def validate(self, classes: Sequence[type[P.Group]]) -> None:
-        """Re-check the current values of every input of ``classes``."""
-        for cls in classes:
-            P.validate_block(self.block(cls))
+    def values_for(
+        self, inputs: Sequence[ProgramInput[Any]], library: Library
+    ) -> ProgramInputValues:
+        """The current values of ``inputs`` as a run sees them, with values that
+        name open data filled in."""
+        return ProgramInputValues(
+            {each.key: each.rule.resolve(self.get(each.key), library) for each in inputs}
+        )
 
-    def blocks_for(self, classes: Sequence[type[P.Group]], library: Library) -> P.BlockMap:
-        """Copies of ``classes`` as a run sees them, with values that name open data
-        filled in."""
-        return P.BlockMap({cls: P.resolve_block(self.block(cls), library) for cls in classes})
-
-    def encode_blocks(self, classes: Sequence[type[P.Group]]) -> dict[str, Any]:
-        """The values of ``classes`` as JSON, one object per block."""
-        return {cls.__name__: P.encode_block(self.block(cls)) for cls in classes}
+    def encode(self, inputs: Sequence[ProgramInput[Any]]) -> dict[str, Any]:
+        """The current values of ``inputs`` as JSON, by key."""
+        return {each.key: each.rule.encode(self.get(each.key)) for each in inputs}
 
     def to_dict(self) -> dict[str, Any]:
         """Every value set or read so far, as JSON, by key."""
-        return {key: self.spec(key).encode(value) for key, value in self._values.items()}
+        return {
+            key: program_input_registry[key].rule.encode(value)
+            for key, value in self._values.items()
+        }
 
     def load_dict(self, raw: Mapping[str, Any]) -> None:
         """Take values from saved JSON, skipping any whose input no longer
         exists or whose value its rules refuse."""
         for key, value in raw.items():
+            if key not in program_input_registry:
+                continue
             try:
-                self._values[key] = self.spec(key).decode(value)
-            except (KeyError, P.ParameterError):
+                self._values[key] = program_input_registry[key].rule.decode(value)
+            except ParameterError:
                 continue
 
     def clear(self) -> None:

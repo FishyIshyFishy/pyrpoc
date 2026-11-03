@@ -110,7 +110,7 @@ def parse_args() -> tuple[argparse.Namespace, list[str]]:
 def add_simulations() -> None:
     """Register the simulated programs."""
     # Imported here, not at the top: importing the package registers its
-    # parameter blocks, which must not exist without --simulated.
+    # program inputs, which must not exist without --simulated.
     from pyrpoc.plugins.programs.simulated import register
 
     register()

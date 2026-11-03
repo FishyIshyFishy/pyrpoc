@@ -4,6 +4,7 @@ into where the values are kept."""
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -25,7 +26,8 @@ from PyQt6.QtWidgets import (
 
 from pyrpoc.core import program_inputs as P
 from pyrpoc.core.device import Device
-from pyrpoc.core.input_section import Section
+from pyrpoc.core.device_config import DeviceConfig, config_fields
+from pyrpoc.core.input_section import InputSection
 from pyrpoc.core.program_inputs import ParameterError
 
 from .cards import BaseCardWidget
@@ -203,6 +205,24 @@ def build_field(spec: P.Field, parent: QWidget, context: P.FieldContext) -> P.Ed
     return field
 
 
+@dataclass(frozen=True)
+class FormSection:
+    """A heading and the ``(key, rules)`` rows under it."""
+
+    label: str
+    rows: tuple[tuple[str, P.Field], ...]
+
+
+def input_form_section(section: InputSection) -> FormSection:
+    """A form section showing the program inputs of ``section``."""
+    return FormSection(section.label, tuple((each.key, each.rule) for each in section.inputs))
+
+
+def config_form_section(cls: type[DeviceConfig]) -> FormSection:
+    """A form section showing every field of a device configuration, keyed by field name."""
+    return FormSection("", tuple(config_fields(cls)))
+
+
 class FormValues(Protocol):
     """Where a form reads and writes its values, by key."""
 
@@ -220,12 +240,11 @@ class ConfigValues:
         self.device = device
 
     def get(self, key: str) -> Any:
-        return getattr(self.device.config, P.split_path(key)[1])
+        return getattr(self.device.config, key)
 
     def set(self, key: str, value: Any) -> None:
-        attr = P.split_path(key)[1]
-        spec = dict(P.block_fields(self.device.config))[attr]
-        setattr(self.device.config, attr, spec.coerce(value))
+        spec = dict(config_fields(self.device.config))[key]
+        setattr(self.device.config, key, spec.coerce(value))
 
 
 class ParamForm(QWidget):
@@ -237,7 +256,7 @@ class ParamForm(QWidget):
 
     def __init__(
         self,
-        form_sections: Sequence[Section],
+        form_sections: Sequence[FormSection],
         values: FormValues,
         parent: QWidget,
         *,
@@ -261,12 +280,14 @@ class ParamForm(QWidget):
         root.addStretch(1)
         self.reload()
 
-    def build_section(self, section: Section, *, cards: bool, context: P.FieldContext) -> QWidget:
+    def build_section(
+        self, section: FormSection, *, cards: bool, context: P.FieldContext
+    ) -> QWidget:
         body = QWidget(self)
         form = QFormLayout(body)
         form.setContentsMargins(4, 4, 4, 4)
         keys: list[str] = []
-        for key, spec in section.entries:
+        for key, spec in section.rows:
             field = build_field(spec, body, context)
             field.connect(lambda key=key: self.on_field_changed(key))
             self.fields[key] = field

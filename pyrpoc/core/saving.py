@@ -22,7 +22,7 @@ D = TypeVar("D", bound=Data)
 class SaveTarget:
     """What a run is called, where it saves, and whether saving is on."""
 
-    # Not a parameter block: where files land does not depend on the program.
+    # Not a program input: where files land does not depend on the program.
     # A bare filename, which also names the run when saving is off.
     name: str = "acquisition"
     directory: str = ""
@@ -58,7 +58,7 @@ class Writer(Generic[D]):
         # The base path every file of the run hangs its suffix off.
         self.root = root
         self.output = output
-        # The run's encoded parameter blocks, for formats that carry them.
+        # The run's encoded program inputs, for formats that carry them.
         self.parameters = parameters
         # What was written, keyed as ``read`` expects them back.
         self.paths: dict[str, Path] = {}
