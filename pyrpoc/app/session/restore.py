@@ -7,11 +7,11 @@ import logging
 
 from pyrpoc.app.application import Application
 from pyrpoc.app.window import MainWindow
-from pyrpoc.plugins.data_panels import data_panel_registry
+from pyrpoc.core.device import Device
+from pyrpoc.core.panels import has_panel
 from pyrpoc.plugins.devices import device_registry
+from pyrpoc.plugins.panels import data_panel_registry
 from pyrpoc.plugins.programs import program_registry
-from pyrpoc.structs.plugins.data_panels import has_panel
-from pyrpoc.structs.plugins.devices import Device
 
 from .file import BAD_STATE, DeviceState, LibraryState, SaveState, SessionState, ViewState
 

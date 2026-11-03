@@ -9,8 +9,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Protocol
 
-from pyrpoc.structs.plugins import params as P
-from pyrpoc.structs.plugins.devices import Device, DeviceError, device_registry
+from pyrpoc.core import program_inputs as P
+from pyrpoc.core.device import Device, DeviceError, device_registry
 
 
 class TaggerError(DeviceError):

@@ -17,18 +17,18 @@ from PyQt6.QtCore import QByteArray, QTimer, pyqtSignal
 from PyQt6.QtGui import QAction, QCloseEvent
 from PyQt6.QtWidgets import QVBoxLayout, QWidget
 
-from pyrpoc.acquisition.panel import AcquisitionPanel
 from pyrpoc.app.application import Application
 from pyrpoc.app.device_docks import DeviceDocks
 from pyrpoc.app.menubar import MainMenuBar
 from pyrpoc.app.theme.manager import ThemeController
-from pyrpoc.data_library.panel import DataLibraryPanel
-from pyrpoc.device_inventory.panel import DevicesPanel
-from pyrpoc.plugins.data_panels import data_panel_registry
+from pyrpoc.core.dataset import Dataset
+from pyrpoc.core.panels import DataPanel, has_panel
+from pyrpoc.core.registry import grouped
+from pyrpoc.engine.acquisition.panel import AcquisitionPanel
+from pyrpoc.engine.data_library.panel import DataLibraryPanel
+from pyrpoc.engine.device_inventory.panel import DevicesPanel
 from pyrpoc.plugins.devices import device_registry
-from pyrpoc.structs.data_library.dataset import Dataset
-from pyrpoc.structs.plugins.data_panels import DataPanel, has_panel
-from pyrpoc.structs.registry import grouped
+from pyrpoc.plugins.panels import data_panel_registry
 
 qtads.CDockManager.setConfigFlag(qtads.CDockManager.eConfigFlag.DisableTabTextEliding, True)
 qtads.CDockManager.setConfigFlag(qtads.CDockManager.eConfigFlag.OpaqueSplitterResize, False)

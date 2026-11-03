@@ -8,8 +8,8 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from pyrpoc.core.program import RunContext
 from pyrpoc.plugins.devices import DAQ, Galvo
-from pyrpoc.structs.plugins.programs.program import RunContext
 
 from ..parameter_groups.daq import DaqGroup
 from ..parameter_groups.modulation import ModulationGroup

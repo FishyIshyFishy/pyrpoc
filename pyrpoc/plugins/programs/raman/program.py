@@ -6,9 +6,9 @@ pixel index; wavelength calibration is not part of the recording.
 
 from __future__ import annotations
 
+from pyrpoc.core.data import Spectrum
+from pyrpoc.core.program import Program, RunContext, program_registry
 from pyrpoc.plugins.devices import AndorCCD
-from pyrpoc.structs.data_library.data import Spectrum
-from pyrpoc.structs.plugins.programs.program import Program, RunContext, program_registry
 
 from ..building_blocks.functions.ccd_read import publish_spectrum
 from ..building_blocks.parameter_groups import CcdReadoutGroup

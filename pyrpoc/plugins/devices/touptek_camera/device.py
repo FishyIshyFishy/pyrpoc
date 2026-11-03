@@ -14,8 +14,8 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from pyrpoc.structs.plugins import params as P
-from pyrpoc.structs.plugins.devices import Device, device_registry
+from pyrpoc.core import program_inputs as P
+from pyrpoc.core.device import Device, device_registry
 
 from .sdk import ToupcamError, ToupcamSession, row_pitch, unpack_rgb24
 

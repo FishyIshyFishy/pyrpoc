@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from pyrpoc.structs.plugins.programs.runner import Runner, RunnerContext, Toggle
+from pyrpoc.core.runner import Runner, RunnerContext, Toggle
 
 
 @dataclass(frozen=True)

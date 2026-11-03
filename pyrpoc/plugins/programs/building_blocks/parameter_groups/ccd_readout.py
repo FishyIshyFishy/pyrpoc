@@ -5,9 +5,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import ClassVar
 
+from pyrpoc.core.program_inputs import Group, block, float_field, int_field
 from pyrpoc.plugins.devices import SpectrumReadout
 from pyrpoc.plugins.devices.andor_ccd.device import Amplifier, ReadMode
-from pyrpoc.structs.plugins.params import Group, block, float_field, int_field
 
 # The rest of the readout is fixed at what a Raman spectrum wants: every row
 # binned, read slowly through the conventional amplifier for the least noise.

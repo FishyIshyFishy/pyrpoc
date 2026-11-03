@@ -1,21 +1,16 @@
-"""The application: builds the three parts and connects them.
-
-    inventory     the devices this workbench has        (device_inventory/)
-    library       the open data                         (data_library/)
-    acquisition   the program set up to run, and runs   (acquisition/)
-
-Importing ``pyrpoc.plugins`` here is what registers every device, program and
-data panel; nothing else lists them. It holds no widgets.
-"""
+"""The application: builds the device inventory, the data library and
+acquisition, and connects them."""
 
 from __future__ import annotations
 
 from PyQt6.QtCore import QObject, pyqtSignal
 
-from pyrpoc.acquisition.model import Acquisition
-from pyrpoc.data_library.model import LibraryModel
-from pyrpoc.data_library.store import LIBRARY_LIMIT_BYTES, LibraryStore
-from pyrpoc.device_inventory.inventory import DeviceInventory
+from pyrpoc.engine.acquisition.model import Acquisition
+from pyrpoc.engine.data_library.model import LibraryModel
+from pyrpoc.engine.data_library.store import LIBRARY_LIMIT_BYTES, LibraryStore
+from pyrpoc.engine.device_inventory.inventory import DeviceInventory
+
+# Importing the plugins registers every device, program and panel.
 from pyrpoc.plugins import program_registry
 
 

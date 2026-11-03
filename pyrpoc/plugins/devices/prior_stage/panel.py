@@ -22,9 +22,9 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from pyrpoc.qt_components.param_form import ParamForm
-from pyrpoc.structs.plugins.data_panels import DevicePanel, device_panel_registry
-from pyrpoc.structs.plugins.params import FieldContext
+from pyrpoc.core.panels import DevicePanel, device_panel_registry
+from pyrpoc.core.program_inputs import FieldContext
+from pyrpoc.shared.widgets.param_form import ParamForm
 
 from .device import MotionProfile
 from .sdk import PriorError

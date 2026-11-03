@@ -5,10 +5,10 @@ from __future__ import annotations
 import nidaqmx as nx
 import nidaqmx.errors
 
+from pyrpoc.core.data import Pixel
+from pyrpoc.core.dataset import Dataset
+from pyrpoc.core.program_inputs import BlockMap
 from pyrpoc.plugins.devices import DAQ, DaqError, Galvo
-from pyrpoc.structs.data_library.data import Pixel
-from pyrpoc.structs.data_library.dataset import Dataset
-from pyrpoc.structs.plugins.params import BlockMap
 
 from ..parameter_groups import Point, PointGroup
 from .daq_tasks import add_galvo_channels

@@ -9,9 +9,9 @@ from typing import Any, ClassVar
 from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtWidgets import QDoubleSpinBox, QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
-from pyrpoc.structs.data_library.data import Pixel
-from pyrpoc.structs.data_library.dataset import Dataset
-from pyrpoc.structs.plugins.params import (
+from pyrpoc.core.data import Pixel
+from pyrpoc.core.dataset import Dataset
+from pyrpoc.core.program_inputs import (
     Editor,
     Field,
     FieldContext,

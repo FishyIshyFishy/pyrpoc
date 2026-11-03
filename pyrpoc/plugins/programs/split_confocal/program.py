@@ -5,9 +5,9 @@ from __future__ import annotations
 
 from dataclasses import replace
 
+from pyrpoc.core.data import Image, RawSamples
+from pyrpoc.core.program import Program, RunContext, program_registry
 from pyrpoc.plugins.devices import DAQ, Galvo
-from pyrpoc.structs.data_library.data import Image, RawSamples
-from pyrpoc.structs.plugins.programs.program import Program, RunContext, program_registry
 
 from ..building_blocks.functions.galvo_raster import Raster
 from ..building_blocks.functions.run_loops import count_off

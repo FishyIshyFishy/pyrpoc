@@ -18,7 +18,7 @@ from pathlib import Path
 
 import numpy as np
 
-from pyrpoc.structs.plugins.devices import DeviceError
+from pyrpoc.core.device import DeviceError
 
 SUCCESS = 20002
 ACQUIRING = 20072

@@ -31,8 +31,8 @@ from typing import Any, Literal
 
 import numpy as np
 
-from pyrpoc.structs.plugins import params as P
-from pyrpoc.structs.plugins.devices import Device, device_registry
+from pyrpoc.core import program_inputs as P
+from pyrpoc.core.device import Device, device_registry
 
 from .sdk import ACQUIRING, IDLE, AndorError, AndorSession, Temperature, code_name
 

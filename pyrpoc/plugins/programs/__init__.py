@@ -6,7 +6,7 @@ import each other. Importing this package registers every program.
 
 from __future__ import annotations
 
-from pyrpoc.structs.plugins.programs.program import program_registry
+from pyrpoc.core.program import program_registry
 
 from .autofocus.program import Autofocus
 from .brightfield.program import Brightfield

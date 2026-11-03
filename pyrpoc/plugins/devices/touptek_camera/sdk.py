@@ -1,10 +1,5 @@
 """The ToupTek camera SDK (``toupcam.dll``) over ctypes: one DLL per process,
-one handle per camera.
-
-Only the calls a program needs are declared. Frames are pulled as the SDK's
-default 24-bit colour, which needs no option constants set, and are left to
-the caller to reduce.
-"""
+one handle per camera. Frames come as 24-bit colour, for the caller to reduce."""
 
 from __future__ import annotations
 
@@ -16,10 +11,10 @@ from pathlib import Path
 
 import numpy as np
 
-from pyrpoc.structs.plugins.devices import DeviceError
+from pyrpoc.core.device import DeviceError
 
-# ``pyrpoc/assets/sdks``, three levels up from ``plugins/devices/touptek_camera``.
-DLL_PATH = Path(__file__).resolve().parents[3] / "assets" / "sdks" / "toupcam.dll"
+# ``pyrpoc/shared/assets/sdks``, reached from ``pyrpoc``, three folders up.
+DLL_PATH = Path(__file__).resolve().parents[3] / "shared" / "assets" / "sdks" / "toupcam.dll"
 
 MAX_CAMERAS = 128
 MAX_RESOLUTIONS = 16

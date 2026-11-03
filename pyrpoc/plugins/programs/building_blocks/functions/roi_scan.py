@@ -12,7 +12,7 @@ from typing import Any
 import cv2
 import numpy as np
 
-from pyrpoc.structs.plugins.params import ParameterError
+from pyrpoc.core.program_inputs import ParameterError
 
 from ..parameter_groups.roi import RoiGroup
 from ..parameter_groups.scan import ScanGroup

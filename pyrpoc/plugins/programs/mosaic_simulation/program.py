@@ -6,8 +6,8 @@ from __future__ import annotations
 
 import numpy as np
 
-from pyrpoc.structs.data_library.data import Image, Mosaic, MosaicTile
-from pyrpoc.structs.plugins.programs.program import Program, RunContext, program_registry
+from pyrpoc.core.data import Image, Mosaic, MosaicTile
+from pyrpoc.core.program import Program, RunContext, program_registry
 
 from ..building_blocks.functions.run_loops import grow, walk
 from ..building_blocks.functions.synthetic_detector import sim_labels, with_noise

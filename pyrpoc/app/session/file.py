@@ -14,7 +14,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
-from pyrpoc.structs.plugins.params import ParameterError
+from pyrpoc.core.program_inputs import ParameterError
 
 log = logging.getLogger(__name__)
 

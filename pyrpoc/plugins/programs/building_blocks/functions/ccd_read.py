@@ -7,10 +7,10 @@ from dataclasses import asdict
 
 import numpy as np
 
+from pyrpoc.core.data import Spectrum
+from pyrpoc.core.program import Cancelled, RunContext
 from pyrpoc.plugins.devices import AndorCCD, SpectrumReadout
 from pyrpoc.plugins.devices.andor_ccd.device import AcceptedTimings, clipped
-from pyrpoc.structs.data_library.data import Spectrum
-from pyrpoc.structs.plugins.programs.program import Cancelled, RunContext
 
 
 def configure_spectrum(

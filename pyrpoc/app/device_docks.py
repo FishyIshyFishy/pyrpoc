@@ -11,9 +11,9 @@ import PyQt6Ads as qtads
 from PyQt6.QtCore import QObject, QTimer, pyqtSignal
 from PyQt6.QtGui import QAction
 
-from pyrpoc.device_inventory.inventory import DeviceInventory
-from pyrpoc.structs.plugins.data_panels import DevicePanel, device_panel_registry, has_panel
-from pyrpoc.structs.plugins.devices import Device
+from pyrpoc.core.device import Device
+from pyrpoc.core.panels import DevicePanel, device_panel_registry, has_panel
+from pyrpoc.engine.device_inventory.inventory import DeviceInventory
 
 
 def dock_object_name(device: Device) -> str:

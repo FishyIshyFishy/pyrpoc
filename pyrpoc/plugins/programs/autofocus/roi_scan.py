@@ -9,9 +9,9 @@ from typing import Any
 import cv2
 import numpy as np
 
+from pyrpoc.core.program import RunContext
+from pyrpoc.core.program_inputs import ParameterError
 from pyrpoc.plugins.devices import DAQ, Galvo
-from pyrpoc.structs.plugins.params import ParameterError
-from pyrpoc.structs.plugins.programs.program import RunContext
 
 from ..building_blocks.functions.daq_tasks import acquire
 from ..building_blocks.functions.galvo_raster import pixel_samples

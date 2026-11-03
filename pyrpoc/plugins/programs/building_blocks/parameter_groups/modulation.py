@@ -23,10 +23,10 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from pyrpoc.structs.data_library.data import Mask
-from pyrpoc.structs.data_library.dataset import Dataset
-from pyrpoc.structs.data_library.library import Library
-from pyrpoc.structs.plugins.params import (
+from pyrpoc.core.data import Mask
+from pyrpoc.core.dataset import Dataset
+from pyrpoc.core.library import Library
+from pyrpoc.core.program_inputs import (
     Editor,
     Field,
     FieldContext,

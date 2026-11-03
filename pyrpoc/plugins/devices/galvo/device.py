@@ -8,8 +8,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from pyrpoc.structs.plugins import params as P
-from pyrpoc.structs.plugins.devices import Device, device_registry
+from pyrpoc.core import program_inputs as P
+from pyrpoc.core.device import Device, device_registry
 
 from ..daq.device import DAQ
 

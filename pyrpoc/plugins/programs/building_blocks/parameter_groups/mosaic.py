@@ -5,8 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import ClassVar
 
-from pyrpoc.structs.data_library.data import MosaicTile
-from pyrpoc.structs.plugins.params import Group, block, float_field, int_field
+from pyrpoc.core.data import MosaicTile
+from pyrpoc.core.program_inputs import Group, block, float_field, int_field
 
 
 @block

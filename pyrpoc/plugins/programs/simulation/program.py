@@ -13,8 +13,8 @@ from functools import reduce
 
 import numpy as np
 
-from pyrpoc.structs.data_library.data import Image
-from pyrpoc.structs.plugins.programs.program import Program, RunContext, program_registry
+from pyrpoc.core.data import Image
+from pyrpoc.core.program import Program, RunContext, program_registry
 
 from ..building_blocks.functions.run_loops import count_off
 from ..building_blocks.functions.synthetic_detector import sim_labels, with_noise

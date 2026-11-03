@@ -16,9 +16,9 @@ from typing import Any
 
 import numpy as np
 
+from pyrpoc.core.data import Spectrum
+from pyrpoc.core.program import Program, RunContext, program_registry
 from pyrpoc.plugins.devices import DAQ, AndorCCD, Galvo
-from pyrpoc.structs.data_library.data import Spectrum
-from pyrpoc.structs.plugins.programs.program import Program, RunContext, program_registry
 
 from ..building_blocks.functions.ccd_read import configure_spectrum, read_spectrum
 from ..building_blocks.functions.daq_tasks import sweeping

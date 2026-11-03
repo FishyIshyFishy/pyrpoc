@@ -5,10 +5,10 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from pyrpoc.structs.data_library.data import Pixel
-from pyrpoc.structs.data_library.dataset import Dataset
-from pyrpoc.structs.plugins.params import BlockMap, ParameterError
-from pyrpoc.structs.plugins.programs.runner import Runner, RunnerContext, Toggle
+from pyrpoc.core.data import Pixel
+from pyrpoc.core.dataset import Dataset
+from pyrpoc.core.program_inputs import BlockMap, ParameterError
+from pyrpoc.core.runner import Runner, RunnerContext, Toggle
 
 
 @dataclass(frozen=True)

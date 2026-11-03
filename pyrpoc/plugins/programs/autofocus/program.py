@@ -9,14 +9,14 @@ from collections.abc import Callable
 from dataclasses import asdict
 from typing import Any
 
-from pyrpoc.plugins.devices import DAQ, DaqError, Galvo, PriorError, PriorStage
-from pyrpoc.structs.data_library.data import Image
-from pyrpoc.structs.plugins.programs.program import (
+from pyrpoc.core.data import Image
+from pyrpoc.core.program import (
     Cancelled,
     Program,
     RunContext,
     program_registry,
 )
+from pyrpoc.plugins.devices import DAQ, DaqError, Galvo, PriorError, PriorStage
 
 from ..building_blocks.functions.roi_scan import region_source
 from ..building_blocks.parameter_groups import DaqGroup, FocusSearchGroup, RoiGroup, ScanGroup

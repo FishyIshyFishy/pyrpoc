@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import numpy as np
 
+from pyrpoc.core.data import Image
+from pyrpoc.core.program import Program, RunContext, program_registry
 from pyrpoc.plugins.devices import ToupcamCamera
-from pyrpoc.structs.data_library.data import Image
-from pyrpoc.structs.plugins.programs.program import Program, RunContext, program_registry
 
 from ..building_blocks.functions.run_loops import count_off
 from ..building_blocks.parameter_groups import CameraGroup, FrameCountGroup

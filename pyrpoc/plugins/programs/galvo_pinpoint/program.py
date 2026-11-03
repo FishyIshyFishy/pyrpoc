@@ -7,8 +7,8 @@ from a clicked pixel, and the run records it in its parameters.
 
 from __future__ import annotations
 
+from pyrpoc.core.program import Program, RunContext, program_registry
 from pyrpoc.plugins.devices import DAQ, Galvo
-from pyrpoc.structs.plugins.programs.program import Program, RunContext, program_registry
 
 from ..building_blocks.functions.galvo_park import aim_at_pixel, park_galvos
 from ..building_blocks.parameter_groups import PointGroup

@@ -9,7 +9,7 @@ from typing import ClassVar
 
 import numpy as np
 
-from pyrpoc.structs.plugins.params import Group, block, float_field, int_field
+from pyrpoc.core.program_inputs import Group, block, float_field, int_field
 
 
 @block

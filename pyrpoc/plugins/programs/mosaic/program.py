@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
-from pyrpoc.plugins.devices import DAQ, Galvo, PriorStage
-from pyrpoc.structs.data_library.data import Image, Mosaic, MosaicTile
-from pyrpoc.structs.plugins.programs.program import (
+from pyrpoc.core.data import Image, Mosaic, MosaicTile
+from pyrpoc.core.program import (
     Cancelled,
     Program,
     RunContext,
     program_registry,
 )
+from pyrpoc.plugins.devices import DAQ, Galvo, PriorStage
 
 from ..building_blocks.functions.galvo_raster import Raster
 from ..building_blocks.functions.run_loops import grow, walk

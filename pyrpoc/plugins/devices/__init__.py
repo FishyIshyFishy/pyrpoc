@@ -6,8 +6,8 @@ Qt appears only in ``*/panel.py``, so a driver can be used without it.
 
 from __future__ import annotations
 
-from pyrpoc.structs.plugins.data_panels import device_panel_registry
-from pyrpoc.structs.plugins.devices import Device, device_registry
+from pyrpoc.core.device import Device, device_registry
+from pyrpoc.core.panels import device_panel_registry
 
 from .andor_ccd.device import AndorCCD, SpectrumReadout
 from .andor_ccd.panel import AndorCcdPanel
