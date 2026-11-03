@@ -10,7 +10,7 @@ from .daq import DAQ_SECTION, SAMPLE_RATE_HZ
 from .focus_search import FOCUS_SEARCH_SECTION, FocusSearch
 from .frame_count import FRAME_COUNT_SECTION, NUM_FRAMES
 from .histogram import HISTOGRAM_SECTION, HistogramSettings
-from .modulation import MASKS, MODULATION_SECTION, MaskBinding, MaskRef, MasksField
+from .modulation import MASKS, MODULATION_SECTION, MaskBinding, MasksField
 from .mosaic import MOSAIC_SECTION, MosaicGrid
 from .point import POINT_SECTION, TARGET, Point, PointField
 from .roi import REGION_SECTION, ScanRegion
@@ -40,7 +40,6 @@ __all__ = [
     "FocusSearch",
     "HistogramSettings",
     "MaskBinding",
-    "MaskRef",
     "MasksField",
     "MosaicGrid",
     "Point",

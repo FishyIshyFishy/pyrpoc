@@ -53,15 +53,15 @@ Everything the software does is this loop:
 | **ProgramInputs** | The collection of current values for every program input, by key. Any panel may read it, set a value (validated by the input's rules) or subscribe. It's saved in the session, and a run's values go into its recording. The app's one collection is `ProgramInputsStore` (`engine/acquisition/program_inputs.py`). |
 | **InputRequest** | A panel or runner asking for a value of one type that another panel can supply. Whichever supplying panel the user acts in answers it. There's no storage: it's a question with one answer. The app keeps the open requests (`app/input_requests.py`), at most one per type, and hands them to every panel and runner. |
 | **PixelPick** | The value a click on an image supplies: the program output clicked on, plus `x` and `y` in its pixels. |
-| **Mask** | A drawn region, as a program input value. The Mask Editor supplies it; ROI and Modulation inputs hold it. *(From phase 6: today a `Mask` is data in the Library.)* |
+| **Mask** | A drawn region, as a program input value. The Mask Editor supplies it; ROI and Modulation inputs hold it. Held inline: in the session and in recordings it is its shape plus its pixels, packed one bit each and base64-encoded. |
 
 ### Program outputs: program → user
 
 | Noun | Definition |
 |---|---|
-| **Data** | One value a program produced: an image, a spectrum, a mosaic. Immutable. **Only programs make it.** *(From phase 6: today the Mask Editor also makes `Mask` data.)* |
+| **Data** | One value a program produced: an image, a spectrum, a mosaic. Immutable. **Only programs make it.** |
 | **ProgramOutput** | One named output of one run. It holds the latest `Data`, where it came from (`Provenance`), and its writer. Every published value reaches its files; memory holds only the latest. |
-| **Library** | The program outputs that are open: acquired now, or loaded from disk. Nothing else. *(From phase 6: today it also holds drawn masks.)* |
+| **Library** | The program outputs that are open: acquired now, or loaded from disk. Nothing else. |
 | **Recording** | One run's program outputs on disk, opened through its `_meta.json`. |
 | **SaveTarget, Writer** | Where a run saves, and how each kind of `Data` is written and read. |
 
@@ -75,7 +75,7 @@ Everything the software does is this loop:
 ## The rules
 
 1. **Data flows one way.** Only a run or loading a recording creates a
-   `ProgramOutput`. *(From phase 6: today the Mask Editor also creates them.)*
+   `ProgramOutput`.
 2. **Panels never call programs, and programs never call panels.** They meet
    only through ProgramInputs, InputRequests and the Library.
 3. **Every panel is equal.** None is special in code. The app hands each
@@ -95,8 +95,8 @@ Everything the software does is this loop:
 | `program_inputs.py` | `ProgramInput` + `program_input_registry`, the value rules (int, float, choice, ...), `ProgramInputValues` (a run's values), `ProgramInputs` (protocol), `Editor`, `FieldContext` |
 | `input_section.py` | `InputSection` |
 | `input_requests.py` | `InputRequest`, `InputRequests` (protocol), `PixelPick` |
-| `mask.py` | `Mask`, as a program input value *(from phase 6)* |
-| `data.py` | `Data`, `ArrayData`, `Image`, `DecayHistogram`, `RawSamples`, `Spectrum`, `Mosaic`, `DATA_KINDS` *(today also `Mask`)* |
+| `mask.py` | `Mask`, as a program input value |
+| `data.py` | `Data`, `ArrayData`, `Image`, `DecayHistogram`, `RawSamples`, `Spectrum`, `Mosaic`, `DATA_KINDS` |
 | `program_output.py` | `ProgramOutput`, `Provenance`, `Origin` |
 | `library.py` | `Library` (protocol) |
 | `saving.py` | `SaveTarget`, `Writer` + `writer_registry` |

@@ -1,4 +1,4 @@
-"""The kinds of data the Library holds, one class each."""
+"""The kinds of data programs produce, one class each."""
 
 from __future__ import annotations
 
@@ -96,13 +96,6 @@ class Spectrum(ArrayData):
     axes = ("channel", "wavelength")
 
 
-class Mask(ArrayData):
-    """A drawn region: 0 outside, non-zero inside."""
-
-    axes = ("y", "x")
-    dtype = np.uint8
-
-
 @dataclass(frozen=True)
 class MosaicTile:
     """One stop of a mosaic's stage grid: ``row`` grows along stage y and
@@ -136,5 +129,5 @@ class Mosaic(Data):
 
 # Every kind a saved recording can name, so a file's kind string finds its class.
 DATA_KINDS: dict[str, type[Data]] = {
-    kind.name: kind for kind in (Image, DecayHistogram, RawSamples, Spectrum, Mask, Mosaic)
+    kind.name: kind for kind in (Image, DecayHistogram, RawSamples, Spectrum, Mosaic)
 }

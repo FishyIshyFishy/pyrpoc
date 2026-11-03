@@ -43,8 +43,6 @@ class Origin(Enum):
 
     ACQUIRED = "acquired"
     LOADED = "loaded"
-    # Made by the user, like a mask: work that exists nowhere else.
-    AUTHORED = "authored"
 
 
 class ProgramOutput(Generic[D]):

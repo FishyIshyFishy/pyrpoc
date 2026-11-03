@@ -1,9 +1,5 @@
-"""Authoring a mask from an acquired program output.
-
-A finished mask is filed in the library as a ``Mask`` program output, which is how
-it reaches a program: the parameter that consumes masks asks the library by
-kind, so neither side names the other. ``Save mask...`` only exports a PNG.
-"""
+"""The Mask Editor: draw a mask over an acquired image, and send it to a mask
+input that asks for one."""
 
 from __future__ import annotations
 
@@ -35,11 +31,12 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
 )
 
-from pyrpoc.core.data import Image, Mask
+from pyrpoc.core.data import Image
 from pyrpoc.core.input_requests import InputRequests
 from pyrpoc.core.library import Library
+from pyrpoc.core.mask import Mask
 from pyrpoc.core.panels import DataPanel, data_panel_registry
-from pyrpoc.core.program_output import Origin, ProgramOutput, Provenance, utc_now
+from pyrpoc.core.program_output import ProgramOutput
 from pyrpoc.plugins.panels.mask_editor.range_slider import RangeSlider
 from pyrpoc.plugins.panels.mask_editor.transforms import normalize_channels
 from pyrpoc.shared.widgets.table import horizontal_header, vertical_header
@@ -73,13 +70,16 @@ def write_mask(path: str, mask: np.ndarray) -> Path:
 
 @data_panel_registry.register("mask_editor")
 class MaskEditorPanel(DataPanel[Image]):
-    """Draw thresholded polygon ROIs over an acquired image and file the mask."""
+    """Draw thresholded polygon ROIs over an acquired image, and send the mask
+    they make to a mask input."""
 
     display_name = "Mask editor"
     group = "Mask editors"
     order = 30
     misc = True
     renders = Image
+    # Send answers a mask input's request with the drawn mask.
+    supplies = (Mask,)
 
     def __init__(self, library: Library, requests: InputRequests):
         super().__init__(library, requests)
@@ -109,6 +109,7 @@ class MaskEditorPanel(DataPanel[Image]):
         self.rebuild_channel_boxes()
         self.reset_threshold_controls()
         self.update_view_image()
+        self.requests_changed()
         self.connect_source()
 
     def build_channels_row(self) -> QHBoxLayout:
@@ -159,16 +160,23 @@ class MaskEditorPanel(DataPanel[Image]):
         row.addWidget(QLabel("Name:", self))
         self.name_edit = QLineEdit(self)
         self.name_edit.setPlaceholderText("what this mask is of")
-        self.name_edit.returnPressed.connect(self.add_to_library)
+        self.name_edit.returnPressed.connect(self.send_mask)
         row.addWidget(self.name_edit, 1)
-        add_btn = QPushButton("Add to library", self)
-        add_btn.setToolTip(
-            "File this mask as data. It then appears in the Modulation table's "
-            "mask list, and in the data panel."
-        )
-        add_btn.clicked.connect(self.add_to_library)
-        row.addWidget(add_btn)
+        self.send_btn = QPushButton("Send", self)
+        self.send_btn.clicked.connect(self.send_mask)
+        row.addWidget(self.send_btn)
         return row
+
+    def requests_changed(self) -> None:
+        """Light up Send while a mask input is waiting for a mask."""
+        waiting = self.requests.is_open(Mask)
+        self.send_btn.setEnabled(waiting)
+        self.send_btn.setDefault(waiting)
+        self.send_btn.setToolTip(
+            "Send this mask to the input waiting for it"
+            if waiting
+            else "Press Take from Mask Editor on a mask input first"
+        )
 
     def build_button_row(self) -> QHBoxLayout:
         row = QHBoxLayout()
@@ -420,25 +428,15 @@ class MaskEditorPanel(DataPanel[Image]):
         dlg.resize(max(320, self._w), max(240, self._h))
         dlg.exec()
 
-    def add_to_library(self) -> None:
-        """File the drawn mask as a ``Mask`` program output: how a mask gets used."""
+    def send_mask(self) -> None:
+        """Answer the waiting mask input with the drawn mask."""
+        if not self.requests.is_open(Mask):
+            return
         mask = self.generate_mask(self._rois)
         if mask is None:
-            QMessageBox.warning(self, "No ROI", "Draw at least one ROI before adding.")
+            QMessageBox.warning(self, "No ROI", "Draw at least one ROI before sending.")
             return
-        program_output = ProgramOutput(
-            name="mask",
-            kind=Mask,
-            provenance=Provenance(
-                program_key="mask_editor",
-                started_at=utc_now(),
-                name=self.name_edit.text().strip(),
-            ),
-            origin=Origin.AUTHORED,
-            writer=None,
-        )
-        program_output.publish(Mask(mask))
-        self.library.add(program_output)
+        self.requests.answer(Mask(mask, self.name_edit.text().strip()))
         self.name_edit.clear()
 
     def save_mask(self) -> None:

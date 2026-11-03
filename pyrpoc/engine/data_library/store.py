@@ -1,9 +1,5 @@
-"""The program outputs currently open, like a list of open documents. Not persisted.
-
-Authored data is filed here too: a mask from the mask editor is a ``Mask``
-entry, so a parameter can select it by kind without either side naming the
-other. ``ProgramOutput.origin`` says which kind of entry each one is.
-"""
+"""``LibraryStore``: the program outputs currently open, acquired now or loaded
+from disk. Not persisted."""
 
 from __future__ import annotations
 
@@ -12,7 +8,7 @@ from collections.abc import Callable
 from typing import Any, TypeVar
 
 from pyrpoc.core.data import Data
-from pyrpoc.core.program_output import Origin, ProgramOutput
+from pyrpoc.core.program_output import ProgramOutput
 
 D = TypeVar("D", bound=Data)
 
@@ -99,14 +95,9 @@ class LibraryStore:
 
     def purgeable(self) -> list[ProgramOutput[Any]]:
         """What auto-purge may close, oldest first: finished entries, never one
-        still being written and never one the user drew, which exists nowhere
-        else."""
+        still being written."""
         with self._lock:
-            return [
-                program_output
-                for program_output in self._outputs
-                if program_output.finished and program_output.origin is not Origin.AUTHORED
-            ]
+            return [program_output for program_output in self._outputs if program_output.finished]
 
     def __len__(self) -> int:
         with self._lock:

@@ -158,6 +158,7 @@ source_modules = [
   "pyrpoc.core.input_section",
   "pyrpoc.core.input_requests",
   "pyrpoc.core.data",
+  "pyrpoc.core.mask",
   "pyrpoc.core.program_output",
   "pyrpoc.core.library",
   "pyrpoc.core.saving",

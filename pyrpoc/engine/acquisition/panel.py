@@ -155,7 +155,7 @@ class AcquisitionPanel(Panel):
             self.inputs,
             self,
             cards=True,
-            context=FieldContext(library=self.library),
+            context=FieldContext(requests=self.requests),
         )
         self.form.invalid.connect(self.show_status)
         self.scroll_area.setWidget(self.form)

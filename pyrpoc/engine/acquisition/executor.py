@@ -181,12 +181,10 @@ class Executor:
                 self.callbacks.on_failed(recording.last_run, message)
 
     def resolve_inputs(self, program: Program, inputs: ProgramInputsStore) -> ProgramInputValues:
-        """The values of the program's inputs, checked and resolved against the
-        open data, which the run keeps however the inputs change meanwhile."""
-        # Resolving here means a mask that is no longer open stops the run here.
+        """The values of the program's inputs, checked against their rules."""
         declared = program.inputs()
         inputs.validate(declared)
-        return inputs.values_for(declared, self.library)
+        return inputs.values_for(declared)
 
     @staticmethod
     def build_saver(

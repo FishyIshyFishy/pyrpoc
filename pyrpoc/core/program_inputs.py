@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Generic, Protocol, TypeVar
 
 if TYPE_CHECKING:  # pragma: no cover
-    from pyrpoc.core.library import Library
+    from pyrpoc.core.input_requests import InputRequests
 
 
 class ParameterError(Exception):
@@ -30,12 +30,6 @@ class Field:
     def decode(self, raw: Any) -> Any:
         """JSON-safe -> value, raising ``ParameterError`` on bad input."""
         return self.coerce(raw)
-
-    def resolve(self, value: Any, library: Library) -> Any:
-        """The value a run is handed: a field whose value names open data fills
-        it in here."""
-        del library
-        return value
 
     def editor(self, parent: Any, context: FieldContext) -> Editor | None:
         """A custom widget for this field, or None for the form's default."""
@@ -59,10 +53,10 @@ class Editor:
 
 @dataclass(frozen=True)
 class FieldContext:
-    """What a field's editor can draw on: the open data, or None for a device
-    configuration."""
+    """What a field's editor can draw on: the input requests, or None for a
+    device configuration, which makes none."""
 
-    library: Library | None = None
+    requests: InputRequests | None = None
 
 
 @dataclass(frozen=True)

@@ -5,7 +5,6 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping, Sequence
 from typing import Any
 
-from pyrpoc.core.library import Library
 from pyrpoc.core.program_inputs import (
     ParameterError,
     ProgramInput,
@@ -48,14 +47,9 @@ class ProgramInputsStore:
         for each in inputs:
             each.rule.coerce(self.get(each.key))
 
-    def values_for(
-        self, inputs: Sequence[ProgramInput[Any]], library: Library
-    ) -> ProgramInputValues:
-        """The current values of ``inputs`` as a run sees them, with values that
-        name open data filled in."""
-        return ProgramInputValues(
-            {each.key: each.rule.resolve(self.get(each.key), library) for each in inputs}
-        )
+    def values_for(self, inputs: Sequence[ProgramInput[Any]]) -> ProgramInputValues:
+        """The current values of ``inputs``, which a run keeps however they change later."""
+        return ProgramInputValues({each.key: self.get(each.key) for each in inputs})
 
     def encode(self, inputs: Sequence[ProgramInput[Any]]) -> dict[str, Any]:
         """The current values of ``inputs`` as JSON, by key."""
