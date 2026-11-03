@@ -1,13 +1,11 @@
-"""ROI spectral series: sweep the galvos over one masked region without pause
-while the CCD reads spectra back to back, to follow how the spectrum shifts as
-the dye bleaches.
+"""ROI spectral series: sweep the galvos over one masked region while the CCD reads spectra
+back to back, to follow how the spectrum shifts as the dye bleaches."""
 
-Each spectrum averages the whole region. The sweep starts before the first
-read and stops after the last, so the region is lit through the camera's
-readout too. Each read's start and end, in seconds after the sweep began, are
-recorded beside the sweep's period, so how many sweeps a spectrum spans can be
-worked out afterwards. They are host times around each read, not the camera's.
-"""
+# Each spectrum averages the whole region. The sweep starts before the first read and stops after
+# the last, so the region is lit through the camera's readout too. Each read's start and end, in
+# seconds after the sweep began, are recorded beside the sweep's period, so how many sweeps a
+# spectrum spans can be worked out afterwards. They are host times around each read, not the
+# camera's.
 
 from __future__ import annotations
 

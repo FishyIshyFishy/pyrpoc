@@ -1,6 +1,8 @@
-"""The z search: a hill climb that steps while the metric rises and halves its
-step when neither direction does, down to a final step. Knows nothing of stages
-or scans; ``measure`` does, so the search can be tested against any curve."""
+"""The z search: a hill climb that steps while the metric rises and halves its step when
+neither direction does, down to a final step."""
+
+# Knows nothing of stages or scans; ``measure`` does, so the search can be tested against any
+# curve.
 
 from __future__ import annotations
 

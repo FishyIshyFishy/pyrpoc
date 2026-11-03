@@ -1,8 +1,7 @@
-"""Device implementations, one folder each: driver and, for a device with live
-controls, its panel. Importing this package registers them all.
+"""Device implementations, one folder each: the driver and, for a device with live
+controls, its panel. Importing this package registers them all."""
 
-Qt appears only in ``*/panel.py``, so a driver can be used without it.
-"""
+# Qt appears only in ``*/panel.py``, so a driver can be used without it.
 
 from __future__ import annotations
 

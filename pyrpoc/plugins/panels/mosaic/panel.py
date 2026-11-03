@@ -135,8 +135,7 @@ class MosaicPanel(DataPanel[Mosaic]):
         }
 
     def import_persistence_state(self, state: dict[str, Any]) -> None:
-        """Parse saved settings from session JSON, a boundary: a malformed
-        entry keeps its default."""
+        """Take saved settings from session JSON; a malformed entry keeps its default."""
         self.wants_mosaic = state.get("mode") == "mosaic"
         overlap = state.get("fallback_overlap")
         if isinstance(overlap, (int, float)):

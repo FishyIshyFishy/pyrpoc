@@ -31,8 +31,9 @@ class PriorError(DeviceError):
 
 
 class PriorSDK:
-    """The DLL's exports with their C signatures declared, so ctypes neither
-    guesses argument types nor truncates return values."""
+    """The Prior DLL, with its exports' C signatures declared."""
+
+    # So ctypes neither guesses argument types nor truncates return values.
 
     def __init__(self, dll: ctypes.WinDLL):
         self.dll = dll
@@ -86,8 +87,9 @@ def load_sdk() -> PriorSDK:
 
 
 class PriorSession:
-    """One controller on one COM port. Commands take a lock because a
-    program's thread and the GUI can both be talking to the stage."""
+    """One controller on one COM port, whose commands take a lock."""
+
+    # A program's thread and the GUI can both be talking to the stage.
 
     def __init__(self, sdk: PriorSDK, session: int):
         self.sdk = sdk

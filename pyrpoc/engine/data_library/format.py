@@ -67,8 +67,8 @@ def meta_path_for(root: Path) -> Path:
 
 
 def free_root(root: Path) -> Path:
-    """``root``, or the first of ``root_2``, ``root_3``… with no recording yet,
-    so a new recording never overwrites an old one."""
+    """``root``, or the first of ``root_2``, ``root_3`` and so on that has no recording
+    yet."""
     candidate, number = root, 1
     while meta_path_for(candidate).exists():
         number += 1
@@ -81,7 +81,8 @@ def write_record(meta_path: Path, record: RecordingRecord) -> None:
 
 
 def write_json(path: Path, payload: dict[str, Any]) -> None:
-    """Replace ``path`` whole, so a crash mid-write never leaves half a file."""
+    """Replace ``path`` whole."""
+    # So a crash mid-write never leaves half a file.
     partial = path.with_name(f"{path.name}.partial")
     partial.write_text(json.dumps(payload, indent=2, default=str), encoding="utf-8")
     os.replace(partial, path)
@@ -140,8 +141,9 @@ def decode_v2(raw: dict[str, Any]) -> RecordingRecord:
 
 
 def decode_record(raw: dict[str, Any], parameters: dict[str, Any]) -> RecordingRecord:
-    """Every field but the parameters, which differ between formats. Unknown
-    fields are ignored, so a format may add some."""
+    """A recording record from every field but the parameters, which differ between
+    formats."""
+    # Unknown fields are ignored, so a format may add some.
     return RecordingRecord(
         pyrpoc_version=str(raw["pyrpoc_version"]),
         program_key=str(raw["program_key"]),
@@ -231,8 +233,8 @@ def read_value(meta_path: Path, output: str, kind: type[Data], entry: OutputReco
 
 
 def write_notes(meta_path: Path, output: str, notes: str) -> None:
-    """Set one output's notes, the one field changed after a recording ends.
-    Edited as raw JSON so fields this version does not know survive."""
+    """Set one output's notes in a finished recording's metadata file."""
+    # Edited as raw JSON, so fields this version does not know survive.
     raw = read_json(meta_path)
     outputs = raw.get("outputs")
     if not isinstance(outputs, dict) or not isinstance(outputs.get(output), dict):

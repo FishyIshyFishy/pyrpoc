@@ -50,8 +50,8 @@ class LibraryStore:
             return list(self._outputs)
 
     def by_id(self, output_id: str, kind: type[D]) -> ProgramOutput[D] | None:
-        """The open program output with this id, if it holds ``kind``. Ids come from
-        saved sessions, so one may name a closed entry or another kind."""
+        """The open program output with this id, if it holds ``kind``."""
+        # Ids come from saved sessions, so one may name a closed entry or another kind.
         with self._lock:
             return next((d for d in self._outputs if d.id == output_id and d.kind is kind), None)
 

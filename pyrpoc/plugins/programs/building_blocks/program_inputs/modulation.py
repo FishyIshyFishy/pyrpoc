@@ -137,7 +137,8 @@ class MaskTable(QWidget):
         self.refresh_hint()
 
     def next_free_line(self) -> int:
-        """The lowest line no row drives, so two rows never silently share one."""
+        """The lowest line no row drives."""
+        # So two rows never silently share one.
         used = {row.line.value() for row in self.rows}
         line = 0
         while line in used:

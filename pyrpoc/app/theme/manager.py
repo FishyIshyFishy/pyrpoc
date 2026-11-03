@@ -61,9 +61,9 @@ def _require(pattern: str, text: str, qss_path: str) -> str:
 
 
 def _derive_palette(qss_text: str, qss_path: str) -> QPalette:
-    """A QPalette matching the colors in *qss_text*. Widgets styled with
-    ``palette(...)`` tokens only re-theme if the palette tracks the stylesheet,
-    so it is derived from the same text."""
+    """A QPalette matching the colors in *qss_text*."""
+    # Widgets styled with ``palette(...)`` tokens only re-theme if the palette tracks the
+    # stylesheet, so it is derived from the same text.
     widget_block = _require(r"QWidget\s*\{([^}]*)\}", qss_text, qss_path)
     lineedit_block = _require(r"QLineEdit\s*\{([^}]*)\}", qss_text, qss_path)
 

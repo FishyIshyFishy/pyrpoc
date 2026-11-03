@@ -24,8 +24,8 @@ class Cancelled(Exception):
 
 
 class DeviceMap(Mapping[type[Device], Device]):
-    """The devices resolved for one run, keyed by class, so ``ctx.devices[DAQ]``
-    is typed as a ``DAQ``."""
+    """The devices resolved for one run, keyed by class, where ``ctx.devices[DAQ]`` is
+    typed as a ``DAQ``."""
 
     def __init__(self, devices: Mapping[type[Device], Device]):
         self._devices: dict[type[Device], Device] = dict(devices)
@@ -116,7 +116,7 @@ class RunContext:
         program_output.publish(value)
 
     def describe(self, output: str, **metadata: Any) -> None:
-        """Record per-output metadata, set once rather than per frame."""
+        """Record metadata about one output, once per run."""
         self.output_for(output).metadata.update(metadata)
 
     def status(self, text: str) -> None:

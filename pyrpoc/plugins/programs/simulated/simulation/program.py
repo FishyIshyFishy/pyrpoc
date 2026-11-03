@@ -1,10 +1,8 @@
-"""Simulation: frames out of thin air, no instruments required.
+"""Simulation: frames made up from a seed, with no instruments."""
 
-Everything above the hardware boundary is real (the executor's thread, program outputs,
-publishing, saving, the panels), so this exercises the software itself on any
-machine. A plane is a function of (seed, channel, frame index). Each run draws
-its own seed, so repeated runs show a different sample rather than a replay.
-"""
+# Everything above the hardware is real (the executor's thread, program outputs, saving, the
+# panels), so this exercises the software on any machine. Each run draws its own seed, so repeated
+# runs show a different sample rather than a replay.
 
 from __future__ import annotations
 

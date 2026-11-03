@@ -19,10 +19,12 @@ TILES_KEY = "tiles"
 
 @writer_registry.register(Mosaic.name)
 class MosaicWriter(Writer[Mosaic]):
-    """``<root>_<output>_tiles.json``, the whole grid, written before the first
-    image so a mosaic cut short still says where its images belong; then
-    ``<root>_<channel>.tiff`` with page ``i`` taken at tile ``i``. Each publish
-    is the mosaic so far, so only images not yet on disk are appended."""
+    """Writes a mosaic as ``<root>_<output>_tiles.json``, the whole grid, and
+    ``<root>_<channel>.tiff``, with page ``i`` taken at tile ``i``."""
+
+    # The grid is written before the first image, so a mosaic cut short still says where its
+    # images belong. Each publish is the mosaic so far, so only images not yet on disk are
+    # appended.
 
     def __init__(self, root: Path, output: str, parameters: dict[str, Any]):
         super().__init__(root, output, parameters)

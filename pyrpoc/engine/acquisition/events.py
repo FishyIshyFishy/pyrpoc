@@ -1,10 +1,8 @@
-"""Qt in front of the executor: starting runs and reporting them on the GUI thread.
+"""``RunEvents``: starts runs and reports them on the GUI thread."""
 
-Runs report on their worker threads; the signals here are what carries that
-onto the GUI thread. This is the only subscriber to each program output a run opens,
-because ``ProgramOutput.publish`` runs on the worker thread. Nothing here knows which
-program is selected or which runner asked.
-"""
+# Runs report on their worker threads; these signals carry that onto the GUI thread. They are the
+# only subscriber to each program output a run opens, because ``ProgramOutput.publish`` runs on
+# the worker thread.
 
 from __future__ import annotations
 
@@ -55,10 +53,9 @@ class RunEvents(QObject):
         series: Series | None,
         claim: Callable[[Run], None],
     ) -> None:
-        """Start ``program``, or report why not. Reported rather than raised,
-        since every caller is a Qt slot. ``claim`` gets the run before
-        ``run_started`` announces it, so whoever started it has already
-        recorded it by the time anyone asks."""
+        """Start ``program``, or report through ``start_refused`` why it cannot start."""
+        # Reported rather than raised, since every caller is a Qt slot. ``claim`` gets the run
+        # before ``run_started`` announces it, so whoever started it has recorded it by then.
         try:
             run = self.executor.start(
                 program, inputs, devices, program_key=key, save=save, series=series

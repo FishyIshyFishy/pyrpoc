@@ -1,26 +1,22 @@
-"""The Andor CCD on the spectrograph: a Newton DU970P read as one spectrum
-per acquisition.
+"""The Andor CCD on the spectrograph: a Newton DU970P read as one spectrum per acquisition."""
 
-The session stays open between runs because Initialize takes seconds and
-cooling takes minutes; the app opens it at launch and closes it on exit, and
-the sensor stays cold after that (see ``COOLER_MAINTAIN_ON_SHUTDOWN``).
-
-The camera has no shutter of its own, and pyrpoc does not shutter: the
-camera's shutter output is held open so nothing moves during acquisition.
-The Kymera's shutter is in BNC mode, meant to follow that output, but on this
-rig open, closed and auto all passed the same light, so the output does not
-reach the shutter in this light path. Dark spectra are taken by blocking the
-light.
-
-TODO(kymera): take the Kymera's shutter out of BNC mode and drive it over USB
-with ATSpectrographSetShutter, so closing it is a deliberate, verified action.
-
-TODO(kymera): control the Kymera 328i (KY-4105) through
-``Andor SDK/ATSpectrograph/x64/atspectrograph.dll``. Found on this rig: it
-enumerates only after this DLL's Initialize, must be closed with
-ATSpectrographClose before ShutDown, has four gratings (600 l/mm blazed 500
-and 650 nm, 1200 l/mm 600 nm, 1800 l/mm 500 nm), and was at zero order.
-"""
+# The session stays open between runs because Initialize takes seconds and cooling takes minutes;
+# the app opens it at launch and closes it on exit, and the sensor stays cold after that (see
+# ``COOLER_MAINTAIN_ON_SHUTDOWN``).
+#
+# The camera has no shutter of its own, and pyrpoc does not shutter: the camera's shutter output
+# is held open so nothing moves during acquisition. The Kymera's shutter is in BNC mode, meant to
+# follow that output, but on this rig open, closed and auto all passed the same light, so the
+# output does not reach the shutter in this light path. Dark spectra are taken by blocking the
+# light.
+#
+# TODO(kymera): take the Kymera's shutter out of BNC mode and drive it over USB with
+# ATSpectrographSetShutter, so closing it is a deliberate, verified action.
+#
+# TODO(kymera): control the Kymera 328i (KY-4105) through ``Andor
+# SDK/ATSpectrograph/x64/atspectrograph.dll``. Found on this rig: it enumerates only after this
+# DLL's Initialize, must be closed with ATSpectrographClose before ShutDown, has four gratings
+# (600 l/mm blazed 500 and 650 nm, 1200 l/mm 600 nm, 1800 l/mm 500 nm), and was at zero order.
 
 from __future__ import annotations
 
@@ -104,8 +100,8 @@ def match_index(table: Sequence[float], value: float, what: str) -> int:
 
 
 def check_track(centre: int, height: int, rows: int) -> None:
-    """The track must fit on the sensor; the SDK would only say which
-    argument it disliked."""
+    """Raise if the track does not fit on the sensor."""
+    # The SDK would only say which argument it disliked.
     top = centre + height // 2
     bottom = top - height + 1
     if bottom < 1 or top > rows:
@@ -219,9 +215,9 @@ class AndorCCD(Device):
             session.check("SetEMCCDGain", readout.em_gain)
 
     def acquire(self, sleep: Callable[[float], None]) -> np.ndarray:
-        """One spectrum of ``width`` int32 counts, as configured. A program
-        passes ``ctx.sleep`` so Stop interrupts the wait; it should then call
-        ``abort()``."""
+        """One spectrum of ``width`` int32 counts, as configured, waiting with ``sleep``."""
+        # A program passes ``ctx.sleep`` so Stop interrupts the wait; it should then call
+        # ``abort()``.
         session = self.require_session()
         session.check("StartAcquisition")
         state = session.status()

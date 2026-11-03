@@ -1,6 +1,8 @@
-"""FLIM's scan: confocal's raster waveform, emitting the two markers the tagger
-needs instead of reading analog input, since the image comes from the photon
-stream. These tasks only fail on the instrument, so change them with a rig."""
+"""FLIM's scan: confocal's raster waveform, emitting the two markers the tagger needs
+instead of reading analog input."""
+
+# The image comes from the photon stream. These tasks only fail on the instrument, so change them
+# with a rig.
 
 from __future__ import annotations
 
@@ -16,17 +18,17 @@ from ..building_blocks.program_inputs import ScanGeometry, TriggerLines
 
 
 def pixel_samples(dwell_time_us: float, sample_rate_hz: float) -> int:
-    """Samples per pixel: rounding, floor 2, since the counter needs a high and
-    a low tick. The raster path truncates with floor 1; do not unify them."""
+    """Samples per pixel, rounded, at least 2."""
+    # The counter needs a high and a low tick. The raster path truncates with a floor of 1; do not
+    # unify them.
     return max(2, round(dwell_time_us * 1e-6 * sample_rate_hz))
 
 
 def add_pixel_clock(
     task: nx.Task, device_name: str, triggers: TriggerLines, samples_per_pixel: int, pixels: int
 ) -> None:
-    """A pulse every ``samples_per_pixel`` galvo-clock ticks, armed on the galvo
-    start. Divided down from that clock, pixel boundaries stay locked to galvo
-    position with no drift."""
+    """Add a pulse every ``samples_per_pixel`` galvo-clock ticks, armed on the galvo start."""
+    # Divided down from that clock, pixel boundaries stay locked to galvo position with no drift.
     channel = task.co_channels.add_co_pulse_chan_ticks(
         f"{device_name}/ctr{triggers.pixel_clock_ctr}",
         source_terminal=f"/{device_name}/ao/SampleClock",

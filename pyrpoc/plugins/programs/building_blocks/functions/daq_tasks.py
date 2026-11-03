@@ -1,6 +1,7 @@
-"""The NI tasks behind a galvo scan: AO drives the mirrors and is the clock
-every other task follows. These only fail on the instrument, so change them
-with a rig to test on."""
+"""The NI tasks behind a galvo scan: AO drives the mirrors and is the clock every other
+task follows."""
+
+# These only fail on the instrument, so change them with a rig to test on.
 
 from __future__ import annotations
 
@@ -47,7 +48,8 @@ def follow_galvo_clock(
 
 
 def play(galvos: nx.Task, followers: list[nx.Task], waveform: np.ndarray, timeout: float) -> None:
-    """Start the followers first, so they are armed when the galvo clock starts."""
+    """Start the followers, then the galvo clock."""
+    # Followers first, so they are armed when the galvo clock starts.
     # Many samples per channel, so write() does not auto-start.
     galvos.write(waveform)
     for task in followers:
@@ -131,8 +133,9 @@ def sweeping(
     daq: DAQ, galvo: Galvo, waveform: np.ndarray, sample_rate_hz: float
 ) -> Iterator[float]:
     """Loop ``waveform`` on the galvos until the block exits, yielding the
-    ``time.monotonic()`` it started at. The card regenerates the waveform from
-    its buffer, so the sweep never pauses between passes; nothing is read."""
+    ``time.monotonic()`` it started at."""
+    # The card regenerates the waveform from its buffer, so the sweep never pauses between passes;
+    # nothing is read.
     try:
         with nx.Task() as galvos:
             add_galvo_channels(galvos, daq.config.device_name, galvo)

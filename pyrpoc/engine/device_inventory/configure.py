@@ -13,8 +13,9 @@ from .inventory import DeviceInventory
 
 
 class ConfigureDialog(QDialog):
-    """Edits apply as they are made, like a panel's form, so there is nothing
-    to cancel and the only button is Close."""
+    """A device's configuration form, applying each edit as it is made."""
+
+    # So there is nothing to cancel and the only button is Close.
 
     def __init__(self, device: Device, inventory: DeviceInventory, parent: QWidget):
         super().__init__(parent)

@@ -174,9 +174,9 @@ class AcquisitionPanel(Panel):
         return self.runs.blockers(self.selected_program)
 
     def refresh_readiness(self, *, announce: bool = True) -> None:
-        """Enable or disable the controls and say what is missing, if anything.
-        ``announce`` is off when a run has just ended, so its outcome is not
-        immediately overwritten with "ready"."""
+        """Enable or disable the controls and say what is missing, if anything."""
+        # ``announce`` is off when a run has just ended, so its outcome is not immediately
+        # overwritten with "ready".
         missing = self.blockers()
         self.apply_enabled()
         if missing:
@@ -188,9 +188,9 @@ class AcquisitionPanel(Panel):
         self.status_label.setText(f"Status: {text}")
 
     def render_controls(self) -> None:
-        """Draw the selected program's controls, replacing whatever was there.
-        ``clicked`` rather than ``toggled``, so a runner moving its own toggle
-        is shown without being mistaken for the user."""
+        """Draw the shown program's controls, replacing whatever was there."""
+        # ``clicked`` rather than ``toggled``, so a runner moving its own toggle is shown without
+        # being mistaken for the user.
         for control, button, watcher in self.control_buttons:
             control.unwatch(watcher)
             self.controls_strip.removeWidget(button)
@@ -241,9 +241,9 @@ class AcquisitionPanel(Panel):
             self.runs.set_save(directory=chosen)
 
     def on_save_changed(self) -> None:
-        """Pull the widgets back in line with the save target, for when a
-        restored session moved it. Unchanged values are skipped so typing in
-        the name field keeps its cursor."""
+        """Bring the save widgets in line with the save target."""
+        # For when a restored session moved it. Unchanged values are skipped so typing in the name
+        # field keeps its cursor.
         save = self.runs.save
         if self.name_edit.text() != save.name:
             self.name_edit.setText(save.name)

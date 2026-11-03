@@ -28,8 +28,10 @@ _HEADING_ROLE = Qt.ItemDataRole.UserRole + 3
 
 
 class _HeadingDelegate(QStyledItemDelegate):
-    """Draws headings as enabled text: they are disabled only so they cannot
-    be chosen, and the theme would otherwise dim them past reading."""
+    """Draws headings as enabled text."""
+
+    # They are disabled only so they cannot be chosen, and the theme would otherwise dim them past
+    # reading.
 
     def paint(
         self,
@@ -43,8 +45,10 @@ class _HeadingDelegate(QStyledItemDelegate):
 
 
 class GroupedComboBox(QComboBox):
-    """Closed, it shows the current entry with its heading, since an entry's
-    label need only be unique within its group."""
+    """A combo box whose entries sit under headings, showing the current entry with its
+    heading."""
+
+    # An entry's label need only be unique within its group.
 
     def __init__(self, parent: QWidget):
         super().__init__(parent)

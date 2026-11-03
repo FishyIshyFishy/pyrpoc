@@ -14,8 +14,8 @@ from .program_inputs import ParameterError
 # ``eq=False`` because comparing arrays in a dataclass's ``__eq__`` raises.
 @dataclass(frozen=True, eq=False)
 class Mask:
-    """A drawn region on a ``(height, width)`` grid, lit where ``array`` is
-    non-zero. ``label`` says what it was drawn on."""
+    """A drawn region on a ``(height, width)`` grid, lit where ``array`` is non-zero, and a
+    label saying what it was drawn on."""
 
     array: np.ndarray
     label: str

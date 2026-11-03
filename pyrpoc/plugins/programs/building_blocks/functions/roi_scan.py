@@ -1,8 +1,8 @@
-"""A region scan's geometry: confocal's raster restricted to one connected
-region. Each row is swept only from its first to its last lit pixel, with the
-scan's extra steps either side for the mirrors to turn, so the scan is as short
-as the region allows. Pitch and volts are the full frame's, so the region sits
-where it was drawn."""
+"""A region scan's geometry: confocal's raster restricted to one connected region."""
+
+# Each row is swept only from its first to its last lit pixel, with the scan's extra steps either
+# side for the mirrors to turn, so the scan is as short as the region allows. Pitch and volts are
+# the full frame's, so the region sits where it was drawn.
 
 from __future__ import annotations
 
@@ -61,8 +61,8 @@ def centre_rectangle(scan: ScanGeometry, fraction: float) -> np.ndarray:
 
 
 def roi_region(roi: ScanRegion, scan: ScanGeometry) -> np.ndarray:
-    """The region as booleans on the scan grid. It must be one 8-connected
-    area, so its rows are consecutive and the slow axis never jumps a gap."""
+    """The region as booleans on the scan grid, which must be one 8-connected area."""
+    # One area, so its rows are consecutive and the slow axis never jumps a gap.
     if roi.mask is None:
         region = centre_rectangle(scan, roi.center_fraction)
     else:
@@ -85,8 +85,8 @@ def region_source(roi: ScanRegion) -> str:
 
 
 def row_spans(region: np.ndarray) -> list[RowSpan]:
-    """Each lit row from its first lit pixel to its last. A gap inside a row is
-    scanned rather than jumped, so every row is one sweep."""
+    """Each lit row, from its first lit pixel to its last."""
+    # A gap inside a row is scanned rather than jumped, so every row is one sweep.
     spans: list[RowSpan] = []
     for y in np.flatnonzero(region.any(axis=1)):
         lit = np.flatnonzero(region[y])

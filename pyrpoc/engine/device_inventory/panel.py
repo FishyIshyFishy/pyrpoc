@@ -1,9 +1,5 @@
-"""The devices panel: what this workbench has, whether each is reachable, and
-the actions on a device that are not controlling it.
-
-Controlling a device happens in its own panel, opened from here or the Panels
-menu; a device without one is configured from its row instead.
-"""
+"""The Devices panel: what this workbench has, whether each is reachable, and the actions
+on a device other than controlling it."""
 
 from __future__ import annotations
 

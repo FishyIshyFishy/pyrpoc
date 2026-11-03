@@ -1,9 +1,8 @@
-"""Galvo pinpoint: park the galvos at one point and leave them there.
+"""Galvo pinpoint: park the galvos at one point, typed or picked off an image, and leave
+them there."""
 
-For reading the spectrum in external software such as Andor SOLIS, so pyrpoc
-does not touch the CCD. The point is typed or set by an ``ArmAndRun`` runner
-from a clicked pixel, and the run records it in its parameters.
-"""
+# For reading the spectrum in external software such as Andor SOLIS, so pyrpoc does not touch the
+# CCD.
 
 from __future__ import annotations
 

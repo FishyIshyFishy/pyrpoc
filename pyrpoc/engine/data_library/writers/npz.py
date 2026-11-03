@@ -42,8 +42,9 @@ class NpzWriter(Writer[ArrayData]):
 
     @classmethod
     def read(cls, kind: type[ArrayData], files: dict[str, Path]) -> ArrayData:
-        """The last entry; ``parameters`` is not read, since the recording's
-        metadata file holds them, and reading it would unpickle."""
+        """The last entry."""
+        # ``parameters`` is not read: the recording's metadata file holds them, and reading it
+        # would unpickle.
         (path,) = files.values()
         with np.load(str(path)) as archive:
             return kind(archive["data"][-1], [str(label) for label in archive["channels"]])

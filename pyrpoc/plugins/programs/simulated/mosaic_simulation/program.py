@@ -1,6 +1,6 @@
-"""Mosaic simulation: tiles cut from one synthetic slide, no instruments. The
-grid is the real mosaic's, so the display's stitching can be exercised on any
-machine."""
+"""Mosaic simulation: tiles cut from one synthetic slide, with no instruments."""
+
+# The grid is the real mosaic's, so the display's stitching can be exercised on any machine.
 
 from __future__ import annotations
 

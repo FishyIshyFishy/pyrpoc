@@ -19,12 +19,10 @@ from ..building_blocks.runners import Continuous, Single
 
 
 def to_grey(frame: np.ndarray) -> np.ndarray:
-    """An ``(H, W, 3)`` colour frame as a one-channel ``(1, H, W)`` image.
-
-    An unweighted mean, so the SDK's channel order (BGR or RGB) cannot skew it.
-    TODO: make colour readout configurable, publishing the three planes as
-    R/G/B channels of the Image once the SDK's channel order is checked.
-    """
+    """An ``(H, W, 3)`` colour frame as a one-channel ``(1, H, W)`` image."""
+    # An unweighted mean, so the SDK's channel order (BGR or RGB) cannot skew it. TODO: make
+    # colour readout configurable, publishing the three planes as R/G/B channels of the Image once
+    # the SDK's channel order is checked.
     return frame.mean(axis=2, dtype=np.float32)[None]
 
 

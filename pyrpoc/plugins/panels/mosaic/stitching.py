@@ -1,21 +1,18 @@
-"""Stitching a mosaic's tiles from their content, without a pixel size.
+"""Stitching a mosaic's tiles from their content, without a pixel size."""
 
-Neighbouring tiles are registered pairwise by the normalised cross-correlation
-over their overlap, computed for every integer offset at once (Padfield's
-masked NCC): the cross term by zero-padded FFT, the overlap's sums from
-integral images. Unlike phase correlation there is no wrap-around to resolve
-and no edge artefact to outrank the true peak, which matters when tiles
-overlap only at their borders and hold smooth, blobby structure.
-
-A pair registers on whichever channel overlays it best, so one dim or empty
-channel cannot spoil it, and the placement found applies to every channel.
-
-Every stage step along an axis is the same move, so the grid is placed with one
-step vector per axis: the median of that axis's confident pairs, refined at
-full resolution. One vector per axis also absorbs a stage that runs against,
-or slightly rotated from, the scan axes. Pairs register at a reduced working
-resolution to keep a large mosaic quick; only the two steps are refined.
-"""
+# Neighbouring tiles are registered pairwise by the normalised cross-correlation over their
+# overlap, computed for every integer offset at once (Padfield's masked NCC): the cross term by
+# zero-padded FFT, the overlap's sums from integral images. Unlike phase correlation there is no
+# wrap-around to resolve and no edge artefact to outrank the true peak, which matters when tiles
+# overlap only at their borders and hold smooth, blobby structure.
+#
+# A pair registers on whichever channel overlays it best, so one dim or empty channel cannot spoil
+# it, and the placement found applies to every channel.
+#
+# Every stage step along an axis is the same move, so the grid is placed with one step vector per
+# axis: the median of that axis's confident pairs, refined at full resolution. One vector per axis
+# also absorbs a stage that runs against, or slightly rotated from, the scan axes. Pairs register
+# at a reduced working resolution to keep a large mosaic quick; only the two steps are refined.
 
 from __future__ import annotations
 
@@ -52,9 +49,8 @@ class Registration:
 
 @dataclass(frozen=True)
 class AxisStep:
-    """The step between neighbours along one grid axis, and how it was found:
-    ``confident`` of ``registered`` pairs agreed, or none did and the step is
-    the nominal one from the fallback overlap."""
+    """The step between neighbours along one grid axis, and how many of the registered
+    pairs agreed on it; with none, it is the nominal step."""
 
     offset: Offset
     confident: int
@@ -223,8 +219,9 @@ def refine_step(planes: list[tuple[np.ndarray, np.ndarray]], start: Offset, radi
 
 
 class Stitcher:
-    """One program output's tiles. Pair registrations are kept, so a tile arriving
-    mid-run registers only against its acquired neighbours."""
+    """One program output's tiles, placed as they arrive, keeping the pair registrations."""
+
+    # So a tile arriving mid-run registers only against its acquired neighbours.
 
     def __init__(self, layout: MosaicLayout):
         self.layout = layout
@@ -288,8 +285,8 @@ def tile_positions(layout: MosaicLayout, steps: GridSteps, count: int) -> dict[i
 
 
 def edge_weights(height: int, width: int) -> np.ndarray:
-    """Highest at the centre and falling linearly to each edge, so overlaps
-    fade from one tile into the next instead of meeting at a seam."""
+    """Weights highest at a tile's centre and falling linearly to each edge."""
+    # So overlaps fade from one tile into the next instead of meeting at a seam.
     rows = np.minimum(np.arange(1, height + 1), np.arange(height, 0, -1)).astype(np.float32)
     cols = np.minimum(np.arange(1, width + 1), np.arange(width, 0, -1)).astype(np.float32)
     return np.outer(rows, cols)

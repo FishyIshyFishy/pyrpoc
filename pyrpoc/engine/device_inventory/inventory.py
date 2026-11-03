@@ -13,8 +13,8 @@ log = logging.getLogger(__name__)
 
 
 def close_if_open(device: Device) -> None:
-    """Close a device's session. A fault while disconnecting is logged, never
-    raised: removing a device or quitting must not depend on the hardware."""
+    """Close a device's session, logging a fault rather than raising it."""
+    # Removing a device or quitting must not depend on the hardware.
     if not device.session_open:
         return
     try:
@@ -50,8 +50,8 @@ class DeviceInventory(QObject):
         return device
 
     def free_number(self, cls: type[Device]) -> int:
-        """The lowest number this type has free, assigned once so a device
-        never renames itself when an earlier one is removed."""
+        """The lowest number this device type has free."""
+        # Assigned once, so a device never renames itself when an earlier one is removed.
         taken = {device.number for device in self.devices if type(device) is cls}
         number = 1
         while number in taken:
@@ -79,8 +79,8 @@ class DeviceInventory(QObject):
         self.device_changed()
 
     def disconnect_device(self, device: Device) -> None:
-        """Close the session, keeping a fault on the device to show, since
-        here the user asked for it."""
+        """Close the device's session, keeping any fault on the device to show."""
+        # Kept here, unlike elsewhere, because the user asked for it.
         try:
             device.close_session()
             device.last_error = None
@@ -108,8 +108,8 @@ class DeviceInventory(QObject):
             self.in_use_changed.emit()
 
     def open_sessions(self) -> list[Device]:
-        """Connect every device that keeps a session, returning the ones that
-        failed; they stay in the inventory, disconnected, with ``last_error``."""
+        """Connect every device that keeps a session, returning the ones that failed."""
+        # Failed devices stay in the inventory, disconnected, with ``last_error``.
         failed = [
             device
             for device in self.devices

@@ -1,5 +1,6 @@
-"""The fake detector's pieces: keyed randomness, noise, channel names. Every
-program that fakes its data uses them, so fakes stay comparable."""
+"""The fake detector's pieces: keyed randomness, noise, and channel names."""
+
+# Every program that fakes its data uses them, so fakes stay comparable.
 
 from __future__ import annotations
 
@@ -15,8 +16,8 @@ def seeded_rng(*parts: int) -> np.random.Generator:
 
 
 def with_noise(frame: np.ndarray, noise_level: float, *, seed: int, index: int) -> np.ndarray:
-    """``frame`` plus gaussian noise keyed by (seed, index), clipped at zero
-    since a detector cannot read negative."""
+    """``frame`` plus gaussian noise keyed by (seed, index), clipped at zero."""
+    # A detector cannot read negative.
     if noise_level:
         noise = seeded_rng(seed, index, NOISE_STREAM).standard_normal(frame.shape)
         frame = frame + noise.astype(np.float32) * noise_level

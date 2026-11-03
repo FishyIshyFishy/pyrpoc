@@ -93,8 +93,8 @@ def restore_panels(state: ScreenState, app: Application, window: MainWindow) -> 
 
 
 def apply(state: SessionState, app: Application, window: MainWindow) -> None:
-    """Rebuild the live application from a saved session. A device or panel
-    type that no longer exists is skipped rather than blocking launch."""
+    """Rebuild the live application from a saved session, skipping any device or panel type
+    that no longer exists."""
     working, screen = state.working, state.screen
     window.clear_panels()
     app.inventory.clear()

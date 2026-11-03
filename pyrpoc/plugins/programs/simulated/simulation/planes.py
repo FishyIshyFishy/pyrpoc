@@ -12,7 +12,7 @@ BLOB_COUNT = 14
 
 
 def axes(y_pixels: int, x_pixels: int) -> tuple[np.ndarray, np.ndarray]:
-    """Column and row vectors, so plane maths broadcasts to ``(H, W)``."""
+    """Column and row vectors, which broadcast to ``(H, W)``."""
     ys = np.arange(y_pixels, dtype=np.float32)[:, None]
     xs = np.arange(x_pixels, dtype=np.float32)[None, :]
     return ys, xs
@@ -21,11 +21,9 @@ def axes(y_pixels: int, x_pixels: int) -> tuple[np.ndarray, np.ndarray]:
 def cells_plane(
     y_pixels: int, x_pixels: int, *, channel: int, seed: int, drift: float, frame_index: int
 ) -> np.ndarray:
-    """Gaussian blobs drifting across the field, each channel its own set.
-
-    Separable exponentials keep a 512x512 frame at milliseconds; distances wrap
-    so a long run never empties the field.
-    """
+    """Gaussian blobs drifting across the field, each channel its own set."""
+    # Separable exponentials keep a 512x512 frame at milliseconds; distances wrap so a long run
+    # never empties the field.
     generator = seeded_rng(seed, channel, 0xB10B)
     centre_y = generator.uniform(0.0, y_pixels, BLOB_COUNT)
     centre_x = generator.uniform(0.0, x_pixels, BLOB_COUNT)
@@ -65,8 +63,8 @@ def rings_plane(
 def gradient_plane(
     y_pixels: int, x_pixels: int, *, channel: int, seed: int, drift: float, frame_index: int
 ) -> np.ndarray:
-    """A linear ramp whose direction differs per channel. Shows orientation.
-    It sweeps as a triangle wave, so the drift never puts a seam across the frame."""
+    """A linear ramp whose direction differs per channel, which shows orientation."""
+    # It sweeps as a triangle wave, so the drift never puts a seam across the frame.
     del seed
     ys, xs = axes(y_pixels, x_pixels)
     angle = channel * (np.pi / 3.0)

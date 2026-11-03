@@ -1,9 +1,7 @@
-"""The Prior stage's panel: its port, connect, read and move, and the motion
-profile.
+"""The Prior stage's panel: its port, connect, read and move, and the motion profile."""
 
-A move is sent and then polled on a timer, so the window never blocks on a
-travelling stage. The motion profile is written only by its Apply buttons.
-"""
+# A move is sent and then polled on a timer, so the window never blocks on a travelling stage. The
+# motion profile is written only by its Apply buttons.
 
 from __future__ import annotations
 
@@ -143,8 +141,9 @@ class PriorStagePanel(DevicePanel):
         return section
 
     def build_motion_section(self) -> QWidget:
-        """Axes in columns and quantities in rows, so the table stays two
-        inputs wide and fits a narrow dock."""
+        """The motion profile: axes in columns and quantities in rows, with an Apply button
+        per axis."""
+        # Axes in columns keep the table two inputs wide, so it fits a narrow dock.
         section = QWidget(self)
         grid = QGridLayout(section)
         grid.setContentsMargins(0, 0, 0, 0)
@@ -180,8 +179,9 @@ class PriorStagePanel(DevicePanel):
         button.clicked.connect(lambda: self.on_apply(axis))
 
     def attempt(self, action: Callable[[], None]) -> bool:
-        """Run one stage call. The hardware is a boundary, so a controller
-        fault is shown on the panel rather than raised as an unexpected error."""
+        """Run one stage call, showing a controller fault on the panel instead of raising
+        it."""
+        # The hardware is a boundary.
         try:
             action()
         except PriorError as exc:

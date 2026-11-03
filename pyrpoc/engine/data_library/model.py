@@ -1,11 +1,5 @@
-"""The data library as the screen sees it: what is open, and the commands on it.
-
-The ``LibraryStore`` holds the entries; this is where the Data Library panel's
-actions land, so the panel draws and forwards and keeps no bookkeeping of its
-own. It is also the ``Library`` every data panel and parameter editor reads,
-and it relays each program output's new values to the GUI thread, so everything that
-reaches the library goes through one object.
-"""
+"""``LibraryModel``: the open program outputs as the screen sees them, the commands on
+them, and their new values relayed to the GUI thread."""
 
 from __future__ import annotations
 
@@ -48,8 +42,8 @@ class LibraryModel(QObject):
         store.subscribe(self.schedule_purge)
 
     def relay_new_outputs(self) -> None:
-        """Follow every open program output. Subscribing twice is a no-op, so this
-        need not know which one was just added."""
+        """Follow every open program output."""
+        # Subscribing twice is a no-op, so this need not know which one was just added.
         for program_output in self.store.all():
             program_output.subscribe(self.output_changed.emit)
 
@@ -107,10 +101,10 @@ class LibraryModel(QObject):
             self.store.add(program_output)
 
     def set_notes(self, program_output: ProgramOutput[Any], notes: str) -> str | None:
-        """Set ``program_output``'s notes, and write them into its recording if that
-        is on disk and finished; a recording still going writes them itself
-        the next time it updates its metadata. Returns why the file could not
-        be updated, or None; the notes are kept in memory either way."""
+        """Set ``program_output``'s notes, and write them into its recording if that is
+        finished on disk; returns why the file could not be updated, or None."""
+        # A recording still going writes the notes itself the next time it updates its metadata.
+        # The notes are kept in memory either way.
         program_output.notes = notes
         if program_output.meta_path is None or not program_output.finished:
             return None
@@ -130,8 +124,8 @@ class LibraryModel(QObject):
             self._purge_timer.start()
 
     def purge(self) -> None:
-        """Close the oldest purgeable entries, one at a time, until under the
-        limit. Stops early when only live or drawn entries are left."""
+        """Close the oldest purgeable entries, one at a time, until under the limit or only
+        live entries are left."""
         while self.store.auto_purge and self.store.over_limit:
             candidates = self.store.purgeable()
             if not candidates:

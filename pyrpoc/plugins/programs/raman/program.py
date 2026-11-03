@@ -1,8 +1,7 @@
-"""Raman spectrum: read a spectrum off the Andor CCD wherever the beam already is.
+"""Raman spectrum: read a spectrum off the Andor CCD wherever the beam already is."""
 
-Run continuously, it is the live view used to align and focus. The x axis is
-pixel index; wavelength calibration is not part of the recording.
-"""
+# Run continuously, it is the live view used to align and focus. The x axis is pixel index;
+# wavelength calibration is not part of the recording.
 
 from __future__ import annotations
 

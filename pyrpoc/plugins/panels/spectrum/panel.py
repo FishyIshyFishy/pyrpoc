@@ -1,8 +1,6 @@
-"""One curve per channel of a 1-D spectrum.
+"""The Spectrum panel: one curve per channel of a spectrum, against sample index."""
 
-The x axis is the sample index: what a bin means in nm is the spectrometer's
-calibration, not the shape contract.
-"""
+# What a bin means in nm is the spectrometer's calibration, not part of the data.
 
 from __future__ import annotations
 
@@ -77,9 +75,9 @@ class SpectrumPanel(DataPanel[Spectrum]):
         self.sync_curves(0, [])
 
     def sync_curves(self, count: int, labels: list[str]) -> None:
-        """One curve per channel. The legend is refilled rather than diffed: a
-        stale row outlives its curve and would label the wrong trace. Same
-        labels mean the same curves, so nothing is touched."""
+        """Keep one curve per channel, leaving them alone when the labels are unchanged."""
+        # The legend is refilled rather than diffed: a stale row outlives its curve and would
+        # label the wrong trace.
         if labels == self._legend_labels and len(self._curves) == count:
             return
         self._legend_labels = list(labels)

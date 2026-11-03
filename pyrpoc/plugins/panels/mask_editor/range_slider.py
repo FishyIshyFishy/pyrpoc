@@ -1,7 +1,6 @@
-"""A slider with two handles selecting a span within a range.
+"""``RangeSlider``: a slider with two handles selecting a span within a range."""
 
-One groove accented only between the handles says what is kept without a label.
-"""
+# One groove, accented only between the handles, says what is kept without a label.
 
 from __future__ import annotations
 
@@ -81,12 +80,9 @@ class RangeSlider(QWidget):
         return self._clamp(round(self._minimum + fraction * self._span()))
 
     def _handle_at(self, pos: QPoint) -> int:
-        """Which handle a click grabs.
-
-        Distance decides, so a click between the handles drags the nearer one;
-        a tie goes to whichever handle the click can still move, which matters
-        when both sit on the same value at an end of the range.
-        """
+        """Which handle a click grabs: the nearer one."""
+        # A tie goes to whichever handle the click can still move, which matters when both sit on
+        # the same value at an end of the range.
         low_dx = abs(pos.x() - self._x_for(self._low))
         high_dx = abs(pos.x() - self._x_for(self._high))
         if low_dx < high_dx:
@@ -118,12 +114,9 @@ class RangeSlider(QWidget):
         event.accept()
 
     def _drag_to(self, pos: QPoint) -> None:
-        """Move the held handle, letting it push past the other one.
-
-        Swapping (rather than blocking at the other handle) means a drag never
-        stalls: carry the low handle past the high one and it becomes the high
-        one, which is what the span under the cursor says should happen.
-        """
+        """Move the held handle, letting it push past the other one."""
+        # Swapping rather than blocking means a drag never stalls: carry the low handle past the
+        # high one and it becomes the high one.
         value = self._value_for(pos.x())
         if self._pressed == _LOW:
             if value > self._high:

@@ -94,8 +94,9 @@ class SessionFile:
         self.path = path
 
     def load(self) -> SessionState:
-        """The saved session, or defaults if there is not a usable one. A
-        corrupt file is logged rather than blocking launch."""
+        """The saved session brought to the current version, or defaults if there is no
+        usable one."""
+        # A corrupt file is logged rather than blocking launch.
         if not self.path.exists():
             return SessionState()
         try:

@@ -119,9 +119,9 @@ class MaskEditorPanel(DataPanel[Image]):
         return self.channels_row
 
     def build_threshold_row(self) -> QHBoxLayout:
-        """One span read left to right: each number is the handle beside it,
-        and the accented groove between them is what is kept. Off by default,
-        so a drawn shape is the mask unless a threshold is asked for."""
+        """The threshold controls: a checkbox turning thresholds on, and a span between two
+        handles, each with its number beside it."""
+        # Off by default, so a drawn shape is the mask unless a threshold is asked for.
         self.apply_thresholds = QCheckBox("Apply thresholds", self)
         self.apply_thresholds.setToolTip(
             "On: an ROI drawn now keeps only the pixels inside the span. "
@@ -191,8 +191,9 @@ class MaskEditorPanel(DataPanel[Image]):
         return row
 
     def build_roi_table(self) -> QTableWidget:
-        """Read-only: thresholds live on the ROI and change through the row's
-        context menu, so an editable cell would promise an edit that does nothing."""
+        """A read-only table of the drawn ROIs and their thresholds."""
+        # Thresholds change through the row's context menu, so an editable cell would promise an
+        # edit that does nothing.
         table = QTableWidget(0, 3, self)
         table.setHorizontalHeaderLabels(["Low", "High", "Channels"])
         table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
@@ -209,8 +210,8 @@ class MaskEditorPanel(DataPanel[Image]):
         return table
 
     def fit_roi_table_height(self) -> None:
-        """Height the table to its rows, up to five, so it neither swallows the
-        image nor leaves an empty slab under it."""
+        """Size the table to its rows, up to five."""
+        # So it neither swallows the image nor leaves an empty slab under it.
         header = horizontal_header(self.roi_table).height()
         row_height = vertical_header(self.roi_table).defaultSectionSize()
         rows = min(max(self.roi_table.rowCount(), 1), 5)
@@ -254,8 +255,9 @@ class MaskEditorPanel(DataPanel[Image]):
         self.write_thresholds(*self.default_thresholds())
 
     def show_value(self, program_output: ProgramOutput[Image], value: Image) -> None:
-        """ROIs survive a same-shape image, so the editor stays usable during a
-        live run and across runs; a new shape resets it."""
+        """Show a new image, keeping the ROIs if it has the same shape and dropping them if
+        not."""
+        # So the editor stays usable during a live run and across runs.
         del program_output
         scaled = normalize_channels(value.array) * 255.0
         if self._data.shape == scaled.shape:
@@ -344,8 +346,8 @@ class MaskEditorPanel(DataPanel[Image]):
         self.sync_rois()
 
     def sync_rois(self) -> None:
-        """Rebuild the table and the drawn outlines together: both are numbered
-        by position, so editing either in place would put them out of step."""
+        """Rebuild the ROI table and the drawn outlines together."""
+        # Both are numbered by position, so editing either in place would put them out of step.
         self.roi_table.setRowCount(len(self._rois))
         for row, roi in enumerate(self._rois):
             for col, text in enumerate(threshold_cells(roi.threshold)):
@@ -405,8 +407,8 @@ class MaskEditorPanel(DataPanel[Image]):
         return self._data_max
 
     def generate_mask(self, rois: list[MaskRoi]) -> np.ndarray | None:
-        """The mask ``rois`` produce, or None for no ROIs. Taking the list lets
-        the threshold dialog preview an edit before it is written."""
+        """The mask ``rois`` produce, or None for no ROIs."""
+        # Taking the list lets the threshold dialog preview an edit before it is written.
         if not rois:
             return None
         return mask_from_rois(rois, self._data)

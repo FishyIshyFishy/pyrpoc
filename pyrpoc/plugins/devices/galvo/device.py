@@ -1,8 +1,7 @@
-"""The scanner: two AO channels on the DAQ's card.
+"""The scanner: two AO channels on the DAQ's card, ``backed_by`` the DAQ."""
 
-It has no connection of its own, so it is ``backed_by`` the DAQ and claiming it
-claims the card. Its wiring is still configuration worth persisting.
-"""
+# It has no connection of its own, so claiming it claims the card; its wiring is still
+# configuration worth keeping.
 
 from __future__ import annotations
 

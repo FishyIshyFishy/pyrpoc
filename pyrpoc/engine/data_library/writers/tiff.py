@@ -30,8 +30,8 @@ def append_pages(paths: dict[str, Path], image: Image) -> None:
 
 
 def read_pages(files: dict[str, Path]) -> list[Image]:
-    """Every page, as ``Image``s labelled by the files' keys. Each publish
-    appended its own page, so pages are read one by one rather than as a series."""
+    """Every page, as ``Image``s labelled by the files' keys."""
+    # Each publish appended its own page, so pages are read one by one rather than as a series.
     per_channel = []
     for path in files.values():
         with tifffile.TiffFile(str(path)) as tif:

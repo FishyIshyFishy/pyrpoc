@@ -14,12 +14,10 @@ from .daq_tasks import add_galvo_channels
 
 
 def park_galvos(daq: DAQ, galvo: Galvo, point: Point) -> None:
-    """Move the galvos to ``point`` and leave them there.
-
-    An un-clocked task, so the write is one on-demand sample per channel.
-    Closing the task frees the AO channels for the next scan; the card holds
-    its last written voltage, so the mirrors stay parked after the run ends.
-    """
+    """Move the galvos to ``point`` and leave them there."""
+    # An un-clocked task, so the write is one on-demand sample per channel. Closing the task frees
+    # the AO channels for the next scan; the card holds its last written voltage, so the mirrors
+    # stay parked after the run ends.
     try:
         with nx.Task() as task:
             add_galvo_channels(task, daq.config.device_name, galvo)

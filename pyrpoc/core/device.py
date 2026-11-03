@@ -96,7 +96,7 @@ class Device:
         raise NotImplementedError
 
     def try_open_session(self) -> bool:
-        """Open the session, recording why it failed instead of raising."""
+        """Open the session, returning whether it opened and recording why not."""
         # A switched-off device must not stop the app from starting, and the SDK
         # raises whatever it raises.
         try:

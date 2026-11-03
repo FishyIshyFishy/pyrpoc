@@ -22,8 +22,9 @@ def describe_axis(name: str, step: AxisStep) -> str:
 
 
 class MosaicView(QWidget):
-    """Stitches whatever tiles have arrived. Registrations are kept per
-    program output, so a new tile costs only its own neighbours."""
+    """Stitches whatever tiles have arrived, keeping each program output's registrations."""
+
+    # So a new tile costs only its own neighbours.
 
     # The user changed the fallback overlap, so the tiles must be placed again.
     fallback_changed = pyqtSignal()

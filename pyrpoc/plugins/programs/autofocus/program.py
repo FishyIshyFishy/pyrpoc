@@ -1,6 +1,7 @@
-"""Autofocus: scan one region at each z, score it by Tenengrad, and climb the
-Prior's focus drive to the sharpest z. Each region frame is published as it is
-taken, so the climb can be watched."""
+"""Autofocus: scan one region at each z, score it by Tenengrad, and climb the Prior's focus
+drive to the sharpest z."""
+
+# Each region frame is published as it is taken, so the climb can be watched.
 
 from __future__ import annotations
 
@@ -39,8 +40,8 @@ def move_z(stage: PriorStage, z_um: float, sleep: Callable[[float], None]) -> No
 
 
 def return_to_start(stage: PriorStage, start_z_um: float) -> None:
-    """Stop and go back to where the run started. Waits with ``time.sleep``:
-    the run is already stopped, so ``ctx.sleep`` would raise at once."""
+    """Stop and go back to where the run started."""
+    # Waits with ``time.sleep``: the run is already stopped, so ``ctx.sleep`` would raise at once.
     stage.stop_smoothly()
     stage.wait_until_stopped("z", time.sleep)
     move_z(stage, start_z_um, time.sleep)

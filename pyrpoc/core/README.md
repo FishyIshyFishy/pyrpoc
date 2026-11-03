@@ -3,10 +3,6 @@
 This folder defines what each piece of pyrpoc is. Everything else in the
 package builds on these nouns.
 
-The architecture is still being reached in phases. A line marked
-*(from phase N)* describes how it will be once that phase is done, and says
-what the code does today.
-
 ## The flow
 
 ```
@@ -53,7 +49,7 @@ Everything the software does is this loop:
 | **ProgramInputs** | The collection of current values for every program input, by key. Any panel may read it, set a value (validated by the input's rules) or subscribe. It's saved in the session, and a run's values go into its recording. The app's one collection is `ProgramInputsStore` (`engine/acquisition/program_inputs.py`). |
 | **InputRequest** | A panel or runner asking for a value of one type that another panel can supply. Whichever supplying panel the user acts in answers it. There's no storage: it's a question with one answer. The app keeps the open requests (`app/input_requests.py`), at most one per type, and hands them to every panel and runner. |
 | **PixelPick** | The value a click on an image supplies: the program output clicked on, plus `x` and `y` in its pixels. |
-| **Mask** | A drawn region, as a program input value. The Mask Editor supplies it; ROI and Modulation inputs hold it. Held inline: in the session and in recordings it is its shape plus its pixels, packed one bit each and base64-encoded. |
+| **Mask** | A drawn region, as a program input value. The Mask Editor supplies it; ROI and Modulation inputs hold it. It carries a label saying what it was drawn on. Held inline: in the session and in recordings it is its label, its shape and its pixels, packed one bit each and base64-encoded. |
 
 ### Program outputs: program → user
 
@@ -96,7 +92,7 @@ Everything the software does is this loop:
 | `input_section.py` | `InputSection` |
 | `input_requests.py` | `InputRequest`, `InputRequests` (protocol), `PixelPick` |
 | `mask.py` | `Mask`, as a program input value |
-| `data.py` | `Data`, `ArrayData`, `Image`, `DecayHistogram`, `RawSamples`, `Spectrum`, `Mosaic`, `DATA_KINDS` |
+| `data.py` | `Data`, `ArrayData`, `Image`, `DecayHistogram`, `RawSamples`, `Spectrum`, `Mosaic` and its `MosaicTile`, `DATA_KINDS` |
 | `program_output.py` | `ProgramOutput`, `Provenance`, `Origin` |
 | `library.py` | `Library` (protocol) |
 | `saving.py` | `SaveTarget`, `Writer` + `writer_registry` |

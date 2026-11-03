@@ -1,11 +1,5 @@
-"""Saving a recording to disk: one writer per output, chosen by its kind of
-``Data`` from ``writer_registry``, plus the recording's metadata file.
-
-    <root>_meta.json        rewritten as each run joins and ends, and at the end
-
-The formats themselves live in ``writers/``, and the metadata file's shape
-in ``format.py``.
-"""
+"""``RecordingSaver``: one recording's writers, one per output chosen by its kind of
+``Data``, and its metadata file."""
 
 from __future__ import annotations
 
@@ -27,8 +21,8 @@ from pyrpoc.engine.data_library.format import (
 
 
 class RecordingSaver:
-    """One recording's writers and metadata file. ``root`` is moved to the
-    first free numbered stem, so an earlier recording is never overwritten."""
+    """One recording's writers and metadata file, at the first free numbered stem of
+    ``root``."""
 
     def __init__(
         self,
@@ -81,8 +75,8 @@ class RecordingSaver:
         self.write_metadata(ended_at=None, last_error=None)
 
     def finalize(self, error: Exception | None) -> None:
-        """Rewrite the metadata. The program outputs are finalized first, so every
-        writer's paths are complete by now."""
+        """Rewrite the metadata."""
+        # The program outputs are finalized first, so every writer's paths are complete by now.
         self.write_metadata(ended_at=utc_now(), last_error=str(error) if error else None)
 
     def write_metadata(self, *, ended_at: str | None, last_error: str | None) -> None:

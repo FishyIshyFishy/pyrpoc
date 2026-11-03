@@ -1,10 +1,7 @@
-"""The data library panel: every program output this session has open.
+"""The Data Library panel: every program output this session has open."""
 
-Size is shown against the library's limit because a program output keeps every
-frame, so a long continuous run is what can exhaust a machine. Past the limit,
-auto-purge closes the oldest finished entries; with it off, new acquisitions
-are refused until entries are closed.
-"""
+# Size is shown against the library's limit because a program output keeps every frame, so a long
+# continuous run is what can exhaust a machine.
 
 from __future__ import annotations
 
@@ -125,8 +122,8 @@ class DataLibraryPanel(Panel):
         return row
 
     def rebuild(self) -> None:
-        """Redraw every row, keeping the selection where the row survives.
-        Membership changes are rare enough for a full rebuild."""
+        """Redraw every row, keeping the selection where the row survives."""
+        # Membership changes are rare enough for a full rebuild.
         chosen = self.selected_output()
         self.rows = list(reversed(self.library.all()))
         self.table.setRowCount(len(self.rows))

@@ -1,6 +1,7 @@
-"""Program inputs a program can declare, one topic per file: each declares its
-inputs, an input section showing them, and any value type built from them.
-Importing this package declares them all, so a session can name any of them."""
+"""Program inputs a program can declare, one topic per file, each with its input section
+and any value type built from them. Importing this package declares them all."""
+
+# So a session can name any of them.
 
 from __future__ import annotations
 

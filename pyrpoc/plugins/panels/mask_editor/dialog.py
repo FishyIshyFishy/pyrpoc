@@ -61,9 +61,9 @@ class MaskPreviewLabel(QLabel):
 
 
 class RoiThresholdDialog(QDialog):
-    """Re-threshold one ROI, previewing the whole mask: a threshold is chosen
-    for how the finished mask looks, with the other ROIs as context. The stored
-    ROI is untouched until accepted, so Cancel needs no undo."""
+    """Re-threshold one ROI, previewing the whole mask with the other ROIs as context."""
+
+    # The stored ROI is untouched until accepted, so Cancel needs no undo.
 
     def __init__(self, editor: MaskEditorPanel, index: int, threshold: Threshold):
         super().__init__(editor)

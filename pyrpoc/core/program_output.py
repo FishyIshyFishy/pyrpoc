@@ -26,7 +26,8 @@ def utc_now() -> str:
 
 @dataclass(frozen=True, kw_only=True)
 class Provenance:
-    """What produced this data. Written into the saved metadata."""
+    """What produced this data: the program, when and under what name it ran, and its
+    inputs and devices."""
 
     program_key: str
     started_at: str

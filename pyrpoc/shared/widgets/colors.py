@@ -18,7 +18,7 @@ PALETTE = [
 
 
 def color_for_index(index: int) -> tuple[int, int, int]:
-    """A channel's colour, stable across panels so it keeps its identity."""
+    """A channel's colour, the same in every panel."""
     return PALETTE[index % len(PALETTE)]
 
 

@@ -1,8 +1,7 @@
-"""What an ROI is, and the surface it is drawn on.
+"""What an ROI is, and the surface it is drawn on."""
 
-The view asks the panel (``editor``) the two things it cannot decide itself:
-where a point may land, and what a finished polygon becomes.
-"""
+# The view asks the panel (``editor``) the two things it cannot decide itself: where a point may
+# land, and what a finished polygon becomes.
 
 from __future__ import annotations
 
@@ -30,9 +29,8 @@ class Threshold:
 
 @dataclass
 class MaskRoi:
-    """One drawn region. Its number is its position in the editor's list; a
-    stored id would be a second numbering that deleting an ROI puts out of step.
-    Without a threshold, every pixel of the shape counts."""
+    """One drawn region and its threshold; without a threshold, every pixel of the shape
+    counts."""
 
     points: list[tuple[float, float]]
     threshold: Threshold | None
@@ -103,8 +101,8 @@ class MaskImageView(QGraphicsView):
             self._live_path_item = None
 
     def set_rois(self, rois: list[MaskRoi]) -> None:
-        """Redraw every ROI. Deleting one renumbers every ROI after it, so all
-        of them are redrawn on any edit."""
+        """Redraw every ROI."""
+        # Deleting one renumbers every ROI after it, so all of them are redrawn on any edit.
         for item in self._roi_items:
             self.gscene.removeItem(item)
         for label in self._roi_labels:

@@ -194,15 +194,15 @@ class MainWindow(QWidget):
             self.remove_panel(panel)
 
     def on_output_changed(self, program_output: ProgramOutput) -> None:
-        """Refresh every panel showing this program output. An added panel exists
-        exactly as long as its dock, so there is no unseen panel to skip."""
+        """Refresh every panel showing this program output."""
+        # An added panel exists exactly as long as its dock, so there is no unseen panel to skip.
         for panel in self.panels:
             if panel.program_output() is program_output:
                 panel.refresh()
 
     def assign_ordinal(self, panel: DataPanel) -> None:
-        """The lowest number this type has free, assigned once so a dock never
-        renumbers itself when an earlier one closes."""
+        """Give ``panel`` the lowest number its type has free."""
+        # Assigned once, so a dock never renumbers itself when an earlier one closes.
         taken = {
             number
             for other, number in self.panel_ordinals.items()
@@ -254,12 +254,9 @@ class MainWindow(QWidget):
         dock.deleteLater()
 
     def discard_panel(self, panel: DataPanel) -> None:
-        """Drop an added panel, from its tab's close button or its menu entry.
-
-        Deferred, because both arrive in a signal from the thing about to be
-        deleted. The membership check is because a close and an uncheck can
-        both arrive for one gesture; the second finds the panel already gone.
-        """
+        """Drop an added panel, from its tab's close button or its menu entry."""
+        # Deferred, because both arrive in a signal from the thing about to be deleted. A close
+        # and an uncheck can both arrive for one gesture; the second finds the panel already gone.
         if self.restoring_layout or self.shutting_down:
             return
         if panel not in self.panel_docks:

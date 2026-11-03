@@ -1,9 +1,8 @@
-"""The NI-DAQ card: its device name, and which analog inputs are wired.
+"""The NI-DAQ card: its device name, and which analog inputs are wired."""
 
-Analog inputs are a property of the card, not the scanner, so they live here.
-``owns_connection`` means the card can be verified, not that it holds a
-handle: NI tasks are created per scan by the programs that use them.
-"""
+# Analog inputs are a property of the card, not the scanner, so they live here.
+# ``owns_connection`` means the card can be verified, not that it holds a handle: NI tasks are
+# created per scan by the programs that use them.
 
 from __future__ import annotations
 

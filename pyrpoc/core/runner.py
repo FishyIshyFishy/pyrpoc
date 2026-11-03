@@ -111,13 +111,13 @@ class RunnerContext(ABC):
 
     @abstractmethod
     def close_series(self) -> None:
-        """End the series. Its entries stay open; its files are finalized once
-        its last run has ended."""
+        """End the series: its entries stay open, and its files are finalized once its last
+        run has ended."""
 
     @abstractmethod
     def on_run_ended(self, callback: Callable[[bool], None]) -> None:
         """Call ``callback(completed)`` as each run this context started ends;
-        ``completed`` is False when it was stopped or failed."""
+        ``completed`` is False for a run that was stopped or failed."""
 
     @property
     @abstractmethod

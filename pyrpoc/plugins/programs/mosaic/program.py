@@ -30,7 +30,8 @@ def move_stage(ctx: RunContext, stage: PriorStage, x_um: float, y_um: float) -> 
 
 
 def image_tiles(ctx: RunContext, stage: PriorStage, tiles: tuple[MosaicTile, ...]) -> None:
-    """Publish the mosaic so far after every tile, so the panel fills in live."""
+    """Image every tile, publishing the mosaic so far after each one."""
+    # So the panel fills in live.
     raster = Raster.for_run(ctx)
     mosaic = Mosaic(tiles, ())
     for _, tile in walk(ctx, tiles):

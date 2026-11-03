@@ -1,10 +1,8 @@
-"""A ToupTek USB camera, such as the brightfield U3CMOS08500KPA.
+"""A ToupTek USB camera, such as the brightfield U3CMOS08500KPA."""
 
-The session stays open between runs; the app opens it at launch and closes it
-on exit. Only one process can hold the camera, so ToupView cannot use it
-while pyrpoc is running. Exposure and gain belong to the program, not here:
-this configuration only says which camera to open.
-"""
+# The session stays open between runs; the app opens it at launch and closes it on exit. Only one
+# process can hold the camera, so ToupView cannot use it while pyrpoc is running. Exposure and
+# gain are program inputs: this configuration only says which camera to open.
 
 from __future__ import annotations
 
@@ -81,8 +79,8 @@ class ToupcamCamera(Device):
         return self.session
 
     def start(self, *, exposure_us: int, gain_pct: int, binned: bool) -> None:
-        """Apply the settings and start streaming. Values outside what the
-        camera accepts are refused with its range rather than clamped."""
+        """Apply the settings and start streaming, refusing values outside the camera's
+        range."""
         session = self.require_session()
         low, high = session.exposure_range_us()
         if not low <= exposure_us <= high:
@@ -98,9 +96,10 @@ class ToupcamCamera(Device):
         self.drop_next = True
 
     def grab(self, sleep: Callable[[float], None]) -> np.ndarray:
-        """The next frame as ``(H, W, 3)`` uint8, in the SDK's channel order.
-        A program passes ``ctx.sleep`` so a stopped run interrupts the wait;
-        its ``finally`` should then call ``stop()``."""
+        """The next frame as ``(H, W, 3)`` uint8, in the SDK's channel order, waiting with
+        ``sleep``."""
+        # A program passes ``ctx.sleep`` so a stopped run interrupts the wait; its ``finally``
+        # should then call ``stop()``.
         if self.drop_next:
             self.read_frame(sleep)
             self.drop_next = False

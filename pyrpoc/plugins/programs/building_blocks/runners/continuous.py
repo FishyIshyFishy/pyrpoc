@@ -9,9 +9,11 @@ from pyrpoc.core.runner import Runner, RunnerContext, Toggle
 
 @dataclass(frozen=True)
 class Continuous(Runner):
-    """Start a new run each time one completes, until a run is stopped, fails,
-    or is refused. The toggle stays down for as long as it keeps going, and the
-    runs form one series, so they add to one library entry per output."""
+    """Start a new run each time one completes, until a run is stopped, fails, or is
+    refused."""
+
+    # The toggle stays down for as long as it keeps going, and the runs form one series, so they
+    # add to one library entry per output.
 
     def attach(self, ctx: RunnerContext) -> None:
         started = False

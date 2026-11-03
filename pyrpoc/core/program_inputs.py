@@ -39,7 +39,7 @@ class Field:
 
 @dataclass
 class Editor:
-    """One field's widget, as the form drives it."""
+    """One field's widget, and how a form reads, writes and watches it."""
 
     # Typed as Any so core never imports Qt.
     widget: Any

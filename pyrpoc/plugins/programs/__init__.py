@@ -1,8 +1,7 @@
-"""Experiments, one folder each, holding the program and the code only it
-needs. Everything shared (parameter groups, runners, and functions like the
-galvo raster) is in ``building_blocks/``. Programs build from those and never
-import each other. Importing this package registers every program.
-"""
+"""Experiments, one folder each, holding the program and the code only it needs. Importing
+this package registers every program."""
+
+# Everything shared is in ``building_blocks/``; programs never import each other.
 
 from __future__ import annotations
 

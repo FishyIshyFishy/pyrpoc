@@ -13,8 +13,8 @@ from .layout import MosaicLayout
 
 
 class StackView(QWidget):
-    """Scrolls through every image of the mosaic. While the slider is on the
-    last frame it follows new ones as they arrive; moved back, it stays put."""
+    """Scrolls through every image of the mosaic, following new ones while the slider is on
+    the last."""
 
     # The user moved to another frame.
     moved = pyqtSignal()
@@ -38,8 +38,8 @@ class StackView(QWidget):
         root.addLayout(row)
 
     def take_frames(self, frames: Sequence[np.ndarray], mosaic: MosaicLayout | None) -> None:
-        """The program output's frames so far; the slider follows a new one only if
-        it was already on the last."""
+        """Take the program output's frames so far, moving the slider to a new last frame
+        only if it was on the last one."""
         following = self.slider.value() >= self.slider.maximum()
         self.frames, self.mosaic = frames, mosaic
         self.slider.blockSignals(True)

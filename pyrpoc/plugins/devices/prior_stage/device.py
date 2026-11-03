@@ -1,11 +1,9 @@
-"""The Prior Scientific controller: an XY stage and a Z focus drive on one COM
-port, in microns.
+"""The Prior Scientific controller: an XY stage and a Z focus drive on one COM port, in
+microns."""
 
-The session stays open between runs; the app opens it at launch and closes it
-on exit. Speed, acceleration and jerk are never written implicitly, because
-someone may have tuned them outside pyrpoc: they are read, and set only when
-asked.
-"""
+# The session stays open between runs; the app opens it at launch and closes it on exit. Speed,
+# acceleration and jerk are never written implicitly, because someone may have tuned them outside
+# pyrpoc: they are read, and set only when asked.
 
 from __future__ import annotations
 
@@ -130,9 +128,9 @@ class PriorStage(Device):
         return self.read_number(f"{PREFIX[axis]}.busy.get") != 0
 
     def wait_until_stopped(self, axis: Axis, sleep: Callable[[float], None]) -> None:
-        """Block until ``axis`` stops. A program passes ``ctx.sleep`` so a
-        stopped run interrupts the wait; its ``finally`` should then call
-        ``stop_smoothly()``."""
+        """Block until ``axis`` stops, waiting with ``sleep``."""
+        # A program passes ``ctx.sleep`` so a stopped run interrupts the wait; its ``finally``
+        # should then call ``stop_smoothly()``.
         while self.busy(axis):
             sleep(POLL_S)
 

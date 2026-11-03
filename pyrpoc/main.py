@@ -24,9 +24,9 @@ log = logging.getLogger("pyrpoc")
 def report_uncaught(
     kind: type[BaseException], error: BaseException, tb: TracebackType | None
 ) -> None:
-    """The one place an unexpected error lands. PyQt aborts the process on an
-    exception escaping a slot unless this hook is set, so code elsewhere lets
-    errors raise instead of guarding each slot."""
+    """Log an unexpected error and show it in a dialog."""
+    # PyQt aborts the process on an exception escaping a slot unless this hook is set, so code
+    # elsewhere lets errors raise instead of guarding each slot.
     text = "".join(traceback.format_exception(kind, error, tb))
     log.error("uncaught exception\n%s", text)
     if QApplication.instance() is not None:
@@ -46,13 +46,10 @@ def configure_qt_fontdir() -> None:
 def fit_to_available_screen(
     window: QWidget, width: int | None = None, height: int | None = None
 ) -> None:
-    """Size and place a window inside a visible screen area.
-
-    On multi-monitor high-DPI setups Qt reports a secondary screen's origin in
-    native pixels but its size in logical ones, leaving a hole default
-    placement can land in. Call before show() to pick the spot, and again
-    after to re-clamp once the frame margins are known.
-    """
+    """Size and place a window inside a visible screen area."""
+    # On multi-monitor high-DPI setups Qt reports a secondary screen's origin in native pixels but
+    # its size in logical ones, leaving a hole default placement can land in. Call before show()
+    # to pick the spot, and again after to re-clamp once the frame margins are known.
     screen = window.screen() or QGuiApplication.primaryScreen()
     avail = screen.availableGeometry() if screen is not None else None
     if avail is None or avail.isEmpty():
@@ -86,8 +83,8 @@ def build(
 
 
 def warn_unconnected(window: QWidget, failed: list[Device]) -> None:
-    """Say which saved devices could not connect at launch. They stay in the
-    inventory, so connecting later is one click in the Devices panel."""
+    """Say which saved devices could not connect at launch."""
+    # They stay in the inventory, so connecting later is one click in the Devices panel.
     if not failed:
         return
     lines = "\n".join(f"{device.name}: {device.last_error}" for device in failed)

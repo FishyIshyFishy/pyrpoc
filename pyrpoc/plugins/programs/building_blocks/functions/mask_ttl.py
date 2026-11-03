@@ -12,9 +12,9 @@ from ..program_inputs import MaskBinding, ScanGeometry
 def mask_ttl(
     masks: Sequence[MaskBinding], scan: ScanGeometry, samples_per_pixel: int, device_name: str
 ) -> dict[str, np.ndarray]:
-    """One flat boolean TTL signal per bound digital line, a sample for every
-    raster sample. A mask that is all zero on the scan grid gets no line, so no
-    DO task is created for it."""
+    """One flat boolean TTL signal per bound digital line, a sample for every raster
+    sample."""
+    # A mask that is all zero on the scan grid gets no line, so no DO task is created for it.
     ttl: dict[str, np.ndarray] = {}
     for mask in masks:
         lit = np.zeros((scan.y_pixels, scan.total_x), dtype=bool)

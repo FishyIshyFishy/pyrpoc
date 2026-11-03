@@ -90,8 +90,8 @@ class ImagePanel(DataPanel[Image]):
         self.sync_channel_tiles(0)
 
     def sync_channel_tiles(self, count: int) -> None:
-        """Add or drop tiles to match ``count``. Tiles that stay keep their
-        levels and zoom; an unchanged count touches nothing."""
+        """Add or drop tiles to match ``count``, leaving the levels and zoom of tiles that
+        stay."""
         if len(self._tiles) == count:
             return
         while len(self._tiles) > count:
@@ -135,8 +135,9 @@ class ImagePanel(DataPanel[Image]):
         return tile
 
     def build_plot(self, parent: QWidget) -> tuple[pg.PlotWidget, pg.ImageItem]:
-        """The image and its click wiring. Wired at build rather than when a pick
-        is requested, because a tile can appear after arming."""
+        """A tile's plot and image, wired to answer a click."""
+        # Wired at build rather than when a pick is requested, because a tile can appear after
+        # arming.
         plot = pg.PlotWidget(parent)
         plot.setMenuEnabled(False)
         plot.hideButtons()
@@ -161,8 +162,9 @@ class ImagePanel(DataPanel[Image]):
             self.apply_pick_cursor(tile)
 
     def apply_pick_cursor(self, tile: ChannelTile) -> None:
-        """Crosshair over the plot only: it means "clicking here moves
-        hardware", so it must not appear where a click does nothing."""
+        """Show a crosshair over the plot while a pixel request is open."""
+        # Over the plot only: it means "clicking here moves hardware", so it must not appear where
+        # a click does nothing.
         if self.armed:
             tile.plot.setCursor(Qt.CursorShape.CrossCursor)
         else:
@@ -256,8 +258,8 @@ class ImagePanel(DataPanel[Image]):
         }
 
     def import_persistence_state(self, state: dict[str, Any]) -> None:
-        """Parse saved tile settings from session JSON, a boundary: malformed
-        rows are skipped. Applied once tiles exist, since none do yet."""
+        """Take saved tile settings from session JSON, skipping malformed rows."""
+        # Applied once tiles exist, since none do yet.
         channels = state.get("channels", [])
         if not isinstance(channels, list):
             return
@@ -274,8 +276,8 @@ class ImagePanel(DataPanel[Image]):
         self.apply_pending_state()
 
     def apply_pending_state(self) -> None:
-        """Apply saved settings once, so live edits during a run are not
-        overwritten on every frame."""
+        """Apply saved tile settings, once."""
+        # Once, so live edits during a run are not overwritten on every frame.
         if not self._pending_state or not self._tiles:
             return
         for saved in self._pending_state:

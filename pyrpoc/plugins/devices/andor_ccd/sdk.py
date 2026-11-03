@@ -1,10 +1,8 @@
-"""The Andor SDK2 over ctypes: one DLL per process, one camera per session.
+"""The Andor SDK2 over ctypes: one DLL per process, one camera per session."""
 
-The DLL comes from the standalone Andor SDK install, never from Andor SOLIS:
-SOLIS ships a file with the same name that only dispatches to SOLIS's own
-libraries, and loaded alone it finds no cameras. The SDK is not
-redistributable, so it is not bundled with pyrpoc.
-"""
+# The DLL comes from the standalone Andor SDK install, never from Andor SOLIS: SOLIS ships a file
+# with the same name that only dispatches to SOLIS's own libraries, and loaded alone it finds no
+# cameras. The SDK is not redistributable, so it is not bundled with pyrpoc.
 
 from __future__ import annotations
 
@@ -149,8 +147,8 @@ class AndorSDK:
 
 @functools.cache
 def load_sdk(dll_path: str) -> AndorSDK:
-    """The one ``AndorSDK`` for this process. Its folder is added to the DLL
-    search so the library finds anything it loads beside itself."""
+    """The one ``AndorSDK`` for this process, with its folder added to the DLL search."""
+    # So the library finds anything it loads beside itself.
     path = Path(dll_path)
     if not path.is_file():
         raise AndorError(f"{path} does not exist; install the Andor SDK or set the DLL path")
@@ -245,8 +243,9 @@ def read_info(sdk: AndorSDK) -> CameraInfo:
 
 
 class AndorSession:
-    """One initialized camera. Calls take a lock because a program's thread
-    and the GUI's temperature readout both talk to it."""
+    """One initialized camera, whose calls take a lock."""
+
+    # A program's thread and the GUI's temperature readout both talk to it.
 
     def __init__(self, sdk: AndorSDK, info: CameraInfo):
         self.sdk = sdk

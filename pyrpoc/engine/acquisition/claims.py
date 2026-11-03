@@ -1,9 +1,6 @@
-"""Resolving a program's declared devices against what is configured, and
-holding them while a run uses them.
+"""Which devices a program needs, following ``backed_by``, and which run holds each device."""
 
-Claims propagate up ``backed_by``: claiming the galvo claims its DAQ. Runs may
-overlap, so what stops two of them is a device held twice, not a second run.
-"""
+# Runs may overlap, so what stops two of them is a device held twice, not a second run.
 
 from __future__ import annotations
 
@@ -56,8 +53,9 @@ def resolve(required: list[type[Device]], inventory: list[Device]) -> dict[type[
 
 
 class Leases:
-    """Which run holds each device. Not locked: the executor holds its own
-    lock around every call."""
+    """Which run holds each device."""
+
+    # Not locked: the executor holds its own lock around every call.
 
     def __init__(self) -> None:
         self._held: dict[Device, int] = {}

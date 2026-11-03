@@ -47,8 +47,8 @@ def place_rows(
 
 
 def metric_weights(region: np.ndarray, box: Box) -> np.ndarray:
-    """The pixels whose whole 3x3 Sobel neighbourhood is inside the region, so
-    the edge of the zero fill never counts as focus."""
+    """The pixels whose whole 3x3 Sobel neighbourhood is inside the region."""
+    # So the edge of the zero fill never counts as focus.
     inside = box.crop(region).astype(np.uint8)
     kernel = np.ones((3, 3), dtype=np.uint8)
     eroded = cv2.erode(inside, kernel, borderType=cv2.BORDER_CONSTANT, borderValue=0)
@@ -60,7 +60,9 @@ def metric_weights(region: np.ndarray, box: Box) -> np.ndarray:
 
 @dataclass(frozen=True)
 class RoiRaster:
-    """One run's region scan. Built once: the region does not move between z."""
+    """One run's region scan."""
+
+    # Built once: the region does not move between z.
 
     daq: DAQ
     galvo: Galvo

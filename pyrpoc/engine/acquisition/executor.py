@@ -1,11 +1,8 @@
-"""Executing programs: one ``Run`` per start, each on its own worker thread.
+"""``Executor``: runs programs, one ``Run`` per start, each on its own worker thread."""
 
-Pure Python, no Qt, so runs can be driven without a QApplication. The
-executor never knows what a program does; it owns what a program deliberately
-does not: the recording each run writes into (a program output per declared output,
-and its files; see ``recording.py``), the save policy, and which devices each
-run holds. Runs may overlap as long as they hold no device in common.
-"""
+# No Qt, so runs can be driven without a QApplication. The executor owns what a program does not:
+# the recording each run writes into, the save policy, and which devices each run holds. Runs may
+# overlap as long as they hold no device in common.
 
 from __future__ import annotations
 
@@ -29,8 +26,8 @@ from . import claims
 
 
 class Run:
-    """One execution of one program, and the handle for reaching it once it
-    has started: what it was given, where it writes, and whether it is going."""
+    """One execution of one program: what it was given, where it writes, and whether it is
+    still going."""
 
     def __init__(
         self,
@@ -57,8 +54,8 @@ class Run:
         return self.recording.outputs
 
     def stop(self) -> None:
-        """Ask the program to stop at its next cancellation point. A blocking
-        NI scan is one call, so a stop lands after it completes."""
+        """Ask the program to stop at its next cancellation point."""
+        # A blocking NI scan is one call, so a stop lands after it completes.
         self.cancel.set()
 
 
@@ -133,8 +130,9 @@ class Executor:
     def recording_for(
         self, program: Program, key: RecordingKey, provenance: Provenance, series: Series | None
     ) -> tuple[Recording, Recording | None]:
-        """Where the run writes, and the series' old recording if this replaces
-        one that is ready to close. Called under the lock."""
+        """Where the run writes, and the series' old recording if this replaces one that is
+        ready to close."""
+        # Called under the lock.
         current = series.recording if series is not None else None
         if current is not None and current.key == key:
             return current, None
@@ -156,8 +154,8 @@ class Executor:
         return Recording(key, outputs, saver)
 
     def end_series(self, series: Series) -> None:
-        """No more runs join ``series``. Its recording closes now if idle,
-        otherwise when its last run ends."""
+        """Let no more runs join ``series``, closing its recording now if idle or else when
+        its last run ends."""
         with self._lock:
             series.closed = True
             recording = series.recording
@@ -166,16 +164,17 @@ class Executor:
             self.close(recording)
 
     def claim_close(self, recording: Recording) -> bool:
-        """Whether the caller is the one to close ``recording``: it is idle and
-        nobody has claimed it yet. Called under the lock."""
+        """Whether the caller is the one to close ``recording``: it is idle and nobody has
+        claimed it yet."""
+        # Called under the lock.
         if recording.closed or recording.active > 0:
             return False
         recording.closed = True
         return True
 
     def close(self, recording: Recording) -> None:
-        """Finalize outside the lock: closing writes files, and must not hold
-        up a run starting."""
+        """Finalize ``recording``."""
+        # Outside the lock: closing writes files, and must not hold up a run starting.
         for message in recording.finalize():
             if recording.last_run is not None:
                 self.callbacks.on_failed(recording.last_run, message)
@@ -251,10 +250,11 @@ class Executor:
             self.finalize(run, error)
 
     def finalize(self, run: Run, error: Exception | None) -> None:
-        """Record the run's end, and close its recording if no run will write
-        into it again. Reported rather than raised: this runs on the worker
-        thread after the program. The devices are let go before the recording
-        closes, since nothing of the run touches them any more."""
+        """Record the run's end, and close its recording if no run will write into it
+        again."""
+        # Reported rather than raised: this runs on the worker thread after the program. The
+        # devices are let go before the recording closes, since nothing of the run touches them
+        # any more.
         recording = run.recording
         if recording.saver is not None:
             try:

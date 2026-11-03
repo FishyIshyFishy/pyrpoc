@@ -86,8 +86,8 @@ class AndorCcdPanel(DevicePanel):
         return section
 
     def attempt(self, action: Callable[[], None]) -> bool:
-        """Run one camera call. The hardware is a boundary, so a fault is
-        shown on the panel rather than raised as an unexpected error."""
+        """Run one camera call, showing a fault on the panel instead of raising it."""
+        # The hardware is a boundary.
         try:
             action()
         except AndorError as exc:

@@ -20,8 +20,8 @@ T = TypeVar("T")
 
 
 class RunnerSession(RunnerContext):
-    """The context one program's runners were attached with, and the runs they
-    started. Once ``closed``, every request through it is refused."""
+    """The context one program's runners are attached with, and the runs they started; once
+    ``closed``, it refuses every request."""
 
     def __init__(self, host: RunnerHost, key: str, program: type[Program]):
         self.host = host
@@ -177,13 +177,14 @@ class RunnerHost(QObject):
             self.slot.failed.add(run)
 
     def forget(self, run: Run) -> None:
-        """Drop a finished run, so closing its program outputs frees them."""
+        """Drop a finished run."""
+        # So closing its program outputs frees them.
         if self.slot is not None and run in self.slot.runs:
             self.slot.release(run)
 
     def check_request_blockers(self) -> None:
-        """An open request starts a run once answered, so it cannot outlive what
-        the run needs."""
+        """Withdraw an open request once something its run needs is missing."""
+        # An answered request starts a run, so it cannot outlive what the run needs.
         slot = self.slot
         if slot is None or not slot.awaiting:
             return

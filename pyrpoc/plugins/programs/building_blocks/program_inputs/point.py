@@ -94,8 +94,7 @@ NO_ORIGIN = "—"
 
 
 class PointPicker(QWidget):
-    """Galvo volts, typed or picked off an image, and where they came from.
-    Picking is a runner's job; this shows the result when the form reloads."""
+    """Galvo volts, typed or picked off an image, and where they came from."""
 
     changed = pyqtSignal()
 
@@ -156,7 +155,7 @@ class PointPicker(QWidget):
         self.origin_label.setText(f"from: {point.describe() if point.picked else NO_ORIGIN}")
 
     def on_spin_changed(self) -> None:
-        """A hand edit is no longer the pixel it was picked from, so say so."""
+        """Mark a hand edit as typed, since it no longer names a picked pixel."""
         if not self._programmatic:
             self._point = Point(self.fast_spin.value(), self.slow_spin.value())
             self.origin_label.setText("from: typed")
@@ -168,9 +167,10 @@ class PointPicker(QWidget):
 
 @dataclass(frozen=True)
 class PointField(Field):
-    """A galvo position: volts, plus the pixel they were picked from, if any.
-    ``coerce`` takes a live ``Point`` as well as JSON, since the executor
-    re-coerces every held value before a run."""
+    """The rules for a galvo position: volts, plus the pixel they were picked from, if any."""
+
+    # ``coerce`` takes a live ``Point`` as well as JSON, since every value is re-checked before a
+    # run.
 
     def coerce(self, value: Any) -> Point:
         return Point.from_value(value)

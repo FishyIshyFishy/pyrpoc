@@ -23,9 +23,9 @@ def configure_spectrum(
 
 
 def read_spectrum(ctx: RunContext, ccd: AndorCCD, readout: SpectrumReadout, output: str) -> None:
-    """Take one spectrum as configured and publish it to ``output`` as counts
-    per frame. The camera sums its accumulations, so the mean is the sum over
-    their number; clipping is judged on the sum, where the ADC ceiling is."""
+    """Take one spectrum as configured and publish it to ``output`` as counts per frame."""
+    # The camera sums its accumulations, so the mean is the sum over their number; clipping is
+    # judged on the sum, where the ADC ceiling is.
     try:
         counts = ccd.acquire(ctx.sleep)
     except Cancelled:

@@ -1,9 +1,8 @@
-"""One endless synthetic slide, as a function of absolute pixel position.
+"""One endless synthetic slide, as a function of absolute pixel position."""
 
-Neighbouring tiles share the features in their overlap exactly as a real
-specimen would. Blobs are seeded per lattice cell rather than drawn on one
-canvas, so a wide grid costs no more memory than one tile.
-"""
+# Neighbouring tiles share the features in their overlap exactly as a real specimen would. Blobs
+# are seeded per lattice cell rather than drawn on one canvas, so a wide grid costs no more memory
+# than one tile.
 
 from __future__ import annotations
 

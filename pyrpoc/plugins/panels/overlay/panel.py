@@ -48,8 +48,8 @@ class ControlState:
 
 
 def channel_lut(hist_widget: pg.HistogramLUTWidget) -> np.ndarray:
-    """The channel's gradient as a (256, 3) float table in 0..1, so the
-    composite follows whatever colour map the user picked for it."""
+    """The channel's gradient as a (256, 3) float table in 0..1."""
+    # So the composite follows whatever colour map the user picked for it.
     table = hist_widget.item.gradient.colorMap().getLookupTable(0.0, 1.0, 256, alpha=False)
     return np.asarray(table, dtype=np.float32) / 255.0
 
@@ -123,8 +123,8 @@ class OverlayPanel(DataPanel[Image]):
         self.sync_controls(0)
 
     def sync_controls(self, count: int) -> None:
-        """Add or drop controls to match ``count``. Controls that stay keep
-        their levels; an unchanged count touches nothing."""
+        """Add or drop controls to match ``count``, leaving the levels of controls that
+        stay."""
         if len(self._controls) == count:
             return
         while len(self._controls) > count:
@@ -237,8 +237,8 @@ class OverlayPanel(DataPanel[Image]):
         }
 
     def import_persistence_state(self, state: dict[str, Any]) -> None:
-        """Parse saved settings from session JSON, a boundary: malformed rows
-        are skipped. Applied once controls exist, since none do yet."""
+        """Take saved settings from session JSON, skipping malformed rows."""
+        # Applied once controls exist, since none do yet.
         channels = state.get("channels", [])
         if not isinstance(channels, list):
             return
@@ -255,8 +255,8 @@ class OverlayPanel(DataPanel[Image]):
         self.apply_pending_state()
 
     def apply_pending_state(self) -> None:
-        """Apply saved settings once, so live edits during a run are not
-        overwritten on every frame."""
+        """Apply saved settings, once."""
+        # Once, so live edits during a run are not overwritten on every frame.
         if not self._pending_state or not self._controls:
             return
         for saved in self._pending_state:

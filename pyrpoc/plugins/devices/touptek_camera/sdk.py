@@ -111,8 +111,9 @@ def unpack_rgb24(buffer: np.ndarray, width: int, height: int) -> np.ndarray:
 
 
 class ToupcamSDK:
-    """The DLL's exports with their C signatures declared, so ctypes neither
-    guesses argument types nor truncates the handle."""
+    """The ToupTek DLL, with its exports' C signatures declared."""
+
+    # So ctypes neither guesses argument types nor truncates the handle.
 
     def __init__(self, dll: ctypes.WinDLL):
         self.dll = dll
@@ -188,9 +189,10 @@ def find_camera(cameras: list[CameraInfo], wanted: str) -> CameraInfo:
 
 
 class ToupcamSession:
-    """One open camera. Calls take a lock because a program's thread and the
-    GUI can both be talking to it; frames arrive on the SDK's own thread and
-    only set an event."""
+    """One open camera, whose calls take a lock."""
+
+    # A program's thread and the GUI can both be talking to it; frames arrive on the SDK's own
+    # thread and only set an event.
 
     def __init__(self, sdk: ToupcamSDK, handle: int, camera: CameraInfo):
         self.sdk = sdk
@@ -245,8 +247,8 @@ class ToupcamSession:
         return low.value, high.value
 
     def start(self, size_index: int, exposure_us: int, gain_pct: int) -> None:
-        """Apply the settings and start streaming. The frame size can only
-        change while stopped, so it is set first."""
+        """Apply the settings and start streaming."""
+        # The frame size can only change while stopped, so it is set first.
         dll = self.sdk.dll
         with self.lock:
             self.sdk.check("set the frame size", dll.Toupcam_put_eSize(self.handle, size_index))

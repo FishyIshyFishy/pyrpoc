@@ -1,10 +1,8 @@
-"""Every channel overlaid in its own colour, with a LUT per channel.
+"""Every channel overlaid in its own colour, with a LUT per channel."""
 
-Each channel is one column: a swatch and its name as a show/hide box, an
-autoscale box, and a vertical histogram filling the rest of the height. The
-columns share the strip's width equally, so a few channels fill it without
-leaving space over; many scroll sideways.
-"""
+# Each channel is one column: a swatch and its name as a show/hide box, an autoscale box, and a
+# vertical histogram filling the rest of the height. The columns share the strip's width equally,
+# so a few channels fill it; many scroll sideways.
 
 from __future__ import annotations
 

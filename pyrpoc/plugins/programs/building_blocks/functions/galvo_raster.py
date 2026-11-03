@@ -1,6 +1,4 @@
-"""The galvo raster: its waveform, and one run's scan built from it. Confocal,
-split confocal and the mosaic play the scan; FLIM plays the waveform with its
-own sample count."""
+"""The galvo raster: its waveform, and one run's scan built from it."""
 
 from __future__ import annotations
 
@@ -17,8 +15,9 @@ from .mask_ttl import mask_ttl
 
 
 def pixel_samples(dwell_time_us: float, sample_rate_hz: float) -> int:
-    """Samples per pixel: truncating, floor 1. FLIM's rounds with floor 2,
-    since its counter needs a high and a low tick; do not unify them."""
+    """Samples per pixel, truncated, at least 1."""
+    # FLIM's rounds with a floor of 2, since its counter needs a high and a low tick; do not unify
+    # them.
     return max(1, int(dwell_time_us * 1e-6 * sample_rate_hz))
 
 
@@ -34,8 +33,10 @@ def raster_waveform(scan: ScanGeometry, samples_per_pixel: int) -> np.ndarray:
 
 @dataclass(frozen=True)
 class Raster:
-    """One run's scan. The waveform and mask TTL are the same every frame, so
-    they are built once, before the first."""
+    """One run's scan: its waveform, mask TTL and channels."""
+
+    # The waveform and mask TTL are the same every frame, so they are built once, before the
+    # first.
 
     daq: DAQ
     galvo: Galvo
