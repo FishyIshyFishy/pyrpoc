@@ -11,9 +11,9 @@ import PyQt6Ads as qtads
 from PyQt6.QtCore import QObject, QTimer, pyqtSignal
 from PyQt6.QtGui import QAction
 
-from pyrpoc.device_inventory.inventory import DeviceInventory
-from pyrpoc.structs.plugins.data_panels import DevicePanel, device_panel_registry, has_panel
-from pyrpoc.structs.plugins.devices import Device
+from pyrpoc.core.device import Device
+from pyrpoc.core.panels import DevicePanel, device_panel_registry, has_panel
+from pyrpoc.engine.device_inventory.inventory import DeviceInventory
 
 
 def dock_object_name(device: Device) -> str:
@@ -82,17 +82,17 @@ class DeviceDocks(QObject):
         self.show_checked(device)
 
     def discard(self, device: Device) -> None:
-        """Close a panel from its dock's close button, its menu entry or the
-        inventory. Deferred, because a dock's close arrives in a signal from
-        the dock about to be deleted; a second request for one gesture finds
-        the panel already gone."""
+        """Close a device panel, from its dock's close button, its menu entry or the
+        inventory."""
+        # Deferred, because a dock's close arrives in a signal from the dock about to be deleted;
+        # a second request for one gesture finds the panel already gone.
         if self.frozen or device not in self.docks:
             return
         QTimer.singleShot(0, lambda d=device: self.close(d) if d in self.docks else None)
 
     def show_checked(self, device: Device) -> None:
-        """Mirror whether the panel is open on the device's menu entry, which
-        a removed device no longer has."""
+        """Show on the device's menu entry whether its panel is open, if the entry still
+        exists."""
         action = self.actions.get(device)
         if action is not None:
             action.blockSignals(True)

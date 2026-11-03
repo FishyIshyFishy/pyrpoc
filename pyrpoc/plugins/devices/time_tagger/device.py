@@ -1,16 +1,15 @@
-"""The Swabian TimeTagger: its SDK handle, its wiring, and the Flim measurement.
+"""The Swabian TimeTagger: its SDK handle, its wiring, and the FLIM measurement."""
 
-Channel numbers and trigger voltages are configuration rather than run
-parameters because they describe how the tagger is cabled and thresholded.
-"""
+# Channel numbers and trigger voltages are configuration rather than program inputs because they
+# describe how the tagger is cabled and thresholded.
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any, Protocol
 
-from pyrpoc.structs.plugins import params as P
-from pyrpoc.structs.plugins.devices import Device, DeviceError, device_registry
+from pyrpoc.core import device_config as C
+from pyrpoc.core.device import Device, DeviceError, device_registry
 
 
 class TaggerError(DeviceError):
@@ -18,8 +17,9 @@ class TaggerError(DeviceError):
 
 
 class FlimMeasurement(Protocol):
-    """The part of the SDK's ``Flim`` this code calls, so programs can type it
-    without importing the SDK."""
+    """The part of the SDK's ``Flim`` this code calls."""
+
+    # So programs can type it without importing the SDK.
 
     def stop(self) -> None: ...
 
@@ -27,32 +27,32 @@ class FlimMeasurement(Protocol):
 
 
 @dataclass
-class TaggerConfig(P.Group):
-    laser_channel: int = P.int_field(
+class TaggerConfig(C.DeviceConfig):
+    laser_channel: int = C.int_field(
         "Laser Channel", 1, minimum=1, tooltip="Input channel for the laser sync (start)"
     )
-    detector_channel: int = P.int_field(
+    detector_channel: int = C.int_field(
         "Detector Channel", 2, minimum=1, tooltip="Input channel for the SPAD detector (click)"
     )
-    pixel_channel: int = P.int_field(
+    pixel_channel: int = C.int_field(
         "Pixel Channel", 3, minimum=1, tooltip="Input channel for the DAQ pixel clock"
     )
-    frame_channel: int = P.int_field(
+    frame_channel: int = C.int_field(
         "Frame Channel", 4, minimum=1, tooltip="Input channel for the DAQ frame-start trigger"
     )
-    laser_trigger_v: float = P.float_field(
+    laser_trigger_v: float = C.float_field(
         "Laser Trigger V", 0.05, tooltip="Trigger threshold for the laser sync channel (V)"
     )
-    detector_trigger_v: float = P.float_field(
+    detector_trigger_v: float = C.float_field(
         "Detector Trigger V", 0.2, tooltip="Trigger threshold for the detector channel (V)"
     )
-    pixel_trigger_v: float = P.float_field(
+    pixel_trigger_v: float = C.float_field(
         "Pixel Trigger V", 0.5, tooltip="Trigger threshold for the pixel clock channel (V)"
     )
-    frame_trigger_v: float = P.float_field(
+    frame_trigger_v: float = C.float_field(
         "Frame Trigger V", 0.5, tooltip="Trigger threshold for the frame trigger channel (V)"
     )
-    laser_input_delay_ps: int = P.int_field(
+    laser_input_delay_ps: int = C.int_field(
         "Laser Input Delay (ps)",
         0,
         tooltip="Delay added to the laser channel to position the decay in the histogram window",
@@ -105,9 +105,9 @@ class TimeTagger(Device):
     def start_flim_measurement(
         self, *, n_pixels: int, n_bins: int, binwidth_ps: int
     ) -> FlimMeasurement:
-        """Start the hardware Flim measurement. Binning happens on the FPGA and
-        only the (n_pixels x n_bins) histogram crosses USB, so the laser stream
-        cannot overflow the link the way raw time-tag streaming does."""
+        """Start the hardware FLIM measurement."""
+        # Binning happens on the FPGA and only the (n_pixels x n_bins) histogram crosses USB, so
+        # the laser stream cannot overflow the link the way raw time-tag streaming does.
         if self.tagger is None:
             raise TaggerError("create_tagger() must be called before start_flim_measurement()")
         from Swabian import TimeTagger as sdk

@@ -1,9 +1,6 @@
 """The Prior Scientific SDK over ctypes: one DLL per process, one session per
-controller.
-
-The DLL exports five functions; everything else is a text command such as
-``controller.stage.position.get`` sent through ``PriorScientificSDK_cmd``.
-"""
+controller. Beyond its five exported functions, every call is a text command
+such as ``controller.stage.position.get``."""
 
 from __future__ import annotations
 
@@ -12,10 +9,12 @@ import functools
 import threading
 from pathlib import Path
 
-from pyrpoc.structs.plugins.devices import DeviceError
+from pyrpoc.core.device import DeviceError
 
-# ``pyrpoc/assets/sdks``, three levels up from ``pyrpoc/plugins/devices/prior_stage``.
-DLL_PATH = Path(__file__).resolve().parents[3] / "assets" / "sdks" / "PriorScientificSDK.dll"
+# ``pyrpoc/shared/assets/sdks``, reached from ``pyrpoc``, three folders up.
+DLL_PATH = (
+    Path(__file__).resolve().parents[3] / "shared" / "assets" / "sdks" / "PriorScientificSDK.dll"
+)
 
 # The size Prior's own examples use; every reply is a short line of text.
 RX_SIZE = 1000
@@ -32,8 +31,9 @@ class PriorError(DeviceError):
 
 
 class PriorSDK:
-    """The DLL's exports with their C signatures declared, so ctypes neither
-    guesses argument types nor truncates return values."""
+    """The Prior DLL, with its exports' C signatures declared."""
+
+    # So ctypes neither guesses argument types nor truncates return values.
 
     def __init__(self, dll: ctypes.WinDLL):
         self.dll = dll
@@ -87,8 +87,9 @@ def load_sdk() -> PriorSDK:
 
 
 class PriorSession:
-    """One controller on one COM port. Commands take a lock because a
-    program's thread and the GUI can both be talking to the stage."""
+    """One controller on one COM port, whose commands take a lock."""
+
+    # A program's thread and the GUI can both be talking to the stage.
 
     def __init__(self, sdk: PriorSDK, session: int):
         self.sdk = sdk

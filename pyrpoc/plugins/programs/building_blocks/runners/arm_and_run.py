@@ -1,26 +1,23 @@
-"""Arm, receive what the run needs, then run."""
+"""``ArmAndRun``: arm, receive a picked pixel, then run."""
 
 from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from pyrpoc.structs.data_library.data import Pixel
-from pyrpoc.structs.data_library.dataset import Dataset
-from pyrpoc.structs.plugins.params import BlockMap, ParameterError
-from pyrpoc.structs.plugins.programs.runner import Runner, RunnerContext, Toggle
+from pyrpoc.core.input_requests import PixelPick
+from pyrpoc.core.program_inputs import ParameterError, ProgramInputs
+from pyrpoc.core.runner import Runner, RunnerContext, Toggle
 
 
 @dataclass(frozen=True)
 class ArmAndRun(Runner):
-    """Arm, request a pixel, turn what comes back into parameters, run.
+    """Arm, ask the panels for a pixel, write it into the parameters with
+    ``apply``, then run."""
 
-    ``apply`` is the program's half: it writes the pixel into the blocks, raising
-    ``ParameterError`` when the pixel cannot be placed. Arming is refused while
-    anything would stop the run starting, since the answer is what starts it.
-    """
-
-    apply: Callable[[Dataset[Pixel], BlockMap], None]
+    # The program's half: writes the pixel into the program inputs, raising
+    # ``ParameterError`` when the pixel cannot be placed.
+    apply: Callable[[PixelPick, ProgramInputs], None]
     label: str
     icon: str | None
     tooltip: str
@@ -30,23 +27,24 @@ class ArmAndRun(Runner):
             if not checked:
                 ctx.cancel_request()
                 return
+            # Refused while anything would stop the run starting, since the
+            # answer is what starts it.
             missing = ctx.blockers()
             if missing:
                 ctx.status("needs " + ", ".join(missing))
                 toggle.set(False)
                 return
-            ctx.request_pixel(on_pick)
+            ctx.request(PixelPick, "waiting for a pick on a display", on_pick)
 
-        def on_pick(pick: Dataset[Pixel] | None) -> None:
+        def on_pick(pick: PixelPick | None) -> None:
             toggle.set(False)
             if pick is None:
                 return
             try:
-                self.apply(pick, ctx.params)
+                self.apply(pick, ctx.inputs)
             except ParameterError as exc:
                 ctx.status(str(exc))
                 return
-            ctx.params_written()
             ctx.execute()
 
         def on_run_started() -> None:

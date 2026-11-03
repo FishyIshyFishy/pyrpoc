@@ -1,0 +1,70 @@
+"""``RunEvents``: starts runs and reports them on the GUI thread."""
+
+# Runs report on their worker threads; these signals carry that onto the GUI thread. They are the
+# only subscriber to each program output a run opens, because ``ProgramOutput.publish`` runs on
+# the worker thread.
+
+from __future__ import annotations
+
+from collections.abc import Callable
+
+from PyQt6.QtCore import QObject, pyqtSignal
+
+from pyrpoc.core.device import Device, MissingDevice
+from pyrpoc.core.program import Program
+from pyrpoc.core.program_inputs import ParameterError
+from pyrpoc.core.saving import SaveTarget
+from pyrpoc.engine.acquisition.claims import DeviceBusy
+from pyrpoc.engine.acquisition.executor import Executor, Run, RunCallbacks
+from pyrpoc.engine.acquisition.program_inputs import ProgramInputsStore
+from pyrpoc.engine.acquisition.recording import Series
+from pyrpoc.engine.data_library.store import LibraryFull, LibraryStore
+
+
+class RunEvents(QObject):
+    """Starts runs and reports them. Each signal carries its ``Run``."""
+
+    run_started = pyqtSignal(object)
+    run_status = pyqtSignal(object, str)
+    run_failed = pyqtSignal(object, str)
+    run_finished = pyqtSignal(object)
+    # Refused before any run existed: a missing or busy device, a bad parameter,
+    # or a full library.
+    start_refused = pyqtSignal(str)
+
+    def __init__(self, library: LibraryStore, parent: QObject):
+        super().__init__(parent)
+        self.executor = Executor(
+            library,
+            RunCallbacks(
+                on_status=self.run_status.emit,
+                on_failed=self.run_failed.emit,
+                on_finished=self.run_finished.emit,
+            ),
+        )
+
+    def start(
+        self,
+        program: Program,
+        key: str,
+        inputs: ProgramInputsStore,
+        devices: list[Device],
+        save: SaveTarget,
+        series: Series | None,
+        claim: Callable[[Run], None],
+    ) -> None:
+        """Start ``program``, or report through ``start_refused`` why it cannot start."""
+        # Reported rather than raised, since every caller is a Qt slot. ``claim`` gets the run
+        # before ``run_started`` announces it, so whoever started it has recorded it by then.
+        try:
+            run = self.executor.start(
+                program, inputs, devices, program_key=key, save=save, series=series
+            )
+        except (MissingDevice, DeviceBusy, ParameterError, LibraryFull) as exc:
+            self.start_refused.emit(str(exc))
+            return
+        claim(run)
+        self.run_started.emit(run)
+
+    def end_series(self, series: Series) -> None:
+        self.executor.end_series(series)

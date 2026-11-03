@@ -1,26 +1,23 @@
-"""What the saved session holds, and reading and writing the file it lives in.
-
-Configuration and layout only, as small JSON; acquired data lives in the run's
-own files. Nothing here knows the live application or Qt; ``restore.py``
-converts between the two.
-"""
+"""The saved session, split into working state and screen state, and the file
+it lives in."""
 
 from __future__ import annotations
 
 import json
 import logging
 import os
+from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
-from pyrpoc.structs.plugins.params import ParameterError
+from pyrpoc.core.program_inputs import ParameterError
+from pyrpoc.engine.data_library.format import legacy_input_key
 
 log = logging.getLogger(__name__)
 
-# Bump when the shape changes. A file of another version loads as defaults,
-# since there is no converter between shapes.
-SCHEMA_VERSION = 8
+# Bump when the shape changes, and add the step from the old shape to UPGRADES.
+SCHEMA_VERSION = 10
 
 # What malformed session JSON raises on its way into the application.
 BAD_STATE = (KeyError, TypeError, ValueError, ParameterError)
@@ -30,15 +27,13 @@ BAD_STATE = (KeyError, TypeError, ValueError, ParameterError)
 class DeviceState:
     key: str
     instance_id: str = ""
-    # Optional in the file, so adding it needed no schema bump.
     panel_open: bool = False
     state: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
 class ViewState:
-    """One added panel. Named for the on-disk field ``views``, kept so saved
-    layouts still load."""
+    """One added panel."""
 
     key: str
     instance_id: str = ""
@@ -59,17 +54,31 @@ class LibraryState:
 
 
 @dataclass
+class WorkingState:
+    """What the app is: its devices, every program input's value, where runs
+    save, and the library's settings."""
+
+    devices: list[DeviceState] = field(default_factory=list)
+    program_inputs: dict[str, Any] = field(default_factory=dict)
+    save: SaveState = field(default_factory=SaveState)
+    library: LibraryState = field(default_factory=LibraryState)
+
+
+@dataclass
+class ScreenState:
+    """How the app is shown: the added panels, each fixed panel's own state by
+    dock key, and the dock layout."""
+
+    views: list[ViewState] = field(default_factory=list)
+    panels: dict[str, dict[str, Any]] = field(default_factory=dict)
+    ads_layout: str | None = None
+
+
+@dataclass
 class SessionState:
     schema_version: int = SCHEMA_VERSION
-    devices: list[DeviceState] = field(default_factory=list)
-    views: list[ViewState] = field(default_factory=list)
-    selected_program: str | None = None
-    # Every parameter block, keyed by class name: one entry per block, shared.
-    param_blocks: dict[str, dict[str, Any]] = field(default_factory=dict)
-    save: SaveState = field(default_factory=SaveState)
-    # Optional in the file, so adding it needed no schema bump.
-    library: LibraryState = field(default_factory=LibraryState)
-    ads_layout: str | None = None
+    working: WorkingState = field(default_factory=WorkingState)
+    screen: ScreenState = field(default_factory=ScreenState)
 
 
 def default_session_path() -> Path:
@@ -85,8 +94,9 @@ class SessionFile:
         self.path = path
 
     def load(self) -> SessionState:
-        """The saved session, or defaults if there is not a usable one. A
-        corrupt file is logged rather than blocking launch."""
+        """The saved session brought to the current version, or defaults if there is no
+        usable one."""
+        # A corrupt file is logged rather than blocking launch.
         if not self.path.exists():
             return SessionState()
         try:
@@ -94,10 +104,11 @@ class SessionFile:
         except (OSError, ValueError):
             log.warning("could not read %s; starting fresh", self.path, exc_info=True)
             return SessionState()
-        if not isinstance(raw, dict) or raw.get("schema_version") != SCHEMA_VERSION:
+        if not isinstance(raw, dict):
             return SessionState()
         try:
-            return decode(raw)
+            upgraded = upgrade(raw)
+            return decode(upgraded) if upgraded is not None else SessionState()
         except BAD_STATE:
             log.warning("could not decode %s; starting fresh", self.path, exc_info=True)
             return SessionState()
@@ -110,12 +121,81 @@ class SessionFile:
         temporary.replace(self.path)
 
 
+def upgrade_v8(raw: dict[str, Any]) -> dict[str, Any]:
+    """A version 8 session, one flat object with parameters by block, as version 9."""
+    blocks = as_object(raw.get("param_blocks"))
+    return {
+        "schema_version": 9,
+        "working": {
+            "devices": raw.get("devices", []),
+            "program_inputs": {
+                f"{block}.{name}": value
+                for block, values in blocks.items()
+                if isinstance(values, dict)
+                for name, value in values.items()
+            },
+            "save": raw.get("save"),
+            "library": raw.get("library"),
+        },
+        "screen": {
+            "views": raw.get("views", []),
+            "panels": {"acquisition": {"program": raw.get("selected_program")}},
+            "ads_layout": raw.get("ads_layout"),
+        },
+    }
+
+
+def upgrade_v9(raw: dict[str, Any]) -> dict[str, Any]:
+    """A version 9 session, with program inputs keyed by block, as version 10."""
+    working = as_object(raw.get("working"))
+    inputs = as_object(working.get("program_inputs"))
+    return {
+        **raw,
+        "schema_version": 10,
+        "working": {
+            **working,
+            "program_inputs": {legacy_input_key(key): value for key, value in inputs.items()},
+        },
+    }
+
+
+# Each step turns a session of its key's version into the next version.
+UPGRADES: dict[int, Callable[[dict[str, Any]], dict[str, Any]]] = {
+    8: upgrade_v8,
+    9: upgrade_v9,
+}
+
+
+def upgrade(raw: dict[str, Any]) -> dict[str, Any] | None:
+    """``raw`` brought to the current version, or None for a version with no
+    path to it."""
+    version = raw.get("schema_version")
+    while version != SCHEMA_VERSION:
+        if not isinstance(version, int) or version not in UPGRADES:
+            return None
+        raw = UPGRADES[version](raw)
+        version = raw.get("schema_version")
+    return raw
+
+
+def as_object(raw: Any) -> dict[str, Any]:
+    """``raw`` if it is a JSON object, otherwise an empty one."""
+    return raw if isinstance(raw, dict) else {}
+
+
 def decode_rows(rows: Any) -> list[dict[str, Any]]:
     """The entries of a saved list that are objects with a key."""
     return [row for row in rows if isinstance(row, dict) and row.get("key")]
 
 
 def decode(raw: dict[str, Any]) -> SessionState:
+    return SessionState(
+        working=decode_working(as_object(raw.get("working"))),
+        screen=decode_screen(as_object(raw.get("screen"))),
+    )
+
+
+def decode_working(raw: dict[str, Any]) -> WorkingState:
     devices = [
         DeviceState(
             key=str(row["key"]),
@@ -125,6 +205,17 @@ def decode(raw: dict[str, Any]) -> SessionState:
         )
         for row in decode_rows(raw.get("devices", []))
     ]
+    return WorkingState(
+        devices=devices,
+        program_inputs={
+            str(key): value for key, value in as_object(raw.get("program_inputs")).items()
+        },
+        save=decode_save(raw.get("save")),
+        library=decode_library(raw.get("library")),
+    )
+
+
+def decode_screen(raw: dict[str, Any]) -> ScreenState:
     views = [
         ViewState(
             key=str(row["key"]),
@@ -134,20 +225,14 @@ def decode(raw: dict[str, Any]) -> SessionState:
         )
         for row in decode_rows(raw.get("views", []))
     ]
-    blocks = {
+    panels = {
         str(key): dict(value)
-        for key, value in (raw.get("param_blocks") or {}).items()
+        for key, value in as_object(raw.get("panels")).items()
         if isinstance(value, dict)
     }
     layout = raw.get("ads_layout")
-    return SessionState(
-        devices=devices,
-        views=views,
-        selected_program=raw.get("selected_program"),
-        param_blocks=blocks,
-        save=decode_save(raw.get("save")),
-        library=decode_library(raw.get("library")),
-        ads_layout=layout if isinstance(layout, str) else None,
+    return ScreenState(
+        views=views, panels=panels, ads_layout=layout if isinstance(layout, str) else None
     )
 
 

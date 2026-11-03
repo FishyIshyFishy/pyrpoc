@@ -5,22 +5,19 @@ from __future__ import annotations
 import nidaqmx as nx
 import nidaqmx.errors
 
+from pyrpoc.core.input_requests import PixelPick
+from pyrpoc.core.program_inputs import ProgramInputs
 from pyrpoc.plugins.devices import DAQ, DaqError, Galvo
-from pyrpoc.structs.data_library.data import Pixel
-from pyrpoc.structs.data_library.dataset import Dataset
-from pyrpoc.structs.plugins.params import BlockMap
 
-from ..parameter_groups import Point, PointGroup
+from ..program_inputs import TARGET, Point
 from .daq_tasks import add_galvo_channels
 
 
 def park_galvos(daq: DAQ, galvo: Galvo, point: Point) -> None:
-    """Move the galvos to ``point`` and leave them there.
-
-    An un-clocked task, so the write is one on-demand sample per channel.
-    Closing the task frees the AO channels for the next scan; the card holds
-    its last written voltage, so the mirrors stay parked after the run ends.
-    """
+    """Move the galvos to ``point`` and leave them there."""
+    # An un-clocked task, so the write is one on-demand sample per channel. Closing the task frees
+    # the AO channels for the next scan; the card holds its last written voltage, so the mirrors
+    # stay parked after the run ends.
     try:
         with nx.Task() as task:
             add_galvo_channels(task, daq.config.device_name, galvo)
@@ -30,6 +27,6 @@ def park_galvos(daq: DAQ, galvo: Galvo, point: Point) -> None:
         raise DaqError(f"could not park the galvos: {exc}") from exc
 
 
-def aim_at_pixel(pick: Dataset[Pixel], params: BlockMap) -> None:
+def aim_at_pixel(pick: PixelPick, inputs: ProgramInputs) -> None:
     """Point the galvos at the picked pixel: its volts become the target."""
-    params[PointGroup].target = Point.from_pick(pick)
+    inputs.set(TARGET.key, Point.from_pick(pick))

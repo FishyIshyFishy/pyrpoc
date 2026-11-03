@@ -55,5 +55,6 @@ uv tool upgrade pyrpoc
    ```
    uv run pyrpoc
    ```
+   Add `--simulated` (`uv run pyrpoc --simulated`) to also get programs that fake their data, for working without instruments. Without the flag they don't exist.
 
 4. To type check, use `uv run pyright`. When dependencies change, adjust `pyproject.toml` and rerun `uv sync`. To add packages, use `uv add <package-name>`. To add a dev only package, use `uv add --dev <package-name>`.

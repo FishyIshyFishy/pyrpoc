@@ -67,10 +67,10 @@ class MainMenuBar(QMenuBar):
         device_actions: list[QAction],
         misc_actions: list[QAction],
     ) -> None:
-        """The fixed panels, then a section each for displays, devices and misc
-        panels: its Add submenu, then one entry per panel. Unchecking a fixed
-        dock hides it; unchecking an added one destroys it, and unchecking a
-        device closes its panel but keeps the device."""
+        """Fill the Panels menu: the fixed panels, then a section each for displays,
+        devices and misc panels, each with its Add submenu and one entry per panel."""
+        # Unchecking a fixed dock hides it; unchecking an added one destroys it, and unchecking a
+        # device closes its panel but keeps the device.
         self.panels_menu.clear()
         for dock in docks:
             self.panels_menu.addAction(dock.toggleViewAction())

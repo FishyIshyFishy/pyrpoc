@@ -2,22 +2,23 @@
 
 from __future__ import annotations
 
-from pyrpoc.plugins.devices import DAQ, Galvo, PriorStage
-from pyrpoc.structs.data_library.data import Image, Mosaic, MosaicTile
-from pyrpoc.structs.plugins.programs.program import (
+from pyrpoc.core.data import Image, Mosaic, MosaicTile
+from pyrpoc.core.program import (
     Cancelled,
     Program,
     RunContext,
     program_registry,
 )
+from pyrpoc.plugins.devices import DAQ, Galvo, PriorStage
 
 from ..building_blocks.functions.galvo_raster import Raster
 from ..building_blocks.functions.run_loops import grow, walk
-from ..building_blocks.parameter_groups import (
-    DaqGroup,
-    ModulationGroup,
-    MosaicGroup,
-    ScanGroup,
+from ..building_blocks.program_inputs import (
+    DAQ_SECTION,
+    MODULATION_SECTION,
+    MOSAIC_SECTION,
+    SCAN_SECTION,
+    MosaicGrid,
 )
 from ..building_blocks.runners import Single
 
@@ -29,7 +30,8 @@ def move_stage(ctx: RunContext, stage: PriorStage, x_um: float, y_um: float) -> 
 
 
 def image_tiles(ctx: RunContext, stage: PriorStage, tiles: tuple[MosaicTile, ...]) -> None:
-    """Publish the mosaic so far after every tile, so the panel fills in live."""
+    """Image every tile, publishing the mosaic so far after each one."""
+    # So the panel fills in live.
     raster = Raster.for_run(ctx)
     mosaic = Mosaic(tiles, ())
     for _, tile in walk(ctx, tiles):
@@ -43,8 +45,8 @@ class StageMosaic(Program):
     display_name = "Mosaic"
     group = "Confocal Fluorescence"
     order = 12
-    uses = [Galvo, DAQ, PriorStage]
-    params = [ScanGroup, DaqGroup, ModulationGroup, MosaicGroup]
+    devices = [Galvo, DAQ, PriorStage]
+    sections = [SCAN_SECTION, DAQ_SECTION, MODULATION_SECTION, MOSAIC_SECTION]
     emits = {"mosaic": Mosaic}
     # Once only: a mosaic is one pass over the grid, never repeated or looped.
     runners = [Single()]
@@ -52,7 +54,7 @@ class StageMosaic(Program):
     def run(self, ctx: RunContext) -> None:
         stage = ctx.devices[PriorStage]
         origin = stage.xy_position()
-        tiles = ctx.params[MosaicGroup].snake(origin)
+        tiles = MosaicGrid.from_inputs(ctx.inputs).snake(origin)
         try:
             image_tiles(ctx, stage, tiles)
         except Cancelled:

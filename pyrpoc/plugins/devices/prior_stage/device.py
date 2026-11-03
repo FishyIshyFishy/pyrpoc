@@ -1,11 +1,9 @@
-"""The Prior Scientific controller: an XY stage and a Z focus drive on one COM
-port, in microns.
+"""The Prior Scientific controller: an XY stage and a Z focus drive on one COM port, in
+microns."""
 
-The session stays open between runs; the app opens it at launch and closes it
-on exit. Speed, acceleration and jerk are never written implicitly, because
-someone may have tuned them outside pyrpoc: they are read, and set only when
-asked.
-"""
+# The session stays open between runs; the app opens it at launch and closes it on exit. Speed,
+# acceleration and jerk are never written implicitly, because someone may have tuned them outside
+# pyrpoc: they are read, and set only when asked.
 
 from __future__ import annotations
 
@@ -13,8 +11,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Literal
 
-from pyrpoc.structs.plugins import params as P
-from pyrpoc.structs.plugins.devices import Device, device_registry
+from pyrpoc.core import device_config as C
+from pyrpoc.core.device import Device, device_registry
 
 from .sdk import PriorError, PriorSession
 
@@ -36,8 +34,8 @@ class MotionProfile:
 
 
 @dataclass
-class PriorConfig(P.Group):
-    com_port: int = P.int_field(
+class PriorConfig(C.DeviceConfig):
+    com_port: int = C.int_field(
         "COM Port", 4, minimum=1, maximum=256, tooltip="COM port of the Prior controller (4 = COM4)"
     )
 
@@ -130,9 +128,9 @@ class PriorStage(Device):
         return self.read_number(f"{PREFIX[axis]}.busy.get") != 0
 
     def wait_until_stopped(self, axis: Axis, sleep: Callable[[float], None]) -> None:
-        """Block until ``axis`` stops. A program passes ``ctx.sleep`` so a
-        stopped run interrupts the wait; its ``finally`` should then call
-        ``stop_smoothly()``."""
+        """Block until ``axis`` stops, waiting with ``sleep``."""
+        # A program passes ``ctx.sleep`` so a stopped run interrupts the wait; its ``finally``
+        # should then call ``stop_smoothly()``.
         while self.busy(axis):
             sleep(POLL_S)
 

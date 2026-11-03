@@ -9,9 +9,9 @@ from typing import Any
 import cv2
 import numpy as np
 
+from pyrpoc.core.program import RunContext
+from pyrpoc.core.program_inputs import ParameterError
 from pyrpoc.plugins.devices import DAQ, Galvo
-from pyrpoc.structs.plugins.params import ParameterError
-from pyrpoc.structs.plugins.programs.program import RunContext
 
 from ..building_blocks.functions.daq_tasks import acquire
 from ..building_blocks.functions.galvo_raster import pixel_samples
@@ -23,11 +23,11 @@ from ..building_blocks.functions.roi_scan import (
     roi_waveform,
     row_spans,
 )
-from ..building_blocks.parameter_groups import DaqGroup, RoiGroup, ScanGroup
+from ..building_blocks.program_inputs import SAMPLE_RATE_HZ, ScanGeometry, ScanRegion
 
 
 def place_rows(
-    raw: np.ndarray, scan: ScanGroup, spans: list[RowSpan], samples_per_pixel: int, box: Box
+    raw: np.ndarray, scan: ScanGeometry, spans: list[RowSpan], samples_per_pixel: int, box: Box
 ) -> np.ndarray:
     """A raw ``(channels, samples)`` stream as a ``(C, H, W)`` frame of ``box``:
     each pixel the mean of its samples, extra steps dropped, unscanned pixels 0."""
@@ -47,8 +47,8 @@ def place_rows(
 
 
 def metric_weights(region: np.ndarray, box: Box) -> np.ndarray:
-    """The pixels whose whole 3x3 Sobel neighbourhood is inside the region, so
-    the edge of the zero fill never counts as focus."""
+    """The pixels whose whole 3x3 Sobel neighbourhood is inside the region."""
+    # So the edge of the zero fill never counts as focus.
     inside = box.crop(region).astype(np.uint8)
     kernel = np.ones((3, 3), dtype=np.uint8)
     eroded = cv2.erode(inside, kernel, borderType=cv2.BORDER_CONSTANT, borderValue=0)
@@ -60,11 +60,13 @@ def metric_weights(region: np.ndarray, box: Box) -> np.ndarray:
 
 @dataclass(frozen=True)
 class RoiRaster:
-    """One run's region scan. Built once: the region does not move between z."""
+    """One run's region scan."""
+
+    # Built once: the region does not move between z.
 
     daq: DAQ
     galvo: Galvo
-    scan: ScanGroup
+    scan: ScanGeometry
     sample_rate_hz: float
     samples_per_pixel: int
     spans: list[RowSpan]
@@ -74,10 +76,10 @@ class RoiRaster:
 
     @classmethod
     def for_run(cls, ctx: RunContext) -> RoiRaster:
-        scan = ctx.params[ScanGroup]
-        sample_rate_hz = ctx.params[DaqGroup].sample_rate_hz
+        scan = ScanGeometry.from_inputs(ctx.inputs)
+        sample_rate_hz = ctx.inputs[SAMPLE_RATE_HZ]
         samples_per_pixel = pixel_samples(scan.dwell_time_us, sample_rate_hz)
-        region = roi_region(ctx.params[RoiGroup], scan)
+        region = roi_region(ScanRegion.from_inputs(ctx.inputs), scan)
         spans = row_spans(region)
         box = Box.around(spans)
         return cls(

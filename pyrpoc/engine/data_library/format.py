@@ -1,0 +1,243 @@
+"""The recording format: a ``<stem>_meta.json`` that names its data files, and
+how it is written and read."""
+
+from __future__ import annotations
+
+import importlib.metadata
+import json
+import os
+import re
+from collections.abc import Callable
+from dataclasses import asdict, dataclass
+from pathlib import Path
+from typing import Any
+
+from pyrpoc.core.data import DATA_KINDS, Data
+from pyrpoc.core.program_output import Origin, ProgramOutput, Provenance
+from pyrpoc.core.saving import writer_registry
+
+FORMAT = "pyrpoc-recording"
+FORMAT_VERSION = 2
+META_SUFFIX = "_meta.json"
+
+
+class RecordingError(Exception):
+    """A recording on disk that cannot be read. The message names the file."""
+
+
+@dataclass
+class RunRecord:
+    run_id: int
+    started_at: str
+    ended_at: str | None
+    error: str | None
+
+
+@dataclass
+class OutputRecord:
+    kind: str
+    # Values published; the files hold every one.
+    published: int
+    # File names beside the metadata file, keyed as the writer keyed them.
+    files: dict[str, str]
+    metadata: dict[str, Any]
+    notes: str
+
+
+@dataclass
+class RecordingRecord:
+    pyrpoc_version: str
+    program_key: str
+    name: str
+    started_at: str
+    ended_at: str | None
+    last_error: str | None
+    runs: list[RunRecord]
+    parameters: dict[str, Any]
+    devices: dict[str, Any]
+    outputs: dict[str, OutputRecord]
+
+
+def pyrpoc_version() -> str:
+    return importlib.metadata.version("pyrpoc")
+
+
+def meta_path_for(root: Path) -> Path:
+    return root.with_name(f"{root.name}{META_SUFFIX}")
+
+
+def free_root(root: Path) -> Path:
+    """``root``, or the first of ``root_2``, ``root_3`` and so on that has no recording
+    yet."""
+    candidate, number = root, 1
+    while meta_path_for(candidate).exists():
+        number += 1
+        candidate = root.with_name(f"{root.name}_{number}")
+    return candidate
+
+
+def write_record(meta_path: Path, record: RecordingRecord) -> None:
+    write_json(meta_path, {"format": FORMAT, "format_version": FORMAT_VERSION, **asdict(record)})
+
+
+def write_json(path: Path, payload: dict[str, Any]) -> None:
+    """Replace ``path`` whole."""
+    # So a crash mid-write never leaves half a file.
+    partial = path.with_name(f"{path.name}.partial")
+    partial.write_text(json.dumps(payload, indent=2, default=str), encoding="utf-8")
+    os.replace(partial, path)
+
+
+def read_json(meta_path: Path) -> dict[str, Any]:
+    """The metadata file's JSON, checked to be a recording this version reads."""
+    try:
+        raw = json.loads(meta_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise RecordingError(f"cannot read {meta_path}: {exc}") from exc
+    if not isinstance(raw, dict) or raw.get("format") != FORMAT:
+        raise RecordingError(f"{meta_path} is not a pyrpoc recording")
+    version = raw.get("format_version")
+    if not isinstance(version, int) or version not in DECODERS:
+        raise RecordingError(
+            f"{meta_path} is recording format {version!r}; this version of pyrpoc reads "
+            f"formats {sorted(DECODERS)}"
+        )
+    return raw
+
+
+def read_record(meta_path: Path) -> RecordingRecord:
+    raw = read_json(meta_path)
+    try:
+        return DECODERS[raw["format_version"]](raw)
+    except (KeyError, TypeError, ValueError, AttributeError) as exc:
+        raise RecordingError(f"{meta_path} is malformed: {exc!r}") from exc
+
+
+def optional_str(value: Any) -> str | None:
+    return None if value is None else str(value)
+
+
+def legacy_input_key(path: str) -> str:
+    """The program input key that replaced ``<Block>.<field>``, as in
+    ``"ScanGroup.dwell_time_us"`` to ``"scan.dwell_time_us"``."""
+    block, _, field = path.partition(".")
+    prefix = re.sub(r"(?<!^)(?=[A-Z])", "_", block.removesuffix("Group")).lower()
+    return f"{prefix}.{field}"
+
+
+def decode_v1(raw: dict[str, Any]) -> RecordingRecord:
+    """Format 1, whose parameters are one object per block."""
+    parameters = {
+        legacy_input_key(f"{block}.{field}"): value
+        for block, values in raw["parameters"].items()
+        for field, value in values.items()
+    }
+    return decode_record(raw, parameters)
+
+
+def decode_v2(raw: dict[str, Any]) -> RecordingRecord:
+    """Format 2, whose parameters are keyed by program input."""
+    return decode_record(raw, dict(raw["parameters"]))
+
+
+def decode_record(raw: dict[str, Any], parameters: dict[str, Any]) -> RecordingRecord:
+    """A recording record from every field but the parameters, which differ between
+    formats."""
+    # Unknown fields are ignored, so a format may add some.
+    return RecordingRecord(
+        pyrpoc_version=str(raw["pyrpoc_version"]),
+        program_key=str(raw["program_key"]),
+        name=str(raw["name"]),
+        started_at=str(raw["started_at"]),
+        ended_at=optional_str(raw["ended_at"]),
+        last_error=optional_str(raw["last_error"]),
+        runs=[
+            RunRecord(
+                run_id=int(run["run_id"]),
+                started_at=str(run["started_at"]),
+                ended_at=optional_str(run["ended_at"]),
+                error=optional_str(run["error"]),
+            )
+            for run in raw["runs"]
+        ],
+        parameters=parameters,
+        devices=dict(raw["devices"]),
+        outputs={
+            str(output): OutputRecord(
+                kind=str(entry["kind"]),
+                published=int(entry["published"]),
+                files={str(key): str(name) for key, name in entry["files"].items()},
+                metadata=dict(entry["metadata"]),
+                notes=str(entry["notes"]),
+            )
+            for output, entry in raw["outputs"].items()
+        },
+    )
+
+
+# Keyed by ``format_version``. Entries are added, never removed.
+DECODERS: dict[int, Callable[[dict[str, Any]], RecordingRecord]] = {
+    1: decode_v1,
+    2: decode_v2,
+}
+
+
+def load_recording(meta_path: Path) -> list[ProgramOutput[Any]]:
+    """Every output of the recording at ``meta_path``, each holding the last
+    value it was published."""
+    record = read_record(meta_path)
+    return [
+        load_output(meta_path, record, output, entry) for output, entry in record.outputs.items()
+    ]
+
+
+def load_output(
+    meta_path: Path, record: RecordingRecord, output: str, entry: OutputRecord
+) -> ProgramOutput[Any]:
+    kind = DATA_KINDS.get(entry.kind)
+    if kind is None:
+        raise RecordingError(f"{meta_path}: output {output!r} is of unknown kind {entry.kind!r}")
+    program_output = ProgramOutput(
+        name=output,
+        kind=kind,
+        provenance=Provenance(
+            program_key=record.program_key,
+            started_at=record.started_at,
+            name=record.name,
+            parameters=record.parameters,
+            devices=record.devices,
+            run_id=record.runs[0].run_id if record.runs else 0,
+        ),
+        origin=Origin.LOADED,
+        writer=None,
+    )
+    program_output.metadata = dict(entry.metadata)
+    program_output.notes = entry.notes
+    program_output.meta_path = meta_path
+    program_output.value = read_value(meta_path, output, kind, entry)
+    program_output.published = entry.published
+    return program_output
+
+
+def read_value(meta_path: Path, output: str, kind: type[Data], entry: OutputRecord) -> Data | None:
+    files = {key: meta_path.parent / name for key, name in entry.files.items()}
+    missing = [path.name for path in files.values() if not path.is_file()]
+    if missing:
+        raise RecordingError(f"{meta_path}: output {output!r} is missing {', '.join(missing)}")
+    if not files:
+        return None
+    try:
+        return writer_registry.get(entry.kind).read(kind, files)
+    except (OSError, ValueError, KeyError) as exc:
+        raise RecordingError(f"{meta_path}: cannot read output {output!r}: {exc}") from exc
+
+
+def write_notes(meta_path: Path, output: str, notes: str) -> None:
+    """Set one output's notes in a finished recording's metadata file."""
+    # Edited as raw JSON, so fields this version does not know survive.
+    raw = read_json(meta_path)
+    outputs = raw.get("outputs")
+    if not isinstance(outputs, dict) or not isinstance(outputs.get(output), dict):
+        raise RecordingError(f"{meta_path} has no output {output!r}")
+    outputs[output]["notes"] = notes
+    write_json(meta_path, raw)

@@ -1,10 +1,5 @@
 """The ToupTek camera SDK (``toupcam.dll``) over ctypes: one DLL per process,
-one handle per camera.
-
-Only the calls a program needs are declared. Frames are pulled as the SDK's
-default 24-bit colour, which needs no option constants set, and are left to
-the caller to reduce.
-"""
+one handle per camera. Frames come as 24-bit colour, for the caller to reduce."""
 
 from __future__ import annotations
 
@@ -16,10 +11,10 @@ from pathlib import Path
 
 import numpy as np
 
-from pyrpoc.structs.plugins.devices import DeviceError
+from pyrpoc.core.device import DeviceError
 
-# ``pyrpoc/assets/sdks``, three levels up from ``plugins/devices/touptek_camera``.
-DLL_PATH = Path(__file__).resolve().parents[3] / "assets" / "sdks" / "toupcam.dll"
+# ``pyrpoc/shared/assets/sdks``, reached from ``pyrpoc``, three folders up.
+DLL_PATH = Path(__file__).resolve().parents[3] / "shared" / "assets" / "sdks" / "toupcam.dll"
 
 MAX_CAMERAS = 128
 MAX_RESOLUTIONS = 16
@@ -116,8 +111,9 @@ def unpack_rgb24(buffer: np.ndarray, width: int, height: int) -> np.ndarray:
 
 
 class ToupcamSDK:
-    """The DLL's exports with their C signatures declared, so ctypes neither
-    guesses argument types nor truncates the handle."""
+    """The ToupTek DLL, with its exports' C signatures declared."""
+
+    # So ctypes neither guesses argument types nor truncates the handle.
 
     def __init__(self, dll: ctypes.WinDLL):
         self.dll = dll
@@ -193,9 +189,10 @@ def find_camera(cameras: list[CameraInfo], wanted: str) -> CameraInfo:
 
 
 class ToupcamSession:
-    """One open camera. Calls take a lock because a program's thread and the
-    GUI can both be talking to it; frames arrive on the SDK's own thread and
-    only set an event."""
+    """One open camera, whose calls take a lock."""
+
+    # A program's thread and the GUI can both be talking to it; frames arrive on the SDK's own
+    # thread and only set an event.
 
     def __init__(self, sdk: ToupcamSDK, handle: int, camera: CameraInfo):
         self.sdk = sdk
@@ -250,8 +247,8 @@ class ToupcamSession:
         return low.value, high.value
 
     def start(self, size_index: int, exposure_us: int, gain_pct: int) -> None:
-        """Apply the settings and start streaming. The frame size can only
-        change while stopped, so it is set first."""
+        """Apply the settings and start streaming."""
+        # The frame size can only change while stopped, so it is set first.
         dll = self.sdk.dll
         with self.lock:
             self.sdk.check("set the frame size", dll.Toupcam_put_eSize(self.handle, size_index))

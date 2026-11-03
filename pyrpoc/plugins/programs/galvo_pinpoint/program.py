@@ -1,17 +1,16 @@
-"""Galvo pinpoint: park the galvos at one point and leave them there.
+"""Galvo pinpoint: park the galvos at one point, typed or picked off an image, and leave
+them there."""
 
-For reading the spectrum in external software such as Andor SOLIS, so pyrpoc
-does not touch the CCD. The point is typed or set by an ``ArmAndRun`` runner
-from a clicked pixel, and the run records it in its parameters.
-"""
+# For reading the spectrum in external software such as Andor SOLIS, so pyrpoc does not touch the
+# CCD.
 
 from __future__ import annotations
 
+from pyrpoc.core.program import Program, RunContext, program_registry
 from pyrpoc.plugins.devices import DAQ, Galvo
-from pyrpoc.structs.plugins.programs.program import Program, RunContext, program_registry
 
 from ..building_blocks.functions.galvo_park import aim_at_pixel, park_galvos
-from ..building_blocks.parameter_groups import PointGroup
+from ..building_blocks.program_inputs import POINT_SECTION, TARGET
 from ..building_blocks.runners import ArmAndRun, Single
 
 
@@ -20,8 +19,8 @@ class GalvoPinpoint(Program):
     display_name = "Pinpoint"
     group = "Raman"
     order = 30
-    uses = [Galvo]
-    params = [PointGroup]
+    devices = [Galvo]
+    sections = [POINT_SECTION]
     runners = [
         Single(),
         ArmAndRun(
@@ -33,8 +32,8 @@ class GalvoPinpoint(Program):
     ]
 
     def run(self, ctx: RunContext) -> None:
-        point = ctx.params[PointGroup].target
+        point = ctx.inputs[TARGET]
         ctx.status(f"parking at {point.fast_v:.3f} / {point.slow_v:.3f} V")
-        # The DAQ is bound though ``uses`` does not name it: claims follow
+        # The DAQ is bound though ``devices`` does not name it: claims follow
         # ``backed_by``, and the mirrors are voltages on the card.
         park_galvos(ctx.devices[DAQ], ctx.devices[Galvo], point)

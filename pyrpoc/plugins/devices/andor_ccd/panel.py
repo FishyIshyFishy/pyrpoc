@@ -13,9 +13,9 @@ from typing import TYPE_CHECKING
 from PyQt6.QtCore import QTimer
 from PyQt6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
 
-from pyrpoc.qt_components.param_form import ParamForm
-from pyrpoc.structs.plugins.data_panels import DevicePanel, device_panel_registry
-from pyrpoc.structs.plugins.params import FieldContext
+from pyrpoc.core.panels import DevicePanel, device_panel_registry
+from pyrpoc.core.program_inputs import FieldContext
+from pyrpoc.shared.widgets.param_form import ConfigValues, ParamForm, config_form_section
 
 from .sdk import AndorError
 
@@ -40,7 +40,13 @@ class AndorCcdPanel(DevicePanel):
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(8, 8, 8, 8)
-        form = ParamForm([device.config], self, cards=False, context=FieldContext())
+        form = ParamForm(
+            [config_form_section(device.config_cls)],
+            ConfigValues(device),
+            self,
+            cards=False,
+            context=FieldContext(),
+        )
         form.changed.connect(on_change)
         layout.addWidget(form)
         layout.addLayout(self.build_connection_row())
@@ -80,8 +86,8 @@ class AndorCcdPanel(DevicePanel):
         return section
 
     def attempt(self, action: Callable[[], None]) -> bool:
-        """Run one camera call. The hardware is a boundary, so a fault is
-        shown on the panel rather than raised as an unexpected error."""
+        """Run one camera call, showing a fault on the panel instead of raising it."""
+        # The hardware is a boundary.
         try:
             action()
         except AndorError as exc:

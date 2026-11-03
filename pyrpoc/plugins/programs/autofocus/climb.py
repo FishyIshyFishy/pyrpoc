@@ -1,13 +1,15 @@
-"""The z search: a hill climb that steps while the metric rises and halves its
-step when neither direction does, down to a final step. Knows nothing of stages
-or scans; ``measure`` does, so the search can be tested against any curve."""
+"""The z search: a hill climb that steps while the metric rises and halves its step when
+neither direction does, down to a final step."""
+
+# Knows nothing of stages or scans; ``measure`` does, so the search can be tested against any
+# curve.
 
 from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from ..building_blocks.parameter_groups import FocusSearchGroup
+from ..building_blocks.program_inputs import FocusSearch
 
 
 @dataclass(frozen=True)
@@ -33,7 +35,7 @@ def climb(
     measure: Callable[[float], float],
     report: Callable[[ClimbStep], None],
     start_z_um: float,
-    search: FocusSearchGroup,
+    search: FocusSearch,
 ) -> ClimbResult:
     """Climb from ``start_z_um`` within its search range. ``measure`` scores a z;
     ``report`` is told of every measurement as it is made."""

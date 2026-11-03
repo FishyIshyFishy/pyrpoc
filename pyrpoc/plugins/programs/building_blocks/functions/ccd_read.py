@@ -7,10 +7,10 @@ from dataclasses import asdict
 
 import numpy as np
 
+from pyrpoc.core.data import Spectrum
+from pyrpoc.core.program import Cancelled, RunContext
 from pyrpoc.plugins.devices import AndorCCD, SpectrumReadout
 from pyrpoc.plugins.devices.andor_ccd.device import AcceptedTimings, clipped
-from pyrpoc.structs.data_library.data import Spectrum
-from pyrpoc.structs.plugins.programs.program import Cancelled, RunContext
 
 
 def configure_spectrum(
@@ -23,9 +23,9 @@ def configure_spectrum(
 
 
 def read_spectrum(ctx: RunContext, ccd: AndorCCD, readout: SpectrumReadout, output: str) -> None:
-    """Take one spectrum as configured and publish it to ``output`` as counts
-    per frame. The camera sums its accumulations, so the mean is the sum over
-    their number; clipping is judged on the sum, where the ADC ceiling is."""
+    """Take one spectrum as configured and publish it to ``output`` as counts per frame."""
+    # The camera sums its accumulations, so the mean is the sum over their number; clipping is
+    # judged on the sum, where the ADC ceiling is.
     try:
         counts = ccd.acquire(ctx.sleep)
     except Cancelled:

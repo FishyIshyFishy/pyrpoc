@@ -1,6 +1,7 @@
-"""Autofocus: scan one region at each z, score it by Tenengrad, and climb the
-Prior's focus drive to the sharpest z. Each region frame is published as it is
-taken, so the climb can be watched."""
+"""Autofocus: scan one region at each z, score it by Tenengrad, and climb the Prior's focus
+drive to the sharpest z."""
+
+# Each region frame is published as it is taken, so the climb can be watched.
 
 from __future__ import annotations
 
@@ -9,17 +10,24 @@ from collections.abc import Callable
 from dataclasses import asdict
 from typing import Any
 
-from pyrpoc.plugins.devices import DAQ, DaqError, Galvo, PriorError, PriorStage
-from pyrpoc.structs.data_library.data import Image
-from pyrpoc.structs.plugins.programs.program import (
+from pyrpoc.core.data import Image
+from pyrpoc.core.program import (
     Cancelled,
     Program,
     RunContext,
     program_registry,
 )
+from pyrpoc.plugins.devices import DAQ, DaqError, Galvo, PriorError, PriorStage
 
 from ..building_blocks.functions.roi_scan import region_source
-from ..building_blocks.parameter_groups import DaqGroup, FocusSearchGroup, RoiGroup, ScanGroup
+from ..building_blocks.program_inputs import (
+    DAQ_SECTION,
+    FOCUS_SEARCH_SECTION,
+    REGION_SECTION,
+    SCAN_SECTION,
+    FocusSearch,
+    ScanRegion,
+)
 from ..building_blocks.runners import Single
 from .climb import ClimbResult, ClimbStep, climb
 from .roi_scan import RoiRaster
@@ -32,8 +40,8 @@ def move_z(stage: PriorStage, z_um: float, sleep: Callable[[float], None]) -> No
 
 
 def return_to_start(stage: PriorStage, start_z_um: float) -> None:
-    """Stop and go back to where the run started. Waits with ``time.sleep``:
-    the run is already stopped, so ``ctx.sleep`` would raise at once."""
+    """Stop and go back to where the run started."""
+    # Waits with ``time.sleep``: the run is already stopped, so ``ctx.sleep`` would raise at once.
     stage.stop_smoothly()
     stage.wait_until_stopped("z", time.sleep)
     move_z(stage, start_z_um, time.sleep)
@@ -81,8 +89,8 @@ class Autofocus(Program):
     display_name = "Autofocus"
     group = "Confocal Fluorescence"
     order = 13
-    uses = [Galvo, DAQ, PriorStage]
-    params = [ScanGroup, DaqGroup, RoiGroup, FocusSearchGroup]
+    devices = [Galvo, DAQ, PriorStage]
+    sections = [SCAN_SECTION, DAQ_SECTION, REGION_SECTION, FOCUS_SEARCH_SECTION]
     emits = {"intensity": Image}
     # Once only: each start is one complete search.
     runners = [Single()]
@@ -90,11 +98,16 @@ class Autofocus(Program):
     def run(self, ctx: RunContext) -> None:
         stage = ctx.devices[PriorStage]
         raster = RoiRaster.for_run(ctx)
-        ctx.describe("intensity", roi=raster.layout_metadata(region_source(ctx.params[RoiGroup])))
+        ctx.describe(
+            "intensity",
+            roi=raster.layout_metadata(region_source(ScanRegion.from_inputs(ctx.inputs))),
+        )
         start_z_um = stage.z_position()
         focus = FocusRun(ctx, stage, raster, start_z_um)
         try:
-            result = climb(focus.measure, focus.report, start_z_um, ctx.params[FocusSearchGroup])
+            result = climb(
+                focus.measure, focus.report, start_z_um, FocusSearch.from_inputs(ctx.inputs)
+            )
             focus.finish(result)
         except (Cancelled, DaqError, PriorError):
             return_to_start(stage, start_z_um)

@@ -8,23 +8,28 @@ from __future__ import annotations
 
 import numpy as np
 
+from pyrpoc.core.data import DecayHistogram, Image
+from pyrpoc.core.program import Program, RunContext, program_registry
 from pyrpoc.plugins.devices import DAQ, FlimMeasurement, Galvo, TimeTagger
-from pyrpoc.structs.data_library.data import DecayHistogram, Image
-from pyrpoc.structs.plugins.programs.program import Program, RunContext, program_registry
 
 from ..building_blocks.functions.run_loops import count_off
-from ..building_blocks.parameter_groups import (
-    DaqGroup,
-    FrameCountGroup,
-    HistogramGroup,
-    ScanGroup,
-    TriggerGroup,
+from ..building_blocks.program_inputs import (
+    DAQ_SECTION,
+    FRAME_COUNT_SECTION,
+    HISTOGRAM_SECTION,
+    NUM_FRAMES,
+    SAMPLE_RATE_HZ,
+    SCAN_SECTION,
+    TRIGGER_SECTION,
+    HistogramSettings,
+    ScanGeometry,
+    TriggerLines,
 )
 from ..building_blocks.runners import Continuous, Single
 from .scan import flim_scan
 
 
-def read_histograms(flim: FlimMeasurement, n_bins: int, scan: ScanGroup) -> np.ndarray:
+def read_histograms(flim: FlimMeasurement, n_bins: int, scan: ScanGeometry) -> np.ndarray:
     """The just-scanned frame as a ``(H, W, n_bins)`` float32 cube, with the
     overscan columns dropped."""
     histograms = np.asarray(flim.getCurrentFrameEx().getHistograms(), dtype=np.float32)
@@ -32,14 +37,14 @@ def read_histograms(flim: FlimMeasurement, n_bins: int, scan: ScanGroup) -> np.n
 
 
 def acquire_frame(ctx: RunContext, flim: FlimMeasurement) -> None:
-    scan = ctx.params[ScanGroup]
-    histogram = ctx.params[HistogramGroup]
+    scan = ScanGeometry.from_inputs(ctx.inputs)
+    histogram = HistogramSettings.from_inputs(ctx.inputs)
     flim_scan(
         ctx.devices[DAQ],
         ctx.devices[Galvo],
         scan,
-        ctx.params[DaqGroup].sample_rate_hz,
-        ctx.params[TriggerGroup],
+        ctx.inputs[SAMPLE_RATE_HZ],
+        TriggerLines.from_inputs(ctx.inputs),
     )
     ctx.sleep(histogram.frame_settle_s)
     cube = read_histograms(flim, histogram.histogram_bins, scan)
@@ -53,14 +58,14 @@ class FLIM(Program):
     display_name = "FLIM"
     group = "FLIM"
     order = 40
-    uses = [Galvo, DAQ, TimeTagger]
-    params = [ScanGroup, FrameCountGroup, DaqGroup, TriggerGroup, HistogramGroup]
+    devices = [Galvo, DAQ, TimeTagger]
+    sections = [SCAN_SECTION, FRAME_COUNT_SECTION, DAQ_SECTION, TRIGGER_SECTION, HISTOGRAM_SECTION]
     emits = {"intensity": Image, "histogram": DecayHistogram}
     runners = [Single(), Continuous()]
 
     def run(self, ctx: RunContext) -> None:
-        scan = ctx.params[ScanGroup]
-        histogram = ctx.params[HistogramGroup]
+        scan = ScanGeometry.from_inputs(ctx.inputs)
+        histogram = HistogramSettings.from_inputs(ctx.inputs)
         tagger = ctx.devices[TimeTagger]
         ctx.describe(
             "histogram",
@@ -78,7 +83,7 @@ class FLIM(Program):
             binwidth_ps=histogram.histogram_binwidth_ps,
         )
         try:
-            for _ in count_off(ctx, ctx.params[FrameCountGroup].num_frames, "frame"):
+            for _ in count_off(ctx, ctx.inputs[NUM_FRAMES], "frame"):
                 acquire_frame(ctx, flim)
         finally:
             tagger.stop_flim_measurement(flim)

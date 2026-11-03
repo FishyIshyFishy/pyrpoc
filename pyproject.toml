@@ -26,9 +26,9 @@ pyrpoc = "pyrpoc.main:main"
 [tool.setuptools.packages.find]
 include = ["pyrpoc*"]
 
-# pyrpoc/assets/ is not a package, so its icons ship as data of pyrpoc.
+# pyrpoc/shared/assets/ is not a package, so its icons and DLLs ship as data of pyrpoc.shared.
 [tool.setuptools.package-data]
-pyrpoc = ["assets/*.svg", "assets/*.png", "assets/sdks/*.dll"]
+"pyrpoc.shared" = ["assets/*.svg", "assets/*.png", "assets/sdks/*.dll"]
 
 [build-system]
 requires = ["setuptools>=61.0"]
@@ -97,52 +97,71 @@ root_package = "pyrpoc"
 include_external_packages = true
 
 [[tool.importlinter.contracts]]
-name = "Layers: app > acquisition > data_library | device_inventory > plugins > qt_components > structs"
+name = "Layers: app > engine > plugins > shared > core"
 type = "layers"
 containers = ["pyrpoc"]
 layers = [
   "app",
-  "acquisition",
-  "data_library | device_inventory",
+  "engine",
   "plugins",
-  "qt_components",
-  "structs",
+  "shared",
+  "core",
 ]
 
 [[tool.importlinter.contracts]]
-name = "Inside plugins: programs may use devices; programs and data panels never meet"
+name = "Inside engine: acquisition > data_library | device_inventory"
+type = "layers"
+containers = ["pyrpoc.engine"]
+layers = ["acquisition", "data_library | device_inventory"]
+
+[[tool.importlinter.contracts]]
+name = "Inside plugins: programs may use devices; programs and panels never meet"
 type = "layers"
 containers = ["pyrpoc.plugins"]
-layers = ["programs | data_panels", "devices"]
+layers = ["programs | panels", "devices"]
 
 # Keyed on <name>/program.py, the file every program registers in, so the
 # contracts never list the programs themselves.
 [[tool.importlinter.contracts]]
 name = "Programs never import each other; they share through building_blocks"
 type = "independence"
-modules = ["pyrpoc.plugins.programs.*.program"]
+modules = [
+  "pyrpoc.plugins.programs.*.program",
+  "pyrpoc.plugins.programs.simulated.*.program",
+]
 
 [[tool.importlinter.contracts]]
 name = "Building blocks never import a program"
 type = "forbidden"
 source_modules = ["pyrpoc.plugins.programs.building_blocks"]
-forbidden_modules = ["pyrpoc.plugins.programs.*.program"]
+forbidden_modules = [
+  "pyrpoc.plugins.programs.*.program",
+  "pyrpoc.plugins.programs.simulated.*.program",
+]
 
 [[tool.importlinter.contracts]]
-name = "Subsystems never name a plugin; they find plugins through registries"
+name = "The engine never names a plugin; it finds plugins through registries"
 type = "forbidden"
-source_modules = ["pyrpoc.acquisition", "pyrpoc.data_library", "pyrpoc.device_inventory"]
+source_modules = ["pyrpoc.engine"]
 forbidden_modules = ["pyrpoc.plugins"]
 
 [[tool.importlinter.contracts]]
-name = "structs is Qt-free, except plugins/data_panels.py"
+name = "core is Qt-free, except panels.py"
 type = "forbidden"
 source_modules = [
-  "pyrpoc.structs.registry",
-  "pyrpoc.structs.data_library",
-  "pyrpoc.structs.plugins.devices",
-  "pyrpoc.structs.plugins.params",
-  "pyrpoc.structs.plugins.programs",
+  "pyrpoc.core.registry",
+  "pyrpoc.core.device",
+  "pyrpoc.core.device_config",
+  "pyrpoc.core.program",
+  "pyrpoc.core.runner",
+  "pyrpoc.core.program_inputs",
+  "pyrpoc.core.input_section",
+  "pyrpoc.core.input_requests",
+  "pyrpoc.core.data",
+  "pyrpoc.core.mask",
+  "pyrpoc.core.program_output",
+  "pyrpoc.core.library",
+  "pyrpoc.core.saving",
 ]
 forbidden_modules = ["PyQt6", "pyqtgraph"]
 
@@ -150,12 +169,14 @@ forbidden_modules = ["PyQt6", "pyqtgraph"]
 name = "The cores are Qt-free: running, the library's store and files, the session file"
 type = "forbidden"
 source_modules = [
-  "pyrpoc.acquisition.claims",
-  "pyrpoc.acquisition.executor",
-  "pyrpoc.acquisition.recording",
-  "pyrpoc.data_library.store",
-  "pyrpoc.data_library.saving",
-  "pyrpoc.data_library.format",
+  "pyrpoc.engine.acquisition.claims",
+  "pyrpoc.engine.acquisition.executor",
+  "pyrpoc.engine.acquisition.recording",
+  "pyrpoc.engine.acquisition.program_inputs",
+  "pyrpoc.app.input_requests",
+  "pyrpoc.engine.data_library.store",
+  "pyrpoc.engine.data_library.saving",
+  "pyrpoc.engine.data_library.format",
   "pyrpoc.app.session.file",
 ]
 forbidden_modules = ["PyQt6"]
@@ -163,21 +184,21 @@ forbidden_modules = ["PyQt6"]
 # The application itself is left out: it is the composition root, and importing
 # every plugin, display panels included, is how it registers them.
 [[tool.importlinter.contracts]]
-name = "Subsystem models hold no widgets: they never import a panel or a widget"
+name = "Engine models hold no widgets: they never import a panel or a widget"
 type = "forbidden"
 source_modules = [
-  "pyrpoc.acquisition.model",
-  "pyrpoc.acquisition.host",
-  "pyrpoc.acquisition.events",
-  "pyrpoc.data_library.model",
-  "pyrpoc.device_inventory.inventory",
+  "pyrpoc.engine.acquisition.runs",
+  "pyrpoc.engine.acquisition.host",
+  "pyrpoc.engine.acquisition.events",
+  "pyrpoc.engine.data_library.model",
+  "pyrpoc.engine.device_inventory.inventory",
 ]
 forbidden_modules = [
-  "pyrpoc.acquisition.panel",
-  "pyrpoc.data_library.panel",
-  "pyrpoc.data_library.details",
-  "pyrpoc.device_inventory.panel",
-  "pyrpoc.qt_components",
+  "pyrpoc.engine.acquisition.panel",
+  "pyrpoc.engine.data_library.panel",
+  "pyrpoc.engine.data_library.details",
+  "pyrpoc.engine.device_inventory.panel",
+  "pyrpoc.shared.widgets",
   "pyqtgraph",
 ]
 

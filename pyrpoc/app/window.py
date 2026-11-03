@@ -1,34 +1,31 @@
 """The dock manager: three fixed panels, one dock per added data panel, and
-the device panels ``DeviceDocks`` keeps.
-
-The fixed panels hide when unchecked in the menu; an added panel is destroyed,
-so it exists exactly as long as its dock does. The window owns the added
-panels and connects each to the model; the model never holds a widget.
-"""
+the device panels ``DeviceDocks`` keeps."""
 
 from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum
+from typing import Any
 
 import PyQt6Ads as qtads
 from PyQt6.QtCore import QByteArray, QTimer, pyqtSignal
 from PyQt6.QtGui import QAction, QCloseEvent
 from PyQt6.QtWidgets import QVBoxLayout, QWidget
 
-from pyrpoc.acquisition.panel import AcquisitionPanel
 from pyrpoc.app.application import Application
 from pyrpoc.app.device_docks import DeviceDocks
 from pyrpoc.app.menubar import MainMenuBar
 from pyrpoc.app.theme.manager import ThemeController
-from pyrpoc.data_library.panel import DataLibraryPanel
-from pyrpoc.device_inventory.panel import DevicesPanel
-from pyrpoc.plugins.data_panels import data_panel_registry
-from pyrpoc.plugins.devices import device_registry
-from pyrpoc.structs.data_library.dataset import Dataset
-from pyrpoc.structs.plugins.data_panels import DataPanel, has_panel
-from pyrpoc.structs.registry import grouped
+from pyrpoc.core.panels import DataPanel, Panel, has_panel
+from pyrpoc.core.program_output import ProgramOutput
+from pyrpoc.core.registry import grouped
+from pyrpoc.engine.acquisition.panel import AcquisitionPanel
+from pyrpoc.engine.data_library.panel import DataLibraryPanel
+from pyrpoc.engine.device_inventory.panel import DevicesPanel
+
+# Importing the plugins registers every device, program and panel.
+from pyrpoc.plugins import data_panel_registry, device_registry
 
 qtads.CDockManager.setConfigFlag(qtads.CDockManager.eConfigFlag.DisableTabTextEliding, True)
 qtads.CDockManager.setConfigFlag(qtads.CDockManager.eConfigFlag.OpaqueSplitterResize, False)
@@ -57,8 +54,9 @@ PANELS = [
 
 class MainWindow(QWidget):
     closing = pyqtSignal()
-    # An added panel came or went.
-    panels_changed = pyqtSignal()
+    # Screen state worth saving changed: a panel came or went, or one changed
+    # its own state.
+    screen_changed = pyqtSignal()
 
     def __init__(self, app: Application, theme_controller: ThemeController):
         super().__init__()
@@ -73,6 +71,7 @@ class MainWindow(QWidget):
         self.restoring_layout = False
         self.shutting_down = False
         self.dock_by_key: dict[DockKey, qtads.CDockWidget] = {}
+        self.fixed_panels: dict[DockKey, Panel] = {}
         self.panel_docks: dict[DataPanel, qtads.CDockWidget] = {}
         self.panel_actions: dict[DataPanel, QAction] = {}
         # Which instance of its type each panel is, to tell same-kind docks apart.
@@ -87,7 +86,7 @@ class MainWindow(QWidget):
         self.menubar.device_requested.connect(self.add_device)
         self.build_panels()
 
-        self.app.library.dataset_changed.connect(self.on_dataset_changed)
+        self.app.library.output_changed.connect(self.on_output_changed)
 
         layout = QVBoxLayout(self)
         layout.setMenuBar(self.menubar)
@@ -125,16 +124,18 @@ class MainWindow(QWidget):
             self.device_docks.open(device)
 
     def build_panels(self) -> None:
-        widgets = {
-            DockKey.ACQUISITION: AcquisitionPanel(self.app.acquisition),
-            DockKey.DEVICES: DevicesPanel(self.app.inventory),
-            DockKey.DATA: DataLibraryPanel(
-                self.app.library, lambda: self.app.acquisition.save.folder
-            ),
+        app = self.app
+        self.fixed_panels = {
+            DockKey.ACQUISITION: AcquisitionPanel(app.runs, app.inputs, app.requests, app.library),
+            DockKey.DEVICES: DevicesPanel(app.inventory),
+            DockKey.DATA: DataLibraryPanel(app.library, lambda: app.runs.save.folder),
         }
+        for panel in self.fixed_panels.values():
+            panel.state_changed.connect(self.screen_changed.emit)
         first: qtads.CDockWidget | None = None
         for spec in PANELS:
-            dock = self.add_dock(spec.title, widgets[spec.key], spec.object_name, tab_with=first)
+            panel = self.fixed_panels[spec.key]
+            dock = self.add_dock(spec.title, panel, spec.object_name, tab_with=first)
             self.dock_by_key[spec.key] = dock
             if first is None:
                 first = dock
@@ -164,48 +165,44 @@ class MainWindow(QWidget):
 
     def add_panel_of_type(self, key: str) -> None:
         """Add one, from the menu."""
-        self.add_panel(data_panel_registry.get(key)(self.app.library))
+        self.add_panel(data_panel_registry.get(key)(self.app.library, self.app.requests))
 
     def add_panel(self, panel: DataPanel) -> None:
         self.add_panel_dock(panel)
-        self.connect_panel(panel)
         self.refresh_panels_menu()
-        self.panels_changed.emit()
+        self.screen_changed.emit()
 
     def remove_panel(self, panel: DataPanel) -> None:
-        self.disconnect_panel(panel)
         panel.detach()
         self.remove_panel_dock(panel)
         self.refresh_panels_menu()
-        self.panels_changed.emit()
+        self.screen_changed.emit()
+
+    def fixed_panel_states(self) -> dict[str, dict[str, Any]]:
+        """Each fixed panel's own screen state, by dock key."""
+        return {
+            key.value: panel.export_persistence_state() for key, panel in self.fixed_panels.items()
+        }
+
+    def restore_fixed_panel_states(self, states: dict[str, dict[str, Any]]) -> None:
+        """Give each fixed panel its saved state; one with none gets an empty state."""
+        for key, panel in self.fixed_panels.items():
+            panel.import_persistence_state(states.get(key.value, {}))
 
     def clear_panels(self) -> None:
         for panel in self.panels:
             self.remove_panel(panel)
 
-    def connect_panel(self, panel: DataPanel) -> None:
-        """Let ``panel`` answer pick requests, starting in whatever mode a
-        pending request has already set."""
-        runners = self.app.acquisition.host
-        runners.picking_changed.connect(panel.set_picking)
-        panel.picked.connect(runners.on_picked)
-        panel.set_picking(runners.picking)
-
-    def disconnect_panel(self, panel: DataPanel) -> None:
-        runners = self.app.acquisition.host
-        runners.picking_changed.disconnect(panel.set_picking)
-        panel.picked.disconnect(runners.on_picked)
-
-    def on_dataset_changed(self, dataset: Dataset) -> None:
-        """Refresh every panel showing this dataset. An added panel exists
-        exactly as long as its dock, so there is no unseen panel to skip."""
+    def on_output_changed(self, program_output: ProgramOutput) -> None:
+        """Refresh every panel showing this program output."""
+        # An added panel exists exactly as long as its dock, so there is no unseen panel to skip.
         for panel in self.panels:
-            if panel.dataset() is dataset:
+            if panel.program_output() is program_output:
                 panel.refresh()
 
     def assign_ordinal(self, panel: DataPanel) -> None:
-        """The lowest number this type has free, assigned once so a dock never
-        renumbers itself when an earlier one closes."""
+        """Give ``panel`` the lowest number its type has free."""
+        # Assigned once, so a dock never renumbers itself when an earlier one closes.
         taken = {
             number
             for other, number in self.panel_ordinals.items()
@@ -257,12 +254,9 @@ class MainWindow(QWidget):
         dock.deleteLater()
 
     def discard_panel(self, panel: DataPanel) -> None:
-        """Drop an added panel, from its tab's close button or its menu entry.
-
-        Deferred, because both arrive in a signal from the thing about to be
-        deleted. The membership check is because a close and an uncheck can
-        both arrive for one gesture; the second finds the panel already gone.
-        """
+        """Drop an added panel, from its tab's close button or its menu entry."""
+        # Deferred, because both arrive in a signal from the thing about to be deleted. A close
+        # and an uncheck can both arrive for one gesture; the second finds the panel already gone.
         if self.restoring_layout or self.shutting_down:
             return
         if panel not in self.panel_docks:

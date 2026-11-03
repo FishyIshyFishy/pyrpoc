@@ -1,10 +1,8 @@
-"""A ToupTek USB camera, such as the brightfield U3CMOS08500KPA.
+"""A ToupTek USB camera, such as the brightfield U3CMOS08500KPA."""
 
-The session stays open between runs; the app opens it at launch and closes it
-on exit. Only one process can hold the camera, so ToupView cannot use it
-while pyrpoc is running. Exposure and gain belong to the program, not here:
-this block only says which camera to open.
-"""
+# The session stays open between runs; the app opens it at launch and closes it on exit. Only one
+# process can hold the camera, so ToupView cannot use it while pyrpoc is running. Exposure and
+# gain are program inputs: this configuration only says which camera to open.
 
 from __future__ import annotations
 
@@ -14,8 +12,8 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from pyrpoc.structs.plugins import params as P
-from pyrpoc.structs.plugins.devices import Device, device_registry
+from pyrpoc.core import device_config as C
+from pyrpoc.core.device import Device, device_registry
 
 from .sdk import ToupcamError, ToupcamSession, row_pitch, unpack_rgb24
 
@@ -26,8 +24,8 @@ FRAME_MARGIN_S = 2.0
 
 
 @dataclass
-class ToupcamConfig(P.Group):
-    camera: str = P.text_field(
+class ToupcamConfig(C.DeviceConfig):
+    camera: str = C.text_field(
         "Camera",
         "",
         tooltip="Name (e.g. U3CMOS08500KPA) or id of the camera to open; blank opens the first",
@@ -81,8 +79,8 @@ class ToupcamCamera(Device):
         return self.session
 
     def start(self, *, exposure_us: int, gain_pct: int, binned: bool) -> None:
-        """Apply the settings and start streaming. Values outside what the
-        camera accepts are refused with its range rather than clamped."""
+        """Apply the settings and start streaming, refusing values outside the camera's
+        range."""
         session = self.require_session()
         low, high = session.exposure_range_us()
         if not low <= exposure_us <= high:
@@ -98,9 +96,10 @@ class ToupcamCamera(Device):
         self.drop_next = True
 
     def grab(self, sleep: Callable[[float], None]) -> np.ndarray:
-        """The next frame as ``(H, W, 3)`` uint8, in the SDK's channel order.
-        A program passes ``ctx.sleep`` so a stopped run interrupts the wait;
-        its ``finally`` should then call ``stop()``."""
+        """The next frame as ``(H, W, 3)`` uint8, in the SDK's channel order, waiting with
+        ``sleep``."""
+        # A program passes ``ctx.sleep`` so a stopped run interrupts the wait; its ``finally``
+        # should then call ``stop()``.
         if self.drop_next:
             self.read_frame(sleep)
             self.drop_next = False

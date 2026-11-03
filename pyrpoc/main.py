@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import logging
 import os
 import sys
@@ -15,7 +16,7 @@ from pyrpoc.app.session.autosave import Autosave
 from pyrpoc.app.session.file import SessionFile, default_session_path
 from pyrpoc.app.theme.manager import ThemeController
 from pyrpoc.app.window import MainWindow
-from pyrpoc.structs.plugins.devices import Device
+from pyrpoc.core.device import Device
 
 log = logging.getLogger("pyrpoc")
 
@@ -23,9 +24,9 @@ log = logging.getLogger("pyrpoc")
 def report_uncaught(
     kind: type[BaseException], error: BaseException, tb: TracebackType | None
 ) -> None:
-    """The one place an unexpected error lands. PyQt aborts the process on an
-    exception escaping a slot unless this hook is set, so code elsewhere lets
-    errors raise instead of guarding each slot."""
+    """Log an unexpected error and show it in a dialog."""
+    # PyQt aborts the process on an exception escaping a slot unless this hook is set, so code
+    # elsewhere lets errors raise instead of guarding each slot.
     text = "".join(traceback.format_exception(kind, error, tb))
     log.error("uncaught exception\n%s", text)
     if QApplication.instance() is not None:
@@ -45,13 +46,10 @@ def configure_qt_fontdir() -> None:
 def fit_to_available_screen(
     window: QWidget, width: int | None = None, height: int | None = None
 ) -> None:
-    """Size and place a window inside a visible screen area.
-
-    On multi-monitor high-DPI setups Qt reports a secondary screen's origin in
-    native pixels but its size in logical ones, leaving a hole default
-    placement can land in. Call before show() to pick the spot, and again
-    after to re-clamp once the frame margins are known.
-    """
+    """Size and place a window inside a visible screen area."""
+    # On multi-monitor high-DPI setups Qt reports a secondary screen's origin in native pixels but
+    # its size in logical ones, leaving a hole default placement can land in. Call before show()
+    # to pick the spot, and again after to re-clamp once the frame margins are known.
     screen = window.screen() or QGuiApplication.primaryScreen()
     avail = screen.availableGeometry() if screen is not None else None
     if avail is None or avail.isEmpty():
@@ -85,8 +83,8 @@ def build(
 
 
 def warn_unconnected(window: QWidget, failed: list[Device]) -> None:
-    """Say which saved devices could not connect at launch. They stay in the
-    inventory, so connecting later is one click in the Devices panel."""
+    """Say which saved devices could not connect at launch."""
+    # They stay in the inventory, so connecting later is one click in the Devices panel.
     if not failed:
         return
     lines = "\n".join(f"{device.name}: {device.last_error}" for device in failed)
@@ -95,11 +93,34 @@ def warn_unconnected(window: QWidget, failed: list[Device]) -> None:
     )
 
 
+def parse_args() -> tuple[argparse.Namespace, list[str]]:
+    """pyrpoc's own flags, and the rest of the command line, which is Qt's."""
+    parser = argparse.ArgumentParser(prog="pyrpoc")
+    parser.add_argument(
+        "--simulated",
+        action="store_true",
+        help="add programs that fake their data, for working without instruments",
+    )
+    return parser.parse_known_args()
+
+
+def add_simulations() -> None:
+    """Register the simulated programs."""
+    # Imported here, not at the top: importing the package registers its
+    # program inputs, which must not exist without --simulated.
+    from pyrpoc.plugins.programs.simulated import register
+
+    register()
+
+
 def main() -> int:
     logging.basicConfig(level=logging.INFO)
     sys.excepthook = report_uncaught
     configure_qt_fontdir()
-    qt_app = QApplication(sys.argv)
+    args, qt_args = parse_args()
+    if args.simulated:
+        add_simulations()
+    qt_app = QApplication([sys.argv[0], *qt_args])
     # The native Windows 11 style pads every combo and menu row heavily; Fusion
     # is compact and looks the same on every platform under the theme stylesheet.
     qt_app.setStyle("Fusion")
