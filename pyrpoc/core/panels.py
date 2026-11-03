@@ -27,6 +27,8 @@ class Panel(QWidget):
     registry_key: str = "panel"
     # The kinds of value this panel can answer an input request for.
     supplies: ClassVar[tuple[type, ...]] = ()
+    # Its own screen state changed, so the session is worth saving.
+    state_changed = pyqtSignal()
 
     def __init__(self) -> None:
         super().__init__()

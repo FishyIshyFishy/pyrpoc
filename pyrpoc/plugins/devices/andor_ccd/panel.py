@@ -13,9 +13,10 @@ from typing import TYPE_CHECKING
 from PyQt6.QtCore import QTimer
 from PyQt6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
 
+from pyrpoc.core.input_section import sections
 from pyrpoc.core.panels import DevicePanel, device_panel_registry
 from pyrpoc.core.program_inputs import FieldContext
-from pyrpoc.shared.widgets.param_form import ParamForm
+from pyrpoc.shared.widgets.param_form import ConfigValues, ParamForm
 
 from .sdk import AndorError
 
@@ -40,7 +41,13 @@ class AndorCcdPanel(DevicePanel):
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(8, 8, 8, 8)
-        form = ParamForm([device.config], self, cards=False, context=FieldContext())
+        form = ParamForm(
+            sections([device.config_cls]),
+            ConfigValues(device),
+            self,
+            cards=False,
+            context=FieldContext(),
+        )
         form.changed.connect(on_change)
         layout.addWidget(form)
         layout.addLayout(self.build_connection_row())

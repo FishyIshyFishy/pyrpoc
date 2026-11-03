@@ -6,8 +6,9 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QDialog, QDialogButtonBox, QVBoxLayout, QWidget
 
 from pyrpoc.core.device import Device
+from pyrpoc.core.input_section import sections
 from pyrpoc.core.program_inputs import FieldContext
-from pyrpoc.shared.widgets.param_form import ParamForm
+from pyrpoc.shared.widgets.param_form import ConfigValues, ParamForm
 
 from .inventory import DeviceInventory
 
@@ -22,7 +23,13 @@ class ConfigureDialog(QDialog):
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
         self.setWindowTitle(f"Configure {device.name}")
         layout = QVBoxLayout(self)
-        form = ParamForm([device.config], self, cards=False, context=FieldContext())
+        form = ParamForm(
+            sections([device.config_cls]),
+            ConfigValues(device),
+            self,
+            cards=False,
+            context=FieldContext(),
+        )
         form.changed.connect(inventory.device_changed)
         layout.addWidget(form)
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close, self)

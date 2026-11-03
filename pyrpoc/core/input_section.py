@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-from .program_inputs import Field, Group, block_fields, block_name
+from .program_inputs import Field, Group, block_fields
 
 
 @dataclass(frozen=True)
@@ -16,10 +16,10 @@ class Section:
     entries: tuple[tuple[str, Field], ...]
 
 
-def sections(blocks: Sequence[Group]) -> list[Section]:
-    """One section per block, in the order the program declared them."""
+def sections(classes: Sequence[type[Group]]) -> list[Section]:
+    """One section per block class, in the order given."""
     out: list[Section] = []
-    for block in blocks:
-        entries = tuple((f"{block_name(block)}.{name}", spec) for name, spec in block_fields(block))
-        out.append(Section(type(block).label or block_name(block), entries))
+    for cls in classes:
+        entries = tuple((f"{cls.__name__}.{name}", spec) for name, spec in block_fields(cls))
+        out.append(Section(cls.label or cls.__name__, entries))
     return out

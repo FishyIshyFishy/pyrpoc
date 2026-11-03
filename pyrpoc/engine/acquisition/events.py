@@ -14,10 +14,11 @@ from PyQt6.QtCore import QObject, pyqtSignal
 
 from pyrpoc.core.device import Device, MissingDevice
 from pyrpoc.core.program import Program
-from pyrpoc.core.program_inputs import BlockStore, ParameterError
+from pyrpoc.core.program_inputs import ParameterError
 from pyrpoc.core.saving import SaveTarget
 from pyrpoc.engine.acquisition.claims import DeviceBusy
 from pyrpoc.engine.acquisition.executor import Executor, Run, RunCallbacks
+from pyrpoc.engine.acquisition.program_inputs import ProgramInputsStore
 from pyrpoc.engine.acquisition.recording import Series
 from pyrpoc.engine.data_library.store import LibraryFull, LibraryStore
 
@@ -48,7 +49,7 @@ class RunEvents(QObject):
         self,
         program: Program,
         key: str,
-        blocks: BlockStore,
+        inputs: ProgramInputsStore,
         devices: list[Device],
         save: SaveTarget,
         series: Series | None,
@@ -60,7 +61,7 @@ class RunEvents(QObject):
         recorded it by the time anyone asks."""
         try:
             run = self.executor.start(
-                program, blocks, devices, program_key=key, save=save, series=series
+                program, inputs, devices, program_key=key, save=save, series=series
             )
         except (MissingDevice, DeviceBusy, ParameterError, LibraryFull) as exc:
             self.start_refused.emit(str(exc))

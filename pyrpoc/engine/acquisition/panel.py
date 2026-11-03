@@ -1,13 +1,9 @@
-"""The acquisition panel: pick a program, name the run, set it up, run it.
-
-The transport row draws whatever controls the program's runners asked for;
-Stop is fixed, since every run can be stopped. The name and save switch sit
-there rather than in the form because they are not parameters of any program.
-"""
+"""The Acquisition panel: choose a program, set its inputs, name the run, and run it."""
 
 from __future__ import annotations
 
 from collections.abc import Callable
+from typing import Any
 
 from PyQt6.QtWidgets import (
     QCheckBox,
@@ -23,6 +19,9 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
 )
 
+from pyrpoc.core.input_requests import InputRequests
+from pyrpoc.core.input_section import sections
+from pyrpoc.core.library import Library
 from pyrpoc.core.panels import Panel
 from pyrpoc.core.program import program_registry
 from pyrpoc.core.program_inputs import FieldContext
@@ -32,15 +31,27 @@ from pyrpoc.shared.widgets.grouped_combo import GroupedComboBox
 from pyrpoc.shared.widgets.icons import asset_icon
 from pyrpoc.shared.widgets.param_form import ParamForm
 
-from .model import Acquisition
+from .host import RunnerHost
+from .program_inputs import ProgramInputsStore
+from .runs import Runs
 
 
 class AcquisitionPanel(Panel):
+    """Shows one program at a time: its runners' controls, its inputs, and where
+    its runs save. Which program it shows is its own screen state."""
+
     display_name = "Acquisition"
 
-    def __init__(self, acquisition: Acquisition):
+    def __init__(
+        self, runs: Runs, inputs: ProgramInputsStore, requests: InputRequests, library: Library
+    ):
         super().__init__()
-        self.acquisition = acquisition
+        self.runs = runs
+        self.inputs = inputs
+        self.requests = requests
+        self.library = library
+        self.host = RunnerHost(runs, inputs, requests, self)
+        self.selected_program: str | None = None
         self.form: ParamForm | None = None
         # Each rendered control, its button, and the watcher keeping them in line.
         self.control_buttons: list[tuple[Control, QPushButton, Callable[[], None]]] = []
@@ -60,10 +71,7 @@ class AcquisitionPanel(Panel):
         self.render_controls()
         self.set_running_ui(False)
         self.on_save_changed()
-        if self.acquisition.selected_program is None:
-            self.acquisition.select_program(program_registry.keys()[0])
-        else:
-            self.on_program_selected(self.acquisition.selected_program)
+        self.select_program(program_registry.keys()[0])
 
     def build_program_row(self) -> QHBoxLayout:
         row = QHBoxLayout()
@@ -111,20 +119,18 @@ class AcquisitionPanel(Panel):
 
     def connect_signals(self) -> None:
         self.program_combo.currentIndexChanged.connect(self.on_program_chosen)
-        self.stop_btn.clicked.connect(self.acquisition.host.stop)
-        self.save_check.toggled.connect(lambda checked: self.acquisition.set_save(enabled=checked))
-        self.name_edit.textChanged.connect(lambda text: self.acquisition.set_save(name=text))
+        self.stop_btn.clicked.connect(self.host.stop)
+        self.save_check.toggled.connect(lambda checked: self.runs.set_save(enabled=checked))
+        self.name_edit.textChanged.connect(lambda text: self.runs.set_save(name=text))
         self.dir_btn.clicked.connect(self.choose_directory)
 
-        self.acquisition.program_selected.connect(self.on_program_selected)
-        self.acquisition.inventory.changed.connect(self.refresh_readiness)
-        self.acquisition.save_changed.connect(self.on_save_changed)
-        self.acquisition.params_written.connect(self.on_params_written)
-        runners = self.acquisition.host
-        runners.controls_changed.connect(self.render_controls)
-        runners.status.connect(self.show_status)
-        self.acquisition.requests.subscribe(self.on_requests_changed)
-        runs = self.acquisition.events
+        self.runs.inventory.changed.connect(self.refresh_readiness)
+        self.runs.save_changed.connect(self.on_save_changed)
+        self.inputs.subscribe(self.on_input_changed)
+        self.host.controls_changed.connect(self.render_controls)
+        self.host.status.connect(self.show_status)
+        self.requests.subscribe(self.on_requests_changed)
+        runs = self.runs.events
         runs.run_started.connect(lambda _run: self.on_run_started())
         runs.run_status.connect(lambda _run, text: self.show_status(text))
         runs.run_finished.connect(lambda _run: self.on_run_finished())
@@ -133,40 +139,50 @@ class AcquisitionPanel(Panel):
 
     def on_program_chosen(self, index: int) -> None:
         key = self.program_combo.itemData(index)
-        if key != self.acquisition.selected_program:
-            self.acquisition.select_program(key)
+        if key != self.selected_program:
+            self.select_program(key)
 
-    def on_program_selected(self, key: str) -> None:
+    def select_program(self, key: str) -> None:
+        """Show ``key``: its runners' controls and its inputs."""
+        self.selected_program = key
+        self.host.attach(key, program_registry.get(key))
         index = self.program_combo.findData(key)
         if self.program_combo.currentIndex() != index:
             self.program_combo.blockSignals(True)
             self.program_combo.setCurrentIndex(index)
             self.program_combo.blockSignals(False)
         self.form = ParamForm(
-            self.acquisition.params_for(key),
+            sections(program_registry.get(key).params),
+            self.inputs,
             self,
             cards=True,
-            context=FieldContext(library=self.acquisition.library),
+            context=FieldContext(library=self.library),
         )
-        self.form.changed.connect(self.acquisition.mark_edited)
         self.form.invalid.connect(self.show_status)
         self.scroll_area.setWidget(self.form)
         self.refresh_readiness()
+        self.state_changed.emit()
 
-    def on_params_written(self) -> None:
-        """A runner applied a pick to the blocks; show what is there now."""
+    def on_input_changed(self, key: str) -> None:
+        """Show a value set elsewhere, such as by a runner applying a pick."""
         if self.form is not None:
-            self.form.reload()
+            self.form.show_value(key)
+
+    def blockers(self) -> list[str]:
+        """What the shown program still needs before it can run."""
+        if self.selected_program is None:
+            return []
+        return self.runs.blockers(self.selected_program)
 
     def refresh_readiness(self, *, announce: bool = True) -> None:
         """Enable or disable the controls and say what is missing, if anything.
         ``announce`` is off when a run has just ended, so its outcome is not
         immediately overwritten with "ready"."""
-        missing = self.acquisition.blockers()
+        missing = self.blockers()
         self.apply_enabled()
         if missing:
             self.show_status("needs " + ", ".join(missing))
-        elif announce and not self.acquisition.host.running and not self.acquisition.host.awaiting:
+        elif announce and not self.host.running and not self.host.awaiting:
             self.show_status("ready")
 
     def show_status(self, text: str) -> None:
@@ -182,7 +198,7 @@ class AcquisitionPanel(Panel):
             button.deleteLater()
         self.control_buttons = []
 
-        for control in self.acquisition.host.controls:
+        for control in self.host.controls:
             button = QPushButton(self)
             if control.icon is not None:
                 button.setIcon(asset_icon(control.icon))
@@ -211,25 +227,25 @@ class AcquisitionPanel(Panel):
     def apply_enabled(self) -> None:
         """Off while something is missing or a run is in progress, and off
         whenever the control's runner says so."""
-        ready = not self.acquisition.blockers() and not self.acquisition.host.running
+        ready = not self.blockers() and not self.host.running
         for control, button, _ in self.control_buttons:
             button.setEnabled(ready and control.enabled)
 
     def on_requests_changed(self) -> None:
-        if not self.acquisition.host.awaiting and not self.acquisition.host.running:
+        if not self.host.awaiting and not self.host.running:
             self.refresh_readiness()
 
     def choose_directory(self) -> None:
-        start = str(self.acquisition.save.folder)
+        start = str(self.runs.save.folder)
         chosen = QFileDialog.getExistingDirectory(self, "Save acquisitions to", start)
         if chosen:
-            self.acquisition.set_save(directory=chosen)
+            self.runs.set_save(directory=chosen)
 
     def on_save_changed(self) -> None:
         """Pull the widgets back in line with the save target, for when a
         restored session moved it. Unchanged values are skipped so typing in
         the name field keeps its cursor."""
-        save = self.acquisition.save
+        save = self.runs.save
         if self.name_edit.text() != save.name:
             self.name_edit.setText(save.name)
         if self.save_check.isChecked() != save.enabled:
@@ -247,7 +263,7 @@ class AcquisitionPanel(Panel):
     def folder_name(self) -> str:
         """The destination folder's name, readable without hovering: no folder
         chosen means the working directory, which is easy to not expect."""
-        folder = self.acquisition.save.folder
+        folder = self.runs.save.folder
         name = folder.name or str(folder)
         return name if len(name) <= 16 else name[:15] + "…"
 
@@ -256,7 +272,7 @@ class AcquisitionPanel(Panel):
         self.set_running_ui(True)
 
     def on_run_finished(self) -> None:
-        running = self.acquisition.host.running
+        running = self.host.running
         self.set_running_ui(running)
         # A runner may already have started the next run from this same finish.
         if not running:
@@ -265,9 +281,17 @@ class AcquisitionPanel(Panel):
 
     def on_run_failed(self, message: str) -> None:
         self.show_status(f"error - {message}")
-        self.set_running_ui(self.acquisition.host.running)
+        self.set_running_ui(self.host.running)
         QMessageBox.critical(self, "Acquisition Error", message)
 
     def set_running_ui(self, running: bool) -> None:
         self.apply_enabled()
         self.stop_btn.setEnabled(running)
+
+    def export_persistence_state(self) -> dict[str, Any]:
+        return {"program": self.selected_program}
+
+    def import_persistence_state(self, state: dict[str, Any]) -> None:
+        """Show the saved program, or the first one if it no longer exists."""
+        key = state.get("program")
+        self.select_program(key if key in program_registry.entries else program_registry.keys()[0])

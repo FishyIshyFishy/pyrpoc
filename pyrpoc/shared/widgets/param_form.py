@@ -1,11 +1,11 @@
-"""A form generated from parameter blocks, writing every change straight back
-into them."""
+"""``ParamForm``: a form with one row per value, writing every edit straight
+into where the values are kept."""
 
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import (
@@ -24,7 +24,8 @@ from PyQt6.QtWidgets import (
 )
 
 from pyrpoc.core import program_inputs as P
-from pyrpoc.core.input_section import Section, sections
+from pyrpoc.core.device import Device
+from pyrpoc.core.input_section import Section
 from pyrpoc.core.program_inputs import ParameterError
 
 from .cards import BaseCardWidget
@@ -202,20 +203,42 @@ def build_field(spec: P.Field, parent: QWidget, context: P.FieldContext) -> P.Ed
     return field
 
 
-class ParamForm(QWidget):
-    """One section per parameter block, optionally as collapsible cards.
+class FormValues(Protocol):
+    """Where a form reads and writes its values, by key."""
 
-    Blocks are shared across programs, so switching programs hands nothing
-    over: the instance this form edits is the one every other declaring
-    program holds.
-    """
+    def get(self, key: str) -> Any: ...
+
+    def set(self, key: str, value: Any) -> None:
+        """Store ``value``, raising ``ParameterError`` if its rules refuse it."""
+        ...
+
+
+class ConfigValues:
+    """One device's configuration, as a form reads and writes it."""
+
+    def __init__(self, device: Device):
+        self.device = device
+
+    def get(self, key: str) -> Any:
+        return getattr(self.device.config, P.split_path(key)[1])
+
+    def set(self, key: str, value: Any) -> None:
+        attr = P.split_path(key)[1]
+        spec = dict(P.block_fields(self.device.config))[attr]
+        setattr(self.device.config, attr, spec.coerce(value))
+
+
+class ParamForm(QWidget):
+    """One row per value, grouped into sections, optionally as collapsible cards.
+    Every edit is written straight into ``values``."""
 
     changed = pyqtSignal()
     invalid = pyqtSignal(str)
 
     def __init__(
         self,
-        blocks: Sequence[P.Group],
+        form_sections: Sequence[Section],
+        values: FormValues,
         parent: QWidget,
         *,
         cards: bool,
@@ -224,16 +247,16 @@ class ParamForm(QWidget):
         """``context`` is what the owner can offer fields that build their own
         editor, such as the open data for a field whose value names it."""
         super().__init__(parent)
-        self.blocks: list[P.Group] = list(blocks)
-        self.index: dict[str, P.Group] = P.index(self.blocks)
+        self.values = values
         self.fields: dict[str, P.Editor] = {}
         self._cards: list[tuple[BaseCardWidget, list[str]]] = []
         self._loading = False
+        self._writing = False
 
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(8)
-        for section in sections(self.blocks):
+        for section in form_sections:
             root.addWidget(self.build_section(section, cards=cards, context=context))
         root.addStretch(1)
         self.reload()
@@ -242,51 +265,56 @@ class ParamForm(QWidget):
         body = QWidget(self)
         form = QFormLayout(body)
         form.setContentsMargins(4, 4, 4, 4)
-        paths: list[str] = []
-        for path, spec in section.entries:
+        keys: list[str] = []
+        for key, spec in section.entries:
             field = build_field(spec, body, context)
-            field.connect(self.on_field_changed)
-            self.fields[path] = field
-            paths.append(path)
+            field.connect(lambda key=key: self.on_field_changed(key))
+            self.fields[key] = field
+            keys.append(key)
             form.addRow(spec.label, field.widget)
         if not cards:
             return body
         card = BaseCardWidget(section.label, self)
         card.set_body_widget(body)
-        self._cards.append((card, paths))
+        self._cards.append((card, keys))
         return card
 
     def reload(self) -> None:
-        """Blocks -> form. Call after something else has written the blocks."""
+        """Show every value ``values`` holds now."""
+        for key in self.fields:
+            self.show_value(key)
+        self.refresh_summaries()
+
+    def show_value(self, key: str) -> None:
+        """Show the value ``values`` holds for ``key``, unless this form is the
+        one writing it."""
+        # A custom editor may rebuild itself on ``set``, which must not happen
+        # under the user's hands while they edit it.
+        if self._writing or key not in self.fields:
+            return
         self._loading = True
         try:
-            for path, field in self.fields.items():
-                field.set(P.get_path(self.index, path))
+            self.fields[key].set(self.values.get(key))
         finally:
             self._loading = False
         self.refresh_summaries()
 
-    def read_into_blocks(self) -> None:
-        """Form -> blocks. Coerces everything before writing anything, so a
-        value that fails its bounds leaves every block untouched."""
-        coerced = {path: field.spec.coerce(field.get()) for path, field in self.fields.items()}
-        for path, value in coerced.items():
-            P.set_path(self.index, path, value)
-
-    def on_field_changed(self) -> None:
-        """A bad value is reported, not raised: this is user input, and the
-        widgets normally clamp but that is not a guarantee."""
+    def on_field_changed(self, key: str) -> None:
+        """Write the edited value; a value its rules refuse is reported, not raised."""
         if self._loading:
             return
+        self._writing = True
         try:
-            self.read_into_blocks()
+            self.values.set(key, self.fields[key].get())
         except ParameterError as exc:
             self.invalid.emit(str(exc))
             return
+        finally:
+            self._writing = False
         self.refresh_summaries()
         self.changed.emit()
 
     def refresh_summaries(self) -> None:
-        for card, paths in self._cards:
-            parts = [f"{self.fields[p].spec.label}: {self.fields[p].summary()}" for p in paths]
+        for card, keys in self._cards:
+            parts = [f"{self.fields[k].spec.label}: {self.fields[k].summary()}" for k in keys]
             card.set_description("  |  ".join(parts))

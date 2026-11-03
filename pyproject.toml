@@ -170,6 +170,8 @@ source_modules = [
   "pyrpoc.engine.acquisition.claims",
   "pyrpoc.engine.acquisition.executor",
   "pyrpoc.engine.acquisition.recording",
+  "pyrpoc.engine.acquisition.program_inputs",
+  "pyrpoc.app.input_requests",
   "pyrpoc.engine.data_library.store",
   "pyrpoc.engine.data_library.saving",
   "pyrpoc.engine.data_library.format",
@@ -183,7 +185,7 @@ forbidden_modules = ["PyQt6"]
 name = "Engine models hold no widgets: they never import a panel or a widget"
 type = "forbidden"
 source_modules = [
-  "pyrpoc.engine.acquisition.model",
+  "pyrpoc.engine.acquisition.runs",
   "pyrpoc.engine.acquisition.host",
   "pyrpoc.engine.acquisition.events",
   "pyrpoc.engine.data_library.model",

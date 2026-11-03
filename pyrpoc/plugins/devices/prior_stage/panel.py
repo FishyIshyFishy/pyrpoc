@@ -22,9 +22,10 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from pyrpoc.core.input_section import sections
 from pyrpoc.core.panels import DevicePanel, device_panel_registry
 from pyrpoc.core.program_inputs import FieldContext
-from pyrpoc.shared.widgets.param_form import ParamForm
+from pyrpoc.shared.widgets.param_form import ConfigValues, ParamForm
 
 from .device import MotionProfile
 from .sdk import PriorError
@@ -84,7 +85,13 @@ class PriorStagePanel(DevicePanel):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(8, 8, 8, 8)
         layout.setSpacing(10)
-        form = ParamForm([device.config], self, cards=False, context=FieldContext())
+        form = ParamForm(
+            sections([device.config_cls]),
+            ConfigValues(device),
+            self,
+            cards=False,
+            context=FieldContext(),
+        )
         form.changed.connect(on_change)
         layout.addWidget(form)
         layout.addLayout(self.build_connection_row())

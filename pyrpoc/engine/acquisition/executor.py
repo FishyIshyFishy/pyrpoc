@@ -19,6 +19,7 @@ from pyrpoc.core.device import Device
 from pyrpoc.core.program import Cancelled, Program, RunContext
 from pyrpoc.core.program_output import Origin, ProgramOutput, Provenance, utc_now
 from pyrpoc.core.saving import SaveTarget
+from pyrpoc.engine.acquisition.program_inputs import ProgramInputsStore
 from pyrpoc.engine.acquisition.recording import Recording, RecordingKey, Series
 from pyrpoc.engine.data_library.saving import RecordingSaver
 from pyrpoc.engine.data_library.store import LibraryStore
@@ -84,7 +85,7 @@ class Executor:
     def start(
         self,
         program: Program,
-        blocks: P.BlockStore,
+        inputs: ProgramInputsStore,
         inventory: list[Device],
         *,
         program_key: str,
@@ -98,12 +99,12 @@ class Executor:
         with self._lock:
             devices = claims.resolve(list(program.devices), inventory)
             self.leases.check(devices.values())
-            params = self.resolve_params(program, blocks)
+            params = self.resolve_params(program, inputs)
             self._run_id += 1
             key = RecordingKey(
                 program_key=program_key,
                 # One encoding, shared by the recording and the session file.
-                parameters=blocks.to_dict(list(program.params)),
+                parameters=inputs.encode_blocks(list(program.params)),
                 devices=device_state(devices),
                 # A copy: the app edits its save target in place.
                 save=replace(save),
@@ -178,14 +179,13 @@ class Executor:
             if recording.last_run is not None:
                 self.callbacks.on_failed(recording.last_run, message)
 
-    def resolve_params(self, program: Program, blocks: P.BlockStore) -> P.BlockMap:
-        """The program's declared blocks, validated and resolved against the
-        open data, so a mask that is no longer open stops the run here. Each
-        is a copy, so edits made while the run goes do not reach it."""
+    def resolve_params(self, program: Program, inputs: ProgramInputsStore) -> P.BlockMap:
+        """The program's declared blocks, checked and resolved against the open
+        data, as copies the run keeps however the inputs change meanwhile."""
+        # Resolving here means a mask that is no longer open stops the run here.
         declared = list(program.params)
-        blocks.validate(declared)
-        resolved = blocks.for_program(declared).items()
-        return P.BlockMap({cls: P.resolve_block(block, self.library) for cls, block in resolved})
+        inputs.validate(declared)
+        return inputs.blocks_for(declared, self.library)
 
     @staticmethod
     def build_saver(

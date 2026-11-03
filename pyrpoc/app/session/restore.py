@@ -1,5 +1,5 @@
-"""Converting between the live application and a ``SessionState``: capture
-it to save, apply it back at launch, and the defaults a first launch gets."""
+"""Converting between the live application and a ``SessionState``: capture it
+to save, apply it back at launch, and the devices a first launch gets."""
 
 from __future__ import annotations
 
@@ -9,16 +9,27 @@ from pyrpoc.app.application import Application
 from pyrpoc.app.window import MainWindow
 from pyrpoc.core.device import Device
 from pyrpoc.core.panels import has_panel
-from pyrpoc.plugins.devices import device_registry
-from pyrpoc.plugins.panels import data_panel_registry
-from pyrpoc.plugins.programs import program_registry
+from pyrpoc.plugins import data_panel_registry, device_registry
 
-from .file import BAD_STATE, DeviceState, LibraryState, SaveState, SessionState, ViewState
+from .file import (
+    BAD_STATE,
+    DeviceState,
+    LibraryState,
+    SaveState,
+    ScreenState,
+    SessionState,
+    ViewState,
+    WorkingState,
+)
 
 log = logging.getLogger(__name__)
 
 
 def capture(app: Application, window: MainWindow) -> SessionState:
+    return SessionState(working=capture_working(app), screen=capture_screen(window))
+
+
+def capture_working(app: Application) -> WorkingState:
     devices = [
         DeviceState(
             key=device_registry.key_for(type(device)),
@@ -28,7 +39,17 @@ def capture(app: Application, window: MainWindow) -> SessionState:
         )
         for device in app.inventory.devices
     ]
-    panels = [
+    save = app.runs.save
+    return WorkingState(
+        devices=devices,
+        program_inputs=app.inputs.to_dict(),
+        save=SaveState(name=save.name, directory=save.directory, enabled=save.enabled),
+        library=LibraryState(auto_purge=app.library.auto_purge),
+    )
+
+
+def capture_screen(window: MainWindow) -> ScreenState:
+    views = [
         ViewState(
             key=panel.type_key,
             instance_id=panel.instance_id,
@@ -37,22 +58,12 @@ def capture(app: Application, window: MainWindow) -> SessionState:
         )
         for panel in window.panels
     ]
-    return SessionState(
-        devices=devices,
-        views=panels,
-        selected_program=app.acquisition.selected_program,
-        param_blocks=app.acquisition.params_state(),
-        save=SaveState(
-            name=app.acquisition.save.name,
-            directory=app.acquisition.save.directory,
-            enabled=app.acquisition.save.enabled,
-        ),
-        library=LibraryState(auto_purge=app.library.auto_purge),
-        ads_layout=window.save_dock_layout(),
+    return ScreenState(
+        views=views, panels=window.fixed_panel_states(), ads_layout=window.save_dock_layout()
     )
 
 
-def restore_devices(state: SessionState, app: Application) -> list[Device]:
+def restore_devices(state: WorkingState, app: Application) -> list[Device]:
     """Add the saved devices, returning the ones whose panel was open."""
     reopen: list[Device] = []
     for row in state.devices:
@@ -67,7 +78,7 @@ def restore_devices(state: SessionState, app: Application) -> list[Device]:
     return reopen
 
 
-def restore_panels(state: SessionState, app: Application, window: MainWindow) -> None:
+def restore_panels(state: ScreenState, app: Application, window: MainWindow) -> None:
     for row in state.views:
         try:
             panel = data_panel_registry.get(row.key)(app.library, app.requests)
@@ -84,23 +95,22 @@ def restore_panels(state: SessionState, app: Application, window: MainWindow) ->
 def apply(state: SessionState, app: Application, window: MainWindow) -> None:
     """Rebuild the live application from a saved session. A device or panel
     type that no longer exists is skipped rather than blocking launch."""
+    working, screen = state.working, state.screen
     window.clear_panels()
     app.inventory.clear()
-    reopen = restore_devices(state, app)
-    restore_panels(state, app, window)
+    reopen = restore_devices(working, app)
+    restore_panels(screen, app, window)
     for device in reopen:
         window.device_docks.open(device)
-    app.acquisition.load_params_state(state.param_blocks)
-    app.acquisition.set_save(
-        name=state.save.name, directory=state.save.directory, enabled=state.save.enabled
+    app.inputs.clear()
+    app.inputs.load_dict(working.program_inputs)
+    app.runs.set_save(
+        name=working.save.name, directory=working.save.directory, enabled=working.save.enabled
     )
-    app.library.set_auto_purge(state.library.auto_purge)
-    key = state.selected_program
-    app.acquisition.select_program(
-        key if key in program_registry.entries else program_registry.keys()[0]
-    )
+    app.library.set_auto_purge(working.library.auto_purge)
+    window.restore_fixed_panel_states(screen.panels)
     # Every dock exists now; the saved layout goes on last.
-    window.restore_dock_layout(state.ads_layout)
+    window.restore_dock_layout(screen.ads_layout)
 
 
 def seed_defaults(app: Application) -> None:

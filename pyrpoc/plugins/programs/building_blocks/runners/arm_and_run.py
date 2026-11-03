@@ -6,7 +6,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from pyrpoc.core.input_requests import PixelPick
-from pyrpoc.core.program_inputs import BlockMap, ParameterError
+from pyrpoc.core.program_inputs import ParameterError, ProgramInputs
 from pyrpoc.core.runner import Runner, RunnerContext, Toggle
 
 
@@ -15,9 +15,9 @@ class ArmAndRun(Runner):
     """Arm, ask the panels for a pixel, write it into the parameters with
     ``apply``, then run."""
 
-    # The program's half: writes the pixel into the blocks, raising
+    # The program's half: writes the pixel into the program inputs, raising
     # ``ParameterError`` when the pixel cannot be placed.
-    apply: Callable[[PixelPick, BlockMap], None]
+    apply: Callable[[PixelPick, ProgramInputs], None]
     label: str
     icon: str | None
     tooltip: str
@@ -41,11 +41,10 @@ class ArmAndRun(Runner):
             if pick is None:
                 return
             try:
-                self.apply(pick, ctx.params)
+                self.apply(pick, ctx.inputs)
             except ParameterError as exc:
                 ctx.status(str(exc))
                 return
-            ctx.params_written()
             ctx.execute()
 
         def on_run_started() -> None:

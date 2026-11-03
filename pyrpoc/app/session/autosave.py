@@ -9,7 +9,6 @@ from PyQt6.QtCore import QObject, QTimer
 
 from pyrpoc.app.application import Application
 from pyrpoc.app.window import MainWindow
-from pyrpoc.plugins.programs import program_registry
 
 from .file import SaveState, SessionFile
 from .restore import apply, capture, seed_defaults
@@ -33,7 +32,7 @@ class Autosave(QObject):
         self.timer.timeout.connect(self.save_now)
 
         app.state_changed.connect(self.schedule)
-        window.panels_changed.connect(self.schedule)
+        window.screen_changed.connect(self.schedule)
         app.inventory.changed.connect(self.schedule)
 
     def schedule(self) -> None:
@@ -64,10 +63,10 @@ class Autosave(QObject):
         try:
             self.window.clear_panels()
             self.app.inventory.clear()
-            self.app.acquisition.blocks.clear()
-            self.app.acquisition.set_save(name=SaveState().name, directory="", enabled=False)
+            self.app.inputs.clear()
+            self.app.runs.set_save(name=SaveState().name, directory="", enabled=False)
             seed_defaults(self.app)
-            self.app.acquisition.select_program(program_registry.keys()[0])
+            self.window.restore_fixed_panel_states({})
         finally:
             self.suspended = False
         self.save_now()

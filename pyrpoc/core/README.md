@@ -50,7 +50,7 @@ Everything the software does is this loop:
 |---|---|
 | **ProgramInput** | The declaration of one value a program reads, like dwell time or a mask. It has a key, a label, a default and rules for valid values. **The same key means the same value in every program that declares it.** That's how a setting carries across modality changes. *(From phase 5: today one field of a parameter block, keyed by its dotted path such as `ScanGroup.dwell_us`.)* |
 | **InputSection** | A labelled list of program inputs. Purely layout: how a panel groups a program's inputs on screen. *(From phase 5: today `Section`, one per parameter block.)* |
-| **ProgramInputs** | The collection of current values for every program input, by key. Any panel may read it, set a value (validated by the input's rules) or subscribe. It's saved in the session, and a run's values go into its recording. *(From phase 4: today `BlockStore`, held by the acquisition.)* |
+| **ProgramInputs** | The collection of current values for every program input, by key. Any panel may read it, set a value (validated by the input's rules) or subscribe. It's saved in the session, and a run's values go into its recording. The app's one collection is `ProgramInputsStore` (`engine/acquisition/program_inputs.py`). *(Keyed by `<Block>.<field>` until phase 5.)* |
 | **InputRequest** | A panel or runner asking for a value of one type that another panel can supply. Whichever supplying panel the user acts in answers it. There's no storage: it's a question with one answer. The app keeps the open requests (`app/input_requests.py`), at most one per type, and hands them to every panel and runner. |
 | **PixelPick** | The value a click on an image supplies: the program output clicked on, plus `x` and `y` in its pixels. |
 | **Mask** | A drawn region, as a program input value. The Mask Editor supplies it; ROI and Modulation inputs hold it. *(From phase 6: today a `Mask` is data in the Library.)* |
@@ -69,7 +69,7 @@ Everything the software does is this loop:
 
 | Noun | Definition |
 |---|---|
-| **Panel** | A dock widget: something the user sees and acts in. It reads the collections, calls their operations, and may answer input requests for the types it `supplies`. **The Acquisition panel is one.** *(The Acquisition panel becomes an ordinary panel in phase 4.)* |
+| **Panel** | A dock widget: something the user sees and acts in. It reads the collections, calls their operations, and may answer input requests for the types it `supplies`. **The Acquisition panel is one.** |
 | **DataPanel** | A panel that shows one program output of the kind it `renders`, chosen with a source dropdown. |
 
 ## The rules
@@ -79,10 +79,9 @@ Everything the software does is this loop:
 2. **Panels never call programs, and programs never call panels.** They meet
    only through ProgramInputs, InputRequests and the Library.
 3. **Every panel is equal.** None is special in code. The app hands each
-   panel the collections it needs. *(From phase 4: today the Acquisition
-   panel is wired in specially.)*
+   panel the collections it needs.
 4. **Working state and screen state are separate.** The session saves them
-   separately. *(From phase 4.)*
+   separately.
 
 ## The files
 
@@ -92,7 +91,7 @@ Everything the software does is this loop:
 | `device.py` | `Device` + `device_registry` |
 | `program.py` | `Program`, `RunContext` + `program_registry` |
 | `runner.py` | `Runner`, `RunnerContext`, `Control`, `Button`, `Toggle` |
-| `program_inputs.py` | The value rules (int, float, choice, ...), `Editor`, `FieldContext`. *(Today also parameter blocks: `Group`, `BlockStore`, `BlockMap`, `block_registry`. `ProgramInput` from phase 5, the `ProgramInputs` protocol from phase 4.)* |
+| `program_inputs.py` | The value rules (int, float, choice, ...), `Editor`, `FieldContext`. `ProgramInputs` (protocol). *(Today also parameter blocks: `Group`, `BlockMap`, `block_registry`. `ProgramInput` from phase 5.)* |
 | `input_section.py` | `Section` *(`InputSection` from phase 5)* |
 | `input_requests.py` | `InputRequest`, `InputRequests` (protocol), `PixelPick` |
 | `mask.py` | `Mask`, as a program input value *(from phase 6)* |

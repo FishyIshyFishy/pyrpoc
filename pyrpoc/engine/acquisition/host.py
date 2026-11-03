@@ -4,19 +4,17 @@ its own ``RunnerSession``, and drops them again when another is selected."""
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import TYPE_CHECKING, Any, TypeVar
+from typing import Any, TypeVar
 
 from PyQt6.QtCore import QObject, pyqtSignal
 
-from pyrpoc.core.input_requests import InputRequest
+from pyrpoc.core.input_requests import InputRequest, InputRequests
 from pyrpoc.core.program import Program
-from pyrpoc.core.program_inputs import BlockMap
+from pyrpoc.core.program_inputs import ProgramInputs
 from pyrpoc.core.runner import Control, RunnerContext
 from pyrpoc.engine.acquisition.executor import Run
 from pyrpoc.engine.acquisition.recording import Series
-
-if TYPE_CHECKING:  # pragma: no cover
-    from .model import Acquisition
+from pyrpoc.engine.acquisition.runs import Runs
 
 T = TypeVar("T")
 
@@ -56,19 +54,14 @@ class RunnerSession(RunnerContext):
     def close_series(self) -> None:
         series, self.series = self.series, None
         if series is not None:
-            self.host.acquisition.events.end_series(series)
+            self.host.runs.events.end_series(series)
 
     def on_run_ended(self, callback: Callable[[bool], None]) -> None:
         self.ended.append(callback)
 
     @property
-    def params(self) -> BlockMap:
-        return self.host.acquisition.blocks.for_program(self.program.params)
-
-    def params_written(self) -> None:
-        if not self.closed:
-            self.host.acquisition.params_written.emit()
-            self.host.acquisition.edited.emit()
+    def inputs(self) -> ProgramInputs:
+        return self.host.inputs
 
     @property
     def awaiting(self) -> bool:
@@ -80,13 +73,13 @@ class RunnerSession(RunnerContext):
             on_answer(None)
             return
         self.cancel_request()
-        self.pending = self.host.acquisition.requests.request(kind, prompt, on_answer)
+        self.pending = self.host.requests.request(kind, prompt, on_answer)
         self.host.status.emit(prompt)
 
     def cancel_request(self) -> None:
         pending, self.pending = self.pending, None
         if pending is not None:
-            self.host.acquisition.requests.cancel(pending)
+            self.host.requests.cancel(pending)
 
     def add_control(self, control: Control) -> None:
         if self.closed:
@@ -98,7 +91,7 @@ class RunnerSession(RunnerContext):
         self.host.status.emit(text)
 
     def blockers(self) -> list[str]:
-        return self.host.acquisition.blockers()
+        return self.host.runs.blockers(self.key)
 
     def claim(self, run: Run) -> None:
         """Record a run this slot started, then tell its runners."""
@@ -122,15 +115,16 @@ class RunnerHost(QObject):
     controls_changed = pyqtSignal()
     status = pyqtSignal(str)
 
-    def __init__(self, acquisition: Acquisition):
-        super().__init__(acquisition)
-        self.acquisition = acquisition
+    def __init__(self, runs: Runs, inputs: ProgramInputs, requests: InputRequests, parent: QObject):
+        super().__init__(parent)
+        self.runs = runs
+        self.inputs = inputs
+        self.requests = requests
         self.slot: RunnerSession | None = None
 
-        acquisition.events.run_failed.connect(self.note_failure)
-        acquisition.events.run_finished.connect(self.forget)
-        acquisition.inventory.changed.connect(self.check_request_blockers)
-        acquisition.save_changed.connect(self.check_request_blockers)
+        runs.events.run_failed.connect(self.note_failure)
+        runs.events.run_finished.connect(self.forget)
+        runs.readiness_changed.connect(self.check_request_blockers)
 
     @property
     def controls(self) -> list[Control]:
@@ -169,16 +163,7 @@ class RunnerHost(QObject):
 
     def start(self, slot: RunnerSession) -> None:
         """Start ``slot``'s program with what the workbench holds right now."""
-        acquisition = self.acquisition
-        acquisition.events.start(
-            slot.program(),
-            slot.key,
-            acquisition.blocks,
-            acquisition.inventory.devices,
-            acquisition.save,
-            slot.series,
-            slot.claim,
-        )
+        self.runs.start(slot.key, slot.series, slot.claim)
 
     def stop(self) -> None:
         """Stop every run the selected program's runners started."""
@@ -202,7 +187,7 @@ class RunnerHost(QObject):
         slot = self.slot
         if slot is None or not slot.awaiting:
             return
-        missing = self.acquisition.blockers()
+        missing = self.runs.blockers(slot.key)
         if missing:
             slot.cancel_request()
             self.status.emit("needs " + ", ".join(missing))

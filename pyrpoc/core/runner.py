@@ -8,7 +8,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import ClassVar, TypeVar
 
-from pyrpoc.core.program_inputs import BlockMap
+from pyrpoc.core.program_inputs import ProgramInputs
 
 T = TypeVar("T")
 
@@ -121,12 +121,8 @@ class RunnerContext(ABC):
 
     @property
     @abstractmethod
-    def params(self) -> BlockMap:
-        """The selected program's parameter blocks."""
-
-    @abstractmethod
-    def params_written(self) -> None:
-        """Announce that ``params`` was changed outside the form."""
+    def inputs(self) -> ProgramInputs:
+        """The program inputs, which a runner may set."""
 
     @abstractmethod
     def request(self, kind: type[T], prompt: str, on_answer: Callable[[T | None], None]) -> None:

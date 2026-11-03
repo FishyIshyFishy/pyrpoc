@@ -3,10 +3,10 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Iterable, Iterator, Mapping
 from dataclasses import dataclass, fields, replace
 from dataclasses import field as dc_field
-from typing import TYPE_CHECKING, Any, ClassVar, TypeVar
+from typing import TYPE_CHECKING, Any, ClassVar, Protocol, TypeVar
 
 from pyrpoc.core.registry import Registry
 
@@ -248,44 +248,23 @@ def block_name(block_or_cls: Any) -> str:
     return cls.__name__
 
 
-class BlockStore:
-    """Every parameter block, one instance per class, shared by every program
-    that declares it."""
+class ProgramInputs(Protocol):
+    """The current value of every program input, by key."""
 
-    def __init__(self) -> None:
-        self._blocks: dict[type, Group] = {}
+    def get(self, key: str) -> Any:
+        """The current value, which is the input's default until one is set."""
+        ...
 
-    def get(self, cls: type[B]) -> B:
-        """The instance for ``cls``, created at defaults on first request."""
-        if cls not in self._blocks:
-            self._blocks[cls] = cls()
-        return instance_of(self._blocks[cls], cls)
+    def set(self, key: str, value: Any) -> None:
+        """Check ``value`` against the input's rules, store it and tell every
+        subscriber. Raises ``ParameterError`` for a value the rules refuse."""
+        ...
 
-    def for_program(self, declared: Sequence[type[Group]]) -> BlockMap:
-        return BlockMap({cls: self.get(cls) for cls in declared})
+    def subscribe(self, callback: Callable[[str], None]) -> None:
+        """Call ``callback(key)`` after every change."""
+        ...
 
-    def to_dict(self, only: Sequence[type[Group]] | None = None) -> dict[str, Any]:
-        classes = list(only) if only is not None else list(self._blocks)
-        return {block_name(cls): encode_block(self.get(cls)) for cls in classes}
-
-    def load_dict(self, raw: Mapping[str, dict[str, Any]], registry: Mapping[str, type]) -> None:
-        """Fill the store from a saved state dict, skipping unknown names and
-        resetting blocks that fail to decode."""
-        for name, values in raw.items():
-            cls = registry.get(name)
-            if cls is None:
-                continue
-            try:
-                self._blocks[cls] = decode_block(cls, values)
-            except ParameterError:
-                self._blocks[cls] = cls()
-
-    def validate(self, classes: Sequence[type[Group]]) -> None:
-        for cls in classes:
-            validate_block(self.get(cls))
-
-    def clear(self) -> None:
-        self._blocks.clear()
+    def unsubscribe(self, callback: Callable[[str], None]) -> None: ...
 
 
 class BlockMap(Mapping):
@@ -312,26 +291,12 @@ class BlockMap(Mapping):
         return f"BlockMap({sorted(block_name(c) for c in self._blocks)})"
 
 
-def index(blocks: Sequence[Group]) -> dict[str, Group]:
-    """``{"ScanGroup": <instance>}``, what a dotted path resolves against."""
-    return {block_name(block): block for block in blocks}
-
-
 def split_path(path: str) -> tuple[str, str]:
+    """``"ScanGroup.dwell_time_us"`` as its block name and field name."""
     name, _, attr = path.partition(".")
     if not attr:
         raise KeyError(f"{path!r} is not a <Block>.<field> path")
     return name, attr
-
-
-def get_path(lookup: Mapping[str, Group], path: str) -> Any:
-    name, attr = split_path(path)
-    return getattr(lookup[name], attr)
-
-
-def set_path(lookup: Mapping[str, Group], path: str, value: Any) -> None:
-    name, attr = split_path(path)
-    setattr(lookup[name], attr, value)
 
 
 def encode_block(block: Any) -> dict[str, Any]:
