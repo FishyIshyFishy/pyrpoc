@@ -14,6 +14,7 @@ from pyrpoc.core.pixel_pick import PixelPick
 from pyrpoc.core.program_inputs import (
     Editor,
     Field,
+    FieldValues,
     ParameterError,
     declare,
 )
@@ -38,12 +39,11 @@ class Point:
     @classmethod
     def from_pick(cls, pick: PixelPick) -> Point:
         """The position the picked pixel was measured at."""
-        # From the clicked image's provenance, not the current inputs, which may
-        # have been edited since the image was taken.
-        image = pick.output
-        scan = ScanGeometry.from_parameters(image.provenance.parameters, image.label)
+        # From the clicked image's inputs, not the current ones, which may have been edited
+        # since the image was taken.
+        scan = ScanGeometry.from_parameters(pick.parameters, pick.source_label)
         fast_v, slow_v = scan.voltage_at(pick.x, pick.y)
-        return cls(fast_v, slow_v, image.id, image.label, pick.x, pick.y)
+        return cls(fast_v, slow_v, pick.source_id, pick.source_label, pick.x, pick.y)
 
     @property
     def picked(self) -> bool:
@@ -171,20 +171,14 @@ class PointField(Field):
     # ``coerce`` takes a live ``Point`` as well as JSON, since every value is re-checked before a
     # run.
 
-    accepts = PixelPick
-
     def coerce(self, value: Any) -> Point:
         return Point.from_value(value)
 
     def encode(self, value: Point) -> Any:
         return value.to_dict()
 
-    def place(self, value: Point, slot: str, item: PixelPick) -> Point:
-        """The position the picked pixel was measured at."""
-        del value, slot
-        return Point.from_pick(item)
-
-    def editor(self, parent: Any) -> Editor:
+    def editor(self, parent: Any, values: FieldValues) -> Editor:
+        del values
         picker = PointPicker(parent)
         return Editor(
             picker,
@@ -200,11 +194,7 @@ class PointField(Field):
 # the detector are configured independently.
 TARGET = declare(
     "point.target",
-    PointField(
-        "Target",
-        "Galvo position to park at. Type volts, or click a pixel in an image panel whose "
-        "'Click sets' is Target",
-    ),
+    PointField("Target", "Galvo position to park at. Pick it off an image, or type volts directly"),
     Point(),
 )
 

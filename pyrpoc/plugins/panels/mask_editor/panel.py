@@ -1,7 +1,9 @@
-"""The Mask Editor: draw a mask over an acquired image, straight into a mask input."""
+"""The Mask Editor: draw masks over an acquired image. It holds the list of drawn masks,
+which programs read."""
 
 from __future__ import annotations
 
+import itertools
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
@@ -20,7 +22,6 @@ from PyQt6.QtWidgets import (
     QHeaderView,
     QLabel,
     QLayout,
-    QLineEdit,
     QMenu,
     QMessageBox,
     QPushButton,
@@ -33,17 +34,17 @@ from PyQt6.QtWidgets import (
 
 from pyrpoc.core.data import Image
 from pyrpoc.core.library import Library
-from pyrpoc.core.mask import Mask
+from pyrpoc.core.mask import MASKS, Mask
 from pyrpoc.core.panels import DataPanel, data_panel_registry
 from pyrpoc.core.program_inputs import ProgramInputs
 from pyrpoc.core.program_output import ProgramOutput
 from pyrpoc.plugins.panels.mask_editor.range_slider import RangeSlider
 from pyrpoc.plugins.panels.mask_editor.transforms import normalize_channels
-from pyrpoc.shared.widgets.input_target import InputTargetCombo
 from pyrpoc.shared.widgets.table import horizontal_header, vertical_header
 
 from .canvas import MaskImageView, MaskRoi, Threshold
 from .dialog import RoiThresholdDialog
+from .mask_table import MaskTable
 
 CHANNEL_COLORS = tuple(
     np.array(rgb, dtype=np.float32)
@@ -71,8 +72,8 @@ def write_mask(path: str, mask: np.ndarray) -> Path:
 
 @data_panel_registry.register("mask_editor")
 class MaskEditorPanel(DataPanel[Image]):
-    """Draw thresholded polygon ROIs over an acquired image. The mask they make is written
-    into the chosen mask input after every edit."""
+    """Draw thresholded polygon ROIs over an acquired image, one set per mask. Every edit
+    rewrites the mask being drawn in the drawn masks, which programs read."""
 
     display_name = "Mask editor"
     group = "Mask editors"
@@ -88,12 +89,16 @@ class MaskEditorPanel(DataPanel[Image]):
             "#maskEditorRoot QGraphicsView, #maskEditorRoot QTableWidget"
             " { background: transparent; }"
         )
+        # The ROIs of each mask, by id, and the mask being drawn on: "" until one is chosen.
+        self.drafts: dict[str, list[MaskRoi]] = {}
+        self.current = ""
         self._rois: list[MaskRoi] = []
         self.apply_new_data(None)
 
         column = QVBoxLayout(self.body)
         column.addLayout(self.build_channels_row())
         column.addLayout(self.build_threshold_row())
+        column.addLayout(self.build_masks_box())
         self.scene = QGraphicsScene(self)
         self.image_item = QGraphicsPixmapItem()
         self.scene.addItem(self.image_item)
@@ -102,12 +107,13 @@ class MaskEditorPanel(DataPanel[Image]):
         column.addWidget(self.image_view, 1)
         self.roi_table = self.build_roi_table()
         column.addWidget(self.roi_table)
-        column.addLayout(self.build_name_row())
         column.addLayout(self.build_button_row())
 
         self.rebuild_channel_boxes()
         self.reset_threshold_controls()
         self.update_view_image()
+        inputs.subscribe(self.on_input_changed)
+        self.show_masks()
         self.connect_source()
 
     def build_channels_row(self) -> QHBoxLayout:
@@ -153,28 +159,71 @@ class MaskEditorPanel(DataPanel[Image]):
         self.enable_threshold_controls(checked)
         self.update_view_image()
 
-    def build_name_row(self) -> QHBoxLayout:
+    def build_masks_box(self) -> QVBoxLayout:
+        """The drawn masks, with New and Delete; the selected one is the one drawn on."""
+        box = QVBoxLayout()
         row = QHBoxLayout()
-        row.addWidget(QLabel("Draw into:", self))
-        self.target_combo = InputTargetCombo(Mask, self.inputs, self)
-        self.target_combo.setToolTip(
-            "The mask input this editor writes. Every ROI you add, delete or re-threshold "
-            "updates it at once."
-        )
-        self.target_combo.chosen.connect(self.on_target_chosen)
-        row.addWidget(self.target_combo, 1)
-        row.addWidget(QLabel("Name:", self))
-        self.name_edit = QLineEdit(self)
-        self.name_edit.setPlaceholderText("what this mask is of")
-        self.name_edit.editingFinished.connect(self.put_mask)
-        row.addWidget(self.name_edit, 1)
-        return row
+        row.addWidget(QLabel("Masks:", self))
+        new_btn = QPushButton("New mask", self)
+        new_btn.setToolTip("Start another mask; drawing with none selected starts one too")
+        new_btn.clicked.connect(self.new_mask)
+        delete_btn = QPushButton("Delete mask", self)
+        delete_btn.clicked.connect(self.delete_mask)
+        row.addWidget(new_btn)
+        row.addWidget(delete_btn)
+        row.addStretch(1)
+        box.addLayout(row)
+        self.mask_table = MaskTable(self)
+        self.mask_table.chosen.connect(self.choose_mask)
+        self.mask_table.renamed.connect(self.rename_mask)
+        box.addWidget(self.mask_table)
+        return box
 
-    def on_target_chosen(self) -> None:
-        # Only with ROIs drawn: choosing an input must not wipe the mask it already holds.
-        if self._rois:
-            self.put_mask()
+    def masks(self) -> tuple[Mask, ...]:
+        return self.inputs.get(MASKS.key)
+
+    def show_masks(self) -> None:
+        self.mask_table.show_masks(self.masks(), self.current)
+
+    def on_input_changed(self, key: str) -> None:
+        """Follow the drawn masks, which another Mask Editor may have changed."""
+        if key != MASKS.key:
+            return
+        ids = {mask.id for mask in self.masks()}
+        self.drafts = {mask_id: rois for mask_id, rois in self.drafts.items() if mask_id in ids}
+        if self.current and self.current not in ids:
+            self.choose_mask("")
+        self.show_masks()
+
+    def choose_mask(self, mask_id: str) -> None:
+        """Draw on mask ``mask_id`` from now on; "" draws on none until an ROI starts one."""
+        self.current = mask_id
+        self._rois = self.drafts.setdefault(mask_id, []) if mask_id else []
+        self.sync_rois()
         self.state_changed.emit()
+
+    def new_mask(self) -> None:
+        """Add an empty mask on the image's grid, and draw on it."""
+        mask = Mask(np.zeros((self._h, self._w), dtype=np.uint8), self.free_label(), Mask.new_id())
+        # Chosen before it is written, so the table selects it when it hears of it.
+        self.drafts[mask.id] = []
+        self.choose_mask(mask.id)
+        self.inputs.set(MASKS.key, (*self.masks(), mask))
+
+    def free_label(self) -> str:
+        taken = {mask.label for mask in self.masks()}
+        return next(f"mask {n}" for n in itertools.count(1) if f"mask {n}" not in taken)
+
+    def delete_mask(self) -> None:
+        gone = self.current
+        if gone:
+            self.inputs.set(MASKS.key, tuple(mask for mask in self.masks() if mask.id != gone))
+
+    def rename_mask(self, mask_id: str, label: str) -> None:
+        masks = self.masks()
+        self.inputs.set(
+            MASKS.key, tuple(replace(m, label=label) if m.id == mask_id else m for m in masks)
+        )
 
     def build_button_row(self) -> QHBoxLayout:
         row = QHBoxLayout()
@@ -268,9 +317,13 @@ class MaskEditorPanel(DataPanel[Image]):
         self.reset_to(None)
 
     def reset_to(self, scaled: np.ndarray | None) -> None:
-        """Start over on ``scaled``: no ROIs, fresh channels and thresholds."""
+        """Start over on ``scaled``: fresh channels and thresholds, keeping only the ROIs of
+        masks drawn on a grid of its shape."""
+        # An ROI is in pixels of the image it was drawn on, so on another grid it is misplaced.
         self.apply_new_data(scaled)
-        self._rois.clear()
+        on_grid = {m.id for m in self.masks() if m.array.shape == (self._h, self._w)}
+        self.drafts = {mask_id: rois for mask_id, rois in self.drafts.items() if mask_id in on_grid}
+        self._rois = self.drafts.setdefault(self.current, []) if self.current else []
         self.sync_rois()
         self.rebuild_channel_boxes()
         self.reset_threshold_controls()
@@ -336,6 +389,8 @@ class MaskEditorPanel(DataPanel[Image]):
         points, which is not a region."""
         if len(points) < 3:
             return
+        if not self.current:
+            self.new_mask()
         threshold = None
         if self.apply_thresholds.isChecked():
             low, high = self.coerced_thresholds()
@@ -432,24 +487,35 @@ class MaskEditorPanel(DataPanel[Image]):
         dlg.exec()
 
     def put_mask(self) -> None:
-        """Write the drawn mask into the chosen input; no ROIs leaves it empty."""
+        """Rewrite the mask being drawn from its ROIs; with none, it is left empty."""
         # Called on the user's edits only, never on a new frame, so a live run's frames do not
-        # rewrite the input under it.
-        target = self.target_combo.target
-        if target is None:
-            return
-        mask = self.generate_mask(self._rois)
-        target.put(self.inputs, None if mask is None else Mask(mask, self.name_edit.text().strip()))
+        # rewrite the masks under it.
+        drawn = self.generate_mask(self._rois)
+        array = np.zeros((self._h, self._w), dtype=np.uint8) if drawn is None else drawn
+        masks = self.masks()
+        self.inputs.set(
+            MASKS.key, tuple(replace(m, array=array) if m.id == self.current else m for m in masks)
+        )
 
     def detach(self) -> None:
         super().detach()
-        self.target_combo.detach()
+        self.inputs.unsubscribe(self.on_input_changed)
 
     def export_persistence_state(self) -> dict[str, Any]:
-        return {"target": self.target_combo.export_state()}
+        rois = {mask_id: [roi.to_dict() for roi in rois] for mask_id, rois in self.drafts.items()}
+        return {"current": self.current, "rois": rois}
 
     def import_persistence_state(self, state: dict[str, Any]) -> None:
-        self.target_combo.import_state(state.get("target"))
+        """Take each mask's ROIs and the mask being drawn from session JSON, skipping ROIs
+        that are malformed or belong to a mask that is gone."""
+        ids = {mask.id for mask in self.masks()}
+        saved = state.get("rois")
+        for mask_id, rows in saved.items() if isinstance(saved, dict) else ():
+            if mask_id in ids and isinstance(rows, list):
+                self.drafts[mask_id] = list(filter(None, map(saved_roi, rows)))
+        current = state.get("current")
+        self.choose_mask(current if current in ids else "")
+        self.show_masks()
 
     def save_mask(self) -> None:
         mask = self.generate_mask(self._rois)
@@ -468,6 +534,14 @@ class MaskEditorPanel(DataPanel[Image]):
             QMessageBox.critical(self, "Save Failed", f"Failed to save mask to {path}: {exc}")
             return
         QMessageBox.information(self, "Mask Saved", f"Wrote a mask to {written}.")
+
+
+def saved_roi(raw: Any) -> MaskRoi | None:
+    """An ROI from session JSON, or None for one that is malformed."""
+    try:
+        return MaskRoi.from_dict(raw)
+    except ValueError:
+        return None
 
 
 def mask_from_rois(rois: list[MaskRoi], data: np.ndarray) -> np.ndarray:

@@ -63,25 +63,27 @@ def centre_rectangle(scan: ScanGeometry, fraction: float) -> np.ndarray:
 def roi_region(roi: ScanRegion, scan: ScanGeometry) -> np.ndarray:
     """The region as booleans on the scan grid, which must be one 8-connected area."""
     # One area, so its rows are consecutive and the slow axis never jumps a gap.
-    if roi.mask is None:
+    if not roi.masks:
         region = centre_rectangle(scan, roi.center_fraction)
     else:
-        region = roi.mask.on_grid(scan.y_pixels, scan.x_pixels)
+        # Every drawn mask together, so a region drawn as several shapes is still one region.
+        region = np.logical_or.reduce([m.on_grid(scan.y_pixels, scan.x_pixels) for m in roi.masks])
     # The count includes the background's label.
     labels, _ = cv2.connectedComponents(region.astype(np.uint8), connectivity=8)
     if labels < 2:
         raise ParameterError("the region has no pixels on the scan grid")
     if labels > 2:
         raise ParameterError(
-            f"the region must be one connected area, found {labels - 1}; a mask drawn "
-            "with Apply thresholds on keeps only in-range pixels, which can split it"
+            f"the region must be one connected area, found {labels - 1}; the drawn masks "
+            "are scanned together, and a mask drawn with Apply thresholds on keeps only "
+            "in-range pixels, which can split it"
         )
     return region
 
 
 def region_source(roi: ScanRegion) -> str:
     """What the region was drawn from, for the recording."""
-    return "center" if roi.mask is None else roi.mask.describe()
+    return ", ".join(mask.describe() for mask in roi.masks) or "center"
 
 
 def row_spans(region: np.ndarray) -> list[RowSpan]:

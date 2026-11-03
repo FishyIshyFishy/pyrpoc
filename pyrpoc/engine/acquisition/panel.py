@@ -155,8 +155,11 @@ class AcquisitionPanel(Panel):
 
     def on_input_changed(self, key: str) -> None:
         """Show a value set elsewhere, such as a mask drawn in a Mask Editor."""
+        del key
+        # Every field, not just ``key``'s: an editor may show other inputs beside its own, as
+        # Modulation's lines show the drawn masks.
         if self.form is not None:
-            self.form.show_value(key)
+            self.form.reload()
 
     def blockers(self) -> list[str]:
         """What the shown program still needs before it can run."""

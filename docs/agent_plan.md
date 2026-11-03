@@ -16,7 +16,7 @@ spec: code-level detail comes later, from an agent working off the finished
 - **No speculative options.** Every input, field and argument exists because
   something reads it.
 - **Words come from `pyrpoc/core/README.md`:** Program, Run, ProgramInputs,
-  InputTarget, Data, ProgramOutput, Library, Recording, Panel, DataPanel.
+  Data, ProgramOutput, Library, Recording, Panel, DataPanel.
 - **Simulation** exists only under `uv run pyrpoc --simulated`, in
   `plugins/programs/simulated/` (and `plugins/devices/simulated/`), registered
   from `register()`.
@@ -281,7 +281,7 @@ is the core of this phase.
 - [ ] **Panels to loop: the open problem.**
   - Today a panel reaches a program only through program inputs, frozen when
     a run starts, so nothing reaches a run that is already going. (Runners
-    already watch program inputs between runs, as Run on pick does.)
+    already watch program inputs between runs, as arm and run does.)
   - Leaning: **live program inputs**, which a run re-reads between steps.
     That fits the flow in `core/README.md` without a new channel.
   - Decide: which inputs are live, how a run notices a change safely across
@@ -314,8 +314,8 @@ is the core of this phase.
   - or the Map gets its own way to show two sources.
 - [ ] **Drawing units** (if drawn by hand):
   - editable before a loop, read-only during one;
-  - Leaning: a units input `accepts` a drawn unit, and the Map draws into
-    it through an `InputTarget`, as the Mask Editor draws a `Mask`;
+  - Leaning: the Map holds the drawn units in one program input declared in
+    core beside `Unit`, as the Mask Editor holds `MASKS`;
   - share the drawing canvas with the Mask Editor.
 
 ### 2.3 The Experiment table

@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
-from typing import Any, ClassVar, Generic, Protocol, TypeVar
+from typing import Any, Generic, Protocol, TypeVar
 
 
 class ParameterError(Exception):
@@ -16,8 +16,6 @@ class ParameterError(Exception):
 class Field:
     label: str
     tooltip: str = ""
-    # The kind of value a panel can put into this input, like a drawn ``Mask``.
-    accepts: ClassVar[type | None] = None
 
     def coerce(self, value: Any) -> Any:
         raise NotImplementedError
@@ -30,20 +28,17 @@ class Field:
         """JSON-safe -> value, raising ``ParameterError`` on bad input."""
         return self.coerce(raw)
 
-    def editor(self, parent: Any) -> Editor | None:
-        """A custom widget for this field, or None for the form's default."""
-        del parent
+    def editor(self, parent: Any, values: FieldValues) -> Editor | None:
+        """A custom widget for this field, or None for the form's default. ``values`` is the
+        form's, for an editor that shows other fields' values beside its own."""
+        del parent, values
         return None
 
-    def slots(self, value: Any) -> tuple[str, ...]:
-        """The places in ``value`` an accepted item can go; one, the whole value, by default."""
-        del value
-        return ("",)
 
-    def place(self, value: Any, slot: str, item: Any) -> Any:
-        """``value`` with ``item`` put at ``slot``; by default ``item`` replaces it."""
-        del value, slot
-        return item
+class FieldValues(Protocol):
+    """The values a form shows, by key."""
+
+    def get(self, key: str) -> Any: ...
 
 
 @dataclass
@@ -265,31 +260,3 @@ class ProgramInputs(Protocol):
         ...
 
     def unsubscribe(self, callback: Callable[[str], None]) -> None: ...
-
-
-@dataclass(frozen=True)
-class InputTarget:
-    """One place a panel can put a value: one slot of one program input."""
-
-    program_input: ProgramInput[Any]
-    slot: str
-
-    @property
-    def label(self) -> str:
-        rule = self.program_input.rule
-        return f"{rule.label}: {self.slot}" if self.slot else rule.label
-
-    def put(self, inputs: ProgramInputs, item: Any) -> None:
-        """Set the input to its current value with ``item`` placed in this slot."""
-        key = self.program_input.key
-        inputs.set(key, self.program_input.rule.place(inputs.get(key), self.slot, item))
-
-
-def targets_for(kind: type, inputs: ProgramInputs) -> list[InputTarget]:
-    """Every slot of every declared program input that accepts a ``kind``."""
-    return [
-        InputTarget(each, slot)
-        for each in program_input_registry.values()
-        if each.rule.accepts is kind
-        for slot in each.rule.slots(inputs.get(each.key))
-    ]

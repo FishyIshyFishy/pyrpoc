@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import random
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from PyQt6.QtCore import QPointF, Qt
 from PyQt6.QtGui import QColor, QMouseEvent, QPainter, QPainterPath, QPen, QWheelEvent
@@ -34,6 +34,36 @@ class MaskRoi:
 
     points: list[tuple[float, float]]
     threshold: Threshold | None
+
+    def to_dict(self) -> dict[str, Any]:
+        threshold = self.threshold
+        return {
+            "points": [list(point) for point in self.points],
+            "threshold": None
+            if threshold is None
+            else {
+                "low": threshold.low,
+                "high": threshold.high,
+                "channels": threshold.active_channels,
+            },
+        }
+
+    @classmethod
+    def from_dict(cls, raw: Any) -> MaskRoi:
+        """An ROI from ``to_dict``'s JSON, raising ``ValueError`` if it is not one."""
+        try:
+            points = [(float(x), float(y)) for x, y in raw["points"]]
+            saved = raw["threshold"]
+            threshold = (
+                None
+                if saved is None
+                else Threshold(
+                    float(saved["low"]), float(saved["high"]), [bool(c) for c in saved["channels"]]
+                )
+            )
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ValueError(f"not a saved ROI: {exc}") from exc
+        return cls(points, threshold)
 
 
 class MaskImageView(QGraphicsView):
