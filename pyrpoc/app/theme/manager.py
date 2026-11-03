@@ -1,45 +1,25 @@
 from __future__ import annotations
 
 import re
+from pathlib import Path
 
-from PyQt6.QtCore import QFile, QSettings, QTextStream
+from PyQt6.QtCore import QFile, QSettings, QStandardPaths, QTextStream
 from PyQt6.QtGui import QColor, QPalette
 from PyQt6.QtWidgets import QApplication
 
 from . import breeze_all
+from .mcolors import MCOLORS, MColor, recolor
 
 _SETTINGS_ORG = "pyrpoc"
 _SETTINGS_APP = "pyrpoc"
 _SETTINGS_KEY_THEME_MODE = "ui/theme_mode"
-DEFAULT_THEME = "dark-pink"
-available_breeze_themes = [
-    "dark-blue",
-    "dark-blue-alt",
-    "dark-cyan",
-    "dark-cyan-alt",
-    "dark-green",
-    "dark-green-alt",
-    "dark-pink",
-    "dark-pink-alt",
-    "dark-purple",
-    "dark-purple-alt",
-    "dark-red",
-    "dark-red-alt",
-    "light-blue",
-    "light-blue-alt",
-    "light-cyan",
-    "light-cyan-alt",
-    "light-green",
-    "light-green-alt",
-    "light-pink",
-    "light-pink-alt",
-    "light-purple",
-    "light-purple-alt",
-    "light-red",
-    "light-red-alt",
-]
+DEFAULT_THEME = "dark-blueberry"
+available_themes = [f"{mode}-{color.key}" for mode in ("dark", "light") for color in MCOLORS]
+# The bundled stylesheets are recolored from these pink ones.
+_TEMPLATES = {"dark": "dark-pink", "light": "light-pink"}
 
 
+_ICON_URL_RE = re.compile(r"url\(:/([\w-]+)/([\w.-]+\.svg)\)")
 _RGBA_RE = re.compile(r"rgba\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*\)")
 
 
@@ -112,27 +92,47 @@ class ThemeController:
         """The saved theme, or the default if settings hold something unknown."""
         raw = self.settings.value(_SETTINGS_KEY_THEME_MODE, DEFAULT_THEME)
         theme = str(raw).strip().lower()
-        if theme in available_breeze_themes:
+        if theme in available_themes:
             return theme
         return DEFAULT_THEME
 
     def apply_saved_or_default(self) -> str:
         return self.apply(self.get_saved_mode(), persist=False)
 
-    def load_breeze_stylesheet(self, theme: str) -> str:
-        qss_path = f":/{theme}/stylesheet.qss"
+    def load_stylesheet(self, theme: str) -> str:
+        mode, key = theme.split("-")
+        color = next(c for c in MCOLORS if c.key == key)
+        qss_path = f":/{_TEMPLATES[mode]}/stylesheet.qss"
 
         file = QFile(qss_path)
         if not file.open(QFile.OpenModeFlag.ReadOnly | QFile.OpenModeFlag.Text):
             raise RuntimeError(f"failed to open breeze stylesheet: {qss_path}")
 
-        stream = QTextStream(file)
-        return stream.readAll()
+        qss = recolor(QTextStream(file).readAll(), color, dark=mode == "dark")
+        return self._with_recolored_icons(qss, theme, color, dark=mode == "dark")
+
+    def _with_recolored_icons(self, qss: str, theme: str, color: MColor, *, dark: bool) -> str:
+        """Point each icon url at an accent-colored copy of it in the cache dir."""
+        cache = Path(QStandardPaths.writableLocation(QStandardPaths.StandardLocation.CacheLocation))
+        icon_dir = cache / "icons" / theme
+        icon_dir.mkdir(parents=True, exist_ok=True)
+
+        def swap(match: re.Match[str]) -> str:
+            resource = QFile(f":/{match.group(1)}/{match.group(2)}")
+            # The bundled stylesheet names a few icons it does not ship; leave those as they are.
+            if not resource.open(QFile.OpenModeFlag.ReadOnly):
+                return match.group(0)
+            svg = bytes(resource.readAll().data()).decode()
+            target = icon_dir / match.group(2)
+            target.write_text(recolor(svg, color, dark=dark))
+            return f"url({target.as_posix()})"
+
+        return _ICON_URL_RE.sub(swap, qss)
 
     def apply(self, theme: str, *, persist: bool) -> str:
         if persist:
             self.settings.setValue(_SETTINGS_KEY_THEME_MODE, theme)
-        base_qss = self.load_breeze_stylesheet(theme)
-        self.app.setPalette(_derive_palette(base_qss, f":/{theme}/stylesheet.qss"))
+        base_qss = self.load_stylesheet(theme)
+        self.app.setPalette(_derive_palette(base_qss, f"{theme} stylesheet"))
         self.app.setStyleSheet(base_qss)
         return theme
