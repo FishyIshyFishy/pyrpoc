@@ -1,0 +1,20 @@
+Remove the existing mosaic display and simulation of mosaic, those were placeholders. We will now implement the real deal. In particular, I would like to create an autonomous acquisition that images a whole dish of cells continuously, such that it is able to self correct for things like drift/focus changing, and allow for single cell granularity of data across a dish by giving a table where the information about cells exists. 
+
+In particular, the user first does an imaging loop to characterize a large spatial chunk.
+- In a separate (out of scope) calibration program, the user will figure out what the um/V for their galvo + objective combination is currently. This is an imaging parameter that they set. They will also set the total spatial extent to acquire (e.g., 1 mm x 1 mm)
+- The acquisition goes through the tileing, and the initial mosaic gets set up and displayed to the user. Focus might change, so a robust autofocusing routine is needed that won't unnecessarily autofocus (e.g., when a region of nothing is encountered so focus metrics look artificially small), and maintain sufficiently good focus throughout the full mosaic.
+
+Then, with the mosaic assembled, there are two versions of what could happen. 
+1. The user-in-the-loop version is that they go through the full mosaic and look for a particular phenotype. Then they draw ROIs for that phenotype, to assign as masks, creating a table of the locations where they drew the mask and the masks. Then, over a long period of time, the microscope monitors those cells, treats/images without treatment intermittedntly, etc, with the rest of the mosaic being useless. Note that when I say treat, I mean the modulation that masks confer with timing tied to the galvos/pixels on digital DAQ lines. 
+2. The autonomous version segments cells, and creates that table without the user drawing masks that they seek to image per thing of interest. For example, the thing of interest could be individual cells, and we want to just get a balanced distribution of treated/untreated cells and track their photobleaching. The individual cell routine is to image the local cell ROI 50 times with the same dwell time (same fluence) as would be imaged in the original raster, but just per cell, with the treatment also decided per cell, to assemble two curves, one curve as the average decay for all treated cells, and one as the average decay for all untreated cells. Another routine could be monitoring over a long period of time, after initial treatment. 
+
+Regardless of whether autonomous or user in the loop, the workflow is essentially: image full dish, identify units, set the routine per unit, perform the routine per unit. The routine might be in series for the units, it might be in parallel where we want to look at each unit every 10 minutes, so it's not as simple as having a for loop of the routine to do on each unit, and I don't think having something like a dropdown of parallel/series makes sense either, because that sets up an inflexible thing. 
+
+The other thing to settle is what a "unit" actually is. Is it just a region we draw with a mask? I don't want it to be a "single cell" necessarily, because we might want to do studies on what happens when 2 cells interact and so the unit we are looking to detect is two cells, but this idea is a little nebulous for me right now. 
+
+Regardless, I want data saved, in addition to the stitched mosaic, the raw acquired frames of the original acquisition, as well as this unit-by-unit data series. So this is a very complex Dataset with many components:
+1. The original raw tiff series
+2. The stitched 2D plane of data from that original raw tiff
+3. The data we are acquiring per unit, saved per unit
+
+Thus, there's really two different programs here. The first program is the "setup" phase where we get the full region we want to look at over many tiles. The second is the actual closed loop where, we have done the setup. Thus, we could either implement as two programs, or implement as one program with two runners. 
