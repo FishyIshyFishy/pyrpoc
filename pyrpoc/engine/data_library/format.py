@@ -17,7 +17,7 @@ from pyrpoc.core.saving import writer_registry
 from .grouping import program_display_name
 
 FORMAT = "pyrpoc-recording"
-FORMAT_VERSION = 4
+FORMAT_VERSION = 5
 META_SUFFIX = "_meta.json"
 # Every note in an Experiment, in one file a person can read without the app.
 NOTES_FILE = "notes.txt"
@@ -63,6 +63,8 @@ class RecordingRecord:
     outputs: dict[str, OutputRecord]
     # What the user wrote about the run, before or after it.
     notes: str
+    # The earlier recordings it read: their metadata file names in its folder, by program key.
+    inputs: dict[str, str]
 
 
 def pyrpoc_version() -> str:
@@ -164,6 +166,7 @@ def decode_record(raw: dict[str, Any]) -> RecordingRecord:
             for output, entry in raw["outputs"].items()
         },
         notes=str(raw["notes"]),
+        inputs={str(key): str(name) for key, name in raw["inputs"].items()},
     )
 
 
@@ -232,7 +235,7 @@ def write_folder_notes(folder: Path) -> None:
     # runs saving into one folder cannot interleave their entries.
     entries = sorted(
         (record.started_at, note_entry(record))
-        for record in readable_records(folder)
+        for _, record in readable_records(folder)
         if record.notes.strip()
     )
     path = folder / NOTES_FILE
@@ -243,13 +246,14 @@ def write_folder_notes(folder: Path) -> None:
     write_text(path, text)
 
 
-def readable_records(folder: Path) -> list[RecordingRecord]:
-    """Every recording in ``folder`` that can be read; the rest are left out."""
-    # A broken recording is reported when it is opened; it must not stop the others' notes.
-    records: list[RecordingRecord] = []
+def readable_records(folder: Path) -> list[tuple[Path, RecordingRecord]]:
+    """Every recording in ``folder`` that can be read, with its metadata file; the rest are
+    left out."""
+    # A broken recording is reported when it is opened; it must not stop the others.
+    records: list[tuple[Path, RecordingRecord]] = []
     for meta_path in recordings_in(folder):
         try:
-            records.append(read_record(meta_path))
+            records.append((meta_path, read_record(meta_path)))
         except RecordingError:
             continue
     return records

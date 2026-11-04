@@ -35,6 +35,7 @@ class RecordingSaver:
         parameters: dict[str, Any],
         devices: dict[str, Any],
         started_at: str,
+        inputs: dict[str, str],
         notes: Notes,
     ):
         self.root = free_root(root)
@@ -44,6 +45,7 @@ class RecordingSaver:
         self.parameters = dict(parameters)
         self.devices = dict(devices)
         self.started_at = started_at
+        self.inputs = dict(inputs)
         self.writers: dict[str, Writer[Any]] = {}
         self.outputs: dict[str, ProgramOutput[Any]] = {}
         self.runs: list[RunRecord] = []
@@ -113,6 +115,7 @@ class RecordingSaver:
                 for output, program_output in self.outputs.items()
             },
             notes=note,
+            inputs=self.inputs,
         )
 
 

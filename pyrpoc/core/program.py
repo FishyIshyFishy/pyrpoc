@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import threading
 from collections.abc import Callable, Iterator, Mapping
+from dataclasses import dataclass
 from typing import Any, TypeVar
 
 from pyrpoc.core.device import Device
@@ -45,6 +46,14 @@ class DeviceMap(Mapping[type[Device], Device]):
         return f"DeviceMap({self._devices!r})"
 
 
+@dataclass(frozen=True)
+class EarlierRun:
+    """An earlier run in the same Experiment that a program reads, named by the program that
+    made it."""
+
+    program_key: str
+
+
 class Program:
     """One experiment: the devices it uses, the program inputs it reads (laid out
     in input sections), its outputs, the runners that start it, and ``run``,
@@ -62,6 +71,9 @@ class Program:
     # The program inputs it reads, grouped as a panel shows them.
     sections: list[InputSection] = []
 
+    # Earlier runs it reads; it cannot start until each has one to read.
+    reads: list[EarlierRun] = []
+
     # Named outputs, and the kind of ``Data`` each one carries.
     emits: dict[str, type[Data]] = {}
 
@@ -78,23 +90,35 @@ class Program:
 
 
 class RunContext:
-    """What a running program is handed: its input values, its devices, its
-    outputs, status and cancel."""
+    """What a running program is handed: its input values, the earlier runs it reads, its
+    devices, its outputs, status and cancel."""
 
     def __init__(
         self,
         *,
         inputs: ProgramInputValues,
+        earlier: Mapping[str, Mapping[str, ProgramOutput[Any]]],
         devices: Mapping[type[Device], Device],
         outputs: dict[str, ProgramOutput[Any]],
         cancel: threading.Event,
         on_status: Callable[[str], None],
     ):
         self.inputs = inputs
+        self._earlier = dict(earlier)
         self.devices = DeviceMap(devices)
         self.outputs = outputs
         self._cancel = cancel
         self._on_status = on_status
+
+    def earlier(self, run: EarlierRun) -> Mapping[str, ProgramOutput[Any]]:
+        """The outputs of the earlier run chosen for ``run``, by name, each holding its last
+        value."""
+        if run.program_key not in self._earlier:
+            raise KeyError(
+                f"{run.program_key!r} is not declared in reads; this program declares "
+                f"{sorted(self._earlier)}"
+            )
+        return self._earlier[run.program_key]
 
     def output_for(self, output: str) -> ProgramOutput[Any]:
         if output not in self.outputs:

@@ -19,6 +19,7 @@ from PyQt6.QtWidgets import (
     QSizePolicy,
     QToolButton,
     QVBoxLayout,
+    QWidget,
 )
 
 from pyrpoc.core.panels import Panel
@@ -30,6 +31,7 @@ from pyrpoc.utils.widgets.icons import asset_icon
 from pyrpoc.utils.widgets.param_form import ParamForm, input_form_section
 from pyrpoc.utils.widgets.path_field import PathField
 
+from .earlier_card import EarlierCard
 from .host import RunnerHost
 from .note import NoteDialog
 from .program_inputs import ProgramInputsStore
@@ -71,6 +73,7 @@ class AcquisitionPanel(Panel):
         self.host = RunnerHost(runs, inputs, self)
         self.selected_program: str | None = None
         self.form: ParamForm | None = None
+        self.earlier_card: EarlierCard | None = None
         # Each rendered control, its button, and the watcher keeping them in line.
         self.control_buttons: list[tuple[Control, QPushButton, Callable[[], None]]] = []
 
@@ -96,7 +99,6 @@ class AcquisitionPanel(Panel):
         self.render_controls()
         self.set_running_ui(False)
         self.on_save_changed()
-        self.on_note_changed()
         self.on_note_changed()
         self.select_program(program_registry.keys()[0])
 
@@ -180,16 +182,31 @@ class AcquisitionPanel(Panel):
             self.program_combo.blockSignals(True)
             self.program_combo.setCurrentIndex(index)
             self.program_combo.blockSignals(False)
-        self.form = ParamForm(
-            [input_form_section(each) for each in program_registry.get(key).sections],
-            self.inputs,
-            self,
-            cards=True,
-        )
-        self.form.invalid.connect(self.show_status)
-        self.scroll_area.setWidget(self.form)
+        self.scroll_area.setWidget(self.build_inputs(key))
         self.refresh_readiness()
         self.state_changed.emit()
+
+    def build_inputs(self, key: str) -> QWidget:
+        """The cards for ``key``'s earlier runs, if it reads any, above its program inputs."""
+        program = program_registry.get(key)
+        if self.earlier_card is not None:
+            self.earlier_card.detach()
+        page = QWidget(self)
+        column = QVBoxLayout(page)
+        column.setContentsMargins(0, 0, 0, 0)
+        column.setSpacing(8)
+        self.earlier_card = None
+        if program.reads:
+            # The folder may have changed outside the app since it was last looked at.
+            self.runs.refresh_earlier()
+            self.earlier_card = EarlierCard(self.runs, program.reads, page)
+            column.addWidget(self.earlier_card)
+        self.form = ParamForm(
+            [input_form_section(each) for each in program.sections], self.inputs, page, cards=True
+        )
+        self.form.invalid.connect(self.show_status)
+        column.addWidget(self.form, 1)
+        return page
 
     def on_input_changed(self, key: str) -> None:
         """Show a value set elsewhere, such as a mask drawn in a Mask Editor."""

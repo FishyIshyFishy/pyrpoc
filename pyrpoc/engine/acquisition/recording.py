@@ -26,6 +26,8 @@ class RecordingKey:
     program_key: str
     parameters: dict[str, Any]
     devices: dict[str, Any]
+    # The earlier recordings it reads, by program key.
+    inputs: dict[str, str]
     save: SaveTarget
 
 

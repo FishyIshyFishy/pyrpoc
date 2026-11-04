@@ -7,8 +7,9 @@
 from __future__ import annotations
 
 import threading
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
+from pathlib import Path
 from typing import Any
 
 from pyrpoc.core.device import Device
@@ -19,11 +20,19 @@ from pyrpoc.core.program_output import Origin, ProgramOutput, Provenance, utc_no
 from pyrpoc.core.saving import SaveTarget
 from pyrpoc.engine.acquisition.program_inputs import ProgramInputsStore
 from pyrpoc.engine.acquisition.recording import Recording, RecordingKey, Series
-from pyrpoc.engine.data_library.grouping import recording_key
+from pyrpoc.engine.data_library.format import load_recording
+from pyrpoc.engine.data_library.grouping import program_display_name, recording_key
 from pyrpoc.engine.data_library.saving import RecordingSaver
 from pyrpoc.engine.data_library.store import LibraryStore
 
 from . import claims
+
+
+class MissingEarlierRun(Exception):
+    """A program cannot start: an earlier run it reads has no recording chosen."""
+
+
+Earlier = dict[str, dict[str, ProgramOutput[Any]]]
 
 
 class Run:
@@ -90,13 +99,17 @@ class Executor:
         program_key: str,
         save: SaveTarget,
         note: str,
+        earlier: Mapping[str, Path],
         series: Series | None,
     ) -> Run:
         """Start ``program`` on a worker thread of its own, continuing the
         recording of ``series`` if nothing it depends on changed. ``note`` goes to a new
-        recording; one the run continues keeps its own. Raises
-        ``MissingDevice``, ``DeviceBusy``, ``ParameterError`` or, for a new
+        recording; one the run continues keeps its own. ``earlier`` names the recording
+        chosen for each earlier run it reads. Raises ``MissingDevice``, ``DeviceBusy``,
+        ``ParameterError``, ``MissingEarlierRun``, ``RecordingError`` or, for a new
         recording, ``LibraryFull`` before anything starts."""
+        # Read outside the lock: loading files must not hold up another run starting.
+        read = load_earlier(program, earlier)
         with self._lock:
             devices = claims.resolve(list(program.devices), inventory)
             self.leases.check(devices.values())
@@ -107,6 +120,7 @@ class Executor:
                 # One encoding, shared by the recording and the session file.
                 parameters=inputs.encode(program.inputs()),
                 devices=device_state(devices),
+                inputs={key: earlier[key].name for key in read},
                 # A copy: the app edits its save target in place.
                 save=replace(save),
             )
@@ -125,7 +139,7 @@ class Executor:
             if recording.saver is not None:
                 recording.saver.add_run(run.id, provenance.started_at)
             self.leases.take(run.id, devices.values())
-            self.launch(run, values)
+            self.launch(run, values, read)
         if stale is not None:
             self.close(stale)
         return run
@@ -155,7 +169,7 @@ class Executor:
     def open_recording(
         self, program: Program, key: RecordingKey, provenance: Provenance, note: str
     ) -> Recording:
-        saver = self.build_saver(program, provenance, key.save)
+        saver = self.build_saver(program, provenance, key)
         outputs = self.open_outputs(program, provenance, saver)
         # Before the library sees them, so a saved output is listed in its Experiment at once.
         if saver is not None:
@@ -198,18 +212,19 @@ class Executor:
         return inputs.values_for(declared)
 
     def build_saver(
-        self, program: Program, provenance: Provenance, save: SaveTarget
+        self, program: Program, provenance: Provenance, key: RecordingKey
     ) -> RecordingSaver | None:
         """The saver for this run, or None when saving is off."""
-        if not save.enabled:
+        if not key.save.enabled:
             return None
         saver = RecordingSaver(
-            root=save.root,
+            root=key.save.root,
             program_key=provenance.program_key,
             name=provenance.name,
             parameters=provenance.parameters,
             devices=provenance.devices,
             started_at=provenance.started_at,
+            inputs=key.inputs,
             notes=self.library.notes,
         )
         saver.prepare(dict(program.emits))
@@ -229,9 +244,10 @@ class Executor:
             for output, kind in program.emits.items()
         }
 
-    def launch(self, run: Run, values: ProgramInputValues) -> None:
+    def launch(self, run: Run, values: ProgramInputValues, earlier: Earlier) -> None:
         ctx = RunContext(
             inputs=values,
+            earlier=earlier,
             devices=run.devices,
             outputs=run.outputs,
             cancel=run.cancel,
@@ -282,3 +298,18 @@ class Executor:
         if closing:
             self.close(recording)
         self.callbacks.on_finished(run)
+
+
+def load_earlier(program: Program, chosen: Mapping[str, Path]) -> Earlier:
+    """The outputs of each earlier run ``program`` reads, loaded from the recording chosen
+    for it."""
+    loaded: Earlier = {}
+    for each in program.reads:
+        if each.program_key not in chosen:
+            raise MissingEarlierRun(
+                f"{program.display_name} needs {program_display_name(each.program_key)} "
+                "saved in this folder"
+            )
+        outputs, _ = load_recording(chosen[each.program_key])
+        loaded[each.program_key] = {output.name: output for output in outputs}
+    return loaded

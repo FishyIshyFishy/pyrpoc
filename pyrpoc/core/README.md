@@ -30,6 +30,10 @@ saving is on.
 A run saved to disk is a **recording**. The recordings saved into one folder
 form an **Experiment**: choosing where runs save is choosing the Experiment.
 With no folder set, nothing is saved.
+A program may read **earlier runs** in its Experiment, named by the program
+that made them: a survey reads a galvo calibration. It cannot start until the
+folder holds one. It reads the latest unless you pick another, the run is
+handed it already loaded, and its recording names what it read.
 A note written before a run is saved with it. It is not a program input: no
 program reads it.
 
@@ -61,9 +65,10 @@ of the app meet.
 | Piece | What it is |
 |---|---|
 | **Device** | A piece of hardware the microscope has. Its settings are a `DeviceConfig`, whose fields each carry a `Field`. |
-| **Program** | One kind of experiment: the devices it needs, the program inputs it reads (laid out in `InputSection`s), the outputs it publishes, and the runners that can start it. Its `run` does the work. |
+| **Program** | One kind of experiment: the devices it needs, the program inputs it reads (laid out in `InputSection`s), the earlier runs it reads, the outputs it publishes, and the runners that can start it. Its `run` does the work. |
+| **EarlierRun** | An earlier run in the same Experiment that a program reads, named by the `program_key` of the program that made it, never by a file. Which recording that is, the engine decides; the program only gets its outputs. |
 | **Run** | One execution of a program. It gets a frozen copy of the program's input values, claims its devices, and publishes into its program outputs. |
-| **RunContext** | What a running program is handed: its input values, its devices, its outputs, status and cancel. |
+| **RunContext** | What a running program is handed: its input values, the outputs of the earlier runs it reads, its devices, its outputs, status and cancel. |
 | **Runner** | A way to start a program, such as once, continuously, or armed until a pixel is picked. The program declares it. The runner adds controls through its `RunnerContext`, and whichever panel shows the program draws them. A runner may watch program inputs. |
 
 ### Program inputs: user → program
@@ -127,7 +132,7 @@ defines it. Nothing else lists them.
 | `registry.py` | `Registry` |
 | `device.py` | `Device` + `device_registry` |
 | `device_config.py` | `DeviceConfig`, and how its fields carry their `Field` |
-| `program.py` | `Program`, `RunContext` + `program_registry` |
+| `program.py` | `Program`, `EarlierRun`, `RunContext` + `program_registry` |
 | `runner.py` | `Runner`, `RunnerContext`, `Control`, `Button`, `Toggle` |
 | `program_input.py` | `ProgramInput` + `declare`, `Field`, `Editor`, `ProgramInputValues`, `ProgramInputs`, `InputSection` |
 | `program_output.py` | `ProgramOutput`, `Data` + `data_kind_registry`, `Provenance`, `Origin` |
