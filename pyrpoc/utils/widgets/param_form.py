@@ -16,8 +16,10 @@ from PyQt6.QtWidgets import (
     QFileDialog,
     QFormLayout,
     QHBoxLayout,
+    QLabel,
     QLineEdit,
     QPushButton,
+    QSizePolicy,
     QSpinBox,
     QToolButton,
     QVBoxLayout,
@@ -31,6 +33,12 @@ from pyrpoc.core.program_input import InputSection, ParameterError
 from pyrpoc.utils import value_rules as R
 
 from .cards import BaseCardWidget
+from .flow_grid import FlowGrid
+
+# The narrowest a field and its label are given before the grid drops to fewer columns.
+CELL_PX = 110
+# Enough for a few digits and the arrow buttons.
+SPIN_MIN_PX = 64
 
 CHANNEL_BUTTON_CSS = (
     "QToolButton {"
@@ -50,6 +58,7 @@ CHANNEL_BUTTON_CSS = (
 
 def build_int(spec: R.IntField, parent: QWidget) -> P.Editor:
     widget = QSpinBox(parent)
+    widget.setMinimumWidth(SPIN_MIN_PX)
     widget.setMinimum(spec.minimum if spec.minimum is not None else -1_000_000)
     widget.setMaximum(spec.maximum if spec.maximum is not None else 1_000_000)
     widget.setSingleStep(spec.step)
@@ -63,8 +72,17 @@ def build_int(spec: R.IntField, parent: QWidget) -> P.Editor:
     )
 
 
+class TrimmedSpinBox(QDoubleSpinBox):
+    """A spin box that drops trailing zeros: 2 rather than 2.000000."""
+
+    def textFromValue(self, v: float) -> str:
+        text = f"{v:.{self.decimals()}f}"
+        return text.rstrip("0").rstrip(".") if "." in text else text
+
+
 def build_float(spec: R.FloatField, parent: QWidget) -> P.Editor:
-    widget = QDoubleSpinBox(parent)
+    widget = TrimmedSpinBox(parent)
+    widget.setMinimumWidth(SPIN_MIN_PX)
     widget.setDecimals(spec.decimals)
     widget.setMinimum(spec.minimum if spec.minimum is not None else -1e12)
     widget.setMaximum(spec.maximum if spec.maximum is not None else 1e12)
@@ -118,6 +136,7 @@ def build_path(spec: R.PathField, parent: QWidget) -> P.Editor:
         connect=lambda cb: edit.textChanged.connect(lambda *_: cb()),
         summary=lambda: Path(edit.text()).name if edit.text().strip() else "-",
         spec=spec,
+        wide=True,
     )
 
 
@@ -183,6 +202,7 @@ def build_channels(spec: R.ChannelsField, parent: QWidget) -> P.Editor:
         connect=connect,
         summary=lambda: ", ".join(f"AI{i}" for i in get()) or "none",
         spec=spec,
+        wide=True,
     )
 
 
@@ -279,21 +299,46 @@ class ParamForm(QWidget):
 
     def build_section(self, section: FormSection, *, cards: bool) -> QWidget:
         body = QWidget(self)
-        form = QFormLayout(body)
-        form.setContentsMargins(4, 4, 4, 4)
+        if cards:
+            grid = FlowGrid(body, min_cell=CELL_PX, spacing=10)
+            grid.setContentsMargins(4, 4, 4, 4)
+        else:
+            form = QFormLayout(body)
+            form.setContentsMargins(4, 4, 4, 4)
+            form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
         keys: list[str] = []
         for key, spec in section.rows:
+            if not spec.shown:
+                continue
             field = build_field(spec, body, self.values)
             field.connect(lambda key=key: self.on_field_changed(key))
             self.fields[key] = field
             keys.append(key)
-            form.addRow(spec.label, field.widget)
+            if cards:
+                grid.add(self.build_cell(spec.label, field.widget, body), wide=field.wide)
+            else:
+                form.addRow(spec.label, field.widget)
         if not cards:
             return body
         card = BaseCardWidget(section.label, self)
         card.set_body_widget(body)
         self._cards.append((card, keys))
         return card
+
+    def build_cell(self, label: str, widget: QWidget, parent: QWidget) -> QWidget:
+        """A field under its label, so a cell is as wide as its field needs."""
+        cell = QWidget(parent)
+        column = QVBoxLayout(cell)
+        column.setContentsMargins(0, 0, 0, 0)
+        column.setSpacing(2)
+        title = QLabel(label, cell)
+        # Wraps rather than widening the cell, so a long name never forces a column wider.
+        title.setWordWrap(True)
+        title.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+        column.addWidget(title)
+        column.addWidget(widget)
+        widget.setParent(cell)
+        return cell
 
     def reload(self) -> None:
         """Show every value ``values`` holds now."""
@@ -332,5 +377,4 @@ class ParamForm(QWidget):
 
     def refresh_summaries(self) -> None:
         for card, keys in self._cards:
-            parts = [f"{self.fields[k].spec.label}: {self.fields[k].summary()}" for k in keys]
-            card.set_description("  |  ".join(parts))
+            card.set_summary([(self.fields[k].spec.label, self.fields[k].summary()) for k in keys])

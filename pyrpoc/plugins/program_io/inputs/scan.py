@@ -29,27 +29,27 @@ EXTRA_RIGHT = int_input(
     tooltip="Extra scan steps at the right edge",
 )
 FAST_AXIS_OFFSET = float_input(
-    "fast_axis_offset", "Fast Axis Offset", 0.0, tooltip="Fast-axis offset"
+    "fast_axis_offset", "Fast Axis Offset (V)", 0.0, tooltip="Fast-axis offset, in volts"
 )
 FAST_AXIS_AMPLITUDE = float_input(
     "fast_axis_amplitude",
-    "Fast Axis Amplitude",
+    "Fast Axis Amplitude (V)",
     1.0,
     minimum=1e-6,
-    tooltip="Fast-axis amplitude",
+    tooltip="Fast-axis amplitude, in volts",
 )
 SLOW_AXIS_OFFSET = float_input(
-    "slow_axis_offset", "Slow Axis Offset", 0.0, tooltip="Slow-axis offset"
+    "slow_axis_offset", "Slow Axis Offset (V)", 0.0, tooltip="Slow-axis offset, in volts"
 )
 SLOW_AXIS_AMPLITUDE = float_input(
     "slow_axis_amplitude",
-    "Slow Axis Amplitude",
+    "Slow Axis Amplitude (V)",
     1.0,
     minimum=1e-6,
-    tooltip="Slow-axis amplitude",
+    tooltip="Slow-axis amplitude, in volts",
 )
 DWELL_TIME_US = float_input(
-    "dwell_time_us", "Dwell Time (us)", 2.0, minimum=0.1, tooltip="Pixel dwell time"
+    "dwell_time_us", "Dwell Time (us)", 2.0, minimum=0.1, step=1.0, tooltip="Pixel dwell time"
 )
 
 

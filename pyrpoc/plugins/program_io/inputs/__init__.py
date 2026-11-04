@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from .camera import CAMERA_BINNED, CAMERA_EXPOSURE_MS, CAMERA_GAIN_PCT, CameraSettings
 from .ccd_readout import CCD_EXPOSURE_S, CCD_FRAMES_TO_AVERAGE
-from .daq import SAMPLE_RATE_HZ
+from .daq import SAMPLE_RATE_MHZ, rate_hz
 from .focus_search import (
     FOCUS_FINAL_STEP_UM,
     FOCUS_INITIAL_STEP_UM,
@@ -23,7 +23,7 @@ from .histogram import (
     HistogramSettings,
 )
 from .mask import Mask
-from .masks import MASKS, MaskList, MasksField, thumbnail
+from .masks import MASKS, MasksField, thumbnail
 from .modulation import MASK_LINES, MaskLine, lines_for
 from .mosaic import TILE_SPACING_UM, X_TILES, Y_TILES, MosaicGrid
 from .pixel_pick import PICK, PickField, PixelPick
@@ -55,7 +55,7 @@ __all__ = [
     "PICK",
     "PIXEL_CLOCK_CTR",
     "PIXEL_CLOCK_PFI",
-    "SAMPLE_RATE_HZ",
+    "SAMPLE_RATE_MHZ",
     "SCAN_GEOMETRY_INPUTS",
     "T0_SAMPLES",
     "T1_SAMPLES",
@@ -69,7 +69,6 @@ __all__ = [
     "HistogramSettings",
     "Mask",
     "MaskLine",
-    "MaskList",
     "MasksField",
     "MosaicGrid",
     "Point",
@@ -80,5 +79,6 @@ __all__ = [
     "SplitWindows",
     "TriggerLines",
     "lines_for",
+    "rate_hz",
     "thumbnail",
 ]

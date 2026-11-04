@@ -15,8 +15,8 @@ from pyrpoc.plugins.devices import DAQ, Galvo
 from pyrpoc.plugins.program_io.inputs import (
     CENTER_REGION_FRACTION,
     MASKS,
-    SAMPLE_RATE_HZ,
     ScanGeometry,
+    rate_hz,
 )
 
 from ..building_blocks.functions.daq_tasks import acquire
@@ -82,7 +82,7 @@ class RoiRaster:
     @classmethod
     def for_run(cls, ctx: RunContext) -> RoiRaster:
         scan = ScanGeometry.from_inputs(ctx.inputs)
-        sample_rate_hz = ctx.inputs[SAMPLE_RATE_HZ]
+        sample_rate_hz = rate_hz(ctx.inputs)
         samples_per_pixel = pixel_samples(scan.dwell_time_us, sample_rate_hz)
         region = roi_region(ctx.inputs[MASKS], ctx.inputs[CENTER_REGION_FRACTION], scan)
         spans = row_spans(region)

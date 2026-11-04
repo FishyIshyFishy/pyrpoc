@@ -5,7 +5,7 @@ them out."""
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Generic, Protocol, TypeVar
 
 
@@ -17,6 +17,8 @@ class ParameterError(Exception):
 class Field:
     label: str
     tooltip: str = ""
+    # False for a value another input's editor already shows, so a form leaves it out.
+    shown: bool = field(default=True, kw_only=True)
 
     def coerce(self, value: Any) -> Any:
         raise NotImplementedError
@@ -54,6 +56,8 @@ class Editor:
     connect: Callable[[Callable[[], None]], object]
     summary: Callable[[], str]
     spec: Field
+    # Whether a form gives it a whole row rather than one cell of a shared row.
+    wide: bool = False
 
 
 T = TypeVar("T")

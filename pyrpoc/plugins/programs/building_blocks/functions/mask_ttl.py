@@ -16,9 +16,12 @@ def mask_ttl(
 ) -> dict[str, np.ndarray]:
     """One flat boolean TTL signal per mask's digital line, ``lines`` in the masks' order, a
     sample for every raster sample."""
-    # A mask that is all zero on the scan grid gets no line, so no DO task is created for it.
+    # A switched-off mask drives nothing, and one that is all zero on the scan grid gets no
+    # line, so no DO task is created for either.
     ttl: dict[str, np.ndarray] = {}
     for mask, line in zip(masks, lines, strict=True):
+        if not line.enabled:
+            continue
         lit = np.zeros((scan.y_pixels, scan.total_x), dtype=bool)
         lit[:, scan.kept_columns] = mask.on_grid(scan.y_pixels, scan.x_pixels)
         if np.any(lit):

@@ -180,6 +180,7 @@ class PointField(Field):
             connect=lambda cb: picker.changed.connect(cb),
             summary=picker.summary,
             spec=self,
+            wide=True,
         )
 
 

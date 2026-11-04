@@ -24,7 +24,7 @@ from pyrpoc.plugins.program_io.inputs import (
     FOCUS_INITIAL_STEP_UM,
     FOCUS_SEARCH_RANGE_UM,
     MASKS,
-    SAMPLE_RATE_HZ,
+    SAMPLE_RATE_MHZ,
     SCAN_GEOMETRY_INPUTS,
     FocusSearch,
 )
@@ -95,7 +95,7 @@ class Autofocus(Program):
     devices = [Galvo, DAQ, PriorStage]
     sections = [
         InputSection("Scan", SCAN_GEOMETRY_INPUTS),
-        InputSection("DAQ", (SAMPLE_RATE_HZ,)),
+        InputSection("DAQ", (SAMPLE_RATE_MHZ,)),
         InputSection("Region", (MASKS, CENTER_REGION_FRACTION)),
         InputSection(
             "Focus Search",

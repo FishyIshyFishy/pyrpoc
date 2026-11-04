@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from html import escape
 from typing import Any
 
+from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QCheckBox,
     QFileDialog,
@@ -15,6 +17,7 @@ from PyQt6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QScrollArea,
+    QSizePolicy,
     QStyle,
     QVBoxLayout,
 )
@@ -30,6 +33,23 @@ from pyrpoc.utils.widgets.param_form import ParamForm, input_form_section
 from .host import RunnerHost
 from .program_inputs import ProgramInputsStore
 from .runs import Runs
+
+# Status dot colours, by what the status asks of the user: wait, act, or look.
+_DOT_READY = "#3ecf8e"
+_DOT_NEEDS = "#f2c744"
+_DOT_BUSY = "#4f8df5"
+_DOT_ERROR = "#e5484d"
+
+
+def status_dot(text: str) -> str:
+    """The colour of the dot that leads a status line."""
+    if text.startswith("needs"):
+        return _DOT_NEEDS
+    if text.startswith("error"):
+        return _DOT_ERROR
+    if text.startswith("acquiring"):
+        return _DOT_BUSY
+    return _DOT_READY
 
 
 class AcquisitionPanel(Panel):
@@ -53,10 +73,17 @@ class AcquisitionPanel(Panel):
         root.setSpacing(8)
         root.addLayout(self.build_program_row())
         root.addLayout(self.build_transport_row())
-        self.status_label = QLabel("Status: idle", self)
+        root.addLayout(self.build_save_row())
+        self.status_label = QLabel(self)
+        self.status_label.setWordWrap(True)
+        # Wrapped text would otherwise hold the panel wider than its dock.
+        self.status_label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         root.addWidget(self.status_label)
+        self.show_status("idle")
         self.scroll_area = QScrollArea(self)
         self.scroll_area.setWidgetResizable(True)
+        self.scroll_area.setFrameShape(QFrame.Shape.NoFrame)
+        self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         root.addWidget(self.scroll_area, 1)
 
         self.connect_signals()
@@ -85,14 +112,13 @@ class AcquisitionPanel(Panel):
         self.stop_btn.setToolTip("Stop")
         self.stop_btn.setIcon(asset_icon("stop"))
         row.addWidget(self.stop_btn)
+        row.addStretch(1)
+        return row
 
-        separator = QFrame(self)
-        separator.setFrameShape(QFrame.Shape.VLine)
-        separator.setFrameShadow(QFrame.Shadow.Sunken)
-        row.addSpacing(6)
-        row.addWidget(separator)
-        row.addSpacing(6)
-
+    def build_save_row(self) -> QHBoxLayout:
+        """Whether and where to save, on its own row so a narrow panel does not squeeze the
+        name field."""
+        row = QHBoxLayout()
         self.save_check = QCheckBox("Save", self)
         self.name_edit = QLineEdit(self)
         self.name_edit.setPlaceholderText("Name")
@@ -105,6 +131,7 @@ class AcquisitionPanel(Panel):
         if style is not None:
             self.dir_btn.setIcon(style.standardIcon(QStyle.StandardPixmap.SP_DirOpenIcon))
         row.addWidget(self.save_check)
+        self.name_edit.setMinimumWidth(80)
         row.addWidget(self.name_edit, 1)
         row.addWidget(self.dir_btn)
         return row
@@ -179,7 +206,9 @@ class AcquisitionPanel(Panel):
             self.show_status("ready")
 
     def show_status(self, text: str) -> None:
-        self.status_label.setText(f"Status: {text}")
+        self.status_label.setText(
+            f'<span style="color:{status_dot(text)}">●</span>&nbsp;{escape(text)}'
+        )
 
     def render_controls(self) -> None:
         """Draw the shown program's controls, replacing whatever was there."""
@@ -220,9 +249,13 @@ class AcquisitionPanel(Panel):
     def apply_enabled(self) -> None:
         """Off while something is missing or a run is in progress, and off
         whenever the control's runner says so."""
-        ready = not self.blockers() and not self.host.running
+        missing = self.blockers()
+        ready = not missing and not self.host.running
         for control, button, _ in self.control_buttons:
             button.setEnabled(ready and control.enabled)
+            # A dimmed button says why on hover, so the way forward is one mouse-over away.
+            reason = f"\nNeeds {', '.join(missing)}" if missing else ""
+            button.setToolTip((control.tooltip or control.label) + reason)
 
     def choose_directory(self) -> None:
         start = str(self.runs.save.folder)

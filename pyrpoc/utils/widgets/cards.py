@@ -1,10 +1,21 @@
-"""Collapsible cards: an expand arrow and a title, a description line shown
-while collapsed, and a body shown while expanded."""
+"""Collapsible cards: an expand arrow and a title, a summary shown while collapsed,
+and a body shown while expanded. The whole header toggles the card."""
 
 from __future__ import annotations
 
-from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtWidgets import QFrame, QHBoxLayout, QLabel, QToolButton, QVBoxLayout, QWidget
+from html import escape
+
+from PyQt6.QtCore import QEvent, Qt, pyqtSignal
+from PyQt6.QtGui import QMouseEvent, QPalette
+from PyQt6.QtWidgets import (
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QSizePolicy,
+    QToolButton,
+    QVBoxLayout,
+    QWidget,
+)
 
 _REMOVE_BTN_COLOR = "#e75480"
 
@@ -50,6 +61,20 @@ _CARD_STYLESHEET = (
 )
 
 
+class CardHeader(QWidget):
+    """A card's title row; a click anywhere on it that no button took asks to toggle."""
+
+    clicked = pyqtSignal()
+
+    def __init__(self, parent: QWidget):
+        super().__init__(parent)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+
+    def mousePressEvent(self, event: QMouseEvent | None) -> None:
+        super().mousePressEvent(event)
+        self.clicked.emit()
+
+
 class BaseCardWidget(QFrame):
     """A collapsible card, starting collapsed."""
 
@@ -64,7 +89,9 @@ class BaseCardWidget(QFrame):
         root.setContentsMargins(6, 4, 6, 4)
         root.setSpacing(2)
 
-        self.header_row = QHBoxLayout()
+        self.header = CardHeader(self)
+        self.header.clicked.connect(lambda: self.set_expanded(not self._expanded))
+        self.header_row = QHBoxLayout(self.header)
         self.header_row.setContentsMargins(0, 0, 0, 0)
         self.header_row.setSpacing(4)
         self.expand_btn = QToolButton(self)
@@ -74,14 +101,20 @@ class BaseCardWidget(QFrame):
         self.expand_btn.clicked.connect(lambda: self.set_expanded(not self._expanded))
         self.header_row.addWidget(self.expand_btn)
         self.title_label = QLabel(title, self)
+        title_font = self.title_label.font()
+        title_font.setBold(True)
+        self.title_label.setFont(title_font)
         self.header_row.addWidget(self.title_label, 1)
-        root.addLayout(self.header_row)
+        root.addWidget(self.header)
 
+        self._summary: list[tuple[str, str]] = []
         self._description_label = QLabel("", self)
-        self._description_label.setStyleSheet(
-            "color: palette(mid); font-size: 9pt; padding-left: 22px;"
-        )
+        self._description_label.setStyleSheet("font-size: 9pt; padding-left: 22px;")
         self._description_label.setWordWrap(True)
+        # Wrapped text would otherwise hold the card wider than a narrow panel.
+        self._description_label.setSizePolicy(
+            QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred
+        )
         self._description_label.setVisible(False)
         root.addWidget(self._description_label)
 
@@ -99,11 +132,30 @@ class BaseCardWidget(QFrame):
             Qt.ArrowType.DownArrow if expanded else Qt.ArrowType.RightArrow
         )
         self.expand_btn.setToolTip("Collapse" if expanded else "Expand")
-        self._description_label.setVisible(bool(self._description_label.text()) and not expanded)
+        self._description_label.setVisible(bool(self._summary) and not expanded)
 
-    def set_description(self, text: str) -> None:
-        self._description_label.setText(text)
-        self._description_label.setVisible(bool(text) and not self._expanded)
+    def set_summary(self, pairs: list[tuple[str, str]]) -> None:
+        """Show ``(name, value)`` pairs under the title while collapsed: names muted, values
+        plain, so the current settings can be read at a glance."""
+        self._summary = pairs
+        self.render_summary()
+        self._description_label.setVisible(bool(pairs) and not self._expanded)
+
+    def render_summary(self) -> None:
+        # Rich text cannot use ``palette()``, so the muted colour is read here and re-read when
+        # the theme changes.
+        muted = self.palette().color(QPalette.ColorRole.Mid).name()
+        parts = [
+            f'<span style="color:{muted}">{escape(name).replace(" ", "&nbsp;")}</span>'
+            f"&nbsp;{escape(value).replace(' ', '&nbsp;')}"
+            for name, value in self._summary
+        ]
+        self._description_label.setText("&nbsp;· ".join(parts))
+
+    def changeEvent(self, event: QEvent | None) -> None:
+        super().changeEvent(event)
+        if event is not None and event.type() == QEvent.Type.PaletteChange:
+            self.render_summary()
 
     def set_body_widget(self, body: QWidget) -> None:
         self.body_layout.addWidget(body)
@@ -118,7 +170,7 @@ class RemovableCardWidget(BaseCardWidget):
         super().__init__(title, parent)
         remove_btn = QToolButton(self)
         remove_btn.setAutoRaise(True)
-        remove_btn.setText("X")
+        remove_btn.setText("✕")
         remove_btn.setStyleSheet(f"QToolButton {{ color: {_REMOVE_BTN_COLOR}; font-weight: 700; }}")
         remove_btn.setToolTip("Remove")
         remove_btn.clicked.connect(self.remove_requested)
