@@ -1,4 +1,4 @@
-"""One library entry's metadata, read-only, and its notes, editable."""
+"""One library entry's metadata, read-only, and its run's note, editable."""
 
 from __future__ import annotations
 
@@ -21,6 +21,8 @@ from PyQt6.QtWidgets import (
 
 from pyrpoc.core.program_output import ProgramOutput
 
+from .grouping import program_display_name
+
 
 def local_time(iso: str) -> str:
     return datetime.fromisoformat(iso).astimezone().strftime("%Y-%m-%d %H:%M:%S")
@@ -35,28 +37,27 @@ def add_branch(parent: QTreeWidgetItem, key: str, value: Any) -> None:
 
 
 class DetailsDialog(QDialog):
-    """``save_notes`` stores the text and returns why it could not reach the
+    """``save_note`` stores the run's note and returns why it could not reach the
     recording's file, or None."""
 
     def __init__(
         self,
         program_output: ProgramOutput[Any],
-        save_notes: Callable[[str], str | None],
+        note: str,
+        save_note: Callable[[str], str | None],
         parent: QWidget,
     ):
         super().__init__(parent)
-        self.save_notes = save_notes
+        self.save_note = save_note
         self.setWindowTitle(f"{program_output.run_name} · {program_output.name}")
         self.resize(560, 640)
 
         root = QVBoxLayout(self)
         root.addLayout(self.build_summary(program_output))
         root.addWidget(self.build_tree(program_output), 2)
-        root.addWidget(QLabel("Notes", self))
-        self.notes_edit = QPlainTextEdit(program_output.notes, self)
-        self.notes_edit.setPlaceholderText(
-            "What happened in this recording, and anything to remember."
-        )
+        root.addWidget(QLabel("Note (one per run, shared by all its outputs)", self))
+        self.notes_edit = QPlainTextEdit(note, self)
+        self.notes_edit.setPlaceholderText("What happened in this run, and anything to remember.")
         root.addWidget(self.notes_edit, 1)
 
         buttons = QDialogButtonBox(
@@ -71,7 +72,7 @@ class DetailsDialog(QDialog):
         rows = [
             ("Name", program_output.run_name),
             ("Output", f"{program_output.name} ({program_output.kind.name})"),
-            ("Program", program_output.provenance.program_key),
+            ("Program", program_display_name(program_output.provenance.program_key)),
             ("Origin", program_output.origin.value),
             ("Started", local_time(program_output.provenance.started_at)),
             ("Published", str(program_output.published)),
@@ -109,12 +110,12 @@ class DetailsDialog(QDialog):
         return tree
 
     def on_save(self) -> None:
-        problem = self.save_notes(self.notes_edit.toPlainText())
+        problem = self.save_note(self.notes_edit.toPlainText())
         if problem is not None:
             QMessageBox.warning(
                 self,
-                "Notes Not Written",
-                f"The notes are kept for this session, but the recording's file "
+                "Note Not Written",
+                f"The note is kept for this session, but the recording's file "
                 f"could not be updated:\n\n{problem}",
             )
             return

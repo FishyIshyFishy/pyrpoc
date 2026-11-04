@@ -10,6 +10,7 @@ from typing import Any, TypeVar
 from pyrpoc.core.program_output import Data, ProgramOutput
 
 from .grouping import group_label
+from .notes import Notes
 
 D = TypeVar("D", bound=Data)
 
@@ -31,6 +32,7 @@ class LibraryStore:
         self.limit_bytes = limit_bytes
         # Close the oldest finished entries whenever the total is over the limit.
         self.auto_purge = False
+        self.notes = Notes()
         self._outputs: list[ProgramOutput[Any]] = []
         self._subscribers: list[Callable[[], None]] = []
         self._lock = threading.RLock()

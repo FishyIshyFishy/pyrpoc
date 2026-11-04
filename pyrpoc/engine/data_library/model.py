@@ -11,8 +11,14 @@ from PyQt6.QtCore import QObject, QTimer, pyqtSignal
 
 from pyrpoc.core.program_output import Data, ProgramOutput
 
-from .format import RecordingError, load_recording, recordings_in, write_notes
-from .grouping import experiment_of
+from .format import (
+    RecordingError,
+    load_recording,
+    recordings_in,
+    write_experiment_notes,
+    write_notes,
+)
+from .grouping import experiment_of, recording_key, recording_key_of
 from .store import LibraryFull, LibraryStore
 
 D = TypeVar("D", bound=Data)
@@ -125,19 +131,28 @@ class LibraryModel(QObject):
         if any(each.meta_path == meta_path for each in self.store.all()):
             return
         self.store.check_room()
-        for program_output in load_recording(meta_path):
+        outputs, note = load_recording(meta_path)
+        self.store.notes.set(recording_key_of(meta_path), note)
+        for program_output in outputs:
             self.store.add(program_output)
 
-    def set_notes(self, program_output: ProgramOutput[Any], notes: str) -> str | None:
-        """Set ``program_output``'s notes, and write them into its recording if that is
-        finished on disk; returns why the file could not be updated, or None."""
-        # A recording still going writes the notes itself the next time it updates its metadata.
-        # The notes are kept in memory either way.
-        program_output.notes = notes
-        if program_output.meta_path is None or not program_output.finished:
+    def note_of(self, program_output: ProgramOutput[Any]) -> str:
+        """The note of the run ``program_output`` came from."""
+        return self.store.notes.get(recording_key(program_output))
+
+    def set_note(self, program_output: ProgramOutput[Any], note: str) -> str | None:
+        """Set the note of the run ``program_output`` came from, and write it into its
+        recording and its Experiment's notes if the recording is finished on disk; returns
+        why the files could not be updated, or None."""
+        # A recording still going writes the note itself the next time it updates its metadata.
+        # The note is kept in memory either way.
+        self.store.notes.set(recording_key(program_output), note)
+        meta_path = program_output.meta_path
+        if meta_path is None or not program_output.finished:
             return None
         try:
-            write_notes(program_output.meta_path, program_output.name, notes)
+            write_notes(meta_path, note)
+            write_experiment_notes(experiment_of(meta_path))
         except (RecordingError, OSError) as exc:
             return str(exc)
         return None

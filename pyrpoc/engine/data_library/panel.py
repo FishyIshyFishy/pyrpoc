@@ -233,9 +233,9 @@ class DataLibraryPanel(Panel):
         item = QTreeWidgetItem(
             parent, [recording.name, recording.program, taken(recording.started_at)]
         )
-        item.setToolTip(
-            NAME, str(recording.meta_path) if recording.meta_path is not None else "Not saved"
-        )
+        where = str(recording.meta_path) if recording.meta_path is not None else "Not saved"
+        note = self.library.note_of(recording.outputs[0])
+        item.setToolTip(NAME, f"{where}\n\n{note}" if note else where)
         self.attach(item, recording)
         for program_output in recording.outputs:
             child = QTreeWidgetItem(item, [program_output.name, program_output.kind.name])
@@ -360,9 +360,14 @@ class DataLibraryPanel(Panel):
             return
         program_output = node if isinstance(node, ProgramOutput) else node.outputs[0]
         dialog = DetailsDialog(
-            program_output, lambda notes: self.library.set_notes(program_output, notes), self
+            program_output,
+            self.library.note_of(program_output),
+            lambda note: self.library.set_note(program_output, note),
+            self,
         )
-        dialog.exec()
+        if dialog.exec():
+            # The note shows in the recording's tooltip.
+            self.rebuild()
 
     def show_in_folder(self, folder: Path | None) -> None:
         if folder is not None:

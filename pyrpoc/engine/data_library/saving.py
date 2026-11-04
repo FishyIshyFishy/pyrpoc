@@ -15,8 +15,11 @@ from pyrpoc.engine.data_library.format import (
     free_root,
     meta_path_for,
     pyrpoc_version,
+    write_experiment_notes,
     write_record,
 )
+from pyrpoc.engine.data_library.grouping import experiment_of, recording_key_of
+from pyrpoc.engine.data_library.notes import Notes
 
 
 class RecordingSaver:
@@ -32,6 +35,7 @@ class RecordingSaver:
         parameters: dict[str, Any],
         devices: dict[str, Any],
         started_at: str,
+        notes: Notes,
     ):
         self.root = free_root(root)
         self.meta_path = meta_path_for(self.root)
@@ -43,6 +47,10 @@ class RecordingSaver:
         self.writers: dict[str, Writer[Any]] = {}
         self.outputs: dict[str, ProgramOutput[Any]] = {}
         self.runs: list[RunRecord] = []
+        self.notes = notes
+        # The note as the file last held it, so the Experiment's notes are rebuilt only when
+        # it changes.
+        self.written_note = ""
 
     def prepare(self, outputs: dict[str, type[Data]]) -> None:
         """Create the output directory and a writer per output."""
@@ -79,9 +87,17 @@ class RecordingSaver:
         self.write_metadata(ended_at=utc_now(), last_error=str(error) if error else None)
 
     def write_metadata(self, *, ended_at: str | None, last_error: str | None) -> None:
-        write_record(self.meta_path, self.record(ended_at, last_error))
+        note = self.note()
+        write_record(self.meta_path, self.record(ended_at, last_error, note))
+        if note != self.written_note:
+            write_experiment_notes(experiment_of(self.meta_path))
+            self.written_note = note
 
-    def record(self, ended_at: str | None, last_error: str | None) -> RecordingRecord:
+    def note(self) -> str:
+        """The recording's note now: it may be edited while the recording runs."""
+        return self.notes.get(recording_key_of(self.meta_path))
+
+    def record(self, ended_at: str | None, last_error: str | None, note: str) -> RecordingRecord:
         return RecordingRecord(
             pyrpoc_version=pyrpoc_version(),
             program_key=self.program_key,
@@ -96,6 +112,7 @@ class RecordingSaver:
                 output: output_record(program_output, self.writers[output])
                 for output, program_output in self.outputs.items()
             },
+            notes=note,
         )
 
 
@@ -105,5 +122,4 @@ def output_record(program_output: ProgramOutput[Any], writer: Writer[Any]) -> Ou
         published=program_output.published,
         files={key: path.name for key, path in writer.paths.items()},
         metadata=dict(program_output.metadata),
-        notes=program_output.notes,
     )

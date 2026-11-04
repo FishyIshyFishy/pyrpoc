@@ -52,10 +52,12 @@ class Harness:
             ),
         )
 
-    def run(self, program: Program, key: str, save: SaveTarget) -> Run:
+    def run(self, program: Program, key: str, save: SaveTarget, note: str = "") -> Run:
         """Start ``program`` and wait for it to end."""
         self.finished.clear()
-        run = self.executor.start(program, self.inputs, [], program_key=key, save=save, series=None)
+        run = self.executor.start(
+            program, self.inputs, [], program_key=key, save=save, note=note, series=None
+        )
         assert self.finished.wait(10), "the run did not end"
         return run
 

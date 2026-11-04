@@ -92,7 +92,6 @@ class ProgramOutput(Generic[D]):
         self.finished = origin is not Origin.ACQUIRED
         # The recording's metadata file, once it is on disk.
         self.meta_path: Path | None = None
-        self.notes = ""
         self.metadata: dict[str, Any] = {}
         self.writer = writer
         self.value: D | None = None

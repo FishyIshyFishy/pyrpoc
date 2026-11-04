@@ -30,6 +30,8 @@ saving is on.
 A run saved to disk is a **recording**. The recordings saved into one folder
 form an **Experiment**: choosing where runs save is choosing the Experiment.
 With no folder set, nothing is saved.
+A note written before a run is saved with it. It is not a program input: no
+program reads it.
 
 Program outputs collect in the **library**. Panels show what's in the library
 and let you act on it, which sets more program inputs, and the loop repeats.
@@ -78,7 +80,7 @@ of the app meet.
 
 | Piece | What it is |
 |---|---|
-| **ProgramOutput** | One named output of one run. Every value published into it is one `Data` of its declared kind. Memory holds the latest value, where it came from (`Provenance`), and its writer. |
+| **ProgramOutput** | One named output of one run. Every value published into it is one `Data` of its declared kind. Memory holds the latest value, where it came from (`Provenance`), and its writer. It holds no notes: what the user writes about a run belongs to the run, and the engine keeps it beside the run's recording. |
 | **Data** | One value a program produced. It is immutable, and **only programs make it**. Each kind registers in `data_kind_registry` under its name, which is how a recording on disk finds its class again. |
 | **Library** | The program outputs that are open: acquired now, or loaded from disk. Nothing else. It also names the group each output is listed under (`group_label`), so pickers can group outputs without knowing what a group is. |
 | **SaveTarget, Writer** | Where a run saves (its folder is the Experiment), and how one kind of `Data` is written to files and read back. Writers register in `writer_registry`. |

@@ -50,21 +50,24 @@ class RunEvents(QObject):
         inputs: ProgramInputsStore,
         devices: list[Device],
         save: SaveTarget,
+        note: str,
         series: Series | None,
         claim: Callable[[Run], None],
-    ) -> None:
-        """Start ``program``, or report through ``start_refused`` why it cannot start."""
+    ) -> Run | None:
+        """Start ``program`` and return its run, or report through ``start_refused`` why it
+        cannot start."""
         # Reported rather than raised, since every caller is a Qt slot. ``claim`` gets the run
         # before ``run_started`` announces it, so whoever started it has recorded it by then.
         try:
             run = self.executor.start(
-                program, inputs, devices, program_key=key, save=save, series=series
+                program, inputs, devices, program_key=key, save=save, note=note, series=series
             )
         except (MissingDevice, DeviceBusy, ParameterError, LibraryFull) as exc:
             self.start_refused.emit(str(exc))
-            return
+            return None
         claim(run)
         self.run_started.emit(run)
+        return run
 
     def end_series(self, series: Series) -> None:
         self.executor.end_series(series)

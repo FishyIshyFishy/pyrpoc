@@ -23,6 +23,7 @@ class Runs(QObject):
     one save target every run shares."""
 
     save_changed = pyqtSignal()
+    note_changed = pyqtSignal()
     # What a program needs may have arrived or gone: a device, or a name to save under.
     readiness_changed = pyqtSignal()
     # Something worth remembering changed: the save target, or a run started.
@@ -39,6 +40,8 @@ class Runs(QObject):
         self.inventory = inventory
         self.inputs = inputs
         self.save = SaveTarget()
+        # The note for the next run. Run metadata, not a program input: no program reads it.
+        self.note = ""
         self.events = RunEvents(library.store, self)
         self.live_runs: set[Run] = set()
         self.events.run_started.connect(self.on_run_started)
@@ -48,16 +51,20 @@ class Runs(QObject):
 
     def start(self, program_key: str, series: Series | None, claim: Callable[[Run], None]) -> None:
         """Start ``program_key`` with what the workbench holds right now, or report
-        why not through ``events.start_refused``."""
-        self.events.start(
+        why not through ``events.start_refused``. A run that starts takes the note."""
+        run = self.events.start(
             program_registry.get(program_key)(),
             program_key,
             self.inputs,
             self.inventory.devices,
             self.save,
+            self.note,
             series,
             claim,
         )
+        # Cleared so one note is never copied onto runs it was not written for.
+        if run is not None and self.note:
+            self.set_note("")
 
     def blockers(self, program_key: str) -> list[str]:
         """What has to be supplied before ``program_key`` can run."""
@@ -85,6 +92,10 @@ class Runs(QObject):
             self.save.enabled = enabled
         self.save_changed.emit()
         self.edited.emit()
+
+    def set_note(self, text: str) -> None:
+        self.note = text
+        self.note_changed.emit()
 
     def on_run_started(self, run: Run) -> None:
         self.live_runs.add(run)

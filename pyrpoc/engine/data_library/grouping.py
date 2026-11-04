@@ -70,8 +70,14 @@ class SortBy(Enum):
 
 
 def recording_key(program_output: ProgramOutput[Any]) -> str:
+    """What names the recording ``program_output`` belongs to: its file, or its run when it
+    is not saved."""
     meta_path = program_output.meta_path
-    return f"run:{program_output.run_id}" if meta_path is None else str(meta_path)
+    return f"run:{program_output.run_id}" if meta_path is None else recording_key_of(meta_path)
+
+
+def recording_key_of(meta_path: Path) -> str:
+    return str(meta_path)
 
 
 def build_tree(outputs: list[ProgramOutput[Any]], folders: list[Path]) -> list[ExperimentNode]:

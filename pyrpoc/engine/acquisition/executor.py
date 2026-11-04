@@ -19,6 +19,7 @@ from pyrpoc.core.program_output import Origin, ProgramOutput, Provenance, utc_no
 from pyrpoc.core.saving import SaveTarget
 from pyrpoc.engine.acquisition.program_inputs import ProgramInputsStore
 from pyrpoc.engine.acquisition.recording import Recording, RecordingKey, Series
+from pyrpoc.engine.data_library.grouping import recording_key
 from pyrpoc.engine.data_library.saving import RecordingSaver
 from pyrpoc.engine.data_library.store import LibraryStore
 
@@ -88,10 +89,12 @@ class Executor:
         *,
         program_key: str,
         save: SaveTarget,
+        note: str,
         series: Series | None,
     ) -> Run:
         """Start ``program`` on a worker thread of its own, continuing the
-        recording of ``series`` if nothing it depends on changed. Raises
+        recording of ``series`` if nothing it depends on changed. ``note`` goes to a new
+        recording; one the run continues keeps its own. Raises
         ``MissingDevice``, ``DeviceBusy``, ``ParameterError`` or, for a new
         recording, ``LibraryFull`` before anything starts."""
         with self._lock:
@@ -115,7 +118,7 @@ class Executor:
                 devices=key.devices,
                 run_id=self._run_id,
             )
-            recording, stale = self.recording_for(program, key, provenance, series)
+            recording, stale = self.recording_for(program, key, provenance, note, series)
             run = Run(program, provenance, devices, recording, series)
             recording.active += 1
             recording.last_run = run
@@ -128,7 +131,12 @@ class Executor:
         return run
 
     def recording_for(
-        self, program: Program, key: RecordingKey, provenance: Provenance, series: Series | None
+        self,
+        program: Program,
+        key: RecordingKey,
+        provenance: Provenance,
+        note: str,
+        series: Series | None,
     ) -> tuple[Recording, Recording | None]:
         """Where the run writes, and the series' old recording if this replaces one that is
         ready to close."""
@@ -137,7 +145,7 @@ class Executor:
         if current is not None and current.key == key:
             return current, None
         self.library.check_room()
-        recording = self.open_recording(program, key, provenance)
+        recording = self.open_recording(program, key, provenance, note)
         if series is None:
             return recording, None
         series.recording = recording
@@ -145,7 +153,7 @@ class Executor:
         return recording, stale
 
     def open_recording(
-        self, program: Program, key: RecordingKey, provenance: Provenance
+        self, program: Program, key: RecordingKey, provenance: Provenance, note: str
     ) -> Recording:
         saver = self.build_saver(program, provenance, key.save)
         outputs = self.open_outputs(program, provenance, saver)
@@ -153,6 +161,7 @@ class Executor:
         if saver is not None:
             saver.begin(outputs)
         for program_output in outputs.values():
+            self.library.notes.set(recording_key(program_output), note)
             self.library.add(program_output)
         return Recording(key, outputs, saver)
 
@@ -188,9 +197,8 @@ class Executor:
         inputs.validate(declared)
         return inputs.values_for(declared)
 
-    @staticmethod
     def build_saver(
-        program: Program, provenance: Provenance, save: SaveTarget
+        self, program: Program, provenance: Provenance, save: SaveTarget
     ) -> RecordingSaver | None:
         """The saver for this run, or None when saving is off."""
         if not save.enabled:
@@ -202,6 +210,7 @@ class Executor:
             parameters=provenance.parameters,
             devices=provenance.devices,
             started_at=provenance.started_at,
+            notes=self.library.notes,
         )
         saver.prepare(dict(program.emits))
         return saver

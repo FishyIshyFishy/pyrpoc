@@ -15,6 +15,7 @@ from PyQt6.QtWidgets import (
     QLabel,
     QLineEdit,
     QMessageBox,
+    QPlainTextEdit,
     QPushButton,
     QScrollArea,
     QSizePolicy,
@@ -80,6 +81,7 @@ class AcquisitionPanel(Panel):
         root.addLayout(self.build_transport_row())
         root.addLayout(self.build_experiment_row())
         root.addLayout(self.build_save_row())
+        root.addWidget(self.build_note_box())
         self.status_label = QLabel(self)
         self.status_label.setWordWrap(True)
         # Wrapped text would otherwise hold the panel wider than its dock.
@@ -151,12 +153,30 @@ class AcquisitionPanel(Panel):
         row.addWidget(self.name_edit, 1)
         return row
 
+    def build_note_box(self) -> QPlainTextEdit:
+        """What the user writes before pressing run, saved with that run and then cleared."""
+        self.note_edit = QPlainTextEdit(self)
+        self.note_edit.setPlaceholderText(
+            "Note for the next run: what you're about to do, and why. "
+            "Saved with that run, then cleared."
+        )
+        self.note_edit.setToolTip(
+            "Saved in the run's recording and in experiment.txt in the Experiment folder. "
+            "Edit it afterwards from the run's details in the Data Library."
+        )
+        self.note_edit.setTabChangesFocus(True)
+        lines = self.note_edit.fontMetrics().lineSpacing()
+        self.note_edit.setFixedHeight(3 * lines + 14)
+        return self.note_edit
+
     def connect_signals(self) -> None:
         self.program_combo.currentIndexChanged.connect(self.on_program_chosen)
         self.stop_btn.clicked.connect(self.host.stop)
         self.save_check.toggled.connect(lambda checked: self.runs.set_save(enabled=checked))
         self.name_edit.textChanged.connect(lambda text: self.runs.set_save(name=text))
         self.dir_btn.clicked.connect(self.choose_directory)
+        self.note_edit.textChanged.connect(lambda: self.runs.set_note(self.note_edit.toPlainText()))
+        self.runs.note_changed.connect(self.on_note_changed)
 
         self.runs.inventory.changed.connect(self.refresh_readiness)
         self.runs.save_changed.connect(self.on_save_changed)
@@ -301,6 +321,12 @@ class AcquisitionPanel(Panel):
                 "Click to choose another."
             )
         self.refresh_readiness()
+
+    def on_note_changed(self) -> None:
+        """Show the note a run took being cleared."""
+        # Unchanged text is skipped so typing keeps its cursor.
+        if self.note_edit.toPlainText() != self.runs.note:
+            self.note_edit.setPlainText(self.runs.note)
 
     def on_run_started(self) -> None:
         self.show_status("acquiring")
