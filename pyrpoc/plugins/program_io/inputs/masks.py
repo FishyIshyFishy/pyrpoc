@@ -21,10 +21,9 @@ from PyQt6.QtGui import (
 from PyQt6.QtWidgets import QGridLayout, QLabel, QVBoxLayout, QWidget
 
 from pyrpoc.core.program_input import Editor, Field, FieldValues, ParameterError, declare
+from pyrpoc.utils.widgets.empty_state import EmptyState
 
 from .mask import Mask
-
-from .empty_state import EmptyState
 
 THUMBNAIL_PX = 48
 # A tile's width: its thumbnail and room for the name under it.
