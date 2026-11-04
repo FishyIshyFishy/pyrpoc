@@ -23,7 +23,7 @@ from .histogram import (
     HistogramSettings,
 )
 from .mask import Mask
-from .masks import MASKS, MaskList, MasksField, thumbnail
+from .masks import MASKS, MasksField, thumbnail
 from .modulation import MASK_LINES, MaskLine, lines_for
 from .mosaic import TILE_SPACING_UM, X_TILES, Y_TILES, MosaicGrid
 from .pixel_pick import PICK, PickField, PixelPick
@@ -69,7 +69,6 @@ __all__ = [
     "HistogramSettings",
     "Mask",
     "MaskLine",
-    "MaskList",
     "MasksField",
     "MosaicGrid",
     "Point",

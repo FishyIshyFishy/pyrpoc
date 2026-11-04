@@ -16,6 +16,7 @@ from PyQt6.QtWidgets import (
     QFileDialog,
     QFormLayout,
     QHBoxLayout,
+    QLabel,
     QLineEdit,
     QPushButton,
     QSpinBox,
@@ -31,6 +32,10 @@ from pyrpoc.core.program_input import InputSection, ParameterError
 from pyrpoc.utils import value_rules as R
 
 from .cards import BaseCardWidget
+from .flow_grid import FlowGrid
+
+# The narrowest a field and its label are given before the grid drops to fewer columns.
+CELL_PX = 170
 
 CHANNEL_BUTTON_CSS = (
     "QToolButton {"
@@ -126,6 +131,7 @@ def build_path(spec: R.PathField, parent: QWidget) -> P.Editor:
         connect=lambda cb: edit.textChanged.connect(lambda *_: cb()),
         summary=lambda: Path(edit.text()).name if edit.text().strip() else "-",
         spec=spec,
+        wide=True,
     )
 
 
@@ -191,6 +197,7 @@ def build_channels(spec: R.ChannelsField, parent: QWidget) -> P.Editor:
         connect=connect,
         summary=lambda: ", ".join(f"AI{i}" for i in get()) or "none",
         spec=spec,
+        wide=True,
     )
 
 
@@ -287,23 +294,42 @@ class ParamForm(QWidget):
 
     def build_section(self, section: FormSection, *, cards: bool) -> QWidget:
         body = QWidget(self)
-        form = QFormLayout(body)
-        form.setContentsMargins(4, 4, 4, 4)
-        # A narrow panel stacks a long row's field under its label instead of clipping it.
-        form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
+        if cards:
+            grid = FlowGrid(body, min_cell=CELL_PX, spacing=10)
+            grid.setContentsMargins(4, 4, 4, 4)
+        else:
+            form = QFormLayout(body)
+            form.setContentsMargins(4, 4, 4, 4)
+            form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
         keys: list[str] = []
         for key, spec in section.rows:
+            if not spec.shown:
+                continue
             field = build_field(spec, body, self.values)
             field.connect(lambda key=key: self.on_field_changed(key))
             self.fields[key] = field
             keys.append(key)
-            form.addRow(spec.label, field.widget)
+            if cards:
+                grid.add(self.build_cell(spec.label, field.widget, body), wide=field.wide)
+            else:
+                form.addRow(spec.label, field.widget)
         if not cards:
             return body
         card = BaseCardWidget(section.label, self)
         card.set_body_widget(body)
         self._cards.append((card, keys))
         return card
+
+    def build_cell(self, label: str, widget: QWidget, parent: QWidget) -> QWidget:
+        """A field under its label, so a cell is as wide as its field needs."""
+        cell = QWidget(parent)
+        column = QVBoxLayout(cell)
+        column.setContentsMargins(0, 0, 0, 0)
+        column.setSpacing(2)
+        column.addWidget(QLabel(label, cell))
+        column.addWidget(widget)
+        widget.setParent(cell)
+        return cell
 
     def reload(self) -> None:
         """Show every value ``values`` holds now."""
