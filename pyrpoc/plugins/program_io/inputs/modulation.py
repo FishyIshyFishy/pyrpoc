@@ -97,7 +97,7 @@ class MaskLinesTable(QWidget):
         self.spins = []
         masks = self.masks()
         if not masks:
-            self.grid.addWidget(muted("No masks to assign.", self))
+            self.grid.addWidget(muted("A line is assigned to each mask once one is drawn.", self))
             return
         for column, text in ((1, "Port"), (2, "Line")):
             self.grid.addWidget(muted(text, self), 0, column, Qt.AlignmentFlag.AlignHCenter)

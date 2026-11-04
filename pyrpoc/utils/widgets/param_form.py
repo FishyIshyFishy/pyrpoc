@@ -63,8 +63,16 @@ def build_int(spec: R.IntField, parent: QWidget) -> P.Editor:
     )
 
 
+class TrimmedSpinBox(QDoubleSpinBox):
+    """A spin box that drops trailing zeros: 2 rather than 2.000000."""
+
+    def textFromValue(self, v: float) -> str:
+        text = f"{v:.{self.decimals()}f}"
+        return text.rstrip("0").rstrip(".") if "." in text else text
+
+
 def build_float(spec: R.FloatField, parent: QWidget) -> P.Editor:
-    widget = QDoubleSpinBox(parent)
+    widget = TrimmedSpinBox(parent)
     widget.setDecimals(spec.decimals)
     widget.setMinimum(spec.minimum if spec.minimum is not None else -1e12)
     widget.setMaximum(spec.maximum if spec.maximum is not None else 1e12)
@@ -281,6 +289,8 @@ class ParamForm(QWidget):
         body = QWidget(self)
         form = QFormLayout(body)
         form.setContentsMargins(4, 4, 4, 4)
+        # A narrow panel stacks a long row's field under its label instead of clipping it.
+        form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
         keys: list[str] = []
         for key, spec in section.rows:
             field = build_field(spec, body, self.values)
@@ -332,5 +342,4 @@ class ParamForm(QWidget):
 
     def refresh_summaries(self) -> None:
         for card, keys in self._cards:
-            parts = [f"{self.fields[k].spec.label}: {self.fields[k].summary()}" for k in keys]
-            card.set_description("  |  ".join(parts))
+            card.set_summary([(self.fields[k].spec.label, self.fields[k].summary()) for k in keys])

@@ -24,6 +24,8 @@ from pyrpoc.core.program_input import Editor, Field, FieldValues, ParameterError
 
 from .mask import Mask
 
+from .empty_state import EmptyState
+
 THUMBNAIL_PX = 48
 # A tile's width: its thumbnail and room for the name under it.
 TILE_PX = 76
@@ -61,13 +63,17 @@ class MaskList(QWidget):
         super().__init__(parent)
         self.masks: tuple[Mask, ...] = ()
         self.tiles: list[QWidget] = []
-        self.grid = QGridLayout(self)
-        self.grid.setContentsMargins(0, 2, 0, 2)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 2, 0, 2)
+        self.empty = EmptyState("No masks yet", "Draw one in a Mask Editor.", self)
+        outer.addWidget(self.empty)
+        self.tile_host = QWidget(self)
+        outer.addWidget(self.tile_host)
+        self.grid = QGridLayout(self.tile_host)
+        self.grid.setContentsMargins(0, 0, 0, 0)
         self.grid.setHorizontalSpacing(6)
         self.grid.setVerticalSpacing(6)
         self.grid.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
-        self.empty = QLabel("None drawn. Draw one in a Mask Editor.", self)
-        self.empty.setEnabled(False)
         self.set_value(())
 
     def value(self) -> tuple[Mask, ...]:
@@ -80,10 +86,11 @@ class MaskList(QWidget):
             tile.deleteLater()
         self.tiles = [self.build_tile(mask) for mask in masks]
         self.empty.setVisible(not masks)
+        self.tile_host.setVisible(bool(masks))
         self.reflow()
 
     def build_tile(self, mask: Mask) -> QWidget:
-        tile = QWidget(self)
+        tile = QWidget(self.tile_host)
         tile.setFixedWidth(TILE_PX)
         tile.setToolTip(mask.describe())
         layout = QVBoxLayout(tile)
@@ -102,9 +109,6 @@ class MaskList(QWidget):
         """Lay the tiles out in as many columns as the width holds."""
         while self.grid.count():
             self.grid.takeAt(0)
-        if not self.tiles:
-            self.grid.addWidget(self.empty, 0, 0)
-            return
         spacing = self.grid.horizontalSpacing()
         columns = max(1, (self.width() + spacing) // (TILE_PX + spacing))
         for index, tile in enumerate(self.tiles):
