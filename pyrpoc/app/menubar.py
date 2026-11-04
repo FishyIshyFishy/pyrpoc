@@ -7,15 +7,7 @@ from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtGui import QAction, QActionGroup
 from PyQt6.QtWidgets import QMenu, QMenuBar, QWidget
 
-from pyrpoc.app.theme.manager import available_breeze_themes
-
-_STYLE_COLOR_GROUPS = ["blue", "red", "green", "purple", "cyan", "pink"]
-_STYLE_VARIANTS = [
-    ("light-{c}", "Light"),
-    ("light-{c}-alt", "Light Alt"),
-    ("dark-{c}", "Dark"),
-    ("dark-{c}-alt", "Dark Alt"),
-]
+from pyrpoc.app.theme.mcolors import MCOLORS
 
 
 class MainMenuBar(QMenuBar):
@@ -87,14 +79,12 @@ class MainMenuBar(QMenuBar):
     def populate_style_menu(self, selected_mode: str) -> None:
         self.style_menu.clear()
         self._style_actions.clear()
-        for color in _STYLE_COLOR_GROUPS:
-            color_menu = QMenu(color.title(), self.style_menu)
+        for color in MCOLORS:
+            color_menu = QMenu(color.label, self.style_menu)
             self.style_menu.addMenu(color_menu)
-            for pattern, label in _STYLE_VARIANTS:
-                theme = pattern.format(c=color)
-                if theme not in available_breeze_themes:
-                    continue
-                action = QAction(label, color_menu)
+            for mode in ("dark", "light"):
+                theme = f"{mode}-{color.key}"
+                action = QAction(mode.title(), color_menu)
                 action.setCheckable(True)
                 action.triggered.connect(lambda checked, m=theme: self.style_selected.emit(m))
                 self._style_group.addAction(action)

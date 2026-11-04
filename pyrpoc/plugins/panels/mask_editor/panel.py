@@ -24,7 +24,6 @@ from PyQt6.QtWidgets import (
     QLayout,
     QMenu,
     QMessageBox,
-    QPushButton,
     QScrollArea,
     QSpinBox,
     QVBoxLayout,
@@ -137,7 +136,7 @@ class MaskEditorPanel(DataPanel[Image]):
         return self.sidebar_scroll
 
     def build_masks_column(self) -> QWidget:
-        """The drawn masks, with New, Delete and Export under them."""
+        """The drawn masks, with a row after them to add another."""
         column = QWidget(self.sidebar)
         layout = QVBoxLayout(column)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -145,22 +144,12 @@ class MaskEditorPanel(DataPanel[Image]):
         self.mask_picker = MaskPicker(column)
         self.mask_picker.chosen.connect(self.choose_mask)
         self.mask_picker.renamed.connect(self.rename_mask)
+        self.mask_picker.new_requested.connect(self.new_mask)
+        self.mask_picker.export_requested.connect(self.save_mask)
+        self.mask_picker.delete_requested.connect(self.delete_mask)
         layout.addWidget(self.mask_picker, 1)
         self.masks_hint = hint("Draw on the image to start a mask.", column)
         layout.addWidget(self.masks_hint)
-        buttons = QHBoxLayout()
-        new_btn = QPushButton("New", column)
-        new_btn.setToolTip("Start another mask")
-        new_btn.clicked.connect(self.new_mask)
-        self.delete_btn = QPushButton("Delete", column)
-        self.delete_btn.setToolTip("Delete the selected mask")
-        self.delete_btn.clicked.connect(self.delete_mask)
-        self.export_btn = QPushButton("Export…", column)
-        self.export_btn.setToolTip("Save the selected mask as an image file")
-        self.export_btn.clicked.connect(self.save_mask)
-        for button in (new_btn, self.delete_btn, self.export_btn):
-            buttons.addWidget(button)
-        layout.addLayout(buttons)
         layout.addStretch(0)
         return column
 
@@ -258,9 +247,6 @@ class MaskEditorPanel(DataPanel[Image]):
     def show_masks(self) -> None:
         masks = self.masks()
         self.mask_picker.show_masks(masks, self.current)
-        # An empty list is replaced by its hint, so the sidebar says what to do instead of
-        # showing a blank box.
-        self.mask_picker.setVisible(bool(masks))
         self.masks_hint.setVisible(not masks)
 
     def on_input_changed(self, key: str) -> None:
@@ -294,10 +280,8 @@ class MaskEditorPanel(DataPanel[Image]):
         taken = {mask.label for mask in self.masks()}
         return next(f"mask {n}" for n in itertools.count(1) if f"mask {n}" not in taken)
 
-    def delete_mask(self) -> None:
-        gone = self.current
-        if gone:
-            self.inputs.set(MASKS.key, tuple(mask for mask in self.masks() if mask.id != gone))
+    def delete_mask(self, gone: str) -> None:
+        self.inputs.set(MASKS.key, tuple(mask for mask in self.masks() if mask.id != gone))
 
     def rename_mask(self, mask_id: str, label: str) -> None:
         masks = tuple(replace(m, label=label) if m.id == mask_id else m for m in self.masks())
@@ -459,8 +443,6 @@ class MaskEditorPanel(DataPanel[Image]):
         self.region_list.show_regions(self._rois)
         self.region_list.setVisible(bool(self._rois))
         self.regions_hint.setVisible(not self._rois)
-        self.delete_btn.setEnabled(bool(self.current))
-        self.export_btn.setEnabled(bool(self.current))
         self.image_view.set_rois(self._rois)
 
     def show_roi_menu(self, pos: QPoint) -> None:
@@ -553,11 +535,8 @@ class MaskEditorPanel(DataPanel[Image]):
         self.choose_mask(current if current in ids else "")
         self.show_masks()
 
-    def save_mask(self) -> None:
-        mask = next((m for m in self.masks() if m.id == self.current), None)
-        if mask is None:
-            QMessageBox.warning(self, "No mask", "Select a mask to export.")
-            return
+    def save_mask(self, mask_id: str) -> None:
+        mask = next(m for m in self.masks() if m.id == mask_id)
         path, _ = QFileDialog.getSaveFileName(
             self, "Export Mask", mask.label, "PNG (*.png);;TIFF (*.tif *.tiff);;All Files (*)"
         )
