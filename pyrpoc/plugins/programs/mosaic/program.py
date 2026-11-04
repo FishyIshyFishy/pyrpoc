@@ -13,7 +13,7 @@ from pyrpoc.plugins.devices import DAQ, Galvo, PriorStage
 from pyrpoc.plugins.program_io.inputs import (
     MASK_LINES,
     MASKS,
-    SAMPLE_RATE_HZ,
+    SAMPLE_RATE_MHZ,
     SCAN_GEOMETRY_INPUTS,
     TILE_SPACING_UM,
     X_TILES,
@@ -52,7 +52,7 @@ class StageMosaic(Program):
     devices = [Galvo, DAQ, PriorStage]
     sections = [
         InputSection("Scan", SCAN_GEOMETRY_INPUTS),
-        InputSection("DAQ", (SAMPLE_RATE_HZ,)),
+        InputSection("DAQ", (SAMPLE_RATE_MHZ,)),
         InputSection("Modulation", (MASKS, MASK_LINES)),
         InputSection("Mosaic", (X_TILES, Y_TILES, TILE_SPACING_UM)),
     ]

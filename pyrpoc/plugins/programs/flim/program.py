@@ -20,11 +20,12 @@ from pyrpoc.plugins.program_io.inputs import (
     NUM_FRAMES,
     PIXEL_CLOCK_CTR,
     PIXEL_CLOCK_PFI,
-    SAMPLE_RATE_HZ,
+    SAMPLE_RATE_MHZ,
     SCAN_GEOMETRY_INPUTS,
     HistogramSettings,
     ScanGeometry,
     TriggerLines,
+    rate_hz,
 )
 from pyrpoc.plugins.program_io.outputs import DecayHistogram, Image
 
@@ -47,7 +48,7 @@ def acquire_frame(ctx: RunContext, flim: FlimMeasurement) -> None:
         ctx.devices[DAQ],
         ctx.devices[Galvo],
         scan,
-        ctx.inputs[SAMPLE_RATE_HZ],
+        rate_hz(ctx.inputs),
         TriggerLines.from_inputs(ctx.inputs),
     )
     ctx.sleep(histogram.frame_settle_s)
@@ -66,7 +67,7 @@ class FLIM(Program):
     sections = [
         InputSection("Scan", SCAN_GEOMETRY_INPUTS),
         InputSection("Frames", (NUM_FRAMES,)),
-        InputSection("DAQ", (SAMPLE_RATE_HZ,)),
+        InputSection("DAQ", (SAMPLE_RATE_MHZ,)),
         InputSection("Triggers", (FRAME_TRIGGER_PFI, PIXEL_CLOCK_CTR, PIXEL_CLOCK_PFI)),
         InputSection(
             "Histogram",

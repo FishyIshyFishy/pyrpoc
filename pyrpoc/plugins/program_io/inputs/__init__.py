@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from .camera import CAMERA_BINNED, CAMERA_EXPOSURE_MS, CAMERA_GAIN_PCT, CameraSettings
 from .ccd_readout import CCD_EXPOSURE_S, CCD_FRAMES_TO_AVERAGE
-from .daq import SAMPLE_RATE_HZ
+from .daq import SAMPLE_RATE_MHZ, rate_hz
 from .focus_search import (
     FOCUS_FINAL_STEP_UM,
     FOCUS_INITIAL_STEP_UM,
@@ -55,7 +55,7 @@ __all__ = [
     "PICK",
     "PIXEL_CLOCK_CTR",
     "PIXEL_CLOCK_PFI",
-    "SAMPLE_RATE_HZ",
+    "SAMPLE_RATE_MHZ",
     "SCAN_GEOMETRY_INPUTS",
     "T0_SAMPLES",
     "T1_SAMPLES",
@@ -79,5 +79,6 @@ __all__ = [
     "SplitWindows",
     "TriggerLines",
     "lines_for",
+    "rate_hz",
     "thumbnail",
 ]

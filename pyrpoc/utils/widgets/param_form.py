@@ -19,6 +19,7 @@ from PyQt6.QtWidgets import (
     QLabel,
     QLineEdit,
     QPushButton,
+    QSizePolicy,
     QSpinBox,
     QToolButton,
     QVBoxLayout,
@@ -35,7 +36,9 @@ from .cards import BaseCardWidget
 from .flow_grid import FlowGrid
 
 # The narrowest a field and its label are given before the grid drops to fewer columns.
-CELL_PX = 170
+CELL_PX = 110
+# Enough for a few digits and the arrow buttons.
+SPIN_MIN_PX = 64
 
 CHANNEL_BUTTON_CSS = (
     "QToolButton {"
@@ -55,6 +58,7 @@ CHANNEL_BUTTON_CSS = (
 
 def build_int(spec: R.IntField, parent: QWidget) -> P.Editor:
     widget = QSpinBox(parent)
+    widget.setMinimumWidth(SPIN_MIN_PX)
     widget.setMinimum(spec.minimum if spec.minimum is not None else -1_000_000)
     widget.setMaximum(spec.maximum if spec.maximum is not None else 1_000_000)
     widget.setSingleStep(spec.step)
@@ -78,6 +82,7 @@ class TrimmedSpinBox(QDoubleSpinBox):
 
 def build_float(spec: R.FloatField, parent: QWidget) -> P.Editor:
     widget = TrimmedSpinBox(parent)
+    widget.setMinimumWidth(SPIN_MIN_PX)
     widget.setDecimals(spec.decimals)
     widget.setMinimum(spec.minimum if spec.minimum is not None else -1e12)
     widget.setMaximum(spec.maximum if spec.maximum is not None else 1e12)
@@ -326,7 +331,11 @@ class ParamForm(QWidget):
         column = QVBoxLayout(cell)
         column.setContentsMargins(0, 0, 0, 0)
         column.setSpacing(2)
-        column.addWidget(QLabel(label, cell))
+        title = QLabel(label, cell)
+        # Wraps rather than widening the cell, so a long name never forces a column wider.
+        title.setWordWrap(True)
+        title.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+        column.addWidget(title)
         column.addWidget(widget)
         widget.setParent(cell)
         return cell

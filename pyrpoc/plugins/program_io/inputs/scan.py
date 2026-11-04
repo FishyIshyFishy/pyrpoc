@@ -49,7 +49,7 @@ SLOW_AXIS_AMPLITUDE = float_input(
     tooltip="Slow-axis amplitude, in volts",
 )
 DWELL_TIME_US = float_input(
-    "dwell_time_us", "Dwell Time (us)", 2.0, minimum=0.1, tooltip="Pixel dwell time"
+    "dwell_time_us", "Dwell Time (us)", 2.0, minimum=0.1, step=1.0, tooltip="Pixel dwell time"
 )
 
 

@@ -23,10 +23,11 @@ from pyrpoc.plugins.program_io.inputs import (
     CENTER_REGION_FRACTION,
     MASKS,
     NUM_FRAMES,
-    SAMPLE_RATE_HZ,
+    SAMPLE_RATE_MHZ,
     SCAN_GEOMETRY_INPUTS,
     Mask,
     ScanGeometry,
+    rate_hz,
 )
 from pyrpoc.plugins.program_io.outputs import Spectrum
 from pyrpoc.plugins.programs.building_blocks.functions.ccd_read import spectrum_readout
@@ -69,7 +70,7 @@ class RoiSpectralSeries(Program):
     devices = [Galvo, AndorCCD]
     sections = [
         InputSection("Scan", SCAN_GEOMETRY_INPUTS),
-        InputSection("DAQ", (SAMPLE_RATE_HZ,)),
+        InputSection("DAQ", (SAMPLE_RATE_MHZ,)),
         InputSection("Region", (MASKS, CENTER_REGION_FRACTION)),
         InputSection("Frames", (NUM_FRAMES,)),
         InputSection("CCD Readout", (CCD_EXPOSURE_S, CCD_FRAMES_TO_AVERAGE)),
@@ -79,7 +80,7 @@ class RoiSpectralSeries(Program):
     runners = [Single()]
 
     def run(self, ctx: RunContext) -> None:
-        sample_rate_hz = ctx.inputs[SAMPLE_RATE_HZ]
+        sample_rate_hz = rate_hz(ctx.inputs)
         waveform, sweep = plan_sweep(
             ScanGeometry.from_inputs(ctx.inputs),
             ctx.inputs[MASKS],

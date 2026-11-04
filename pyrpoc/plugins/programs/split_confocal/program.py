@@ -12,7 +12,7 @@ from pyrpoc.plugins.program_io.inputs import (
     MASK_LINES,
     MASKS,
     NUM_FRAMES,
-    SAMPLE_RATE_HZ,
+    SAMPLE_RATE_MHZ,
     SCAN_GEOMETRY_INPUTS,
     T0_SAMPLES,
     T1_SAMPLES,
@@ -35,7 +35,7 @@ class SplitConfocal(Program):
     sections = [
         InputSection("Scan", SCAN_GEOMETRY_INPUTS),
         InputSection("Frames", (NUM_FRAMES,)),
-        InputSection("DAQ", (SAMPLE_RATE_HZ,)),
+        InputSection("DAQ", (SAMPLE_RATE_MHZ,)),
         InputSection("Split", (T0_SAMPLES, T1_SAMPLES)),
         InputSection("Modulation", (MASKS, MASK_LINES)),
     ]

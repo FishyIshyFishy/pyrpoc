@@ -11,9 +11,9 @@ from pyrpoc.plugins.devices import DAQ, Galvo
 from pyrpoc.plugins.program_io.inputs import (
     MASK_LINES,
     MASKS,
-    SAMPLE_RATE_HZ,
     ScanGeometry,
     lines_for,
+    rate_hz,
 )
 
 from .daq_tasks import acquire
@@ -55,7 +55,7 @@ class Raster:
     @classmethod
     def for_run(cls, ctx: RunContext) -> Raster:
         scan = ScanGeometry.from_inputs(ctx.inputs)
-        sample_rate_hz = ctx.inputs[SAMPLE_RATE_HZ]
+        sample_rate_hz = rate_hz(ctx.inputs)
         daq = ctx.devices[DAQ]
         samples_per_pixel = pixel_samples(scan.dwell_time_us, sample_rate_hz)
         masks = ctx.inputs[MASKS]
