@@ -71,7 +71,7 @@ class Runs(QObject):
         required = list(program_registry.get(program_key).devices)
         missing = [cls.display_name for cls in claims.missing(required, self.inventory.devices)]
         if self.save.enabled and self.save.folder is None:
-            missing.append("an Experiment folder to save into")
+            missing.append("a folder to save into")
         if self.save.enabled and not self.save.filename:
             missing.append("a name to save under")
         return missing

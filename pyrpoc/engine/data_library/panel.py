@@ -110,7 +110,7 @@ class DataLibraryPanel(Panel):
         self.empty = EmptyState(
             "Nothing open",
             "Acquired data appears here as it arrives. Open… loads a saved recording or a "
-            "whole Experiment folder.",
+            "whole folder.",
             self,
         )
         root.addWidget(self.empty)
@@ -165,14 +165,14 @@ class DataLibraryPanel(Panel):
         row.addStretch(1)
         open_btn = QPushButton("Open…", self)
         open_menu = QMenu(open_btn)
-        open_menu.addAction("Experiment folder…", self.choose_experiment)
+        open_menu.addAction("Folder…", self.choose_experiment)
         open_menu.addAction("Recording…", self.choose_recording)
         open_btn.setMenu(open_menu)
-        open_btn.setToolTip("Load a whole Experiment folder, or one recording by its _meta.json.")
+        open_btn.setToolTip("Load every recording in a folder, or one recording by its _meta.json.")
         row.addWidget(open_btn)
         self.close_btn = QPushButton("Close", self)
         self.close_btn.setToolTip(
-            "Drop the selection from memory: an output, a recording or a whole Experiment. "
+            "Drop the selection from memory: an output, a recording or a whole folder. "
             "Files already saved stay on disk."
         )
         self.close_btn.clicked.connect(self.close_selected)
@@ -385,9 +385,7 @@ class DataLibraryPanel(Panel):
             self.library.load(Path(path))
 
     def choose_experiment(self) -> None:
-        folder = QFileDialog.getExistingDirectory(
-            self, "Open Experiment folder", self.start_folder()
-        )
+        folder = QFileDialog.getExistingDirectory(self, "Open folder", self.start_folder())
         if folder:
             self.library.load_experiment(Path(folder))
 
@@ -418,5 +416,5 @@ def folder_of(node: Node) -> Path | None:
 
 def close_label(node: Node) -> str:
     if isinstance(node, ExperimentNode):
-        return "Close all unsaved" if node.folder is None else "Close Experiment"
+        return "Close all unsaved" if node.folder is None else "Close folder"
     return "Close recording" if isinstance(node, RecordingNode) else "Close output"

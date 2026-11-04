@@ -11,8 +11,8 @@ def test_saving_with_no_folder_is_a_blocker(tmp_path: Path) -> None:
     app = application()
     runs = app.runs
     runs.set_save(name="frame", directory="", enabled=True)
-    assert "an Experiment folder to save into" in runs.blockers("simulation")
+    assert "a folder to save into" in runs.blockers("simulation")
     runs.set_save(directory=str(tmp_path))
-    assert "an Experiment folder to save into" not in runs.blockers("simulation")
+    assert "a folder to save into" not in runs.blockers("simulation")
     runs.set_save(enabled=False, directory="")
     assert runs.blockers("simulation") == []

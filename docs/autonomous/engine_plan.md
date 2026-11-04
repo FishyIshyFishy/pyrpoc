@@ -66,8 +66,9 @@ way of reading the data that's already there: the recordings in one folder
 belong together.
 
 - [ ] **Setting the save folder is setting the Experiment.** It's set where
-  the save folder is set today, and labelled so it reads as the Experiment
-  folder.
+  the save folder is set today, with the same button beside the name.
+  "Experiment" is a word for developers: to the user it is just a folder, and
+  no screen text says "Experiment".
 - [ ] **No new noun in the app's state.**
   - There's nothing to create or open. A recording's Experiment is the folder
     it sits in.

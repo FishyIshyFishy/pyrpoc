@@ -55,7 +55,7 @@ def status_dot(text: str) -> str:
 
 def short_name(name: str) -> str:
     """``name`` cut to fit a narrow panel."""
-    return name if len(name) <= 28 else name[:27] + "…"
+    return name if len(name) <= 16 else name[:15] + "…"
 
 
 class AcquisitionPanel(Panel):
@@ -79,7 +79,6 @@ class AcquisitionPanel(Panel):
         root.setSpacing(8)
         root.addLayout(self.build_program_row())
         root.addLayout(self.build_transport_row())
-        root.addLayout(self.build_experiment_row())
         root.addLayout(self.build_save_row())
         root.addWidget(self.build_note_box())
         self.status_label = QLabel(self)
@@ -123,34 +122,26 @@ class AcquisitionPanel(Panel):
         row.addStretch(1)
         return row
 
-    def build_experiment_row(self) -> QHBoxLayout:
-        """The Experiment folder: where runs save, so the recordings in it belong together."""
-        row = QHBoxLayout()
-        row.addWidget(QLabel("Experiment:", self))
-        self.dir_btn = QPushButton(self)
-        style = self.style()
-        if style is not None:
-            self.dir_btn.setIcon(style.standardIcon(QStyle.StandardPixmap.SP_DirOpenIcon))
-        # Left-aligned so the folder's name reads like a path field, not a command.
-        self.dir_btn.setStyleSheet("text-align: left; padding: 3px 8px;")
-        row.addWidget(self.dir_btn, 1)
-        return row
-
     def build_save_row(self) -> QHBoxLayout:
-        """Whether to save and what the run is called, on its own row so a narrow panel does
-        not squeeze the name field."""
+        """Whether and where to save, on its own row so a narrow panel does not squeeze the
+        name field."""
         row = QHBoxLayout()
         self.save_check = QCheckBox("Save", self)
-        self.save_check.setToolTip("Save each run as a recording in the Experiment folder.")
+        self.save_check.setToolTip("Save each run into the chosen folder.")
         self.name_edit = QLineEdit(self)
         self.name_edit.setPlaceholderText("Name")
         self.name_edit.setToolTip(
             "What this acquisition is called. Used as the filename when saving, "
             "and as its name in the data panel either way."
         )
+        self.dir_btn = QPushButton(self)
+        style = self.style()
+        if style is not None:
+            self.dir_btn.setIcon(style.standardIcon(QStyle.StandardPixmap.SP_DirOpenIcon))
         row.addWidget(self.save_check)
         self.name_edit.setMinimumWidth(80)
         row.addWidget(self.name_edit, 1)
+        row.addWidget(self.dir_btn)
         return row
 
     def build_note_box(self) -> QPlainTextEdit:
@@ -161,7 +152,8 @@ class AcquisitionPanel(Panel):
             "Saved with that run, then cleared."
         )
         self.note_edit.setToolTip(
-            "Saved in the run's recording and in experiment.txt in the Experiment folder. "
+            "Saved with the run's files, and gathered with the folder's other notes in "
+            "experiment.txt. "
             "Edit it afterwards from the run's details in the Data Library."
         )
         self.note_edit.setTabChangesFocus(True)
@@ -295,7 +287,7 @@ class AcquisitionPanel(Panel):
     def choose_directory(self) -> None:
         folder = self.runs.save.folder
         start = str(folder) if folder is not None else ""
-        chosen = QFileDialog.getExistingDirectory(self, "Choose the Experiment folder", start)
+        chosen = QFileDialog.getExistingDirectory(self, "Save acquisitions to", start)
         if chosen:
             self.runs.set_save(directory=chosen)
 
@@ -310,16 +302,11 @@ class AcquisitionPanel(Panel):
             self.save_check.setChecked(save.enabled)
         folder = save.folder
         if folder is None:
-            self.dir_btn.setText("Choose a folder…")
-            self.dir_btn.setToolTip(
-                "Choose the Experiment folder. Runs saved into one folder belong together."
-            )
+            self.dir_btn.setText("Folder…")
+            self.dir_btn.setToolTip("Choose the folder acquisitions are saved to.")
         else:
             self.dir_btn.setText(short_name(folder.name or str(folder)))
-            self.dir_btn.setToolTip(
-                f"The Experiment folder: {folder}\nRuns saved here belong together. "
-                "Click to choose another."
-            )
+            self.dir_btn.setToolTip(f"Saving to {folder}\nClick to choose another folder.")
         self.refresh_readiness()
 
     def on_note_changed(self) -> None:
