@@ -60,12 +60,13 @@ class SourcePicker(QWidget, Generic[D]):
         self.library = library
         self._follow_latest = True
 
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.addWidget(QLabel("Source:", self))
+        # Public so a panel can add its own small controls beside the picker.
+        self.row = QHBoxLayout(self)
+        self.row.setContentsMargins(0, 0, 0, 0)
+        self.row.addWidget(QLabel("Source:", self))
         self.combo = QComboBox(self)
         self.combo.currentIndexChanged.connect(self.on_chosen)
-        layout.addWidget(self.combo, 1)
+        self.row.addWidget(self.combo, 1)
 
         library.subscribe(self.refresh_sources)
         self.refresh_sources()
