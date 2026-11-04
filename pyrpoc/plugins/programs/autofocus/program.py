@@ -10,27 +10,27 @@ from collections.abc import Callable
 from dataclasses import asdict
 from typing import Any
 
-from pyrpoc.core.data import Image
-from pyrpoc.core.input_section import InputSection
-from pyrpoc.core.mask import MASKS
 from pyrpoc.core.program import (
     Cancelled,
     Program,
     RunContext,
     program_registry,
 )
+from pyrpoc.core.program_input import InputSection
 from pyrpoc.plugins.devices import DAQ, DaqError, Galvo, PriorError, PriorStage
-
-from ..building_blocks.functions.roi_scan import region_source
-from ..building_blocks.program_inputs import (
+from pyrpoc.plugins.program_io.inputs import (
     CENTER_REGION_FRACTION,
     FOCUS_FINAL_STEP_UM,
     FOCUS_INITIAL_STEP_UM,
     FOCUS_SEARCH_RANGE_UM,
+    MASKS,
     SAMPLE_RATE_HZ,
     SCAN_GEOMETRY_INPUTS,
     FocusSearch,
 )
+from pyrpoc.plugins.program_io.outputs import Image
+
+from ..building_blocks.functions.roi_scan import region_source
 from ..building_blocks.runners import Single
 from .climb import ClimbResult, ClimbStep, climb
 from .roi_scan import RoiRaster

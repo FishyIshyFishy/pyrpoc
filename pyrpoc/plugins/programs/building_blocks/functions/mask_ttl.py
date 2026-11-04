@@ -4,9 +4,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from pyrpoc.core.mask import Mask
-
-from ..program_inputs import MaskLine, ScanGeometry
+from pyrpoc.plugins.program_io.inputs import Mask, MaskLine, ScanGeometry
 
 
 def mask_ttl(

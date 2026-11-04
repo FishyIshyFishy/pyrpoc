@@ -10,18 +10,12 @@ from functools import reduce
 
 import numpy as np
 
-from pyrpoc.core.data import Image
-from pyrpoc.core.input_section import InputSection
-from pyrpoc.core.mask import MASKS, Mask
 from pyrpoc.core.program import Program, RunContext
+from pyrpoc.core.program_input import InputSection
+from pyrpoc.plugins.program_io.inputs import MASK_LINES, MASKS, NUM_FRAMES, X_PIXELS, Y_PIXELS, Mask
+from pyrpoc.plugins.program_io.outputs import Image
 
 from ...building_blocks.functions.run_loops import count_off
-from ...building_blocks.program_inputs import (
-    MASK_LINES,
-    NUM_FRAMES,
-    X_PIXELS,
-    Y_PIXELS,
-)
 from ...building_blocks.runners import Continuous, Single
 from ..frame import SIMULATED_CHANNELS, FrameShape
 from ..pacing import FRAME_INTERVAL_MS

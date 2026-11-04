@@ -11,9 +11,9 @@ from pathlib import Path
 
 from pyrpoc.core.device import DeviceError
 
-# ``pyrpoc/shared/assets/sdks``, reached from ``pyrpoc``, three folders up.
+# ``pyrpoc/utils/assets/sdks``, reached from ``pyrpoc``, three folders up.
 DLL_PATH = (
-    Path(__file__).resolve().parents[3] / "shared" / "assets" / "sdks" / "PriorScientificSDK.dll"
+    Path(__file__).resolve().parents[3] / "utils" / "assets" / "sdks" / "PriorScientificSDK.dll"
 )
 
 # The size Prior's own examples use; every reply is a short line of text.

@@ -9,10 +9,9 @@ from typing import Any, ClassVar, Generic, TypeVar
 from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtWidgets import QComboBox, QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
-from pyrpoc.core.data import Data
 from pyrpoc.core.library import Library
-from pyrpoc.core.program_inputs import ProgramInputs
-from pyrpoc.core.program_output import ProgramOutput
+from pyrpoc.core.program_input import ProgramInputs
+from pyrpoc.core.program_output import Data, ProgramOutput
 from pyrpoc.core.registry import Registry
 
 from .device import Device, make_instance_id

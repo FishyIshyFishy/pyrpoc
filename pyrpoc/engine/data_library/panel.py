@@ -25,7 +25,7 @@ from PyQt6.QtWidgets import (
 
 from pyrpoc.core.panels import Panel
 from pyrpoc.core.program_output import ProgramOutput
-from pyrpoc.shared.widgets.table import ListTable, horizontal_header, viewport_of
+from pyrpoc.utils.widgets.table import ListTable, horizontal_header, viewport_of
 
 from .details import DetailsDialog
 from .model import LibraryModel

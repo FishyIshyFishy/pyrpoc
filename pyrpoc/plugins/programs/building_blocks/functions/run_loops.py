@@ -5,8 +5,8 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 
-from pyrpoc.core.data import Image, Mosaic, MosaicTile
 from pyrpoc.core.program import RunContext
+from pyrpoc.plugins.program_io.outputs import Image, Mosaic, MosaicTile
 
 
 def count_off(ctx: RunContext, count: int, noun: str) -> Iterator[int]:

@@ -9,10 +9,15 @@ from typing import Any
 import cv2
 import numpy as np
 
-from pyrpoc.core.mask import MASKS
 from pyrpoc.core.program import RunContext
-from pyrpoc.core.program_inputs import ParameterError
+from pyrpoc.core.program_input import ParameterError
 from pyrpoc.plugins.devices import DAQ, Galvo
+from pyrpoc.plugins.program_io.inputs import (
+    CENTER_REGION_FRACTION,
+    MASKS,
+    SAMPLE_RATE_HZ,
+    ScanGeometry,
+)
 
 from ..building_blocks.functions.daq_tasks import acquire
 from ..building_blocks.functions.galvo_raster import pixel_samples
@@ -24,7 +29,6 @@ from ..building_blocks.functions.roi_scan import (
     roi_waveform,
     row_spans,
 )
-from ..building_blocks.program_inputs import CENTER_REGION_FRACTION, SAMPLE_RATE_HZ, ScanGeometry
 
 
 def place_rows(

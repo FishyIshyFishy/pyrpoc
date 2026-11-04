@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from pyrpoc.core.program_inputs import float_input
+from pyrpoc.utils.value_rules import float_input
 
 # Keeps the noise generator off the pattern's stream, so noise never moves a feature.
 NOISE_STREAM = 0x0125E

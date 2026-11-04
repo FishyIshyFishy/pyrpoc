@@ -12,8 +12,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
-from pyrpoc.core.data import DATA_KINDS, Data
-from pyrpoc.core.program_output import Origin, ProgramOutput, Provenance
+from pyrpoc.core.program_output import Data, Origin, ProgramOutput, Provenance, data_kind_registry
 from pyrpoc.core.saving import writer_registry
 
 FORMAT = "pyrpoc-recording"
@@ -257,9 +256,9 @@ def load_recording(meta_path: Path) -> list[ProgramOutput[Any]]:
 def load_output(
     meta_path: Path, record: RecordingRecord, output: str, entry: OutputRecord
 ) -> ProgramOutput[Any]:
-    kind = DATA_KINDS.get(entry.kind)
-    if kind is None:
+    if entry.kind not in data_kind_registry.keys():
         raise RecordingError(f"{meta_path}: output {output!r} is of unknown kind {entry.kind!r}")
+    kind = data_kind_registry.get(entry.kind)
     program_output = ProgramOutput(
         name=output,
         kind=kind,

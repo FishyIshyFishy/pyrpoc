@@ -26,9 +26,9 @@ pyrpoc = "pyrpoc.main:main"
 [tool.setuptools.packages.find]
 include = ["pyrpoc*"]
 
-# pyrpoc/shared/assets/ is not a package, so its icons and DLLs ship as data of pyrpoc.shared.
+# pyrpoc/utils/assets/ is not a package, so its icons and DLLs ship as data of pyrpoc.utils.
 [tool.setuptools.package-data]
-"pyrpoc.shared" = ["assets/*.svg", "assets/*.png", "assets/sdks/*.dll"]
+"pyrpoc.utils" = ["assets/*.svg", "assets/*.png", "assets/sdks/*.dll"]
 
 [build-system]
 requires = ["setuptools>=61.0"]
@@ -97,14 +97,14 @@ root_package = "pyrpoc"
 include_external_packages = true
 
 [[tool.importlinter.contracts]]
-name = "Layers: app > engine > plugins > shared > core"
+name = "Layers: app > engine > plugins > utils > core"
 type = "layers"
 containers = ["pyrpoc"]
 layers = [
   "app",
   "engine",
   "plugins",
-  "shared",
+  "utils",
   "core",
 ]
 
@@ -115,10 +115,16 @@ containers = ["pyrpoc.engine"]
 layers = ["acquisition", "data_library | device_inventory"]
 
 [[tool.importlinter.contracts]]
-name = "Inside plugins: programs may use devices; programs and panels never meet"
+name = "Inside plugins: programs and panels use program_io and devices, and never meet"
 type = "layers"
 containers = ["pyrpoc.plugins"]
-layers = ["programs | panels", "devices"]
+layers = ["programs | panels", "program_io | devices"]
+
+[[tool.importlinter.contracts]]
+name = "Inside program_io: inputs > outputs"
+type = "layers"
+containers = ["pyrpoc.plugins.program_io"]
+layers = ["inputs", "outputs"]
 
 # Keyed on <name>/program.py, the file every program registers in, so the
 # contracts never list the programs themselves.
@@ -154,11 +160,7 @@ source_modules = [
   "pyrpoc.core.device_config",
   "pyrpoc.core.program",
   "pyrpoc.core.runner",
-  "pyrpoc.core.program_inputs",
-  "pyrpoc.core.input_section",
-  "pyrpoc.core.pixel_pick",
-  "pyrpoc.core.data",
-  "pyrpoc.core.mask",
+  "pyrpoc.core.program_input",
   "pyrpoc.core.program_output",
   "pyrpoc.core.library",
   "pyrpoc.core.saving",
@@ -197,7 +199,7 @@ forbidden_modules = [
   "pyrpoc.engine.data_library.panel",
   "pyrpoc.engine.data_library.details",
   "pyrpoc.engine.device_inventory.panel",
-  "pyrpoc.shared.widgets",
+  "pyrpoc.utils.widgets",
   "pyqtgraph",
 ]
 

@@ -5,7 +5,8 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Protocol, TypeVar
 
-from .data import Data
+from pyrpoc.core.program_output import Data
+
 from .program_output import ProgramOutput
 
 D = TypeVar("D", bound=Data)

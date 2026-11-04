@@ -14,8 +14,8 @@ import pyqtgraph as pg
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import QCheckBox, QHBoxLayout, QLabel, QScrollArea, QVBoxLayout, QWidget
 
-from pyrpoc.shared.widgets.colors import color_for_index, color_map_from_rgb
-from pyrpoc.shared.widgets.levels import autoscale_levels, mono_levels
+from pyrpoc.utils.widgets.colors import color_for_index, color_map_from_rgb
+from pyrpoc.utils.widgets.levels import autoscale_levels, mono_levels
 
 # Columns the strip makes room for before scrolling the rest sideways.
 COLUMNS_WITHOUT_SCROLLING = 4

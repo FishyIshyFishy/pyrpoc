@@ -5,16 +5,12 @@ from __future__ import annotations
 
 from dataclasses import replace
 
-from pyrpoc.core.data import Image, RawSamples
-from pyrpoc.core.input_section import InputSection
-from pyrpoc.core.mask import MASKS
 from pyrpoc.core.program import Program, RunContext, program_registry
+from pyrpoc.core.program_input import InputSection
 from pyrpoc.plugins.devices import DAQ, Galvo
-
-from ..building_blocks.functions.galvo_raster import Raster
-from ..building_blocks.functions.run_loops import count_off
-from ..building_blocks.program_inputs import (
+from pyrpoc.plugins.program_io.inputs import (
     MASK_LINES,
+    MASKS,
     NUM_FRAMES,
     SAMPLE_RATE_HZ,
     SCAN_GEOMETRY_INPUTS,
@@ -22,6 +18,10 @@ from ..building_blocks.program_inputs import (
     T1_SAMPLES,
     SplitWindows,
 )
+from pyrpoc.plugins.program_io.outputs import Image, RawSamples
+
+from ..building_blocks.functions.galvo_raster import Raster
+from ..building_blocks.functions.run_loops import count_off
 from ..building_blocks.runners import Continuous, Single
 from .windows import gated_to_t0, split_frame, split_labels
 

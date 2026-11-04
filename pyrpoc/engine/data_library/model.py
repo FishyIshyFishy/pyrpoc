@@ -9,8 +9,7 @@ from typing import Any, TypeVar
 
 from PyQt6.QtCore import QObject, QTimer, pyqtSignal
 
-from pyrpoc.core.data import Data
-from pyrpoc.core.program_output import ProgramOutput
+from pyrpoc.core.program_output import Data, ProgramOutput
 
 from .format import RecordingError, load_recording, write_notes
 from .store import LibraryFull, LibraryStore

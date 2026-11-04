@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from pyrpoc.core.program_inputs import ProgramInputValues, float_input
+from pyrpoc.core.program_input import ProgramInputValues
+from pyrpoc.utils.value_rules import float_input
 
 from .synthetic_detector import NOISE_LEVEL
 

@@ -2,20 +2,20 @@
 
 from __future__ import annotations
 
-from pyrpoc.core.data import Image
-from pyrpoc.core.input_section import InputSection
-from pyrpoc.core.mask import MASKS
 from pyrpoc.core.program import Program, RunContext, program_registry
+from pyrpoc.core.program_input import InputSection
 from pyrpoc.plugins.devices import DAQ, Galvo
-
-from ..building_blocks.functions.galvo_raster import Raster
-from ..building_blocks.functions.run_loops import count_off
-from ..building_blocks.program_inputs import (
+from pyrpoc.plugins.program_io.inputs import (
     MASK_LINES,
+    MASKS,
     NUM_FRAMES,
     SAMPLE_RATE_HZ,
     SCAN_GEOMETRY_INPUTS,
 )
+from pyrpoc.plugins.program_io.outputs import Image
+
+from ..building_blocks.functions.galvo_raster import Raster
+from ..building_blocks.functions.run_loops import count_off
 from ..building_blocks.runners import Continuous, Single
 
 

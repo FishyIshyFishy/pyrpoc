@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping, Sequence
 from typing import Any
 
-from pyrpoc.core.program_inputs import (
+from pyrpoc.core.program_input import (
     ParameterError,
     ProgramInput,
     ProgramInputValues,

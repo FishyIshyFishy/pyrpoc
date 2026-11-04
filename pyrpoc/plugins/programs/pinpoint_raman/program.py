@@ -3,19 +3,15 @@ and read a spectrum there."""
 
 from __future__ import annotations
 
-from pyrpoc.core.data import Spectrum
-from pyrpoc.core.input_section import InputSection
 from pyrpoc.core.program import Program, RunContext, program_registry
+from pyrpoc.core.program_input import InputSection
 from pyrpoc.plugins.devices import DAQ, AndorCCD, Galvo
+from pyrpoc.plugins.program_io.inputs import CCD_EXPOSURE_S, CCD_FRAMES_TO_AVERAGE, GALVO_TARGET
+from pyrpoc.plugins.program_io.outputs import Spectrum
+from pyrpoc.plugins.programs.building_blocks.functions.ccd_read import spectrum_readout
 
 from ..building_blocks.functions.ccd_read import publish_spectrum
 from ..building_blocks.functions.galvo_park import aim_at_pixel, park_galvos
-from ..building_blocks.program_inputs import (
-    CCD_EXPOSURE_S,
-    CCD_FRAMES_TO_AVERAGE,
-    GALVO_TARGET,
-    spectrum_readout,
-)
 from ..building_blocks.runners import ArmAndRun, Continuous, Single
 
 

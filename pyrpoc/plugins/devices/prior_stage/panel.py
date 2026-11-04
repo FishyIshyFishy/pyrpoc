@@ -21,7 +21,7 @@ from PyQt6.QtWidgets import (
 )
 
 from pyrpoc.core.panels import DevicePanel, device_panel_registry
-from pyrpoc.shared.widgets.param_form import ConfigValues, ParamForm, config_form_section
+from pyrpoc.utils.widgets.param_form import ConfigValues, ParamForm, config_form_section
 
 from .device import MotionProfile
 from .sdk import PriorError

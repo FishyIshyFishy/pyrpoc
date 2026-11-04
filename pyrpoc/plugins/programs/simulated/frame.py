@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from pyrpoc.core.program_inputs import ProgramInputValues, int_input
-
-from ..building_blocks.program_inputs import X_PIXELS, Y_PIXELS
+from pyrpoc.core.program_input import ProgramInputValues
+from pyrpoc.plugins.program_io.inputs import X_PIXELS, Y_PIXELS
+from pyrpoc.utils.value_rules import int_input
 
 SIMULATED_CHANNELS = int_input(
     "simulated_channels",

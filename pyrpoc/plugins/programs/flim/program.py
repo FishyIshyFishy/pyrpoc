@@ -8,13 +8,10 @@ from __future__ import annotations
 
 import numpy as np
 
-from pyrpoc.core.data import DecayHistogram, Image
-from pyrpoc.core.input_section import InputSection
 from pyrpoc.core.program import Program, RunContext, program_registry
+from pyrpoc.core.program_input import InputSection
 from pyrpoc.plugins.devices import DAQ, FlimMeasurement, Galvo, TimeTagger
-
-from ..building_blocks.functions.run_loops import count_off
-from ..building_blocks.program_inputs import (
+from pyrpoc.plugins.program_io.inputs import (
     FRAME_SETTLE_S,
     FRAME_TRIGGER_PFI,
     HISTOGRAM_BINS,
@@ -29,6 +26,9 @@ from ..building_blocks.program_inputs import (
     ScanGeometry,
     TriggerLines,
 )
+from pyrpoc.plugins.program_io.outputs import DecayHistogram, Image
+
+from ..building_blocks.functions.run_loops import count_off
 from ..building_blocks.runners import Continuous, Single
 from .scan import flim_scan
 

@@ -6,12 +6,9 @@ from __future__ import annotations
 
 import numpy as np
 
-from pyrpoc.core.data import Image, Mosaic, MosaicTile
-from pyrpoc.core.input_section import InputSection
 from pyrpoc.core.program import Program, RunContext
-
-from ...building_blocks.functions.run_loops import grow, walk
-from ...building_blocks.program_inputs import (
+from pyrpoc.core.program_input import InputSection
+from pyrpoc.plugins.program_io.inputs import (
     TILE_SPACING_UM,
     X_PIXELS,
     X_TILES,
@@ -19,6 +16,9 @@ from ...building_blocks.program_inputs import (
     Y_TILES,
     MosaicGrid,
 )
+from pyrpoc.plugins.program_io.outputs import Image, Mosaic, MosaicTile
+
+from ...building_blocks.functions.run_loops import grow, walk
 from ...building_blocks.runners import Single
 from ..frame import SIMULATED_CHANNELS, FrameShape
 from ..pacing import FRAME_INTERVAL_MS

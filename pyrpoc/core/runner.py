@@ -8,12 +8,12 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import ClassVar
 
-from pyrpoc.core.program_inputs import ProgramInputs
+from pyrpoc.core.program_input import ProgramInputs
 
 
 class Control:
     """A widget a runner asks for, described without Qt. ``icon`` names a file
-    in ``shared/assets/`` without its extension."""
+    in ``utils/assets/`` without its extension."""
 
     # Whether the view draws it as a button that stays down.
     checkable: ClassVar[bool] = False

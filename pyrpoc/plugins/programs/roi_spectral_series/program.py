@@ -14,11 +14,22 @@ from typing import Any
 
 import numpy as np
 
-from pyrpoc.core.data import Spectrum
-from pyrpoc.core.input_section import InputSection
-from pyrpoc.core.mask import MASKS, Mask
 from pyrpoc.core.program import Program, RunContext, program_registry
+from pyrpoc.core.program_input import InputSection
 from pyrpoc.plugins.devices import DAQ, AndorCCD, Galvo
+from pyrpoc.plugins.program_io.inputs import (
+    CCD_EXPOSURE_S,
+    CCD_FRAMES_TO_AVERAGE,
+    CENTER_REGION_FRACTION,
+    MASKS,
+    NUM_FRAMES,
+    SAMPLE_RATE_HZ,
+    SCAN_GEOMETRY_INPUTS,
+    Mask,
+    ScanGeometry,
+)
+from pyrpoc.plugins.program_io.outputs import Spectrum
+from pyrpoc.plugins.programs.building_blocks.functions.ccd_read import spectrum_readout
 
 from ..building_blocks.functions.ccd_read import configure_spectrum, read_spectrum
 from ..building_blocks.functions.daq_tasks import sweeping
@@ -32,16 +43,6 @@ from ..building_blocks.functions.roi_scan import (
     row_spans,
 )
 from ..building_blocks.functions.run_loops import count_off
-from ..building_blocks.program_inputs import (
-    CCD_EXPOSURE_S,
-    CCD_FRAMES_TO_AVERAGE,
-    CENTER_REGION_FRACTION,
-    NUM_FRAMES,
-    SAMPLE_RATE_HZ,
-    SCAN_GEOMETRY_INPUTS,
-    ScanGeometry,
-    spectrum_readout,
-)
 from ..building_blocks.runners import Single
 
 

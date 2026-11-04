@@ -10,12 +10,12 @@ import numpy as np
 import pyqtgraph as pg
 from PyQt6.QtWidgets import QCheckBox, QVBoxLayout
 
-from pyrpoc.core.data import Spectrum
 from pyrpoc.core.library import Library
 from pyrpoc.core.panels import DataPanel, data_panel_registry
-from pyrpoc.core.program_inputs import ProgramInputs
+from pyrpoc.core.program_input import ProgramInputs
 from pyrpoc.core.program_output import ProgramOutput
-from pyrpoc.shared.widgets.colors import color_for_index
+from pyrpoc.plugins.program_io.outputs import Spectrum
+from pyrpoc.utils.widgets.colors import color_for_index
 
 
 @data_panel_registry.register("spectrum")

@@ -14,7 +14,7 @@ from PyQt6.QtCore import QTimer
 from PyQt6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
 
 from pyrpoc.core.panels import DevicePanel, device_panel_registry
-from pyrpoc.shared.widgets.param_form import ConfigValues, ParamForm, config_form_section
+from pyrpoc.utils.widgets.param_form import ConfigValues, ParamForm, config_form_section
 
 from .sdk import AndorError
 

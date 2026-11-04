@@ -6,8 +6,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from pyrpoc.core.data import Data
-from pyrpoc.core.program_output import ProgramOutput, utc_now
+from pyrpoc.core.program_output import Data, ProgramOutput, utc_now
 from pyrpoc.core.saving import Writer, writer_registry
 from pyrpoc.engine.data_library.format import (
     OutputRecord,

@@ -12,10 +12,8 @@ from typing import Any
 import cv2
 import numpy as np
 
-from pyrpoc.core.mask import Mask
-from pyrpoc.core.program_inputs import ParameterError
-
-from ..program_inputs import ScanGeometry
+from pyrpoc.core.program_input import ParameterError
+from pyrpoc.plugins.program_io.inputs import Mask, ScanGeometry
 
 
 @dataclass(frozen=True)

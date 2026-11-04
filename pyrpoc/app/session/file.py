@@ -11,7 +11,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
-from pyrpoc.core.program_inputs import ParameterError
+from pyrpoc.core.program_input import ParameterError
 from pyrpoc.engine.data_library.format import legacy_input_key, unsectioned_input_key
 
 log = logging.getLogger(__name__)

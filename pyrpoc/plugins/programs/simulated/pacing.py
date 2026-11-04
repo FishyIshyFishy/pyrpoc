@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from pyrpoc.core.program_inputs import int_input
+from pyrpoc.utils.value_rules import int_input
 
 FRAME_INTERVAL_MS = int_input(
     "frame_interval_ms",

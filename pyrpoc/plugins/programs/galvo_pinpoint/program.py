@@ -6,12 +6,12 @@ them there."""
 
 from __future__ import annotations
 
-from pyrpoc.core.input_section import InputSection
 from pyrpoc.core.program import Program, RunContext, program_registry
+from pyrpoc.core.program_input import InputSection
 from pyrpoc.plugins.devices import DAQ, Galvo
+from pyrpoc.plugins.program_io.inputs import GALVO_TARGET
 
 from ..building_blocks.functions.galvo_park import aim_at_pixel, park_galvos
-from ..building_blocks.program_inputs import GALVO_TARGET
 from ..building_blocks.runners import ArmAndRun, Single
 
 

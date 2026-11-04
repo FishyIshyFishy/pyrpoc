@@ -5,11 +5,10 @@ from __future__ import annotations
 import nidaqmx as nx
 import nidaqmx.errors
 
-from pyrpoc.core.pixel_pick import PixelPick
-from pyrpoc.core.program_inputs import ProgramInputs
+from pyrpoc.core.program_input import ProgramInputs
 from pyrpoc.plugins.devices import DAQ, DaqError, Galvo
+from pyrpoc.plugins.program_io.inputs import GALVO_TARGET, PixelPick, Point
 
-from ..program_inputs import GALVO_TARGET, Point
 from .daq_tasks import add_galvo_channels
 
 

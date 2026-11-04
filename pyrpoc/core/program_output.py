@@ -1,5 +1,5 @@
-"""``ProgramOutput``: one named output's latest value, where it came from, and who
-is told when it changes."""
+"""``ProgramOutput``: one named output of a run, whose values are ``Data`` of one kind: its
+latest value, where it came from, and who is told when it changes."""
 
 from __future__ import annotations
 
@@ -9,13 +9,37 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Generic, TypeVar
+from typing import TYPE_CHECKING, Any, ClassVar, Generic, TypeVar
 from uuid import uuid4
 
-from .data import Data
+from .registry import Registry
 
 if TYPE_CHECKING:  # pragma: no cover
     from .saving import Writer
+
+
+class Data:
+    """One value of data. ``name`` is the class name, which a recording's
+    ``kind`` field holds."""
+
+    name: ClassVar[str] = "Data"
+
+    def __init_subclass__(cls) -> None:
+        super().__init_subclass__()
+        cls.name = cls.__name__
+
+    @property
+    def nbytes(self) -> int:
+        """Memory held, in bytes."""
+        raise NotImplementedError
+
+    def summary(self) -> str:
+        """One line saying what this is."""
+        raise NotImplementedError
+
+
+# Every kind of ``Data``, by ``name``, so a recording's kind string finds its class.
+data_kind_registry: Registry[Data] = Registry("DataKindRegistry", Data, stamp=None)
 
 D = TypeVar("D", bound=Data)
 

@@ -6,11 +6,16 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from pyrpoc.core.mask import MASKS
 from pyrpoc.core.program import RunContext
 from pyrpoc.plugins.devices import DAQ, Galvo
+from pyrpoc.plugins.program_io.inputs import (
+    MASK_LINES,
+    MASKS,
+    SAMPLE_RATE_HZ,
+    ScanGeometry,
+    lines_for,
+)
 
-from ..program_inputs import MASK_LINES, SAMPLE_RATE_HZ, ScanGeometry, lines_for
 from .daq_tasks import acquire
 from .mask_ttl import mask_ttl
 

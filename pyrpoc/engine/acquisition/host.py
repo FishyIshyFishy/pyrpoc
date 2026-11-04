@@ -8,7 +8,7 @@ from collections.abc import Callable
 from PyQt6.QtCore import QObject, pyqtSignal
 
 from pyrpoc.core.program import Program
-from pyrpoc.core.program_inputs import ProgramInputs
+from pyrpoc.core.program_input import ProgramInputs
 from pyrpoc.core.runner import Control, RunnerContext
 from pyrpoc.engine.acquisition.executor import Run
 from pyrpoc.engine.acquisition.recording import Series
