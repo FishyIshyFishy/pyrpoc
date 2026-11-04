@@ -44,8 +44,10 @@ belong together.
   the save folder is set today, and labelled so it reads as the Experiment
   folder.
 - [ ] **No new noun in the app's state.**
-  - There's no `experiment.json`, and nothing to create.
-  - A recording's Experiment is the folder it sits in.
+  - There's nothing to create or open. A recording's Experiment is the folder
+    it sits in.
+  - The folder may hold Experiment-wide files the app writes, such as the
+    notes file from phase 2.5.
   - The save folder is still the only thing remembered, exactly as today.
 - [ ] **Saving off works as today.** Outputs stay in the Library as
   **Unsaved**.
@@ -86,6 +88,45 @@ folders.
   - opening an old Experiment folder loads all its recordings under one group;
   - sorting by name and by date both work;
   - unsaved outputs sit in their own group.
+
+## Phase 2.5: Notes, before and after acquiring
+
+You take notes on what you acquire, and read them back in two ways:
+- per recording, in its details, when analysing;
+- all together, to remind yourself how yesterday's data collection went.
+
+Notes live in each recording's `_meta.json`. Today they can already be edited
+per output in the Library's details.
+
+- [ ] **A notes box in the Acquisition panel.** What you write there before
+  pressing run goes into that run's `_meta.json`.
+  - It clears once a run has taken it, so one note is never copied onto runs
+    it wasn't written for.
+- [ ] **Notes stay editable afterwards** in the Library's details, as today.
+- [ ] **Notes belong to a recording, not to each output.** One run has one
+  note, and every output's details show and edit that same note.
+- [ ] **`experiment.txt` in the Experiment folder:** every note in the
+  Experiment in one readable file. Each entry has:
+  - when the run was taken;
+  - its name;
+  - its program's display name;
+  - the note.
+- [ ] **Only useful entries:**
+  - Only saved recordings with a non-empty note get an entry.
+  - A run made with saving off, while a folder was set, gets none. Its note
+    still shows in its Library details.
+- [ ] **`experiment.txt` is made from the recordings, never edited in place.**
+  - It's rewritten from the folder's `_meta.json` notes, in time order,
+    whenever a note in that folder is saved or changed.
+  - So it never holds duplicates, and never falls out of step with a note
+    edited later in the Library.
+  - Its first line says it's generated, and that edits belong in the app.
+- [ ] **Done when:**
+  - a note written before a run shows in that recording's details and in
+    `experiment.txt`;
+  - editing it in the Library updates both;
+  - an unsaved run and a saved run without a note add nothing to
+    `experiment.txt`.
 
 ## Phase 3: What a program needs from its Experiment
 
