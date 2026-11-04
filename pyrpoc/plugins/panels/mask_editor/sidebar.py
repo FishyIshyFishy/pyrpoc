@@ -2,11 +2,19 @@
 
 from __future__ import annotations
 
-from PyQt6.QtCore import QSize, Qt, pyqtSignal
-from PyQt6.QtGui import QColor, QFont, QIcon, QPixmap
-from PyQt6.QtWidgets import QAbstractItemView, QLabel, QListWidget, QListWidgetItem, QWidget
+from PyQt6.QtCore import QPoint, QSize, Qt, pyqtSignal
+from PyQt6.QtGui import QAction, QColor, QFont, QIcon, QPalette, QPixmap
+from PyQt6.QtWidgets import (
+    QAbstractItemView,
+    QLabel,
+    QListWidget,
+    QListWidgetItem,
+    QMenu,
+    QWidget,
+)
 
 from pyrpoc.core.mask import Mask
+from pyrpoc.shared.widgets.icons import asset_icon
 from pyrpoc.shared.widgets.mask_list import thumbnail
 
 from .canvas import MaskRoi, color_for_index
@@ -36,12 +44,15 @@ def hint(text: str, parent: QWidget) -> QLabel:
 
 
 class MaskPicker(QListWidget):
-    """The drawn masks, each its thumbnail and name. The selected one is drawn on; a
-    double-click renames it."""
+    """The drawn masks, each its thumbnail and name, then a row that adds another. The
+    selected one is drawn on; a double-click renames it and a right-click offers the rest."""
 
     # The mask chosen to draw on, by id, or "" for none.
     chosen = pyqtSignal(str)
     renamed = pyqtSignal(str, str)
+    new_requested = pyqtSignal()
+    export_requested = pyqtSignal(str)
+    delete_requested = pyqtSignal(str)
 
     def __init__(self, parent: QWidget):
         super().__init__(parent)
@@ -53,6 +64,9 @@ class MaskPicker(QListWidget):
         self.setMinimumHeight(LIST_MIN_HEIGHT)
         self.itemSelectionChanged.connect(self.on_selection_changed)
         self.itemChanged.connect(self.on_item_changed)
+        self.itemClicked.connect(self.on_item_clicked)
+        self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.customContextMenuRequested.connect(self.show_menu)
 
     def show_masks(self, masks: tuple[Mask, ...], current: str) -> None:
         """List ``masks``, selecting the one whose id is ``current``."""
@@ -62,11 +76,39 @@ class MaskPicker(QListWidget):
         for mask in masks:
             item = QListWidgetItem(QIcon(thumbnail(mask, ICON_PX)), mask.label)
             item.setFlags(item.flags() | Qt.ItemFlag.ItemIsEditable)
-            item.setToolTip(f"{mask.describe()}. Double-click to rename.")
+            item.setToolTip(f"{mask.describe()}. Double-click to rename, right-click for more.")
             self.addItem(item)
+        self.addItem(self.build_add_item())
         if current in self.ids:
             self.setCurrentRow(self.ids.index(current))
         self.blockSignals(False)
+
+    def build_add_item(self) -> QListWidgetItem:
+        """The row after the last mask: enabled so it can be clicked, but never selected."""
+        item = QListWidgetItem(asset_icon("add"), "New mask")
+        item.setFlags(Qt.ItemFlag.ItemIsEnabled)
+        item.setForeground(self.palette().color(QPalette.ColorRole.Mid))
+        item.setToolTip("Start another mask")
+        return item
+
+    def on_item_clicked(self, item: QListWidgetItem) -> None:
+        if self.row(item) == len(self.ids):
+            self.new_requested.emit()
+
+    def show_menu(self, pos: QPoint) -> None:
+        item = self.itemAt(pos)
+        viewport = self.viewport()
+        if item is None or viewport is None or self.row(item) == len(self.ids):
+            return
+        mask_id = self.ids[self.row(item)]
+        self.setCurrentItem(item)
+        menu = QMenu(self)
+        export = QAction("Export...", menu)
+        export.triggered.connect(lambda _checked=False: self.export_requested.emit(mask_id))
+        delete = QAction("Delete", menu)
+        delete.triggered.connect(lambda _checked=False: self.delete_requested.emit(mask_id))
+        menu.addActions([export, delete])
+        menu.exec(viewport.mapToGlobal(pos))
 
     def on_selection_changed(self) -> None:
         rows = [index.row() for index in self.selectedIndexes()]
