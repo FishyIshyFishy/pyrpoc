@@ -80,7 +80,7 @@ of the app meet.
 |---|---|
 | **ProgramOutput** | One named output of one run. Every value published into it is one `Data` of its declared kind. Memory holds the latest value, where it came from (`Provenance`), and its writer. |
 | **Data** | One value a program produced. It is immutable, and **only programs make it**. Each kind registers in `data_kind_registry` under its name, which is how a recording on disk finds its class again. |
-| **Library** | The program outputs that are open: acquired now, or loaded from disk. Nothing else. |
+| **Library** | The program outputs that are open: acquired now, or loaded from disk. Nothing else. It also names the group each output is listed under (`group_label`), so pickers can group outputs without knowing what a group is. |
 | **SaveTarget, Writer** | Where a run saves (its folder is the Experiment), and how one kind of `Data` is written to files and read back. Writers register in `writer_registry`. |
 
 ### Views
@@ -88,7 +88,7 @@ of the app meet.
 | Piece | What it is |
 |---|---|
 | **Panel** | A dock widget: something the user sees and acts in. It reads the collections and calls their operations. The Acquisition panel is one like any other. |
-| **DataPanel** | A panel that shows one program output of the kind it `renders`, chosen with a `SourcePicker`. |
+| **DataPanel** | A panel that shows one program output of the kind it `renders`, chosen with a `SourcePicker`, which lists them under the library's group labels. |
 | **DevicePanel** | One device's controls and configuration, in a dock of its own. |
 
 ## The rules

@@ -65,6 +65,11 @@ def meta_path_for(root: Path) -> Path:
     return root.with_name(f"{root.name}{META_SUFFIX}")
 
 
+def recordings_in(folder: Path) -> list[Path]:
+    """The metadata file of every recording in ``folder``, by name."""
+    return sorted(folder.glob(f"*{META_SUFFIX}"))
+
+
 def free_root(root: Path) -> Path:
     """``root``, or the first of ``root_2``, ``root_3`` and so on that has no recording
     yet."""

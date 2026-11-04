@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Protocol, TypeVar
+from typing import Any, Protocol, TypeVar
 
 from pyrpoc.core.program_output import Data
 
@@ -13,8 +13,8 @@ D = TypeVar("D", bound=Data)
 
 
 class Library(Protocol):
-    """The open program outputs: add one, look one up, list them, and subscribe to
-    changes."""
+    """The open program outputs: add one, look one up, list them, name the group each is
+    listed under, and subscribe to changes."""
 
     def add(self, program_output: ProgramOutput[D]) -> ProgramOutput[D]: ...
 
@@ -24,6 +24,10 @@ class Library(Protocol):
 
     def matching(self, kind: type[D]) -> list[ProgramOutput[D]]:
         """Program outputs of this kind, newest first."""
+        ...
+
+    def group_label(self, program_output: ProgramOutput[Any]) -> str:
+        """The name of the group ``program_output`` is listed under."""
         ...
 
     def subscribe(self, callback: Callable[[], None]) -> None: ...

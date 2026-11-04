@@ -12,11 +12,14 @@ from pyrpoc.core.program import program_registry
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 
+# Kept here: a QApplication with no Python reference left is destroyed with its children.
+_APP: list[QApplication] = []
+
+
 def qt_app() -> QApplication:
-    existing = QApplication.instance()
-    if isinstance(existing, QApplication):
-        return existing
-    return QApplication([])
+    if not _APP:
+        _APP.append(QApplication([]))
+    return _APP[0]
 
 
 def application() -> Application:

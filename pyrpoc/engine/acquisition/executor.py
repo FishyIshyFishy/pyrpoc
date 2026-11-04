@@ -149,8 +149,11 @@ class Executor:
     ) -> Recording:
         saver = self.build_saver(program, provenance, key.save)
         outputs = self.open_outputs(program, provenance, saver)
+        # Before the library sees them, so a saved output is listed in its Experiment at once.
         if saver is not None:
             saver.begin(outputs)
+        for program_output in outputs.values():
+            self.library.add(program_output)
         return Recording(key, outputs, saver)
 
     def end_series(self, series: Series) -> None:
@@ -206,7 +209,7 @@ class Executor:
     def open_outputs(
         self, program: Program, provenance: Provenance, saver: RecordingSaver | None
     ) -> dict[str, ProgramOutput[Any]]:
-        outputs: dict[str, ProgramOutput[Any]] = {
+        return {
             output: ProgramOutput(
                 name=output,
                 kind=kind,
@@ -216,9 +219,6 @@ class Executor:
             )
             for output, kind in program.emits.items()
         }
-        for program_output in outputs.values():
-            self.library.add(program_output)
-        return outputs
 
     def launch(self, run: Run, values: ProgramInputValues) -> None:
         ctx = RunContext(

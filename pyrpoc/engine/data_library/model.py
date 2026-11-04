@@ -11,7 +11,8 @@ from PyQt6.QtCore import QObject, QTimer, pyqtSignal
 
 from pyrpoc.core.program_output import Data, ProgramOutput
 
-from .format import RecordingError, load_recording, write_notes
+from .format import RecordingError, load_recording, recordings_in, write_notes
+from .grouping import experiment_of
 from .store import LibraryFull, LibraryStore
 
 D = TypeVar("D", bound=Data)
@@ -29,6 +30,8 @@ class LibraryModel(QObject):
     def __init__(self, store: LibraryStore, parent: QObject):
         super().__init__(parent)
         self.store = store
+        # Experiment folders opened whole, kept so one with no recordings still shows.
+        self.folders: list[Path] = []
         # Purging closes entries, which redraws panels, so it runs on the GUI
         # thread; coalesced so a burst of publishes checks once. Runs never wait
         # on this thread, so it cannot stall acquisition.
@@ -57,6 +60,9 @@ class LibraryModel(QObject):
 
     def all(self) -> list[ProgramOutput[Any]]:
         return self.store.all()
+
+    def group_label(self, program_output: ProgramOutput[Any]) -> str:
+        return self.store.group_label(program_output)
 
     def subscribe(self, callback: Callable[[], None]) -> None:
         self.store.subscribe(callback)
@@ -91,12 +97,35 @@ class LibraryModel(QObject):
         """Open a saved recording: every output becomes an entry. Refused while
         the library is full, as a new acquisition would be."""
         try:
-            self.store.check_room()
-            outputs = load_recording(meta_path)
+            self.load_recording(meta_path)
         except (LibraryFull, RecordingError) as exc:
             self.load_failed.emit(str(exc))
+
+    def load_experiment(self, folder: Path) -> None:
+        """Open every recording in ``folder``, reporting the ones that could not be read
+        together. Stops once the library is full."""
+        if folder not in self.folders:
+            self.folders.append(folder)
+        problems: list[str] = []
+        for meta_path in recordings_in(folder):
+            try:
+                self.load_recording(meta_path)
+            except LibraryFull as exc:
+                problems.append(str(exc))
+                break
+            except RecordingError as exc:
+                problems.append(str(exc))
+        # An empty folder adds no entry, yet it is now shown.
+        self.store.notify()
+        if problems:
+            self.load_failed.emit("\n\n".join(problems))
+
+    def load_recording(self, meta_path: Path) -> None:
+        """Add the recording's outputs, unless it is already open."""
+        if any(each.meta_path == meta_path for each in self.store.all()):
             return
-        for program_output in outputs:
+        self.store.check_room()
+        for program_output in load_recording(meta_path):
             self.store.add(program_output)
 
     def set_notes(self, program_output: ProgramOutput[Any], notes: str) -> str | None:
@@ -117,6 +146,16 @@ class LibraryModel(QObject):
         """Drop ``program_output`` from memory. Files already saved stay on disk."""
         program_output.unsubscribe(self.output_changed.emit)
         self.store.remove(program_output)
+
+    def close_experiment(self, folder: Path) -> None:
+        """Drop every output saved in ``folder`` and stop showing it."""
+        for program_output in self.store.all():
+            meta_path = program_output.meta_path
+            if meta_path is not None and experiment_of(meta_path) == folder:
+                self.close(program_output)
+        if folder in self.folders:
+            self.folders.remove(folder)
+        self.store.notify()
 
     def schedule_purge(self) -> None:
         if self.store.auto_purge and not self._purge_timer.isActive():

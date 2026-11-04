@@ -6,7 +6,8 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any, ClassVar, Generic, TypeVar
 
-from PyQt6.QtCore import pyqtSignal
+from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtGui import QStandardItem, QStandardItemModel
 from PyQt6.QtWidgets import QComboBox, QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
 from pyrpoc.core.library import Library
@@ -48,8 +49,8 @@ class Panel(QWidget):
 
 
 class SourcePicker(QWidget, Generic[D]):
-    """A dropdown naming one open program output of kind ``renders``. "Latest" follows
-    the newest one."""
+    """A dropdown naming one open program output of kind ``renders``, under the group the
+    library lists it in. "Latest" follows the newest one."""
 
     # The chosen program output may have changed; the panel re-reads ``current()``.
     changed = pyqtSignal()
@@ -65,6 +66,8 @@ class SourcePicker(QWidget, Generic[D]):
         self.row.setContentsMargins(0, 0, 0, 0)
         self.row.addWidget(QLabel("Source:", self))
         self.combo = QComboBox(self)
+        self.entries = QStandardItemModel(self)
+        self.combo.setModel(self.entries)
         self.combo.currentIndexChanged.connect(self.on_chosen)
         self.row.addWidget(self.combo, 1)
 
@@ -77,14 +80,38 @@ class SourcePicker(QWidget, Generic[D]):
         self.combo.blockSignals(True)
         self.combo.clear()
         self.combo.addItem("Latest", None)
-        for program_output in self.library.matching(self.renders):
-            self.combo.addItem(program_output.label, program_output.id)
+        for heading, outputs in self.groups().items():
+            self.add_heading(heading)
+            for program_output in outputs:
+                self.combo.addItem(program_output.label, program_output.id)
         if not self._follow_latest:
             self.combo.setCurrentIndex(max(self.combo.findData(current), 0))
         self.combo.blockSignals(False)
         self.changed.emit()
 
-    def on_chosen(self, _index: int) -> None:
+    def groups(self) -> dict[str, list[ProgramOutput[D]]]:
+        """The matching outputs by group, the group with the newest output first."""
+        groups: dict[str, list[ProgramOutput[D]]] = {}
+        for program_output in self.library.matching(self.renders):
+            groups.setdefault(self.library.group_label(program_output), []).append(program_output)
+        return groups
+
+    def add_heading(self, heading: str) -> None:
+        """A bold row naming a group, which cannot be chosen."""
+        item = QStandardItem(heading)
+        # Enabled but not selectable, so the theme does not dim it past reading.
+        item.setFlags(Qt.ItemFlag.ItemIsEnabled)
+        font = self.combo.font()
+        font.setBold(True)
+        item.setFont(font)
+        self.entries.appendRow(item)
+
+    def on_chosen(self, index: int) -> None:
+        item = self.entries.item(index)
+        if item is not None and not item.isSelectable():
+            # Reached by the keyboard or wheel: a heading is always followed by an entry.
+            self.combo.setCurrentIndex(index + 1)
+            return
         self._follow_latest = self.combo.currentData() is None
         self.changed.emit()
 

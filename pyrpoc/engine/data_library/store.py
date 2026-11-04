@@ -9,6 +9,8 @@ from typing import Any, TypeVar
 
 from pyrpoc.core.program_output import Data, ProgramOutput
 
+from .grouping import group_label
+
 D = TypeVar("D", bound=Data)
 
 # Everything open together, in bytes. Big enough for hours of typical imaging,
@@ -58,6 +60,9 @@ class LibraryStore:
         """Program outputs of this kind, newest first."""
         with self._lock:
             return [d for d in reversed(self._outputs) if d.kind is kind]
+
+    def group_label(self, program_output: ProgramOutput[Any]) -> str:
+        return group_label(program_output)
 
     def subscribe(self, callback: Callable[[], None]) -> None:
         with self._lock:
