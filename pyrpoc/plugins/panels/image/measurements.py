@@ -59,12 +59,12 @@ def region_stats(values: np.ndarray) -> RegionStats | None:
     )
 
 
-def histogram(values: np.ndarray) -> Histogram:
-    """A histogram of ``values`` with as many bins as the data warrants."""
-    edges = np.histogram_bin_edges(values, bins="auto")
-    if len(edges) - 1 > MAX_HISTOGRAM_BINS:
-        edges = np.histogram_bin_edges(values, bins=MAX_HISTOGRAM_BINS)
-    counts, edges = np.histogram(values, bins=edges)
+def histogram(values: np.ndarray, bins: int | None) -> Histogram:
+    """A histogram of ``values`` in ``bins`` bins, or as many as the data warrants for ``None``."""
+    if bins is None:
+        edges = np.histogram_bin_edges(values, bins="auto")
+        bins = min(len(edges) - 1, MAX_HISTOGRAM_BINS)
+    counts, edges = np.histogram(values, bins=bins)
     return Histogram(counts, edges)
 
 

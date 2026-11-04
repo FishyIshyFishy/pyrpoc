@@ -27,7 +27,8 @@ from pyrpoc.plugins.program_io.outputs import Image
 from pyrpoc.utils.widgets.icons import asset_icon
 from pyrpoc.utils.widgets.levels import autoscale_levels, mono_levels
 
-from .measure import TileMeasurement, Tool
+from .measure import Shape, TileMeasurement, Tool
+from .measure_settings import MeasureSettings
 
 LUT = pg.ColorMap(
     pos=np.array([0.0, 0.999, 1.0], dtype=float),
@@ -71,6 +72,8 @@ class ImagePanel(DataPanel[Image]):
         self._pending_state: list[TileState] = []
         self._suspend_lut_signal = False
         self.tool: Tool | None = None
+        self.shape: Shape | None = None
+        self.measure_settings = MeasureSettings()
         self.tool_buttons = self.build_tool_buttons()
 
         outer = QVBoxLayout(self.body)
@@ -123,6 +126,13 @@ class ImagePanel(DataPanel[Image]):
             cursor = Qt.CursorShape.CrossCursor if tool is not None else Qt.CursorShape.ArrowCursor
             each.plot.setCursor(cursor)
 
+    def on_shape_changed(self, source: TileMeasurement, shape: Shape | None) -> None:
+        """Draw a shape one tile changed on all the others."""
+        self.shape = shape
+        for tile in self._tiles:
+            if tile.measure is not source:
+                tile.measure.apply_shape(shape)
+
     def show_value(self, program_output: ProgramOutput[Image], value: Image) -> None:
         del program_output
         self.sync_channel_tiles(len(value.channels))
@@ -155,7 +165,10 @@ class ImagePanel(DataPanel[Image]):
         body = QHBoxLayout()
         root_layout.addLayout(body, 1)
 
-        measure = TileMeasurement(root, lambda: self.tool)
+        measure = TileMeasurement(
+            root, self.measure_settings, lambda: self.tool, self.on_shape_changed
+        )
+        measure.apply_shape(self.shape)
         plot, image_item = self.build_plot(root, measure)
         body.addWidget(plot, 1)
         hist_widget = pg.HistogramLUTWidget(root)
