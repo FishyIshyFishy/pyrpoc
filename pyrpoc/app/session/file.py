@@ -6,18 +6,15 @@ from __future__ import annotations
 import json
 import logging
 import os
-from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
 from pyrpoc.core.program_input import ParameterError
 
-from .legacy_keys import legacy_input_key, unsectioned_input_key
-
 log = logging.getLogger(__name__)
 
-# Bump when the shape changes, and add the step from the old shape to UPGRADES.
+# Bump when the shape changes; a session of any other version is not read.
 SCHEMA_VERSION = 11
 
 # What malformed session JSON raises on its way into the application.
@@ -95,8 +92,7 @@ class SessionFile:
         self.path = path
 
     def load(self) -> SessionState:
-        """The saved session brought to the current version, or defaults if there is no
-        usable one."""
+        """The saved session, or defaults if there is none of the current version."""
         # A corrupt file is logged rather than blocking launch.
         if not self.path.exists():
             return SessionState()
@@ -105,11 +101,10 @@ class SessionFile:
         except (OSError, ValueError):
             log.warning("could not read %s; starting fresh", self.path, exc_info=True)
             return SessionState()
-        if not isinstance(raw, dict):
+        if not isinstance(raw, dict) or raw.get("schema_version") != SCHEMA_VERSION:
             return SessionState()
         try:
-            upgraded = upgrade(raw)
-            return decode(upgraded) if upgraded is not None else SessionState()
+            return decode(raw)
         except BAD_STATE:
             log.warning("could not decode %s; starting fresh", self.path, exc_info=True)
             return SessionState()
@@ -120,78 +115,6 @@ class SessionFile:
         temporary = self.path.with_suffix(self.path.suffix + ".tmp")
         temporary.write_text(payload, encoding="utf-8")
         temporary.replace(self.path)
-
-
-def upgrade_v8(raw: dict[str, Any]) -> dict[str, Any]:
-    """A version 8 session, one flat object with parameters by block, as version 9."""
-    blocks = as_object(raw.get("param_blocks"))
-    return {
-        "schema_version": 9,
-        "working": {
-            "devices": raw.get("devices", []),
-            "program_inputs": {
-                f"{block}.{name}": value
-                for block, values in blocks.items()
-                if isinstance(values, dict)
-                for name, value in values.items()
-            },
-            "save": raw.get("save"),
-            "library": raw.get("library"),
-        },
-        "screen": {
-            "views": raw.get("views", []),
-            "panels": {"acquisition": {"program": raw.get("selected_program")}},
-            "ads_layout": raw.get("ads_layout"),
-        },
-    }
-
-
-def upgrade_v9(raw: dict[str, Any]) -> dict[str, Any]:
-    """A version 9 session, with program inputs keyed by block, as version 10."""
-    working = as_object(raw.get("working"))
-    inputs = as_object(working.get("program_inputs"))
-    return {
-        **raw,
-        "schema_version": 10,
-        "working": {
-            **working,
-            "program_inputs": {legacy_input_key(key): value for key, value in inputs.items()},
-        },
-    }
-
-
-def upgrade_v10(raw: dict[str, Any]) -> dict[str, Any]:
-    """A version 10 session, with program input keys that name their section, as version 11."""
-    working = as_object(raw.get("working"))
-    inputs = as_object(working.get("program_inputs"))
-    return {
-        **raw,
-        "schema_version": 11,
-        "working": {
-            **working,
-            "program_inputs": {unsectioned_input_key(key): value for key, value in inputs.items()},
-        },
-    }
-
-
-# Each step turns a session of its key's version into the next version.
-UPGRADES: dict[int, Callable[[dict[str, Any]], dict[str, Any]]] = {
-    8: upgrade_v8,
-    9: upgrade_v9,
-    10: upgrade_v10,
-}
-
-
-def upgrade(raw: dict[str, Any]) -> dict[str, Any] | None:
-    """``raw`` brought to the current version, or None for a version with no
-    path to it."""
-    version = raw.get("schema_version")
-    while version != SCHEMA_VERSION:
-        if not isinstance(version, int) or version not in UPGRADES:
-            return None
-        raw = UPGRADES[version](raw)
-        version = raw.get("schema_version")
-    return raw
 
 
 def as_object(raw: Any) -> dict[str, Any]:

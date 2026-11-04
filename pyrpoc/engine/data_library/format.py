@@ -6,7 +6,6 @@ from __future__ import annotations
 import importlib.metadata
 import json
 import os
-from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
@@ -114,10 +113,10 @@ def read_json(meta_path: Path) -> dict[str, Any]:
     if not isinstance(raw, dict) or raw.get("format") != FORMAT:
         raise RecordingError(f"{meta_path} is not a pyrpoc recording")
     version = raw.get("format_version")
-    if not isinstance(version, int) or version not in DECODERS:
+    if version != FORMAT_VERSION:
         raise RecordingError(
             f"{meta_path} is recording format {version!r}; this version of pyrpoc reads "
-            f"formats {sorted(DECODERS)}"
+            f"format {FORMAT_VERSION}"
         )
     return raw
 
@@ -125,7 +124,7 @@ def read_json(meta_path: Path) -> dict[str, Any]:
 def read_record(meta_path: Path) -> RecordingRecord:
     raw = read_json(meta_path)
     try:
-        return DECODERS[raw["format_version"]](raw)
+        return decode_record(raw)
     except (KeyError, TypeError, ValueError, AttributeError) as exc:
         raise RecordingError(f"{meta_path} is malformed: {exc!r}") from exc
 
@@ -134,8 +133,8 @@ def optional_str(value: Any) -> str | None:
     return None if value is None else str(value)
 
 
-def decode_v4(raw: dict[str, Any]) -> RecordingRecord:
-    """Format 4: parameters keyed by program input, and one note for the recording."""
+def decode_record(raw: dict[str, Any]) -> RecordingRecord:
+    """The recording a metadata file's JSON describes."""
     # Unknown fields are ignored, so a format may add some.
     return RecordingRecord(
         pyrpoc_version=str(raw["pyrpoc_version"]),
@@ -166,12 +165,6 @@ def decode_v4(raw: dict[str, Any]) -> RecordingRecord:
         },
         notes=str(raw["notes"]),
     )
-
-
-# Keyed by ``format_version``. Entries are added, never removed.
-DECODERS: dict[int, Callable[[dict[str, Any]], RecordingRecord]] = {
-    4: decode_v4,
-}
 
 
 def load_recording(meta_path: Path) -> tuple[list[ProgramOutput[Any]], str]:
