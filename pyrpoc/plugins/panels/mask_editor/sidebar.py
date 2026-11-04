@@ -87,11 +87,11 @@ class MaskPicker(QListWidget):
         itself is never selected; the button inside it adds a mask."""
         item = QListWidgetItem()
         item.setFlags(Qt.ItemFlag.ItemIsEnabled)
-        item.setSizeHint(QSize(0, ICON_PX + 8))
+        item.setSizeHint(QSize(0, ICON_PX + 12))
         button = QPushButton(self)
         button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         button.setIcon(asset_icon("add"))
-        button.setIconSize(QSize(ICON_PX // 2, ICON_PX // 2))
+        button.setIconSize(QSize(ICON_PX, ICON_PX))
         button.setToolTip("Start another mask")
         button.clicked.connect(self.new_requested)
         self.addItem(item)
