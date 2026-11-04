@@ -15,7 +15,7 @@ from .format import (
     RecordingError,
     load_recording,
     recordings_in,
-    write_experiment_notes,
+    write_folder_notes,
     write_notes,
 )
 from .grouping import experiment_of, recording_key, recording_key_of
@@ -152,7 +152,7 @@ class LibraryModel(QObject):
             return None
         try:
             write_notes(meta_path, note)
-            write_experiment_notes(experiment_of(meta_path))
+            write_folder_notes(experiment_of(meta_path))
         except (RecordingError, OSError) as exc:
             return str(exc)
         return None

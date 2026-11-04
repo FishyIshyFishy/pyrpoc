@@ -147,15 +147,8 @@ class AcquisitionPanel(Panel):
     def build_note_box(self) -> QPlainTextEdit:
         """What the user writes before pressing run, saved with that run and then cleared."""
         self.note_edit = QPlainTextEdit(self)
-        self.note_edit.setPlaceholderText(
-            "Note for the next run: what you're about to do, and why. "
-            "Saved with that run, then cleared."
-        )
-        self.note_edit.setToolTip(
-            "Saved with the run's files, and gathered with the folder's other notes in "
-            "experiment.txt. "
-            "Edit it afterwards from the run's details in the Data Library."
-        )
+        self.note_edit.setPlaceholderText("Notes")
+        self.note_edit.setToolTip("Saved with the next run. Edit it later in the Data Library.")
         self.note_edit.setTabChangesFocus(True)
         lines = self.note_edit.fontMetrics().lineSpacing()
         self.note_edit.setFixedHeight(3 * lines + 14)

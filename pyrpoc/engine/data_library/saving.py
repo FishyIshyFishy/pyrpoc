@@ -15,7 +15,7 @@ from pyrpoc.engine.data_library.format import (
     free_root,
     meta_path_for,
     pyrpoc_version,
-    write_experiment_notes,
+    write_folder_notes,
     write_record,
 )
 from pyrpoc.engine.data_library.grouping import experiment_of, recording_key_of
@@ -90,7 +90,7 @@ class RecordingSaver:
         note = self.note()
         write_record(self.meta_path, self.record(ended_at, last_error, note))
         if note != self.written_note:
-            write_experiment_notes(experiment_of(self.meta_path))
+            write_folder_notes(experiment_of(self.meta_path))
             self.written_note = note
 
     def note(self) -> str:

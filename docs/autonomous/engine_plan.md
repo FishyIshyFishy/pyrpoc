@@ -46,13 +46,13 @@ in `engine/data_library/`, and `core/` doesn't learn it.
 |---|---|---|
 | The `Library` protocol | `core/library.py` | open program outputs, plus one group label for each. Not folders, recordings or notes. |
 | `SourcePicker` | `core/panels.py` | the group labels the `Library` gives it, nothing more |
-| How outputs group into recordings and experiments, the tree, sorting, the notes store, `experiment.txt` | `engine/data_library/` | `meta_path`, folders, `_meta.json` |
+| How outputs group into recordings and experiments, the tree, sorting, the notes store, `notes.txt` | `engine/data_library/` | `meta_path`, folders, `_meta.json` |
 | The save folder, the run's name, the notes box before a run | `engine/acquisition/`, next to `SaveTarget` | what the next run is called, where it saves, its note |
 
 - **Each rule has one owner.**
   - What counts as an Experiment (the folder of `meta_path`) is decided in one
     function, in `engine/data_library/`.
-  - `experiment.txt` is written by one function. Everything else calls these
+  - `notes.txt` is written by one function. Everything else calls these
     two.
 - **Nothing a program reads changes.**
   - Notes are not a program input.
@@ -159,7 +159,7 @@ Notes live in each recording's `_meta.json`.
     works for unsaved runs too, which have no `_meta.json`.
   - Every output's details show and edit that one note.
 - [ ] **Notes stay editable afterwards** in the Library's details.
-- [ ] **`experiment.txt` in the Experiment folder:** every note in the
+- [ ] **`notes.txt` in the Experiment folder:** every note in the
   Experiment in one readable file. Each entry has:
   - when the run was taken;
   - its name;
@@ -169,7 +169,7 @@ Notes live in each recording's `_meta.json`.
   - Only saved recordings with a non-empty note get an entry.
   - A run made with saving off, while a folder was set, gets none. Its note
     still shows in its Library details.
-- [ ] **`experiment.txt` has one writer, and is built from the recordings.**
+- [ ] **`notes.txt` has one writer, and is built from the recordings.**
   - One function in `engine/data_library/format.py` rebuilds it from the
     folder's `_meta.json` notes, in time order, and writes it atomically.
   - Called after a recording saves a note, and after a note is edited in the
@@ -179,10 +179,10 @@ Notes live in each recording's `_meta.json`.
   - Its first line says it's generated, and that edits belong in the app.
 - [ ] **Done when:**
   - a note written before a run shows in that recording's details and in
-    `experiment.txt`;
+    `notes.txt`;
   - editing it in the Library updates both;
   - an unsaved run and a saved run without a note add nothing to
-    `experiment.txt`;
+    `notes.txt`;
   - `ProgramOutput` no longer has `notes`, and no program input holds notes.
 
 ## Phase 3: What a program needs from its Experiment
