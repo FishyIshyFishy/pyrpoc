@@ -27,16 +27,13 @@ A program may declare some inputs **live**: a run reads their current value
 whenever it chooses, between its own steps, so edits made while it runs reach
 it. Its recording logs each change it was given, and when.
 Whatever it measures, it **publishes** into its **program outputs**, such as an
-image or a spectrum. Each published value is saved to disk as it arrives, if
-saving is on.
+image or a spectrum. A program output is a named stream: a continuous run
+publishes many frames into the same one, and each is a `Data`. Memory keeps only
+the latest, but each published value is saved to disk as it arrives, if saving
+is on.
 
-A run saved to disk is a **recording**. The recordings saved into one folder
-form an **Experiment**: choosing where runs save is choosing the Experiment.
-With no folder set, nothing is saved.
-A program may read **earlier runs** in its Experiment, named by the program
-that made them: a survey reads a galvo calibration. It cannot start until the
-folder holds one. It reads the latest unless you pick another, the run is
-handed it already loaded, and its recording names what it read.
+The runs saved into one folder form an **Experiment**: choosing where runs save
+is choosing the Experiment. With no folder set, nothing is saved.
 A note written before a run is saved with it. It is not a program input: no
 program reads it.
 
@@ -81,16 +78,15 @@ of the app meet.
 | **ProgramInput** | The declaration of one value a program reads: a key, a default, and a `Field`. **One key means one value everywhere.** The key names the value itself, never a section or a program, and is declared once with `declare`. A second declaration of a key fails. Every program and panel that uses the value imports that one declaration. |
 | **Field** | The rules a value follows: how it is checked (`coerce`), saved (`encode`) and loaded (`decode`). It can also supply its own `Editor` widget. Bad values raise `ParameterError`. |
 | **ProgramInputs** | The collection of current values, by key. Any part of the app may read a value, set one (checked by its `Field`) or subscribe. It is saved with the session. |
-| **ProgramInputValues** | The values one run was given when it started. A program reads them as `ctx.inputs[SOME_INPUT]`, and they go into the run's recording. |
-| **LiveValues** | The current values of one run's live inputs, as `RunContext.current` reads them. The engine fills it from `ProgramInputs` and owns the hand-off between threads, so a program sees only values and a panel never knows a run is reading. |
+| **ProgramInputValues** | The values one run was given. A program reads them as `ctx.inputs[SOME_INPUT]`, and they are saved with the run. |
 | **InputSection** | A heading and the inputs under it. It is layout only: each program writes its own to group its inputs on screen. A section never appears in a key, a session or a recording. |
 
 ### Program outputs: program → user
 
 | Piece | What it is |
 |---|---|
-| **ProgramOutput** | One named output of one run. Every value published into it is one `Data` of its declared kind. Memory holds the latest value, where it came from (`Provenance`), and its writer. It holds no notes: what the user writes about a run belongs to the run, and the engine keeps it beside the run's recording. |
-| **Data** | One value a program produced. It is immutable, and **only programs make it**. Each kind registers in `data_kind_registry` under its name, which is how a recording on disk finds its class again. |
+| **ProgramOutput** | One named output of one run, such as `"intensity"`: a stream that many values can be published into over the run. Each value is one `Data` of its declared kind. Memory holds only the latest, where it came from (`Provenance`), and its writer, which saves every value. It holds no notes: what the user writes about a run belongs to the run, and the engine keeps it beside the run's files. |
+| **Data** | One value published into a program output, such as one frame. It is immutable, and **only programs make it**. Each kind registers in `data_kind_registry` under its name, which is how a saved run finds its class again. |
 | **Library** | The program outputs that are open: acquired now, or loaded from disk. Nothing else. It also names the group each output is listed under (`group_label`), so pickers can group outputs without knowing what a group is. |
 | **SaveTarget, Writer** | Where a run saves (its folder is the Experiment), and how one kind of `Data` is written to files and read back. Writers register in `writer_registry`. |
 
@@ -104,7 +100,7 @@ of the app meet.
 
 ## The rules
 
-1. **Data flows one way.** Only a run, or loading a recording, creates a
+1. **Data flows one way.** Only a run, or loading a saved run, creates a
    `ProgramOutput`.
 2. **Panels and programs never call each other.** They meet only through the
    ProgramInputs and the Library.
