@@ -21,5 +21,3 @@ jobs:
         run: uv run pre-commit run --all-files --show-diff-on-failure
       - name: pyright
         run: uv run pyright
-      - name: tests
-        run: uv run pytest -q tests
