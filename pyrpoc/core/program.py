@@ -7,11 +7,9 @@ import threading
 from collections.abc import Callable, Iterator, Mapping
 from typing import Any, TypeVar
 
-from pyrpoc.core.data import Data
 from pyrpoc.core.device import Device
-from pyrpoc.core.input_section import InputSection
-from pyrpoc.core.program_inputs import ProgramInput, ProgramInputValues
-from pyrpoc.core.program_output import ProgramOutput
+from pyrpoc.core.program_input import InputSection, ProgramInput, ProgramInputValues
+from pyrpoc.core.program_output import Data, ProgramOutput
 from pyrpoc.core.registry import Registry
 
 from .runner import Runner

@@ -8,23 +8,27 @@ from __future__ import annotations
 
 import numpy as np
 
-from pyrpoc.core.data import DecayHistogram, Image
 from pyrpoc.core.program import Program, RunContext, program_registry
+from pyrpoc.core.program_input import InputSection
 from pyrpoc.plugins.devices import DAQ, FlimMeasurement, Galvo, TimeTagger
-
-from ..building_blocks.functions.run_loops import count_off
-from ..building_blocks.program_inputs import (
-    DAQ_SECTION,
-    FRAME_COUNT_SECTION,
-    HISTOGRAM_SECTION,
+from pyrpoc.plugins.program_io.inputs import (
+    FRAME_SETTLE_S,
+    FRAME_TRIGGER_PFI,
+    HISTOGRAM_BINS,
+    HISTOGRAM_BINWIDTH_PS,
+    LASER_FREQUENCY_MHZ,
     NUM_FRAMES,
+    PIXEL_CLOCK_CTR,
+    PIXEL_CLOCK_PFI,
     SAMPLE_RATE_HZ,
-    SCAN_SECTION,
-    TRIGGER_SECTION,
+    SCAN_GEOMETRY_INPUTS,
     HistogramSettings,
     ScanGeometry,
     TriggerLines,
 )
+from pyrpoc.plugins.program_io.outputs import DecayHistogram, Image
+
+from ..building_blocks.functions.run_loops import count_off
 from ..building_blocks.runners import Continuous, Single
 from .scan import flim_scan
 
@@ -59,7 +63,16 @@ class FLIM(Program):
     group = "FLIM"
     order = 40
     devices = [Galvo, DAQ, TimeTagger]
-    sections = [SCAN_SECTION, FRAME_COUNT_SECTION, DAQ_SECTION, TRIGGER_SECTION, HISTOGRAM_SECTION]
+    sections = [
+        InputSection("Scan", SCAN_GEOMETRY_INPUTS),
+        InputSection("Frames", (NUM_FRAMES,)),
+        InputSection("DAQ", (SAMPLE_RATE_HZ,)),
+        InputSection("Triggers", (FRAME_TRIGGER_PFI, PIXEL_CLOCK_CTR, PIXEL_CLOCK_PFI)),
+        InputSection(
+            "Histogram",
+            (LASER_FREQUENCY_MHZ, HISTOGRAM_BINS, HISTOGRAM_BINWIDTH_PS, FRAME_SETTLE_S),
+        ),
+    ]
     emits = {"intensity": Image, "histogram": DecayHistogram}
     runners = [Single(), Continuous()]
 

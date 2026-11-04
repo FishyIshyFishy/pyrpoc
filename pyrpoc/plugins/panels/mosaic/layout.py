@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from pyrpoc.core.data import Mosaic
+from pyrpoc.plugins.program_io.outputs import Mosaic
 
 
 @dataclass(frozen=True)

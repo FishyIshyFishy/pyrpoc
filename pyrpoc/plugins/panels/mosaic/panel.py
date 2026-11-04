@@ -17,11 +17,11 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
 )
 
-from pyrpoc.core.data import Mosaic
 from pyrpoc.core.library import Library
 from pyrpoc.core.panels import DataPanel, data_panel_registry
-from pyrpoc.core.program_inputs import ProgramInputs
+from pyrpoc.core.program_input import ProgramInputs
 from pyrpoc.core.program_output import ProgramOutput
+from pyrpoc.plugins.program_io.outputs import Mosaic
 
 from .channels import ChannelStrip
 from .layout import layout_of

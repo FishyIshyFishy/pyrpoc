@@ -18,13 +18,13 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from pyrpoc.core.data import Image
 from pyrpoc.core.library import Library
 from pyrpoc.core.panels import DataPanel, data_panel_registry
-from pyrpoc.core.program_inputs import ProgramInputs
+from pyrpoc.core.program_input import ProgramInputs
 from pyrpoc.core.program_output import ProgramOutput
-from pyrpoc.shared.widgets.colors import color_for_index, color_map_from_rgb
-from pyrpoc.shared.widgets.levels import autoscale_levels, mono_levels
+from pyrpoc.plugins.program_io.outputs import Image
+from pyrpoc.utils.widgets.colors import color_for_index, color_map_from_rgb
+from pyrpoc.utils.widgets.levels import autoscale_levels, mono_levels
 
 
 @dataclass

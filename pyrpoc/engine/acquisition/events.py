@@ -12,7 +12,7 @@ from PyQt6.QtCore import QObject, pyqtSignal
 
 from pyrpoc.core.device import Device, MissingDevice
 from pyrpoc.core.program import Program
-from pyrpoc.core.program_inputs import ParameterError
+from pyrpoc.core.program_input import ParameterError
 from pyrpoc.core.saving import SaveTarget
 from pyrpoc.engine.acquisition.claims import DeviceBusy
 from pyrpoc.engine.acquisition.executor import Executor, Run, RunCallbacks

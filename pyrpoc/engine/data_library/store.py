@@ -7,8 +7,7 @@ import threading
 from collections.abc import Callable
 from typing import Any, TypeVar
 
-from pyrpoc.core.data import Data
-from pyrpoc.core.program_output import ProgramOutput
+from pyrpoc.core.program_output import Data, ProgramOutput
 
 D = TypeVar("D", bound=Data)
 

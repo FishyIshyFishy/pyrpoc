@@ -1,90 +1,118 @@
-# core: the nouns
+# core: how pyrpoc fits together
 
-This folder defines what each piece of pyrpoc is. Everything else in the
-package builds on these nouns.
+`core/` defines the abstract pieces of pyrpoc and how they connect. Nothing
+else lives here: no specific device, program, input, kind of data, value rule
+or panel. Those are all built from these pieces somewhere else, and register
+themselves so nothing in core has to list them.
 
-## The flow
+Core should rarely change. Adding hardware, an experiment, a setting, a kind
+of data or a panel never touches it. If core has to change, the architecture
+is changing.
+
+## In plain words
+
+A **program** is one kind of experiment, such as a confocal scan or reading a
+spectrum. It says which **devices** it needs and which settings it reads.
+Those settings are its **program inputs**.
+
+Every setting has one current value, kept in one place. The Acquisition panel
+lets you edit the inputs of the program you've chosen. Other panels can set
+inputs too: drawing masks in the Mask Editor sets the masks, and clicking an
+image sets the picked pixel. A setting that two programs share keeps its value
+when you switch between them.
+
+Pressing run starts a **run**. It takes a snapshot of the program's input
+values, claims its devices so no other run can use them, and does the work.
+Whatever it measures, it **publishes** into its **program outputs**, such as an
+image or a spectrum. Each published value is saved to disk as it arrives, if
+saving is on.
+
+Program outputs collect in the **library**. Panels show what's in the library
+and let you act on it, which sets more program inputs, and the loop repeats.
 
 ```
  ProgramInputs ──▶ Run ──▶ ProgramOutputs ──▶ Library ──▶ panels show them
        ▲                                                        │
-       └──────────── panels set program inputs ◀───────────────────┘
+       └────────────── panels set program inputs ◀──────────────┘
 ```
 
-Everything the software does is this loop:
-1. Program inputs feed a run.
-2. A run publishes program outputs.
-3. Outputs sit in the Library, where panels show them.
-4. What the user does in panels sets program inputs.
+## The collections
 
-Collections are the only place parts of the app meet. The Acquisition panel
-is a view of the selected program's inputs; other panels never depend on
-which program is selected. A panel that makes something programs use, like
-the Mask Editor's masks or a click on an image, writes it into one program
-input declared in core beside its type. How a program uses it is that
-program's own inputs, like the line each mask drives. Runners may watch the
-program inputs, as arm and run waits for the next pick.
+A **collection** is something the app keeps in memory while it runs, holding
+the current set of one kind of thing. There are three:
+- **Device inventory:** the hardware.
+- **ProgramInputs:** every setting's current value.
+- **Library:** the open program outputs.
 
-**Two words used throughout:**
-- **Collection.** Something the app keeps in memory while it runs, holding
-  the current set of one kind of thing. There are three: the **device
-  inventory** (the hardware), the **ProgramInputs** (every setting's current
-  value) and the **Library** (the open program outputs). Any part of the app
-  can look in a collection, change it through its own operations, and be told
-  when it changes.
-- **Working state vs screen state.** Working state is what the app is: the
-  three collections, and where runs save. Screen state is only how it's
-  shown: which program the Acquisition panel shows, dock layout, zoom.
+Any part of the app can look in a collection, change it through its own
+operations, and be told when it changes. Collections are the only place parts
+of the app meet.
 
-## The nouns
+## The pieces
 
 ### Running
 
-| Noun | Definition |
+| Piece | What it is |
 |---|---|
-| **Device** | A piece of hardware the microscope has. Found through `device_registry`. |
-| **Program** | A declaration of one experiment: the devices it needs, the program inputs it reads (laid out in input sections), the program outputs it emits, and the runners that can start it. Its `run` does the work. |
-| **Run** | One execution of a program. It gets a frozen copy of the program's inputs, claims its devices, and publishes into its program outputs. |
-| **RunContext** | What a running program is handed: its input values, its devices, its program outputs, and cancel. It reaches an output with `output_for`. |
-| **Runner** | A way to start a program (once, continuously, arm and run). It's declared by the program, and its controls are drawn by whichever panel shows the program. |
+| **Device** | A piece of hardware the microscope has. Its settings are a `DeviceConfig`, whose fields each carry a `Field`. |
+| **Program** | One kind of experiment: the devices it needs, the program inputs it reads (laid out in `InputSection`s), the outputs it publishes, and the runners that can start it. Its `run` does the work. |
+| **Run** | One execution of a program. It gets a frozen copy of the program's input values, claims its devices, and publishes into its program outputs. |
+| **RunContext** | What a running program is handed: its input values, its devices, its outputs, status and cancel. |
+| **Runner** | A way to start a program, such as once, continuously, or armed until a pixel is picked. The program declares it. The runner adds controls through its `RunnerContext`, and whichever panel shows the program draws them. A runner may watch program inputs. |
 
 ### Program inputs: user → program
 
-| Noun | Definition |
+| Piece | What it is |
 |---|---|
-| **ProgramInput** | The declaration of one value a program reads, like dwell time or a mask. It has a key, a label, a default and rules for valid values. **The same key means the same value in every program that declares it.** That's how a setting carries across modality changes. Declared once, next to the code that shares it, e.g. `DWELL_TIME_US = float_input("scan.dwell_time_us", ...)`; a second declaration of a key with other rules fails. |
-| **InputSection** | A labelled list of program inputs. Purely layout: how a panel groups a program's inputs on screen. |
-| **ProgramInputs** | The collection of current values for every program input, by key. Any panel may read it, set a value (validated by the input's rules) or subscribe. It's saved in the session, and a run's values go into its recording. The app's one collection is `ProgramInputsStore` (`engine/acquisition/program_inputs.py`). |
-| **PixelPick** | The last click on one pixel of an image: the pixel, and the image's id, label and the inputs it was acquired with. Image panels write it into `PICK`; no program shows it, and arm and run turns the next one into what its program reads, such as galvo volts. |
-| **Mask** | A drawn region, with a label and an id that stays the same through edits. `MASKS` holds every drawn mask, in order. Only a Mask Editor edits it; programs that use masks show it read-only and say what each mask does with their own inputs. Held inline: in the session and in recordings each is its id, label, shape and pixels, packed one bit each and base64-encoded. |
+| **ProgramInput** | The declaration of one value a program reads: a key, a default, and a `Field`. **One key means one value everywhere.** The key names the value itself, never a section or a program, and is declared once with `declare`. A second declaration of a key fails. Every program and panel that uses the value imports that one declaration. |
+| **Field** | The rules a value follows: how it is checked (`coerce`), saved (`encode`) and loaded (`decode`). It can also supply its own `Editor` widget. Bad values raise `ParameterError`. |
+| **ProgramInputs** | The collection of current values, by key. Any part of the app may read a value, set one (checked by its `Field`) or subscribe. It is saved with the session. |
+| **ProgramInputValues** | The values one run was given. A program reads them as `ctx.inputs[SOME_INPUT]`, and they go into the run's recording. |
+| **InputSection** | A heading and the inputs under it. It is layout only: each program writes its own to group its inputs on screen. A section never appears in a key, a session or a recording. |
 
 ### Program outputs: program → user
 
-| Noun | Definition |
+| Piece | What it is |
 |---|---|
-| **Data** | One value a program produced: an image, a spectrum, a mosaic. Immutable. **Only programs make it.** |
-| **ProgramOutput** | One named output of one run. It holds the latest `Data`, where it came from (`Provenance`), and its writer. Every published value reaches its files; memory holds only the latest. |
+| **ProgramOutput** | One named output of one run. Every value published into it is one `Data` of its declared kind. Memory holds the latest value, where it came from (`Provenance`), and its writer. |
+| **Data** | One value a program produced. It is immutable, and **only programs make it**. Each kind registers in `data_kind_registry` under its name, which is how a recording on disk finds its class again. |
 | **Library** | The program outputs that are open: acquired now, or loaded from disk. Nothing else. |
-| **Recording** | One run's program outputs on disk, opened through its `_meta.json`. |
-| **SaveTarget, Writer** | Where a run saves, and how each kind of `Data` is written and read. |
+| **SaveTarget, Writer** | Where a run saves, and how one kind of `Data` is written to files and read back. Writers register in `writer_registry`. |
 
 ### Views
 
-| Noun | Definition |
+| Piece | What it is |
 |---|---|
-| **Panel** | A dock widget: something the user sees and acts in. It reads the collections and calls their operations. **The Acquisition panel is one.** |
-| **DataPanel** | A panel that shows one program output of the kind it `renders`, chosen with a source dropdown. |
+| **Panel** | A dock widget: something the user sees and acts in. It reads the collections and calls their operations. The Acquisition panel is one like any other. |
+| **DataPanel** | A panel that shows one program output of the kind it `renders`, chosen with a `SourcePicker`. |
+| **DevicePanel** | One device's controls and configuration, in a dock of its own. |
 
 ## The rules
 
-1. **Data flows one way.** Only a run or loading a recording creates a
+1. **Data flows one way.** Only a run, or loading a recording, creates a
    `ProgramOutput`.
-2. **Panels never call programs, and programs never call panels.** They meet
-   only through ProgramInputs and the Library.
+2. **Panels and programs never call each other.** They meet only through the
+   ProgramInputs and the Library.
 3. **Every panel is equal.** None is special in code. The app hands each
    panel the collections it needs.
-4. **Working state and screen state are separate.** The session saves them
-   separately.
+4. **Working state and screen state are separate.** Working state is what the
+   app is: the three collections, and where runs save. Screen state is only
+   how it's shown: dock layout, zoom, which program a panel shows. The session
+   saves them separately.
+
+## Where the specific things live
+
+Each kind of thing registers through the registry in the core file that
+defines it. Nothing else lists them.
+
+| To add | Put it in | Registers with |
+|---|---|---|
+| A device | `plugins/devices/` | `device_registry` |
+| A program | `plugins/programs/` | `program_registry` |
+| A program input, shared by programs and panels | `plugins/program_io/inputs/` | `declare` |
+| A kind of data, and how it is saved | `plugins/program_io/outputs/` | `data_kind_registry`, `writer_registry` |
+| A panel | `plugins/panels/` | `data_panel_registry`, `device_panel_registry` |
+| A common value rule, like a whole number or a choice | `utils/value_rules/` | (none: inputs and device settings use them directly) |
 
 ## The files
 
@@ -92,15 +120,11 @@ program inputs, as arm and run waits for the next pick.
 |---|---|
 | `registry.py` | `Registry` |
 | `device.py` | `Device` + `device_registry` |
-| `device_config.py` | `DeviceConfig`: a device's settings, a dataclass whose fields carry their value rules |
+| `device_config.py` | `DeviceConfig`, and how its fields carry their `Field` |
 | `program.py` | `Program`, `RunContext` + `program_registry` |
 | `runner.py` | `Runner`, `RunnerContext`, `Control`, `Button`, `Toggle` |
-| `program_inputs.py` | `ProgramInput` + `program_input_registry`, the value rules (int, float, choice, ...), `ProgramInputValues` (a run's values), `ProgramInputs` (protocol), `Editor`, `FieldValues` |
-| `input_section.py` | `InputSection` |
-| `pixel_pick.py` | `PixelPick`, and `PICK`, the program input holding the last one |
-| `mask.py` | `Mask`, and `MASKS`, the program input holding every drawn mask |
-| `data.py` | `Data`, `ArrayData`, `Image`, `DecayHistogram`, `RawSamples`, `Spectrum`, `Mosaic` and its `MosaicTile`, `DATA_KINDS` |
-| `program_output.py` | `ProgramOutput`, `Provenance`, `Origin` |
-| `library.py` | `Library` (protocol) |
+| `program_input.py` | `ProgramInput` + `declare`, `Field`, `Editor`, `ProgramInputValues`, `ProgramInputs`, `InputSection` |
+| `program_output.py` | `ProgramOutput`, `Data` + `data_kind_registry`, `Provenance`, `Origin` |
+| `library.py` | `Library` |
 | `saving.py` | `SaveTarget`, `Writer` + `writer_registry` |
 | `panels.py` | `Panel`, `DataPanel`, `SourcePicker`, `DevicePanel` + their registries. The only file here that uses Qt. |

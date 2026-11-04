@@ -14,7 +14,7 @@ from typing import Any
 from pyrpoc.core.device import Device
 from pyrpoc.core.device_config import encode_config
 from pyrpoc.core.program import Cancelled, Program, RunContext
-from pyrpoc.core.program_inputs import ProgramInputValues
+from pyrpoc.core.program_input import ProgramInputValues
 from pyrpoc.core.program_output import Origin, ProgramOutput, Provenance, utc_now
 from pyrpoc.core.saving import SaveTarget
 from pyrpoc.engine.acquisition.program_inputs import ProgramInputsStore

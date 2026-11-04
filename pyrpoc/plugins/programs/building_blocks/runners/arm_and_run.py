@@ -5,9 +5,9 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from pyrpoc.core.pixel_pick import PICK, PixelPick
-from pyrpoc.core.program_inputs import ParameterError, ProgramInputs
+from pyrpoc.core.program_input import ParameterError, ProgramInputs
 from pyrpoc.core.runner import Runner, RunnerContext, Toggle
+from pyrpoc.plugins.program_io.inputs import PICK, PixelPick
 
 
 @dataclass(frozen=True)

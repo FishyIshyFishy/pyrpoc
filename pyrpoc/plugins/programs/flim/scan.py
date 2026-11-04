@@ -11,10 +11,10 @@ import nidaqmx.errors
 from nidaqmx.constants import AcquisitionType, Signal
 
 from pyrpoc.plugins.devices import DAQ, DaqError, Galvo
+from pyrpoc.plugins.program_io.inputs import ScanGeometry, TriggerLines
 
 from ..building_blocks.functions.daq_tasks import clock_galvos, play, scan_timeout
 from ..building_blocks.functions.galvo_raster import raster_waveform
-from ..building_blocks.program_inputs import ScanGeometry, TriggerLines
 
 
 def pixel_samples(dwell_time_us: float, sample_rate_hz: float) -> int:

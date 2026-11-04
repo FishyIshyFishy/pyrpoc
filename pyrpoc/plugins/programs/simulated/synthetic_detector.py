@@ -1,4 +1,4 @@
-"""The fake detector's pieces: keyed randomness, noise, and channel names."""
+"""The fake detector's pieces: keyed randomness, noise and its level, and channel names."""
 
 # Every program that fakes its data uses them, so fakes stay comparable.
 
@@ -6,8 +6,19 @@ from __future__ import annotations
 
 import numpy as np
 
+from pyrpoc.utils.value_rules import float_input
+
 # Keeps the noise generator off the pattern's stream, so noise never moves a feature.
 NOISE_STREAM = 0x0125E
+
+NOISE_LEVEL = float_input(
+    "noise_level",
+    "Noise Level",
+    0.03,
+    minimum=0.0,
+    step=0.01,
+    tooltip="Gaussian noise added per pixel",
+)
 
 
 def seeded_rng(*parts: int) -> np.random.Generator:

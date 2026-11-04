@@ -7,10 +7,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Generic, TypeVar
 
-from pyrpoc.core.program_inputs import ParameterError
+from pyrpoc.core.program_input import ParameterError
+from pyrpoc.core.program_output import Data
 from pyrpoc.core.registry import Registry
-
-from .data import Data
 
 if TYPE_CHECKING:  # pragma: no cover
     from .program_output import ProgramOutput

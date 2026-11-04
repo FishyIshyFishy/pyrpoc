@@ -10,24 +10,27 @@ from collections.abc import Callable
 from dataclasses import asdict
 from typing import Any
 
-from pyrpoc.core.data import Image
 from pyrpoc.core.program import (
     Cancelled,
     Program,
     RunContext,
     program_registry,
 )
+from pyrpoc.core.program_input import InputSection
 from pyrpoc.plugins.devices import DAQ, DaqError, Galvo, PriorError, PriorStage
+from pyrpoc.plugins.program_io.inputs import (
+    CENTER_REGION_FRACTION,
+    FOCUS_FINAL_STEP_UM,
+    FOCUS_INITIAL_STEP_UM,
+    FOCUS_SEARCH_RANGE_UM,
+    MASKS,
+    SAMPLE_RATE_HZ,
+    SCAN_GEOMETRY_INPUTS,
+    FocusSearch,
+)
+from pyrpoc.plugins.program_io.outputs import Image
 
 from ..building_blocks.functions.roi_scan import region_source
-from ..building_blocks.program_inputs import (
-    DAQ_SECTION,
-    FOCUS_SEARCH_SECTION,
-    REGION_SECTION,
-    SCAN_SECTION,
-    FocusSearch,
-    ScanRegion,
-)
 from ..building_blocks.runners import Single
 from .climb import ClimbResult, ClimbStep, climb
 from .roi_scan import RoiRaster
@@ -90,7 +93,15 @@ class Autofocus(Program):
     group = "Confocal Fluorescence"
     order = 13
     devices = [Galvo, DAQ, PriorStage]
-    sections = [SCAN_SECTION, DAQ_SECTION, REGION_SECTION, FOCUS_SEARCH_SECTION]
+    sections = [
+        InputSection("Scan", SCAN_GEOMETRY_INPUTS),
+        InputSection("DAQ", (SAMPLE_RATE_HZ,)),
+        InputSection("Region", (MASKS, CENTER_REGION_FRACTION)),
+        InputSection(
+            "Focus Search",
+            (FOCUS_SEARCH_RANGE_UM, FOCUS_INITIAL_STEP_UM, FOCUS_FINAL_STEP_UM),
+        ),
+    ]
     emits = {"intensity": Image}
     # Once only: each start is one complete search.
     runners = [Single()]
@@ -100,7 +111,7 @@ class Autofocus(Program):
         raster = RoiRaster.for_run(ctx)
         ctx.describe(
             "intensity",
-            roi=raster.layout_metadata(region_source(ScanRegion.from_inputs(ctx.inputs))),
+            roi=raster.layout_metadata(region_source(ctx.inputs[MASKS])),
         )
         start_z_um = stage.z_position()
         focus = FocusRun(ctx, stage, raster, start_z_um)

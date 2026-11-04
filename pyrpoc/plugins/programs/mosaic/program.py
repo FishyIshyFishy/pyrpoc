@@ -2,24 +2,28 @@
 
 from __future__ import annotations
 
-from pyrpoc.core.data import Image, Mosaic, MosaicTile
 from pyrpoc.core.program import (
     Cancelled,
     Program,
     RunContext,
     program_registry,
 )
+from pyrpoc.core.program_input import InputSection
 from pyrpoc.plugins.devices import DAQ, Galvo, PriorStage
+from pyrpoc.plugins.program_io.inputs import (
+    MASK_LINES,
+    MASKS,
+    SAMPLE_RATE_HZ,
+    SCAN_GEOMETRY_INPUTS,
+    TILE_SPACING_UM,
+    X_TILES,
+    Y_TILES,
+    MosaicGrid,
+)
+from pyrpoc.plugins.program_io.outputs import Image, Mosaic, MosaicTile
 
 from ..building_blocks.functions.galvo_raster import Raster
 from ..building_blocks.functions.run_loops import grow, walk
-from ..building_blocks.program_inputs import (
-    DAQ_SECTION,
-    MODULATION_SECTION,
-    MOSAIC_SECTION,
-    SCAN_SECTION,
-    MosaicGrid,
-)
 from ..building_blocks.runners import Single
 
 
@@ -46,7 +50,12 @@ class StageMosaic(Program):
     group = "Confocal Fluorescence"
     order = 12
     devices = [Galvo, DAQ, PriorStage]
-    sections = [SCAN_SECTION, DAQ_SECTION, MODULATION_SECTION, MOSAIC_SECTION]
+    sections = [
+        InputSection("Scan", SCAN_GEOMETRY_INPUTS),
+        InputSection("DAQ", (SAMPLE_RATE_HZ,)),
+        InputSection("Modulation", (MASKS, MASK_LINES)),
+        InputSection("Mosaic", (X_TILES, Y_TILES, TILE_SPACING_UM)),
+    ]
     emits = {"mosaic": Mosaic}
     # Once only: a mosaic is one pass over the grid, never repeated or looped.
     runners = [Single()]

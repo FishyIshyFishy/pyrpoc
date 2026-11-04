@@ -4,17 +4,19 @@ from __future__ import annotations
 
 import numpy as np
 
-from pyrpoc.core.data import Image
 from pyrpoc.core.program import Program, RunContext, program_registry
+from pyrpoc.core.program_input import InputSection
 from pyrpoc.plugins.devices import ToupcamCamera
-
-from ..building_blocks.functions.run_loops import count_off
-from ..building_blocks.program_inputs import (
-    CAMERA_SECTION,
-    FRAME_COUNT_SECTION,
+from pyrpoc.plugins.program_io.inputs import (
+    CAMERA_BINNED,
+    CAMERA_EXPOSURE_MS,
+    CAMERA_GAIN_PCT,
     NUM_FRAMES,
     CameraSettings,
 )
+from pyrpoc.plugins.program_io.outputs import Image
+
+from ..building_blocks.functions.run_loops import count_off
 from ..building_blocks.runners import Continuous, Single
 
 
@@ -32,7 +34,10 @@ class Brightfield(Program):
     group = "Brightfield"
     order = 50
     devices = [ToupcamCamera]
-    sections = [CAMERA_SECTION, FRAME_COUNT_SECTION]
+    sections = [
+        InputSection("Camera", (CAMERA_EXPOSURE_MS, CAMERA_GAIN_PCT, CAMERA_BINNED)),
+        InputSection("Frames", (NUM_FRAMES,)),
+    ]
     emits = {"intensity": Image}
     runners = [Single(), Continuous()]
 

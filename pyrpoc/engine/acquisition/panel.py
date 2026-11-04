@@ -23,9 +23,9 @@ from pyrpoc.core.panels import Panel
 from pyrpoc.core.program import program_registry
 from pyrpoc.core.registry import grouped
 from pyrpoc.core.runner import Control
-from pyrpoc.shared.widgets.grouped_combo import GroupedComboBox
-from pyrpoc.shared.widgets.icons import asset_icon
-from pyrpoc.shared.widgets.param_form import ParamForm, input_form_section
+from pyrpoc.utils.widgets.grouped_combo import GroupedComboBox
+from pyrpoc.utils.widgets.icons import asset_icon
+from pyrpoc.utils.widgets.param_form import ParamForm, input_form_section
 
 from .host import RunnerHost
 from .program_inputs import ProgramInputsStore

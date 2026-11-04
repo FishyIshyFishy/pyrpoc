@@ -6,8 +6,7 @@ from PyQt6.QtCore import QSize, Qt, pyqtSignal
 from PyQt6.QtGui import QColor, QFont, QIcon, QPixmap
 from PyQt6.QtWidgets import QAbstractItemView, QLabel, QListWidget, QListWidgetItem, QWidget
 
-from pyrpoc.core.mask import Mask
-from pyrpoc.shared.widgets.mask_list import thumbnail
+from pyrpoc.plugins.program_io.inputs import Mask, thumbnail
 
 from .canvas import MaskRoi, color_for_index
 

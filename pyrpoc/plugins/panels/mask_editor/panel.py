@@ -31,14 +31,14 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from pyrpoc.core.data import Image
 from pyrpoc.core.library import Library
-from pyrpoc.core.mask import MASKS, Mask
 from pyrpoc.core.panels import DataPanel, data_panel_registry
-from pyrpoc.core.program_inputs import ProgramInputs
+from pyrpoc.core.program_input import ProgramInputs
 from pyrpoc.core.program_output import ProgramOutput
 from pyrpoc.plugins.panels.mask_editor.range_slider import RangeSlider
 from pyrpoc.plugins.panels.mask_editor.transforms import normalize_channels
+from pyrpoc.plugins.program_io.inputs import MASKS, Mask
+from pyrpoc.plugins.program_io.outputs import Image
 
 from .canvas import MaskImageView, MaskRoi, Threshold
 from .dialog import RoiThresholdDialog

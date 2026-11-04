@@ -6,7 +6,7 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QDialog, QDialogButtonBox, QVBoxLayout, QWidget
 
 from pyrpoc.core.device import Device
-from pyrpoc.shared.widgets.param_form import ConfigValues, ParamForm, config_form_section
+from pyrpoc.utils.widgets.param_form import ConfigValues, ParamForm, config_form_section
 
 from .inventory import DeviceInventory
 

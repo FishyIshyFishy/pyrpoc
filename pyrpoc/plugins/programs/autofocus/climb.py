@@ -9,7 +9,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from ..building_blocks.program_inputs import FocusSearch
+from pyrpoc.plugins.program_io.inputs import FocusSearch
 
 
 @dataclass(frozen=True)

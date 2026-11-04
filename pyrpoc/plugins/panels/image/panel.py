@@ -17,13 +17,13 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from pyrpoc.core.data import Image
 from pyrpoc.core.library import Library
 from pyrpoc.core.panels import DataPanel, data_panel_registry
-from pyrpoc.core.pixel_pick import PICK, PixelPick
-from pyrpoc.core.program_inputs import ProgramInputs
+from pyrpoc.core.program_input import ProgramInputs
 from pyrpoc.core.program_output import ProgramOutput
-from pyrpoc.shared.widgets.levels import autoscale_levels, mono_levels
+from pyrpoc.plugins.program_io.inputs import PICK, PixelPick
+from pyrpoc.plugins.program_io.outputs import Image
+from pyrpoc.utils.widgets.levels import autoscale_levels, mono_levels
 
 LUT = pg.ColorMap(
     pos=np.array([0.0, 0.999, 1.0], dtype=float),

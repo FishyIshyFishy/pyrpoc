@@ -1,3 +1,3 @@
-"""The nouns of pyrpoc: what each piece is. ``README.md`` defines them."""
+"""The abstract pieces of pyrpoc and how they fit together. ``README.md`` explains them."""
 
 from __future__ import annotations

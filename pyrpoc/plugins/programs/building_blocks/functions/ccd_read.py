@@ -7,10 +7,35 @@ from dataclasses import asdict
 
 import numpy as np
 
-from pyrpoc.core.data import Spectrum
 from pyrpoc.core.program import Cancelled, RunContext
+from pyrpoc.core.program_input import ProgramInputValues
 from pyrpoc.plugins.devices import AndorCCD, SpectrumReadout
-from pyrpoc.plugins.devices.andor_ccd.device import AcceptedTimings, clipped
+from pyrpoc.plugins.devices.andor_ccd.device import AcceptedTimings, Amplifier, ReadMode, clipped
+from pyrpoc.plugins.program_io.inputs import CCD_EXPOSURE_S, CCD_FRAMES_TO_AVERAGE
+from pyrpoc.plugins.program_io.outputs import Spectrum
+
+# The rest of the readout is fixed at what a Raman spectrum wants: every row
+# binned, read slowly through the conventional amplifier for the least noise.
+# A track is unused under full vertical binning.
+RAMAN_READ_MODE: ReadMode = "fvb"
+RAMAN_AMPLIFIER: Amplifier = "conventional"
+RAMAN_READOUT_MHZ = 0.05
+RAMAN_PREAMP_GAIN = 1.0
+
+
+def spectrum_readout(values: ProgramInputValues) -> SpectrumReadout:
+    """The readout a Raman spectrum is taken with."""
+    return SpectrumReadout(
+        exposure_s=values[CCD_EXPOSURE_S],
+        accumulations=values[CCD_FRAMES_TO_AVERAGE],
+        read_mode=RAMAN_READ_MODE,
+        track_centre=1,
+        track_height=1,
+        amplifier=RAMAN_AMPLIFIER,
+        em_gain=1,
+        readout_mhz=RAMAN_READOUT_MHZ,
+        preamp_gain=RAMAN_PREAMP_GAIN,
+    )
 
 
 def configure_spectrum(

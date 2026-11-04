@@ -14,9 +14,22 @@ from typing import Any
 
 import numpy as np
 
-from pyrpoc.core.data import Spectrum
 from pyrpoc.core.program import Program, RunContext, program_registry
+from pyrpoc.core.program_input import InputSection
 from pyrpoc.plugins.devices import DAQ, AndorCCD, Galvo
+from pyrpoc.plugins.program_io.inputs import (
+    CCD_EXPOSURE_S,
+    CCD_FRAMES_TO_AVERAGE,
+    CENTER_REGION_FRACTION,
+    MASKS,
+    NUM_FRAMES,
+    SAMPLE_RATE_HZ,
+    SCAN_GEOMETRY_INPUTS,
+    Mask,
+    ScanGeometry,
+)
+from pyrpoc.plugins.program_io.outputs import Spectrum
+from pyrpoc.plugins.programs.building_blocks.functions.ccd_read import spectrum_readout
 
 from ..building_blocks.functions.ccd_read import configure_spectrum, read_spectrum
 from ..building_blocks.functions.daq_tasks import sweeping
@@ -30,31 +43,19 @@ from ..building_blocks.functions.roi_scan import (
     row_spans,
 )
 from ..building_blocks.functions.run_loops import count_off
-from ..building_blocks.program_inputs import (
-    CCD_READOUT_SECTION,
-    DAQ_SECTION,
-    FRAME_COUNT_SECTION,
-    NUM_FRAMES,
-    REGION_SECTION,
-    SAMPLE_RATE_HZ,
-    SCAN_SECTION,
-    ScanGeometry,
-    ScanRegion,
-    spectrum_readout,
-)
 from ..building_blocks.runners import Single
 
 
 def plan_sweep(
-    scan: ScanGeometry, roi: ScanRegion, sample_rate_hz: float
+    scan: ScanGeometry, masks: tuple[Mask, ...], center_fraction: float, sample_rate_hz: float
 ) -> tuple[np.ndarray, dict[str, Any]]:
     """The region's looping waveform, and what the recording says of it. The
     dwell is the one played, which truncates to whole samples."""
     samples_per_pixel = pixel_samples(scan.dwell_time_us, sample_rate_hz)
-    spans = row_spans(roi_region(roi, scan))
+    spans = row_spans(roi_region(masks, center_fraction, scan))
     waveform = roi_waveform(scan, spans, samples_per_pixel)
     pixels_swept = waveform.shape[1] // samples_per_pixel
-    metadata = region_layout(region_source(roi), spans, Box.around(spans), pixels_swept)
+    metadata = region_layout(region_source(masks), spans, Box.around(spans), pixels_swept)
     metadata["dwell_s"] = samples_per_pixel / sample_rate_hz
     metadata["period_s"] = waveform.shape[1] / sample_rate_hz
     return waveform, metadata
@@ -66,7 +67,13 @@ class RoiSpectralSeries(Program):
     group = "Custom"
     order = 50
     devices = [Galvo, AndorCCD]
-    sections = [SCAN_SECTION, DAQ_SECTION, REGION_SECTION, FRAME_COUNT_SECTION, CCD_READOUT_SECTION]
+    sections = [
+        InputSection("Scan", SCAN_GEOMETRY_INPUTS),
+        InputSection("DAQ", (SAMPLE_RATE_HZ,)),
+        InputSection("Region", (MASKS, CENTER_REGION_FRACTION)),
+        InputSection("Frames", (NUM_FRAMES,)),
+        InputSection("CCD Readout", (CCD_EXPOSURE_S, CCD_FRAMES_TO_AVERAGE)),
+    ]
     emits = {"spectrum": Spectrum}
     # Once only: each start is one bleaching series of a set length.
     runners = [Single()]
@@ -74,7 +81,10 @@ class RoiSpectralSeries(Program):
     def run(self, ctx: RunContext) -> None:
         sample_rate_hz = ctx.inputs[SAMPLE_RATE_HZ]
         waveform, sweep = plan_sweep(
-            ScanGeometry.from_inputs(ctx.inputs), ScanRegion.from_inputs(ctx.inputs), sample_rate_hz
+            ScanGeometry.from_inputs(ctx.inputs),
+            ctx.inputs[MASKS],
+            ctx.inputs[CENTER_REGION_FRACTION],
+            sample_rate_hz,
         )
         ctx.describe("spectrum", sweep=sweep)
         ccd = ctx.devices[AndorCCD]

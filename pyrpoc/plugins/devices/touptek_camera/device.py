@@ -14,6 +14,7 @@ import numpy as np
 
 from pyrpoc.core import device_config as C
 from pyrpoc.core.device import Device, device_registry
+from pyrpoc.utils.value_rules import text_field
 
 from .sdk import ToupcamError, ToupcamSession, row_pitch, unpack_rgb24
 
@@ -25,7 +26,7 @@ FRAME_MARGIN_S = 2.0
 
 @dataclass
 class ToupcamConfig(C.DeviceConfig):
-    camera: str = C.text_field(
+    camera: str = text_field(
         "Camera",
         "",
         tooltip="Name (e.g. U3CMOS08500KPA) or id of the camera to open; blank opens the first",

@@ -10,8 +10,14 @@ import cv2
 import numpy as np
 
 from pyrpoc.core.program import RunContext
-from pyrpoc.core.program_inputs import ParameterError
+from pyrpoc.core.program_input import ParameterError
 from pyrpoc.plugins.devices import DAQ, Galvo
+from pyrpoc.plugins.program_io.inputs import (
+    CENTER_REGION_FRACTION,
+    MASKS,
+    SAMPLE_RATE_HZ,
+    ScanGeometry,
+)
 
 from ..building_blocks.functions.daq_tasks import acquire
 from ..building_blocks.functions.galvo_raster import pixel_samples
@@ -23,7 +29,6 @@ from ..building_blocks.functions.roi_scan import (
     roi_waveform,
     row_spans,
 )
-from ..building_blocks.program_inputs import SAMPLE_RATE_HZ, ScanGeometry, ScanRegion
 
 
 def place_rows(
@@ -79,7 +84,7 @@ class RoiRaster:
         scan = ScanGeometry.from_inputs(ctx.inputs)
         sample_rate_hz = ctx.inputs[SAMPLE_RATE_HZ]
         samples_per_pixel = pixel_samples(scan.dwell_time_us, sample_rate_hz)
-        region = roi_region(ScanRegion.from_inputs(ctx.inputs), scan)
+        region = roi_region(ctx.inputs[MASKS], ctx.inputs[CENTER_REGION_FRACTION], scan)
         spans = row_spans(region)
         box = Box.around(spans)
         return cls(

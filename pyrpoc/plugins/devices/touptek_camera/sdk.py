@@ -13,8 +13,8 @@ import numpy as np
 
 from pyrpoc.core.device import DeviceError
 
-# ``pyrpoc/shared/assets/sdks``, reached from ``pyrpoc``, three folders up.
-DLL_PATH = Path(__file__).resolve().parents[3] / "shared" / "assets" / "sdks" / "toupcam.dll"
+# ``pyrpoc/utils/assets/sdks``, reached from ``pyrpoc``, three folders up.
+DLL_PATH = Path(__file__).resolve().parents[3] / "utils" / "assets" / "sdks" / "toupcam.dll"
 
 MAX_CAMERAS = 128
 MAX_RESOLUTIONS = 16

@@ -18,7 +18,7 @@ from PyQt6.QtWidgets import (
 
 from pyrpoc.core.device import Device, device_registry
 from pyrpoc.core.panels import Panel, has_panel
-from pyrpoc.shared.widgets.table import ListTable, horizontal_header, viewport_of
+from pyrpoc.utils.widgets.table import ListTable, horizontal_header, viewport_of
 
 from .configure import ConfigureDialog
 from .inventory import DeviceInventory
