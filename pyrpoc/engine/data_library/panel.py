@@ -54,8 +54,8 @@ def format_size(nbytes: int) -> str:
 class DataLibraryPanel(Panel):
     display_name = "Data Library"
 
-    def __init__(self, library: LibraryModel, save_folder: Callable[[], Path]):
-        """``save_folder`` is where Open… starts: the current save folder."""
+    def __init__(self, library: LibraryModel, save_folder: Callable[[], Path | None]):
+        """``save_folder`` is where Open… starts: the current save folder, if one is set."""
         super().__init__()
         self.library = library
         self.save_folder = save_folder
@@ -198,10 +198,11 @@ class DataLibraryPanel(Panel):
             QDesktopServices.openUrl(QUrl.fromLocalFile(str(program_output.meta_path.parent)))
 
     def choose_recording(self) -> None:
+        folder = self.save_folder()
         path, _ = QFileDialog.getOpenFileName(
             self,
             "Open recording",
-            str(self.save_folder()),
+            str(folder) if folder is not None else "",
             "pyrpoc recordings (*_meta.json)",
         )
         if path:

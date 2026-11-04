@@ -27,6 +27,10 @@ Whatever it measures, it **publishes** into its **program outputs**, such as an
 image or a spectrum. Each published value is saved to disk as it arrives, if
 saving is on.
 
+A run saved to disk is a **recording**. The recordings saved into one folder
+form an **Experiment**: choosing where runs save is choosing the Experiment.
+With no folder set, nothing is saved.
+
 Program outputs collect in the **library**. Panels show what's in the library
 and let you act on it, which sets more program inputs, and the loop repeats.
 
@@ -77,7 +81,7 @@ of the app meet.
 | **ProgramOutput** | One named output of one run. Every value published into it is one `Data` of its declared kind. Memory holds the latest value, where it came from (`Provenance`), and its writer. |
 | **Data** | One value a program produced. It is immutable, and **only programs make it**. Each kind registers in `data_kind_registry` under its name, which is how a recording on disk finds its class again. |
 | **Library** | The program outputs that are open: acquired now, or loaded from disk. Nothing else. |
-| **SaveTarget, Writer** | Where a run saves, and how one kind of `Data` is written to files and read back. Writers register in `writer_registry`. |
+| **SaveTarget, Writer** | Where a run saves (its folder is the Experiment), and how one kind of `Data` is written to files and read back. Writers register in `writer_registry`. |
 
 ### Views
 

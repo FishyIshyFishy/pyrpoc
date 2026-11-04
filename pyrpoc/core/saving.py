@@ -36,17 +36,20 @@ class SaveTarget:
         return stem
 
     @property
-    def folder(self) -> Path:
-        """Where files go: the working directory when none is set."""
+    def folder(self) -> Path | None:
+        """Where files go, or None when no folder is set."""
         text = self.directory.strip()
-        return Path(text).expanduser() if text else Path.cwd()
+        return Path(text).expanduser() if text else None
 
     @property
     def root(self) -> Path:
         """The base path every file of the run hangs its suffix off."""
+        folder = self.folder
+        if folder is None:
+            raise ParameterError("A folder to save into is required when saving is enabled")
         if not self.filename:
             raise ParameterError("Name is required when saving is enabled")
-        return self.folder / self.filename
+        return folder / self.filename
 
 
 class Writer(Generic[D]):
