@@ -13,6 +13,7 @@ from PyQt6.QtWidgets import (
     QGridLayout,
     QHBoxLayout,
     QScrollArea,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -23,7 +24,11 @@ from pyrpoc.core.program_input import ProgramInputs
 from pyrpoc.core.program_output import ProgramOutput
 from pyrpoc.plugins.program_io.inputs import PICK, PixelPick
 from pyrpoc.plugins.program_io.outputs import Image
+from pyrpoc.utils.widgets.icons import asset_icon
 from pyrpoc.utils.widgets.levels import autoscale_levels, mono_levels
+
+from .measure import Shape, TileMeasurement, Tool
+from .measure_settings import MeasureSettings
 
 LUT = pg.ColorMap(
     pos=np.array([0.0, 0.999, 1.0], dtype=float),
@@ -38,6 +43,7 @@ class ChannelTile:
     plot: pg.PlotWidget
     image_item: pg.ImageItem
     hist_widget: pg.HistogramLUTWidget
+    measure: TileMeasurement
     min_val: float = 0.0
     max_val: float = 1.0
 
@@ -65,6 +71,10 @@ class ImagePanel(DataPanel[Image]):
         self._tiles: list[ChannelTile] = []
         self._pending_state: list[TileState] = []
         self._suspend_lut_signal = False
+        self.tool: Tool | None = None
+        self.shape: Shape | None = None
+        self.measure_settings = MeasureSettings()
+        self.tool_buttons = self.build_tool_buttons()
 
         outer = QVBoxLayout(self.body)
         outer.setContentsMargins(0, 0, 0, 0)
@@ -78,6 +88,50 @@ class ImagePanel(DataPanel[Image]):
         self._grid.setVerticalSpacing(10)
         scroll.setWidget(self._content)
         self.connect_source()
+
+    def build_tool_buttons(self) -> dict[Tool, QToolButton]:
+        """Two small toggles beside the source picker. With neither on, a click picks a pixel."""
+        tips = {
+            Tool.LINE: "Line profile: drag across an image to plot the values along the line",
+            Tool.REGION: "Region histogram: drag a box to plot the values inside it",
+        }
+        icons = {Tool.LINE: "profile", Tool.REGION: "region"}
+        buttons: dict[Tool, QToolButton] = {}
+        for tool in Tool:
+            button = QToolButton(self)
+            button.setCheckable(True)
+            button.setAutoRaise(True)
+            button.setIcon(asset_icon(icons[tool]))
+            button.setToolTip(tips[tool])
+            button.toggled.connect(lambda checked, t=tool: self.on_tool_toggled(t, checked))
+            self.source.row.addWidget(button)
+            buttons[tool] = button
+        return buttons
+
+    def on_tool_toggled(self, tool: Tool, checked: bool) -> None:
+        if checked:
+            for other, button in self.tool_buttons.items():
+                if other is not tool and button.isChecked():
+                    button.blockSignals(True)
+                    button.setChecked(False)
+                    button.blockSignals(False)
+            self.set_tool(tool)
+        elif self.tool is tool:
+            self.set_tool(None)
+
+    def set_tool(self, tool: Tool | None) -> None:
+        self.tool = tool
+        for each in self._tiles:
+            each.measure.show_hint_for(tool)
+            cursor = Qt.CursorShape.CrossCursor if tool is not None else Qt.CursorShape.ArrowCursor
+            each.plot.setCursor(cursor)
+
+    def on_shape_changed(self, source: TileMeasurement, shape: Shape | None) -> None:
+        """Draw a shape one tile changed on all the others."""
+        self.shape = shape
+        for tile in self._tiles:
+            if tile.measure is not source:
+                tile.measure.apply_shape(shape)
 
     def show_value(self, program_output: ProgramOutput[Image], value: Image) -> None:
         del program_output
@@ -111,7 +165,11 @@ class ImagePanel(DataPanel[Image]):
         body = QHBoxLayout()
         root_layout.addLayout(body, 1)
 
-        plot, image_item = self.build_plot(root)
+        measure = TileMeasurement(
+            root, self.measure_settings, lambda: self.tool, self.on_shape_changed
+        )
+        measure.apply_shape(self.shape)
+        plot, image_item = self.build_plot(root, measure)
         body.addWidget(plot, 1)
         hist_widget = pg.HistogramLUTWidget(root)
         hist_widget.setImageItem(image_item)
@@ -125,16 +183,21 @@ class ImagePanel(DataPanel[Image]):
         right_col.addWidget(autoscale_box)
         body.addLayout(right_col)
 
-        tile = ChannelTile(root, autoscale_box, plot, image_item, hist_widget)
+        root_layout.addWidget(measure.strip)
+        measure.show_hint_for(self.tool)
+
+        tile = ChannelTile(root, autoscale_box, plot, image_item, hist_widget, measure)
         autoscale_box.toggled.connect(lambda _checked, i=index: self.on_autoscale_toggled(i))
         hist_widget.item.sigLevelsChanged.connect(
             lambda _item, i=index: self.on_lut_levels_changed(i)
         )
         return tile
 
-    def build_plot(self, parent: QWidget) -> tuple[pg.PlotWidget, pg.ImageItem]:
+    def build_plot(
+        self, parent: QWidget, measure: TileMeasurement
+    ) -> tuple[pg.PlotWidget, pg.ImageItem]:
         """A tile's plot and image, wired to pick the pixel under a click."""
-        plot = pg.PlotWidget(parent)
+        plot = pg.PlotWidget(parent, viewBox=measure.view_box)
         plot.setMenuEnabled(False)
         plot.hideButtons()
         plot.setAspectLocked(True)
@@ -149,8 +212,8 @@ class ImagePanel(DataPanel[Image]):
         return plot, image_item
 
     def on_scene_clicked(self, event: Any, image_item: pg.ImageItem) -> None:
-        """Pick the pixel under a left click."""
-        if event.button() != Qt.MouseButton.LeftButton:
+        """Pick the pixel under a left click, unless a measuring tool is using the mouse."""
+        if event.button() != Qt.MouseButton.LeftButton or self.tool is not None:
             return
         point = image_item.mapFromScene(event.scenePos())
         if self.pick_pixel(int(np.floor(point.x())), int(np.floor(point.y()))):
@@ -190,6 +253,7 @@ class ImagePanel(DataPanel[Image]):
     def update_channel_image(self, index: int, channel: np.ndarray) -> None:
         tile = self._tiles[index]
         tile.image_item.setImage(channel, autoLevels=False)
+        tile.measure.refresh(channel)
         if tile.autoscale_box.isChecked():
             self.apply_levels(tile, *autoscale_levels(channel))
         else:
