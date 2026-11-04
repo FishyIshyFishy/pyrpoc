@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 from PyQt6.QtCore import QPoint, QSize, Qt, pyqtSignal
-from PyQt6.QtGui import QAction, QColor, QFont, QIcon, QPalette, QPixmap
+from PyQt6.QtGui import QAction, QColor, QFont, QIcon, QPixmap
 from PyQt6.QtWidgets import (
     QAbstractItemView,
     QLabel,
     QListWidget,
     QListWidgetItem,
     QMenu,
+    QPushButton,
     QWidget,
 )
 
@@ -43,7 +44,7 @@ def hint(text: str, parent: QWidget) -> QLabel:
 
 
 class MaskPicker(QListWidget):
-    """The drawn masks, each its thumbnail and name, then a row that adds another. The
+    """The drawn masks, each its thumbnail and name, then a wide plus button that adds another. The
     selected one is drawn on; a double-click renames it and a right-click offers the rest."""
 
     # The mask chosen to draw on, by id, or "" for none.
@@ -63,7 +64,6 @@ class MaskPicker(QListWidget):
         self.setMinimumHeight(LIST_MIN_HEIGHT)
         self.itemSelectionChanged.connect(self.on_selection_changed)
         self.itemChanged.connect(self.on_item_changed)
-        self.itemClicked.connect(self.on_item_clicked)
         self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.customContextMenuRequested.connect(self.show_menu)
 
@@ -77,22 +77,26 @@ class MaskPicker(QListWidget):
             item.setFlags(item.flags() | Qt.ItemFlag.ItemIsEditable)
             item.setToolTip(f"{mask.describe()}. Double-click to rename, right-click for more.")
             self.addItem(item)
-        self.addItem(self.build_add_item())
+        self.build_add_row()
         if current in self.ids:
             self.setCurrentRow(self.ids.index(current))
         self.blockSignals(False)
 
-    def build_add_item(self) -> QListWidgetItem:
-        """The row after the last mask: enabled so it can be clicked, but never selected."""
-        item = QListWidgetItem(asset_icon("add"), "New mask")
+    def build_add_row(self) -> QListWidgetItem:
+        """The row after the last mask: a full-width button with a centred plus. The item
+        itself is never selected; the button inside it adds a mask."""
+        item = QListWidgetItem()
         item.setFlags(Qt.ItemFlag.ItemIsEnabled)
-        item.setForeground(self.palette().color(QPalette.ColorRole.Mid))
-        item.setToolTip("Start another mask")
+        item.setSizeHint(QSize(0, ICON_PX + 8))
+        button = QPushButton(self)
+        button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        button.setIcon(asset_icon("add"))
+        button.setIconSize(QSize(ICON_PX // 2, ICON_PX // 2))
+        button.setToolTip("Start another mask")
+        button.clicked.connect(self.new_requested)
+        self.addItem(item)
+        self.setItemWidget(item, button)
         return item
-
-    def on_item_clicked(self, item: QListWidgetItem) -> None:
-        if self.row(item) == len(self.ids):
-            self.new_requested.emit()
 
     def show_menu(self, pos: QPoint) -> None:
         item = self.itemAt(pos)
