@@ -6,20 +6,18 @@ from collections.abc import Callable
 from html import escape
 from typing import Any
 
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import QSize, Qt
 from PyQt6.QtWidgets import (
     QCheckBox,
     QFileDialog,
     QFrame,
     QHBoxLayout,
     QLabel,
-    QLineEdit,
     QMessageBox,
-    QPlainTextEdit,
     QPushButton,
     QScrollArea,
     QSizePolicy,
-    QStyle,
+    QToolButton,
     QVBoxLayout,
 )
 
@@ -30,8 +28,10 @@ from pyrpoc.core.runner import Control
 from pyrpoc.utils.widgets.grouped_combo import GroupedComboBox
 from pyrpoc.utils.widgets.icons import asset_icon
 from pyrpoc.utils.widgets.param_form import ParamForm, input_form_section
+from pyrpoc.utils.widgets.path_field import PathField
 
 from .host import RunnerHost
+from .note import NoteDialog
 from .program_inputs import ProgramInputsStore
 from .runs import Runs
 
@@ -80,7 +80,6 @@ class AcquisitionPanel(Panel):
         root.addLayout(self.build_program_row())
         root.addLayout(self.build_transport_row())
         root.addLayout(self.build_save_row())
-        root.addWidget(self.build_note_box())
         self.status_label = QLabel(self)
         self.status_label.setWordWrap(True)
         # Wrapped text would otherwise hold the panel wider than its dock.
@@ -97,6 +96,8 @@ class AcquisitionPanel(Panel):
         self.render_controls()
         self.set_running_ui(False)
         self.on_save_changed()
+        self.on_note_changed()
+        self.on_note_changed()
         self.select_program(program_registry.keys()[0])
 
     def build_program_row(self) -> QHBoxLayout:
@@ -123,44 +124,34 @@ class AcquisitionPanel(Panel):
         return row
 
     def build_save_row(self) -> QHBoxLayout:
-        """Whether and where to save, on its own row so a narrow panel does not squeeze the
-        name field."""
+        """Whether to save, where and under what name, and the next run's note."""
         row = QHBoxLayout()
         self.save_check = QCheckBox("Save", self)
         self.save_check.setToolTip("Save each run into the chosen folder.")
-        self.name_edit = QLineEdit(self)
-        self.name_edit.setPlaceholderText("Name")
-        self.name_edit.setToolTip(
+        self.path_field = PathField(self)
+        self.path_field.name_edit.setPlaceholderText("name")
+        self.path_field.name_edit.setToolTip(
             "What this acquisition is called. Used as the filename when saving, "
             "and as its name in the data panel either way."
         )
-        self.dir_btn = QPushButton(self)
-        style = self.style()
-        if style is not None:
-            self.dir_btn.setIcon(style.standardIcon(QStyle.StandardPixmap.SP_DirOpenIcon))
+        # Small and quiet: a note is written now and then, not every run.
+        self.note_btn = QToolButton(self)
+        self.note_btn.setAutoRaise(True)
+        self.note_btn.setIconSize(QSize(20, 20))
+        # Shown pressed in while a note waits for the next run.
+        self.note_btn.setCheckable(True)
         row.addWidget(self.save_check)
-        self.name_edit.setMinimumWidth(80)
-        row.addWidget(self.name_edit, 1)
-        row.addWidget(self.dir_btn)
+        row.addWidget(self.path_field, 1)
+        row.addWidget(self.note_btn)
         return row
-
-    def build_note_box(self) -> QPlainTextEdit:
-        """What the user writes before pressing run, saved with that run and then cleared."""
-        self.note_edit = QPlainTextEdit(self)
-        self.note_edit.setPlaceholderText("Notes")
-        self.note_edit.setToolTip("Saved with the next run. Edit it later in the Data Library.")
-        self.note_edit.setTabChangesFocus(True)
-        lines = self.note_edit.fontMetrics().lineSpacing()
-        self.note_edit.setFixedHeight(3 * lines + 14)
-        return self.note_edit
 
     def connect_signals(self) -> None:
         self.program_combo.currentIndexChanged.connect(self.on_program_chosen)
         self.stop_btn.clicked.connect(self.host.stop)
         self.save_check.toggled.connect(lambda checked: self.runs.set_save(enabled=checked))
-        self.name_edit.textChanged.connect(lambda text: self.runs.set_save(name=text))
-        self.dir_btn.clicked.connect(self.choose_directory)
-        self.note_edit.textChanged.connect(lambda: self.runs.set_note(self.note_edit.toPlainText()))
+        self.path_field.name_edited.connect(lambda text: self.runs.set_save(name=text))
+        self.path_field.folder_clicked.connect(self.choose_directory)
+        self.note_btn.clicked.connect(self.edit_note)
         self.runs.note_changed.connect(self.on_note_changed)
 
         self.runs.inventory.changed.connect(self.refresh_readiness)
@@ -286,27 +277,36 @@ class AcquisitionPanel(Panel):
 
     def on_save_changed(self) -> None:
         """Bring the save widgets in line with the save target."""
-        # For when a restored session moved it. Unchanged values are skipped so typing in the name
-        # field keeps its cursor.
+        # For when a restored session moved it.
         save = self.runs.save
-        if self.name_edit.text() != save.name:
-            self.name_edit.setText(save.name)
+        self.path_field.set_name(save.name)
         if self.save_check.isChecked() != save.enabled:
             self.save_check.setChecked(save.enabled)
         folder = save.folder
         if folder is None:
-            self.dir_btn.setText("Folder…")
-            self.dir_btn.setToolTip("Choose the folder acquisitions are saved to.")
+            tooltip = "Choose the folder acquisitions are saved to."
         else:
-            self.dir_btn.setText(short_name(folder.name or str(folder)))
-            self.dir_btn.setToolTip(f"Saving to {folder}\nClick to choose another folder.")
+            tooltip = f"{folder}\nClick to choose another folder."
+        name = None if folder is None else short_name(folder.name or str(folder))
+        # Dimmed while saving is off: the name then only names the run.
+        self.path_field.set_folder(name, tooltip, in_use=save.enabled)
         self.refresh_readiness()
 
+    def edit_note(self) -> None:
+        dialog = NoteDialog(self.runs.note, self)
+        if dialog.exec():
+            self.runs.set_note(dialog.text.strip())
+        # The click toggled the button; whether it shows pressed is the note's to say.
+        self.on_note_changed()
+
     def on_note_changed(self) -> None:
-        """Show the note a run took being cleared."""
-        # Unchanged text is skipped so typing keeps its cursor.
-        if self.note_edit.toPlainText() != self.runs.note:
-            self.note_edit.setPlainText(self.runs.note)
+        """Show whether a note waits for the next run, and what it says on hover."""
+        note = self.runs.note
+        self.note_btn.setIcon(asset_icon("note_written" if note else "note"))
+        self.note_btn.setChecked(bool(note))
+        self.note_btn.setToolTip(
+            f"Note for the next run:\n{note}" if note else "Add a note for the next run"
+        )
 
     def on_run_started(self) -> None:
         self.show_status("acquiring")
