@@ -12,8 +12,8 @@ come from `pyrpoc/core/README.md`.
   The format-1 key conversion in `engine/data_library/format.py` can go.
 - **No speculative options.** Every input, field and argument exists because
   something reads it.
-- **Core changes on purpose.** An Experiment and live program inputs are
-  architecture, so `core/README.md` is updated in the same phase as the code
+- **Core changes on purpose.** Live program inputs and runs that read earlier
+  runs are architecture, so `core/README.md` is updated in the same phase as the code
   that adds them.
 - **One commit per phase.** Each phase leaves the app working and the checks
   passing.
@@ -24,8 +24,8 @@ come from `pyrpoc/core/README.md`.
 
 | Part 2 needs | Built in |
 |---|---|
-| Runs that belong to an Experiment, saved into its folder | Phase 1 |
-| A Library that shows experiments clearly, including older ones | Phase 2 |
+| Runs saved together in one folder, the Experiment | Phase 1 |
+| A Library that opens whole Experiments and browses them like folders | Phase 2 |
 | Survey refuses to run without a galvo calibration in the Experiment, and the loop refuses to run without a survey | Phase 3 |
 | The loop reads "the survey" from the Experiment: the latest by default, changeable, and recorded | Phase 3 |
 | You steer a loop that's already running | Phase 4 |
@@ -33,48 +33,59 @@ come from `pyrpoc/core/README.md`.
 
 ---
 
-## Phase 1: The Experiment
+## Phase 1: The Experiment is the save folder
 
-An **Experiment** is something you open, the way you open a project. It is a
-folder on disk, and the app knows which one is open.
+To you, choosing an Experiment is just choosing the folder where things get
+saved. There is no menu, no open or close, and no new state. "Experiment" is a
+way of reading the data that's already there: the recordings in one folder
+belong together.
 
-- [ ] **Experiment is a noun in `core/`.** It's a folder with a small
-  `experiment.json`, holding the name and when it was created. It is
-  described in `core/README.md`.
-- [ ] **Open, create and close** from the menu bar. You can open at most one
-  at a time.
-- [ ] **The open Experiment is working state.** The session remembers it and
-  reopens it at startup.
-- [ ] **Saving goes into the open Experiment.**
-  - With no Experiment open, ordinary programs still run, and their outputs go
-    to the Library as **Unsaved**.
-  - Turning saving on with no Experiment open asks you to open or create one.
-  - What `SaveTarget` holds now (folder plus name) becomes the Experiment plus
-    the run's name. The folder is the Experiment's, not something you set per
-    run.
-- [ ] **Each recording knows its Experiment,** which is the folder it sits in.
-- [ ] **Done when:** you create an Experiment, run a confocal frame and a
-  spectrum with saving on, and both recordings land in that folder. A run with
-  no Experiment open shows as Unsaved.
+- [ ] **Setting the save folder is setting the Experiment.** It's set where
+  the save folder is set today, and labelled so it reads as the Experiment
+  folder.
+- [ ] **No new noun in the app's state.**
+  - There's no `experiment.json`, and nothing to create.
+  - A recording's Experiment is the folder it sits in.
+  - The save folder is still the only thing remembered, exactly as today.
+- [ ] **Saving off works as today.** Outputs stay in the Library as
+  **Unsaved**.
+- [ ] `core/README.md` says, in a line or two, that the recordings in one
+  folder form an Experiment.
+- [ ] **Done when:** with the save folder set, a confocal frame and a spectrum
+  both land in it as recordings of that Experiment.
 
-## Phase 2: The Data Library, organized by Experiment
+## Phase 2: The Data Library, organized like a file explorer
 
-The Library is where you go to find things. It should read as experiments
-holding runs, not as a flat list of outputs.
+The Library is where you go to find things, and it should feel like browsing
+folders.
 
-- [ ] **Groups:** the open Experiment first, then any other Experiments you've
-  loaded, then Unsaved.
-- [ ] **Within an Experiment,** runs are listed in the order they happened,
-  each with its program's display name, its name and its time. A run's outputs
-  sit under it.
-- [ ] **Load another Experiment** to view it without opening it. Runs still
-  save only into the open one.
+**Words:**
+- A **recording** is one run saved on disk: its `_meta.json` and the files
+  holding each of its `ProgramOutput`s.
+- An **Experiment** is a folder of recordings.
+
+- [ ] **Open a recording:** loads that one run's outputs, as today.
+- [ ] **Open an Experiment:** loads every recording in the folder at once.
+- [ ] **Shown as a tree:**
+  - experiments (folders), with recordings inside them, and each recording's
+    outputs under it;
+  - a recording opened on its own still appears under its folder;
+  - **Unsaved** is its own group.
+- [ ] **Sorting works like a file explorer:** by name or by date, ascending or
+  descending, from column headers you click.
+- [ ] **Each recording shows** its name, its program's display name and when
+  it was taken.
+- [ ] **New recordings appear in their Experiment as they're saved.**
 - [ ] **Source pickers group the same way.** Each data panel still offers only
   the kinds it renders.
+- [ ] **Loading a large Experiment stays within the Library's memory limit.**
+  Outputs too big to hold all at once load when they're first shown.
 - [ ] **A visual pass on the Library panel:** cards and empty states that
   match the rest of the app (see #59).
-- [ ] **Done when:** with two Experiments loaded and some unsaved outputs, the
-  Library and every source picker show three clear groups.
+- [ ] **Done when:**
+  - opening an old Experiment folder loads all its recordings under one group;
+  - sorting by name and by date both work;
+  - unsaved outputs sit in their own group.
 
 ## Phase 3: What a program needs from its Experiment
 
@@ -86,7 +97,7 @@ and are unchanged.
   - Each is named by the program it came from (its `program_key`), never by
     filename.
   - It's declared like a program input, and appears as one in the Acquisition
-    panel: a dropdown of the matching runs in the open Experiment.
+    panel: a dropdown of the matching recordings in the save folder.
   - The latest is chosen by default, and you can pick an earlier one.
 - [ ] **A program that's missing one refuses to start, and says why.**
   - For example: "Survey needs a galvo calibration in this Experiment."

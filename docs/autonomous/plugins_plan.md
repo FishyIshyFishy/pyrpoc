@@ -19,7 +19,7 @@ come from `pyrpoc/core/README.md`.
   rig.
 - **One commit per phase.**
 
-**Names:** an *Experiment* is the folder from part 1. The closed-loop programs
+**Names:** an *Experiment* is the save folder from part 1. The closed-loop programs
 are **loop programs** (for example `longitudinal_monitor`), so the two words
 never mean the same thing.
 
@@ -27,7 +27,7 @@ never mean the same thing.
 
 ## The workflow
 
-All of it happens inside one open Experiment.
+All of it saves into one Experiment, the save folder.
 
 ```
 Galvo calibration ──▶ Survey ──▶ you draw units on the Map ──▶ Loop program ──▶ you watch and steer it
