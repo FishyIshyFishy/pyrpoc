@@ -6,7 +6,6 @@ from __future__ import annotations
 from dataclasses import replace
 
 from pyrpoc.core.program import Program, RunContext, program_registry
-from pyrpoc.core.program_input import InputSection
 from pyrpoc.plugins.devices import DAQ, Galvo
 from pyrpoc.plugins.program_io.inputs import (
     MASK_LINES,
@@ -32,13 +31,26 @@ class SplitConfocal(Program):
     group = "Confocal Fluorescence"
     order = 11
     devices = [Galvo, DAQ]
-    sections = [
-        InputSection("Scan", SCAN_GEOMETRY_INPUTS),
-        InputSection("Frames", (NUM_FRAMES,)),
-        InputSection("DAQ", (SAMPLE_RATE_MHZ,)),
-        InputSection("Split", (T0_SAMPLES, T1_SAMPLES)),
-        InputSection("Modulation", (MASKS, MASK_LINES)),
+    inputs = [
+        *SCAN_GEOMETRY_INPUTS,
+        NUM_FRAMES,
+        SAMPLE_RATE_MHZ,
+        T0_SAMPLES,
+        T1_SAMPLES,
+        MASKS,
+        MASK_LINES,
     ]
+    # MASKS has no row: masks are drawn and edited in a Mask Editor.
+    cards = {
+        "Scan": SCAN_GEOMETRY_INPUTS,
+        "Frames": (NUM_FRAMES,),
+        "DAQ": (SAMPLE_RATE_MHZ,),
+        "Split": (
+            T0_SAMPLES,
+            T1_SAMPLES,
+        ),
+        "Modulation": (MASK_LINES,),
+    }
     emits = {"intensity": ImageOutput, "raw_pixel_stream": SamplesOutput}
     runners = [Single(), Continuous()]
 

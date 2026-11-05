@@ -7,7 +7,6 @@ them there."""
 from __future__ import annotations
 
 from pyrpoc.core.program import Program, RunContext, program_registry
-from pyrpoc.core.program_input import InputSection
 from pyrpoc.plugins.devices import DAQ, Galvo
 from pyrpoc.plugins.program_io.inputs import GALVO_TARGET
 
@@ -21,9 +20,8 @@ class GalvoPinpoint(Program):
     group = "Raman"
     order = 30
     devices = [Galvo]
-    sections = [
-        InputSection("Point", (GALVO_TARGET,)),
-    ]
+    inputs = [GALVO_TARGET]
+    cards = {"Point": (GALVO_TARGET,)}
     runners = [
         Single(),
         ArmAndRun(

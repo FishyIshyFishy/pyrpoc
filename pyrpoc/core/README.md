@@ -99,7 +99,8 @@ A run is not a piece of core: it is the engine executing one recording.
 
 A program lists its inputs flat. It may also lay them out in `cards` for the
 Acquisition panel, which is screen layout only: a card never appears in a
-key, a session or a recording.
+key, a session or a recording. An input on no card gets no row, and with no
+cards every input is shown.
 
 ### Program outputs: program → user
 
@@ -143,6 +144,7 @@ its base, in core or, for panels, in `utils/widgets/`. Nothing else lists them.
 | A panel showing program outputs | `plugins/panels/` | `data_panel_registry` (`utils/widgets/data_panel.py`) |
 | A device's own panel | beside its device in `plugins/devices/` | `device_panel_registry` (`utils/widgets/device_panel.py`) |
 | A common value rule, like a whole number or a choice | `utils/value_rules/` | (none: inputs and device settings use them directly) |
+| The on-screen editor of a kind of `Field` | beside that `Field` | `editor_for` (`utils/widgets/editors.py`) |
 
 The bases panels build on live in `utils/widgets/`: `DataPanel` with its
 `SourcePicker`, and `DevicePanel`, given its device and a `DeviceLink` to it.

@@ -202,8 +202,12 @@ class AcquisitionPanel(Panel):
             self.runs.refresh_earlier()
             self.earlier_card = EarlierCard(self.runs, program.reads, page)
             column.addWidget(self.earlier_card)
+        cards = program.cards or {"Inputs": program.inputs}
         self.form = ParamForm(
-            [input_form_section(each) for each in program.sections], self.inputs, page, cards=True
+            [input_form_section(label, inputs) for label, inputs in cards.items()],
+            self.inputs,
+            page,
+            cards=True,
         )
         self.form.invalid.connect(self.show_status)
         column.addWidget(self.form, 1)

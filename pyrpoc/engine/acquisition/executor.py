@@ -119,7 +119,7 @@ class Executor:
                 program,
                 program_key=program_key,
                 # One encoding, shared by the recording and the session file.
-                parameters=inputs.encode(program.inputs()),
+                parameters=inputs.encode(program.inputs),
                 devices=device_state(devices),
                 reads={
                     name: EarlierRead(each.meta_path.name, each.output)
@@ -174,7 +174,7 @@ class Executor:
 
     def resolve_inputs(self, program: Program, inputs: ProgramInputsStore) -> ProgramInputValues:
         """The values of the program's inputs, checked against their rules."""
-        declared = program.inputs()
+        declared = program.inputs
         inputs.validate(declared)
         return inputs.values_for(declared)
 

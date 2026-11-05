@@ -9,8 +9,9 @@ from typing import Any
 from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtWidgets import QDoubleSpinBox, QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
-from pyrpoc.core.program_input import Editor, Field, FieldValues, ParameterError, declare
+from pyrpoc.core.program_input import Field, ParameterError, declare
 from pyrpoc.plugins.program_io.inputs.pixel_pick import PixelPick
+from pyrpoc.utils.widgets.editors import Editor, FieldValues, editor_for
 
 from .scan import ScanGeometry
 
@@ -166,18 +167,20 @@ class PointField(Field):
     def encode(self, value: Point) -> Any:
         return value.to_dict()
 
-    def editor(self, parent: Any, values: FieldValues) -> Editor:
-        del values
-        picker = PointPicker(parent)
-        return Editor(
-            picker,
-            get=picker.value,
-            set=picker.set_value,
-            connect=lambda cb: picker.changed.connect(cb),
-            summary=picker.summary,
-            spec=self,
-            wide=True,
-        )
+
+@editor_for(PointField)
+def point_editor(spec: PointField, parent: QWidget, values: FieldValues) -> Editor:
+    del values
+    picker = PointPicker(parent)
+    return Editor(
+        picker,
+        get=picker.value,
+        set=picker.set_value,
+        connect=lambda cb: picker.changed.connect(cb),
+        summary=picker.summary,
+        spec=spec,
+        wide=True,
+    )
 
 
 GALVO_TARGET = declare(

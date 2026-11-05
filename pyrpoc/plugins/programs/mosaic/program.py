@@ -8,7 +8,6 @@ from pyrpoc.core.program import (
     RunContext,
     program_registry,
 )
-from pyrpoc.core.program_input import InputSection
 from pyrpoc.plugins.devices import DAQ, Galvo, PriorStage
 from pyrpoc.plugins.program_io.inputs import (
     MASK_LINES,
@@ -49,12 +48,26 @@ class StageMosaic(Program):
     group = "Confocal Fluorescence"
     order = 12
     devices = [Galvo, DAQ, PriorStage]
-    sections = [
-        InputSection("Scan", SCAN_GEOMETRY_INPUTS),
-        InputSection("DAQ", (SAMPLE_RATE_MHZ,)),
-        InputSection("Modulation", (MASKS, MASK_LINES)),
-        InputSection("Mosaic", (X_TILES, Y_TILES, TILE_SPACING_UM)),
+    inputs = [
+        *SCAN_GEOMETRY_INPUTS,
+        SAMPLE_RATE_MHZ,
+        MASKS,
+        MASK_LINES,
+        X_TILES,
+        Y_TILES,
+        TILE_SPACING_UM,
     ]
+    # MASKS has no row: masks are drawn and edited in a Mask Editor.
+    cards = {
+        "Scan": SCAN_GEOMETRY_INPUTS,
+        "DAQ": (SAMPLE_RATE_MHZ,),
+        "Modulation": (MASK_LINES,),
+        "Mosaic": (
+            X_TILES,
+            Y_TILES,
+            TILE_SPACING_UM,
+        ),
+    }
     emits = {"mosaic": MosaicOutput}
     # Once only: a mosaic is one pass over the grid, never repeated or looped.
     runners = [Single()]

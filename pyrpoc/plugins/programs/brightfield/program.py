@@ -5,7 +5,6 @@ from __future__ import annotations
 import numpy as np
 
 from pyrpoc.core.program import Program, RunContext, program_registry
-from pyrpoc.core.program_input import InputSection
 from pyrpoc.plugins.devices import ToupcamCamera
 from pyrpoc.plugins.program_io.inputs import (
     CAMERA_BINNED,
@@ -34,10 +33,15 @@ class Brightfield(Program):
     group = "Brightfield"
     order = 50
     devices = [ToupcamCamera]
-    sections = [
-        InputSection("Camera", (CAMERA_EXPOSURE_MS, CAMERA_GAIN_PCT, CAMERA_BINNED)),
-        InputSection("Frames", (NUM_FRAMES,)),
-    ]
+    inputs = [CAMERA_EXPOSURE_MS, CAMERA_GAIN_PCT, CAMERA_BINNED, NUM_FRAMES]
+    cards = {
+        "Camera": (
+            CAMERA_EXPOSURE_MS,
+            CAMERA_GAIN_PCT,
+            CAMERA_BINNED,
+        ),
+        "Frames": (NUM_FRAMES,),
+    }
     emits = {"intensity": ImageOutput}
     runners = [Single(), Continuous()]
 

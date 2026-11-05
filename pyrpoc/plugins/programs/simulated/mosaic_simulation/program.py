@@ -7,7 +7,6 @@ from __future__ import annotations
 import numpy as np
 
 from pyrpoc.core.program import Program, RunContext
-from pyrpoc.core.program_input import InputSection
 from pyrpoc.plugins.program_io.inputs import (
     TILE_SPACING_UM,
     X_PIXELS,
@@ -49,12 +48,34 @@ class MosaicSimulation(Program):
     group = "Simulations"
     order = 21
     devices = []
-    sections = [
-        InputSection("Frame", (X_PIXELS, Y_PIXELS, SIMULATED_CHANNELS)),
-        InputSection("Mosaic", (X_TILES, Y_TILES, TILE_SPACING_UM)),
-        InputSection("Specimen", (UM_PER_PIXEL, NOISE_LEVEL)),
-        InputSection("Pacing", (FRAME_INTERVAL_MS,)),
+    inputs = [
+        X_PIXELS,
+        Y_PIXELS,
+        SIMULATED_CHANNELS,
+        X_TILES,
+        Y_TILES,
+        TILE_SPACING_UM,
+        UM_PER_PIXEL,
+        NOISE_LEVEL,
+        FRAME_INTERVAL_MS,
     ]
+    cards = {
+        "Frame": (
+            X_PIXELS,
+            Y_PIXELS,
+            SIMULATED_CHANNELS,
+        ),
+        "Mosaic": (
+            X_TILES,
+            Y_TILES,
+            TILE_SPACING_UM,
+        ),
+        "Specimen": (
+            UM_PER_PIXEL,
+            NOISE_LEVEL,
+        ),
+        "Pacing": (FRAME_INTERVAL_MS,),
+    }
     emits = {"mosaic": MosaicOutput}
     runners = [Single()]
 

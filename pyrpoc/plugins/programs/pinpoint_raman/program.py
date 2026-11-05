@@ -4,7 +4,6 @@ and read a spectrum there."""
 from __future__ import annotations
 
 from pyrpoc.core.program import Program, RunContext, program_registry
-from pyrpoc.core.program_input import InputSection
 from pyrpoc.plugins.devices import DAQ, AndorCCD, Galvo
 from pyrpoc.plugins.program_io.inputs import CCD_EXPOSURE_S, CCD_FRAMES_TO_AVERAGE, GALVO_TARGET
 from pyrpoc.plugins.program_io.outputs import SpectrumOutput
@@ -21,10 +20,14 @@ class PinpointRaman(Program):
     group = "Raman"
     order = 20
     devices = [Galvo, AndorCCD]
-    sections = [
-        InputSection("Point", (GALVO_TARGET,)),
-        InputSection("CCD Readout", (CCD_EXPOSURE_S, CCD_FRAMES_TO_AVERAGE)),
-    ]
+    inputs = [GALVO_TARGET, CCD_EXPOSURE_S, CCD_FRAMES_TO_AVERAGE]
+    cards = {
+        "Point": (GALVO_TARGET,),
+        "CCD Readout": (
+            CCD_EXPOSURE_S,
+            CCD_FRAMES_TO_AVERAGE,
+        ),
+    }
     emits = {"spectrum": SpectrumOutput}
     runners = [
         Single(),

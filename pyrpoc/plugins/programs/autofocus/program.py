@@ -14,7 +14,6 @@ from pyrpoc.core.program import (
     RunContext,
     program_registry,
 )
-from pyrpoc.core.program_input import InputSection
 from pyrpoc.plugins.devices import DAQ, DaqError, Galvo, PriorError, PriorStage
 from pyrpoc.plugins.program_io.inputs import (
     CENTER_REGION_FRACTION,
@@ -87,15 +86,26 @@ class Autofocus(Program):
     group = "Confocal Fluorescence"
     order = 13
     devices = [Galvo, DAQ, PriorStage]
-    sections = [
-        InputSection("Scan", SCAN_GEOMETRY_INPUTS),
-        InputSection("DAQ", (SAMPLE_RATE_MHZ,)),
-        InputSection("Region", (MASKS, CENTER_REGION_FRACTION)),
-        InputSection(
-            "Focus Search",
-            (FOCUS_SEARCH_RANGE_UM, FOCUS_INITIAL_STEP_UM, FOCUS_FINAL_STEP_UM),
-        ),
+    inputs = [
+        *SCAN_GEOMETRY_INPUTS,
+        SAMPLE_RATE_MHZ,
+        MASKS,
+        CENTER_REGION_FRACTION,
+        FOCUS_SEARCH_RANGE_UM,
+        FOCUS_INITIAL_STEP_UM,
+        FOCUS_FINAL_STEP_UM,
     ]
+    # MASKS has no row: masks are drawn and edited in a Mask Editor.
+    cards = {
+        "Scan": SCAN_GEOMETRY_INPUTS,
+        "DAQ": (SAMPLE_RATE_MHZ,),
+        "Region": (CENTER_REGION_FRACTION,),
+        "Focus Search": (
+            FOCUS_SEARCH_RANGE_UM,
+            FOCUS_INITIAL_STEP_UM,
+            FOCUS_FINAL_STEP_UM,
+        ),
+    }
     emits = {"intensity": FocusStackOutput}
     # Once only: each start is one complete search.
     runners = [Single()]

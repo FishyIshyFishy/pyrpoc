@@ -4,11 +4,11 @@ is handed while running."""
 from __future__ import annotations
 
 import threading
-from collections.abc import Callable, Iterator, Mapping
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from typing import Any, Protocol, TypeVar
 
 from pyrpoc.core.device import Device
-from pyrpoc.core.program_input import InputSection, ProgramInput, ProgramInputValues
+from pyrpoc.core.program_input import ProgramInput, ProgramInputValues
 from pyrpoc.core.program_output import ProgramOutput
 from pyrpoc.core.registry import Registry
 
@@ -48,9 +48,8 @@ class DeviceMap(Mapping[type[Device], Device]):
 
 
 class Program:
-    """One experiment: the devices it uses, the program inputs it reads (laid out
-    in input sections), its outputs, the runners that start it, and ``run``,
-    which does the work."""
+    """One experiment: the devices it uses, the program inputs it reads, its outputs, the
+    runners that start it, and ``run``, which does the work."""
 
     display_name: str = "Program"
 
@@ -61,10 +60,12 @@ class Program:
     # Device classes to claim. Claims propagate along ``backed_by``.
     devices: list[type[Device]] = []
 
-    # The program inputs it reads, grouped as a panel shows them.
-    # TODO: this is too much of a first class concern, grouping is solely visual
-    # in code, parameters are what matters, not sections of parameters
-    sections: list[InputSection] = []
+    # Every program input it reads.
+    inputs: list[ProgramInput[Any]] = []
+
+    # Screen layout only: headings, each over some of its inputs. An input on no card gets no
+    # row, and with no cards every input is shown.
+    cards: dict[str, Sequence[ProgramInput[Any]]] = {}
 
     # Outputs of earlier recordings in the same Experiment it reads, by the name it reads each
     # under, and the type each must be. It cannot start until each has one to read.
@@ -80,13 +81,17 @@ class Program:
     # The ways this program can be started, in the order their controls are drawn.
     runners: list[Runner] = []
 
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        super().__init_subclass__(**kwargs)
+        # A card showing an input the program does not read would edit a value no run gets.
+        unread = [
+            each.key for card in cls.cards.values() for each in card if each not in cls.inputs
+        ]
+        if unread:
+            raise TypeError(f"{cls.__name__}'s cards show inputs it does not read: {unread}")
+
     def run(self, ctx: RunContext) -> None:
         raise NotImplementedError
-
-    @classmethod
-    def inputs(cls) -> list[ProgramInput[Any]]:
-        """Every program input it reads, in section order."""
-        return [each for section in cls.sections for each in section.inputs]
 
 
 class LiveValues(Protocol):

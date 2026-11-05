@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from pyrpoc.core.program import Program, RunContext, program_registry
-from pyrpoc.core.program_input import InputSection
 from pyrpoc.plugins.devices import DAQ, Galvo
 from pyrpoc.plugins.program_io.inputs import (
     MASK_LINES,
@@ -25,12 +24,14 @@ class Confocal(Program):
     group = "Confocal Fluorescence"
     order = 10
     devices = [Galvo, DAQ]
-    sections = [
-        InputSection("Scan", SCAN_GEOMETRY_INPUTS),
-        InputSection("Frames", (NUM_FRAMES,)),
-        InputSection("DAQ", (SAMPLE_RATE_MHZ,)),
-        InputSection("Modulation", (MASKS, MASK_LINES)),
-    ]
+    inputs = [*SCAN_GEOMETRY_INPUTS, NUM_FRAMES, SAMPLE_RATE_MHZ, MASKS, MASK_LINES]
+    # MASKS has no row: masks are drawn and edited in a Mask Editor.
+    cards = {
+        "Scan": SCAN_GEOMETRY_INPUTS,
+        "Frames": (NUM_FRAMES,),
+        "DAQ": (SAMPLE_RATE_MHZ,),
+        "Modulation": (MASK_LINES,),
+    }
     emits = {"intensity": ImageOutput}
     runners = [Single(), Continuous()]
 

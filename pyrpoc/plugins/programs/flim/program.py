@@ -9,7 +9,6 @@ from __future__ import annotations
 import numpy as np
 
 from pyrpoc.core.program import Program, RunContext, program_registry
-from pyrpoc.core.program_input import InputSection
 from pyrpoc.plugins.devices import DAQ, FlimMeasurement, Galvo, TimeTagger
 from pyrpoc.plugins.program_io.inputs import (
     FRAME_SETTLE_S,
@@ -64,16 +63,34 @@ class FLIM(Program):
     group = "FLIM"
     order = 40
     devices = [Galvo, DAQ, TimeTagger]
-    sections = [
-        InputSection("Scan", SCAN_GEOMETRY_INPUTS),
-        InputSection("Frames", (NUM_FRAMES,)),
-        InputSection("DAQ", (SAMPLE_RATE_MHZ,)),
-        InputSection("Triggers", (FRAME_TRIGGER_PFI, PIXEL_CLOCK_CTR, PIXEL_CLOCK_PFI)),
-        InputSection(
-            "Histogram",
-            (LASER_FREQUENCY_MHZ, HISTOGRAM_BINS, HISTOGRAM_BINWIDTH_PS, FRAME_SETTLE_S),
-        ),
+    inputs = [
+        *SCAN_GEOMETRY_INPUTS,
+        NUM_FRAMES,
+        SAMPLE_RATE_MHZ,
+        FRAME_TRIGGER_PFI,
+        PIXEL_CLOCK_CTR,
+        PIXEL_CLOCK_PFI,
+        LASER_FREQUENCY_MHZ,
+        HISTOGRAM_BINS,
+        HISTOGRAM_BINWIDTH_PS,
+        FRAME_SETTLE_S,
     ]
+    cards = {
+        "Scan": SCAN_GEOMETRY_INPUTS,
+        "Frames": (NUM_FRAMES,),
+        "DAQ": (SAMPLE_RATE_MHZ,),
+        "Triggers": (
+            FRAME_TRIGGER_PFI,
+            PIXEL_CLOCK_CTR,
+            PIXEL_CLOCK_PFI,
+        ),
+        "Histogram": (
+            LASER_FREQUENCY_MHZ,
+            HISTOGRAM_BINS,
+            HISTOGRAM_BINWIDTH_PS,
+            FRAME_SETTLE_S,
+        ),
+    }
     emits = {"intensity": ImageOutput, "histogram": HistogramOutput}
     runners = [Single(), Continuous()]
 

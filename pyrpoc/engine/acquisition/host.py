@@ -31,7 +31,7 @@ class RunnerSession(RunnerContext):
         # The inputs whose edit ends a repeating run, so the next one records the new value;
         # a live input reaches the running one instead.
         live = {each.key for each in program.live}
-        self.restarting_keys = {each.key for each in program.inputs()} - live
+        self.restarting_keys = {each.key for each in program.inputs} - live
         self.closed = False
 
     @property

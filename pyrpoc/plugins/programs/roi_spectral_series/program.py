@@ -14,7 +14,6 @@ import time
 import numpy as np
 
 from pyrpoc.core.program import Program, RunContext, program_registry
-from pyrpoc.core.program_input import InputSection
 from pyrpoc.plugins.devices import DAQ, AndorCCD, Galvo
 from pyrpoc.plugins.program_io.inputs import (
     CCD_EXPOSURE_S,
@@ -58,13 +57,26 @@ class RoiSpectralSeries(Program):
     group = "Custom"
     order = 50
     devices = [Galvo, AndorCCD]
-    sections = [
-        InputSection("Scan", SCAN_GEOMETRY_INPUTS),
-        InputSection("DAQ", (SAMPLE_RATE_MHZ,)),
-        InputSection("Region", (MASKS, CENTER_REGION_FRACTION)),
-        InputSection("Frames", (NUM_FRAMES,)),
-        InputSection("CCD Readout", (CCD_EXPOSURE_S, CCD_FRAMES_TO_AVERAGE)),
+    inputs = [
+        *SCAN_GEOMETRY_INPUTS,
+        SAMPLE_RATE_MHZ,
+        MASKS,
+        CENTER_REGION_FRACTION,
+        NUM_FRAMES,
+        CCD_EXPOSURE_S,
+        CCD_FRAMES_TO_AVERAGE,
     ]
+    # MASKS has no row: masks are drawn and edited in a Mask Editor.
+    cards = {
+        "Scan": SCAN_GEOMETRY_INPUTS,
+        "DAQ": (SAMPLE_RATE_MHZ,),
+        "Region": (CENTER_REGION_FRACTION,),
+        "Frames": (NUM_FRAMES,),
+        "CCD Readout": (
+            CCD_EXPOSURE_S,
+            CCD_FRAMES_TO_AVERAGE,
+        ),
+    }
     emits = {"spectrum": SpectrumSeriesOutput}
     # Once only: each start is one bleaching series of a set length.
     runners = [Single()]

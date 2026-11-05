@@ -11,7 +11,6 @@ from functools import reduce
 import numpy as np
 
 from pyrpoc.core.program import Program, RunContext
-from pyrpoc.core.program_input import InputSection
 from pyrpoc.plugins.program_io.inputs import MASK_LINES, MASKS, NUM_FRAMES, X_PIXELS, Y_PIXELS, Mask
 from pyrpoc.plugins.program_io.outputs import ImageOutput
 
@@ -74,16 +73,38 @@ class Simulation(Program):
     group = "Simulations"
     order = 20
     devices = []
-    sections = [
-        InputSection("Frame", (X_PIXELS, Y_PIXELS, SIMULATED_CHANNELS)),
-        InputSection("Frames", (NUM_FRAMES,)),
-        InputSection(
-            "Signal",
-            (SIGNAL_PATTERN, SIGNAL_LEVEL, NOISE_LEVEL, DRIFT_PIXELS_PER_FRAME, MASK_GAIN),
-        ),
-        InputSection("Modulation", (MASKS, MASK_LINES)),
-        InputSection("Pacing", (FRAME_INTERVAL_MS,)),
+    inputs = [
+        X_PIXELS,
+        Y_PIXELS,
+        SIMULATED_CHANNELS,
+        NUM_FRAMES,
+        SIGNAL_PATTERN,
+        SIGNAL_LEVEL,
+        NOISE_LEVEL,
+        DRIFT_PIXELS_PER_FRAME,
+        MASK_GAIN,
+        MASKS,
+        MASK_LINES,
+        FRAME_INTERVAL_MS,
     ]
+    # MASKS has no row: masks are drawn and edited in a Mask Editor.
+    cards = {
+        "Frame": (
+            X_PIXELS,
+            Y_PIXELS,
+            SIMULATED_CHANNELS,
+        ),
+        "Frames": (NUM_FRAMES,),
+        "Signal": (
+            SIGNAL_PATTERN,
+            SIGNAL_LEVEL,
+            NOISE_LEVEL,
+            DRIFT_PIXELS_PER_FRAME,
+            MASK_GAIN,
+        ),
+        "Modulation": (MASK_LINES,),
+        "Pacing": (FRAME_INTERVAL_MS,),
+    }
     emits = {"intensity": ImageOutput}
     runners = [Single(), Continuous()]
 

@@ -1,11 +1,10 @@
 """Program inputs: ``ProgramInput`` declarations and the rules their values follow, the values
-one run was given, the ``ProgramInputs`` collection, and ``InputSection``, how a panel lays
-them out."""
+one run was given, and the ``ProgramInputs`` collection."""
 
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Generic, Protocol, TypeVar
 
 
@@ -15,10 +14,10 @@ class ParameterError(Exception):
 
 @dataclass(frozen=True)
 class Field:
+    """The rules one value follows, and the label and tooltip it is shown with."""
+
     label: str
     tooltip: str = ""
-    # False for a value another input's editor already shows, so a form leaves it out.
-    shown: bool = field(default=True, kw_only=True)
 
     def coerce(self, value: Any) -> Any:
         raise NotImplementedError
@@ -30,34 +29,6 @@ class Field:
     def decode(self, raw: Any) -> Any:
         """JSON-safe -> value, raising ``ParameterError`` on bad input."""
         return self.coerce(raw)
-
-    def editor(self, parent: Any, values: FieldValues) -> Editor | None:
-        """A custom widget for this field, or None for the form's default. ``values`` is the
-        form's, for an editor that shows other fields' values beside its own."""
-        del parent, values
-        return None
-
-
-class FieldValues(Protocol):
-    """The values a form shows, by key."""
-
-    def get(self, key: str) -> Any: ...
-
-
-@dataclass
-class Editor:
-    """One field's widget, and how a form reads, writes and watches it."""
-
-    # Typed as Any so core never imports Qt.
-    widget: Any
-    get: Callable[[], Any]
-    set: Callable[[Any], None]
-    # Returns object: the result is ignored, and Qt's connect() returns a handle.
-    connect: Callable[[Callable[[], None]], object]
-    summary: Callable[[], str]
-    spec: Field
-    # Whether a form gives it a whole row rather than one cell of a shared row.
-    wide: bool = False
 
 
 T = TypeVar("T")
@@ -119,11 +90,3 @@ class ProgramInputs(Protocol):
         ...
 
     def unsubscribe(self, callback: Callable[[str], None]) -> None: ...
-
-
-@dataclass(frozen=True)
-class InputSection:
-    """A heading and the program inputs under it: layout only, written by each program."""
-
-    label: str
-    inputs: tuple[ProgramInput[Any], ...]
