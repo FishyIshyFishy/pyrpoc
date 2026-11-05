@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Protocol
 
-from pyrpoc.plugins.program_io.inputs import Unit
+from pyrpoc.plugins.program_io.outputs import Unit
 
 
 class Steering(Protocol):

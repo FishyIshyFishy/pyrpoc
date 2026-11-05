@@ -51,7 +51,7 @@ from .split import T0_SAMPLES, T1_SAMPLES, SplitWindows
 from .steering import PAUSED_UNITS, UnitIdsField
 from .survey import FIELD_PIXELS, FIELD_UM, SURVEY_HEIGHT_UM, SURVEY_WIDTH_UM, TILE_OVERLAP
 from .trigger import FRAME_TRIGGER_PFI, PIXEL_CLOCK_CTR, PIXEL_CLOCK_PFI, TriggerLines
-from .units import UNITS, Unit, UnitsField
+from .units import UNITS, UnitsField
 
 __all__ = [
     "DURATION_MIN",
@@ -71,7 +71,6 @@ __all__ = [
     "TREATMENT_LINE",
     "TREATMENT_PORT",
     "UNITS",
-    "Unit",
     "UnitIdsField",
     "UnitsField",
     "CAMERA_BINNED",

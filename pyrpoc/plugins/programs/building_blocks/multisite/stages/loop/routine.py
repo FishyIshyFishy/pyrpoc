@@ -11,7 +11,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from pyrpoc.plugins.program_io.inputs import Unit
+from pyrpoc.plugins.program_io.outputs import Unit
 
 from ...interfaces.microscope import DigitalLine
 

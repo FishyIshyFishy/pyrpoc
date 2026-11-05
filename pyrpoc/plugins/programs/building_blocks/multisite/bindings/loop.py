@@ -17,7 +17,6 @@ from pyrpoc.plugins.program_io.inputs import (
     FOCUS_FINAL_STEP_UM,
     PAUSED_UNITS,
     UNITS,
-    Unit,
 )
 from pyrpoc.plugins.program_io.outputs import (
     FrameTag,
@@ -25,7 +24,9 @@ from pyrpoc.plugins.program_io.outputs import (
     LoopEvent,
     LoopLogOutput,
     SurveyOutput,
+    Unit,
     UnitFramesOutput,
+    UnitsOutput,
 )
 from pyrpoc.plugins.program_io.requests import RUN_NOW
 
@@ -39,8 +40,12 @@ from ..stages.loop.survey_map import SurveyMap, Visit
 # Every loop program declares these live, and accepts RUN_NOW, so the units can be steered.
 STEERING: list[ProgramInput[Any]] = [UNITS, PAUSED_UNITS]
 LOOP_FOCUS_INPUTS = (FOCUS_CHECK_S, FOCUS_FINAL_STEP_UM)
-# What every loop fills: its log, and every frame of every unit.
-LOOP_EMITS: dict[str, type[ProgramOutput]] = {"log": LoopLogOutput, "frames": UnitFramesOutput}
+# What every loop fills: its log, the units it ran on, and every frame of every unit.
+LOOP_EMITS: dict[str, type[ProgramOutput]] = {
+    "log": LoopLogOutput,
+    "units": UnitsOutput,
+    "frames": UnitFramesOutput,
+}
 # What every loop reads: the survey, and the calibration its scans use.
 LOOP_READS: dict[str, type[ProgramOutput]] = {
     "survey": SurveyOutput,
@@ -65,14 +70,18 @@ class RunSteering:
 
 
 class LoopOutputs:
-    """A run's ``log`` and ``frames`` outputs, as the loop's sink."""
+    """A run's ``log``, ``units`` and ``frames`` outputs, as the loop's sink."""
 
     def __init__(self, ctx: RunContext):
         self.events = ctx.output("log", LoopLogOutput)
+        self.units = ctx.output("units", UnitsOutput)
         self.frames = ctx.output("frames", UnitFramesOutput)
 
     def log(self, event: LoopEvent) -> None:
         self.events.log(event)
+
+    def keep_units(self, units: tuple[Unit, ...]) -> None:
+        self.units.keep(units)
 
     def add_frame(self, image: np.ndarray, channels: Sequence[str], tag: FrameTag) -> None:
         self.frames.add_frame(image, channels, tag)

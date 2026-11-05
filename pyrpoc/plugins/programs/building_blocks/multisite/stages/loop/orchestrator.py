@@ -10,8 +10,7 @@ from typing import Any
 import numpy as np
 
 from pyrpoc.core.program_input import ParameterError
-from pyrpoc.plugins.program_io.inputs import Unit
-from pyrpoc.plugins.program_io.outputs import FrameTag, LoopEvent
+from pyrpoc.plugins.program_io.outputs import FrameTag, LoopEvent, Unit
 
 from ....focus.tenengrad import tenengrad
 from ...analysis.content import content_channels, content_region
@@ -76,6 +75,8 @@ class Orchestrator:
         self.tracks: dict[int, Track] = {}
         self.frames: dict[str, int] = {}
         self.lost: set[int] = set()
+        # Every unit run on, as drawn when it started, removed ones too: their frames remain.
+        self.ran: dict[int, Unit] = {}
         self.paused: frozenset[int] = frozenset()
 
     def add_unit(self, unit: Unit, now_s: float) -> None:
@@ -86,6 +87,8 @@ class Orchestrator:
         outline = [list(point) for point in unit.outline]
         details = {"group": unit.group, "outline": outline, "x_um": x, "y_um": y}
         self.log_event("added", unit.id, "", details)
+        self.ran[unit.id] = unit
+        self.sink.keep_units(tuple(self.ran.values()))
         for spec in self.setup.routines:
             thread = Thread(unit.id, spec.name, spec.start(unit), now_s)
             self.queue.add(thread)
