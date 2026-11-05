@@ -7,8 +7,8 @@ from pyrpoc.plugins.devices import DAQ, Galvo, PriorStage
 from pyrpoc.plugins.program_io.inputs import SAMPLE_RATE_MHZ, SCAN_GEOMETRY_INPUTS, ScanGeometry
 from pyrpoc.plugins.program_io.outputs import GalvoCalibrationOutput, ImageOutput
 
-from ..building_blocks.calibration import calibrate
-from ..building_blocks.rig import RigMicroscope
+from ..building_blocks.multisite.bindings.rig import RigMicroscope
+from ..building_blocks.multisite.stages.calibration.measuring import calibrate
 from ..building_blocks.runners import Single
 
 

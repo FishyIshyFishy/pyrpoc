@@ -6,8 +6,7 @@ from pyrpoc.core.program import Program, RunContext
 from pyrpoc.plugins.devices.simulated import SimulatedScanner
 from pyrpoc.plugins.program_io.outputs import GalvoCalibrationOutput
 
-from ...building_blocks.runners import Single
-from ...building_blocks.survey.run import (
+from ...building_blocks.multisite.stages.survey.walk import (
     FOCUS_INPUTS,
     REGION_INPUTS,
     SURVEY_EMITS,
@@ -15,6 +14,7 @@ from ...building_blocks.survey.run import (
     SurveySettings,
     survey,
 )
+from ...building_blocks.runners import Single
 from ..dish_microscope import DishMicroscope
 
 

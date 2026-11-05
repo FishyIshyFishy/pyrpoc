@@ -9,7 +9,7 @@ from collections.abc import Callable
 from pyrpoc.plugins.program_io.inputs import FocusSearch
 from pyrpoc.plugins.program_io.outputs import FocusPlane
 
-from ..focus.climb import climb
+from ....focus.climb import climb
 
 # How many of the plane's own deviations a check searches either side of its prediction.
 SEARCH_DEVIATIONS = 3.0

@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from .steps import Routine, Seen
+from .routine import Routine, Seen
 
 
 @dataclass

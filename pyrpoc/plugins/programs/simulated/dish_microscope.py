@@ -8,7 +8,7 @@ from pyrpoc.core.program import RunContext
 from pyrpoc.plugins.devices.simulated import SimulatedDish, SimulatedScanner
 from pyrpoc.plugins.program_io.inputs import ScanGeometry
 
-from ..building_blocks.microscope import DigitalLine
+from ..building_blocks.multisite.interfaces.microscope import DigitalLine
 from .dish_scan import dish_frame
 
 

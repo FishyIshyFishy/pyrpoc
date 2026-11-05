@@ -6,8 +6,8 @@ from __future__ import annotations
 import cv2
 import numpy as np
 
-from ..vision.features import CLEAR_SCORE, MINIMUM_AREA_PX, SMOOTH_SIGMA_PX
-from ..vision.noise import floor_of
+from .features import CLEAR_SCORE, MINIMUM_AREA_PX, SMOOTH_SIGMA_PX
+from .noise import floor_of
 
 # How far around content focus is judged, so the blur a feature spreads into still counts.
 REACH_PX = 6
