@@ -56,10 +56,11 @@ class ProgramInputsStore:
         return {each.key: each.rule.encode(self.get(each.key)) for each in inputs}
 
     def to_dict(self) -> dict[str, Any]:
-        """Every value set or read so far, as JSON, by key."""
+        """Every value set or read so far that the session keeps, as JSON, by key."""
         return {
-            key: program_input_registry[key].rule.encode(value)
+            key: program_input.rule.encode(value)
             for key, value in self._values.items()
+            if (program_input := program_input_registry[key]).in_session
         }
 
     def load_dict(self, raw: Mapping[str, Any]) -> None:
