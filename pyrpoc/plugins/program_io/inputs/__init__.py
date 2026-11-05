@@ -40,6 +40,7 @@ from .scan import (
 from .split import T0_SAMPLES, T1_SAMPLES, SplitWindows
 from .survey import FIELD_PIXELS, FIELD_UM, SURVEY_HEIGHT_UM, SURVEY_WIDTH_UM, TILE_OVERLAP
 from .trigger import FRAME_TRIGGER_PFI, PIXEL_CLOCK_CTR, PIXEL_CLOCK_PFI, TriggerLines
+from .units import UNITS, Unit, UnitsField
 
 __all__ = [
     "CAMERA_BINNED",
@@ -74,6 +75,7 @@ __all__ = [
     "SURVEY_WIDTH_UM",
     "T0_SAMPLES",
     "TILE_OVERLAP",
+    "UNITS",
     "T1_SAMPLES",
     "X_PIXELS",
     "Y_PIXELS",
@@ -90,6 +92,8 @@ __all__ = [
     "ScanGeometry",
     "SplitWindows",
     "TriggerLines",
+    "Unit",
+    "UnitsField",
     "lines_for",
     "rate_hz",
     "thumbnail",

@@ -294,14 +294,13 @@ hold one cell, a pair or more. Drawing units is not an acquisition.
     between the survey and the loop;
   - labels, such as its group (treated or control). Loop programs read the
     group from the label.
-- [ ] **`units.json` in the save folder** is where units are kept.
-  - The Autonomy panel writes it on every edit, and loads it whenever the save
-    folder changes, including at launch.
-  - The next day, the same folder brings the units back. A new folder starts
-    with none.
-  - The panel is the only reader and writer.
-- [ ] **A small engine hook,** if needed, so a panel can read the current save
-  folder and hear when it changes. It stays within the import rules.
+- [ ] **`units.json` in the survey's folder** is where units are kept.
+  - The Autonomy panel shows a survey, writes its folder's `units.json` on
+    every edit, and loads it when it shows a survey from another folder.
+  - The next day, opening the same folder brings the units back. A new folder
+    starts with none. An unsaved survey's units are not kept, and the panel
+    says so.
+  - The panel is the only reader and writer, so no engine hook is needed.
 - [ ] **The Autonomy panel, first half:**
   - the latest survey's overview in this folder as its backdrop;
   - draw, move, reshape and delete outlines;
