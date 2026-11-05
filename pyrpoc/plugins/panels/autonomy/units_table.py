@@ -6,9 +6,18 @@ from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import QAbstractItemView, QHeaderView, QTableWidget, QTableWidgetItem, QWidget
 
 from pyrpoc.plugins.program_io.inputs import Unit
+from pyrpoc.plugins.program_io.outputs import UnitState
 from pyrpoc.utils.widgets.table import horizontal_header, vertical_header
 
-HEADINGS = ("Unit", "Group", "Centre (µm)")
+HEADINGS = ("Unit", "Group", "State", "Next")
+
+
+def next_text(state: UnitState | None, elapsed_s: float) -> str:
+    """When a unit is next due, as time from now."""
+    if state is None or state.next_due_s is None:
+        return ""
+    wait = state.next_due_s - elapsed_s
+    return "now" if wait <= 0 else f"in {wait:.0f} s"
 
 
 class UnitsTable(QTableWidget):
@@ -30,15 +39,23 @@ class UnitsTable(QTableWidget):
         self.itemChanged.connect(self.on_item_changed)
         self.itemSelectionChanged.connect(self.on_selection_changed)
 
-    def show_units(self, units: tuple[Unit, ...], chosen: int | None) -> None:
+    def show_units(
+        self,
+        units: tuple[Unit, ...],
+        chosen: int | None,
+        states: dict[int, UnitState],
+        elapsed_s: float,
+    ) -> None:
+        """One row per unit, with what a loop running on it is doing, if one is."""
         self.blockSignals(True)
         self.ids = [unit.id for unit in units]
         self.setRowCount(len(units))
         for row, unit in enumerate(units):
-            x, y = unit.centre
+            state = states.get(unit.id)
             self.setItem(row, 0, self.fixed(str(unit.id)))
             self.setItem(row, 1, QTableWidgetItem(unit.group))
-            self.setItem(row, 2, self.fixed(f"{x:.1f}, {y:.1f}"))
+            self.setItem(row, 2, self.fixed("" if state is None else state.state))
+            self.setItem(row, 3, self.fixed(next_text(state, elapsed_s)))
         self.clearSelection()
         if chosen in self.ids:
             self.selectRow(self.ids.index(chosen))

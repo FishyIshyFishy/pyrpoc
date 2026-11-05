@@ -48,6 +48,7 @@ class UnitCanvas(ColourImage):
             pen=pg.mkPen((255, 220, 0), width=2), symbol="o", symbolSize=5
         )
         self.addItem(self.sketch)
+        self.tracked: list[pg.PlotDataItem] = []
         scene = self.sceneObj
         if scene is None:
             raise RuntimeError("a new PlotWidget has no scene")
@@ -111,6 +112,19 @@ class UnitCanvas(ColourImage):
             if cv2.pointPolygonTest(contour, point, False) >= 0:
                 return unit.id
         return None
+
+    def show_tracked(self, outlines: list[tuple[tuple[float, float], ...]]) -> None:
+        """Where a running loop has tracked each unit to, dashed over the drawn outlines."""
+        for item in self.tracked:
+            self.removeItem(item)
+        pen = pg.mkPen((255, 220, 0), width=1.5, style=Qt.PenStyle.DashLine)
+        self.tracked = []
+        for outline in outlines:
+            xs = [x for x, _y in outline] + [outline[0][0]]
+            ys = [y for _x, y in outline] + [outline[0][1]]
+            item = pg.PlotDataItem(xs, ys, pen=pen)
+            self.addItem(item)
+            self.tracked.append(item)
 
     def start_drawing(self) -> None:
         self.drawing = True

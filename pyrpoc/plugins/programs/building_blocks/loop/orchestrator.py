@@ -3,6 +3,7 @@ and keeping focus before it is scanned, and logging everything it does."""
 
 from __future__ import annotations
 
+from collections import deque
 from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any
@@ -15,11 +16,14 @@ from pyrpoc.plugins.program_io.inputs import Unit
 from pyrpoc.plugins.program_io.outputs import (
     Image,
     LoopEvent,
+    LoopState,
     LoopUnits,
     Overview,
+    QueueEntry,
     SurveyResult,
     UnitFrame,
     UnitSnapshot,
+    UnitState,
 )
 
 from ..field import Field
@@ -28,11 +32,14 @@ from ..microscope import Microscope
 from ..survey.content import content_channels, content_region
 from .focus import FocusKeeper
 from .queue import Queue, Thread
+from .steering import Steering
 from .steps import Record, RoutineSpec, Scan, Seen, Step, Wait
 from .tracking import Track, Tracker, crop_centred, outline_mask, start_track, window_px
 
 # The longest the loop waits at once, so edits and stops are taken up promptly.
 IDLE_S = 1.0
+# How many of the latest events the state carries.
+RECENT = 12
 
 
 @dataclass(frozen=True)
@@ -79,21 +86,35 @@ class Orchestrator:
         self.queue = Queue()
         self.tracks: dict[int, Track] = {}
         self.frames: dict[str, int] = {}
-        start = scope.now()
+        self.lost: set[int] = set()
+        self.series: dict[int, list[tuple[float, tuple[float, ...]]]] = {}
+        self.recent: deque[str] = deque(maxlen=RECENT)
+        self.steering = Steering(ctx)
+        self.paused: frozenset[int] = frozenset()
+        self.started_s = scope.now()
         for unit in units:
-            self.add_unit(unit, start)
+            self.add_unit(unit, self.started_s)
 
     def add_unit(self, unit: Unit, now_s: float) -> None:
         """Start tracking ``unit`` from the survey, and start each routine for it."""
         seen = survey_time(self.setup.survey, unit)
         self.tracks[unit.id] = start_track(unit, self.setup.overview, self.field, seen)
+        self.series[unit.id] = []
         for spec in self.setup.routines:
             self.queue.add(Thread(unit.id, spec.name, spec.start(unit), now_s))
 
     def log(self, event: str, thread: Thread | None, **details: Any) -> None:
         unit = None if thread is None else thread.unit
         routine = "" if thread is None else thread.routine
-        self.ctx.publish("log", LoopEvent(self.scope.now(), event, unit, routine, details))
+        self.log_event(event, unit, routine, details)
+
+    def log_event(
+        self, event: str, unit: int | None, routine: str, details: dict[str, Any]
+    ) -> None:
+        now = self.scope.now()
+        self.ctx.publish("log", LoopEvent(now, event, unit, routine, details))
+        who = "" if unit is None else f" unit {unit}"
+        self.recent.appendleft(f"{(now - self.started_s) / 60.0:5.1f} min  {event}{who}")
 
     def run(self) -> None:
         """Run every thread to its end, or until the run is stopped."""
@@ -116,10 +137,74 @@ class Orchestrator:
                 self.scope.wait(min(thread.due_s - now, IDLE_S))
                 continue
             self.advance(thread)
+            self.publish_state()
         self.log("finish", None)
+        self.publish_state()
 
     def between_steps(self) -> None:
-        """Where a loop program reads its live inputs and applies them."""
+        """Take up what the panel asked for since the last step."""
+        changed = self.steer_units() | self.steer_pauses() | self.steer_run_now()
+        if changed:
+            self.publish_state()
+
+    def steer_units(self) -> bool:
+        """Start units drawn since the loop began, and stop units deleted."""
+        units = {unit.id: unit for unit in self.steering.units()}
+        now = self.scope.now()
+        added = [unit for uid, unit in units.items() if uid not in self.tracks]
+        for unit in added:
+            self.add_unit(unit, now)
+            self.log_event("added", unit.id, "", {"group": unit.group})
+        removed = [uid for uid in self.tracks if uid not in units and self.queue.of_unit(uid)]
+        for uid in removed:
+            for thread in self.queue.of_unit(uid):
+                thread.finished = True
+            self.log_event("removed", uid, "", {})
+        return bool(added or removed)
+
+    def steer_pauses(self) -> bool:
+        paused = self.steering.paused()
+        if paused == self.paused:
+            return False
+        for uid in paused ^ self.paused:
+            self.log_event("paused" if uid in paused else "resumed", uid, "", {})
+        self.paused = paused
+        for thread in self.queue.active():
+            thread.paused = thread.unit in paused
+        return True
+
+    def steer_run_now(self) -> bool:
+        asked = self.steering.run_now()
+        for uid in asked:
+            for thread in self.queue.of_unit(uid):
+                thread.urgent = True
+            self.log_event("run now", uid, "", {})
+        return bool(asked)
+
+    def unit_state(self, uid: int, track: Track) -> UnitState:
+        threads = self.queue.of_unit(uid)
+        if not threads:
+            state = "done"
+        elif uid in self.paused:
+            state = "paused"
+        elif uid in self.lost:
+            state = "lost"
+        else:
+            state = "waiting"
+        due = min((t.due_s for t in threads), default=None)
+        next_due = None if due is None else due - self.started_s
+        unit = track.unit
+        return UnitState(uid, unit.group, unit.outline, state, next_due, tuple(self.series[uid]))
+
+    def publish_state(self) -> None:
+        """What the loop is doing now, for the panels."""
+        units = tuple(self.unit_state(uid, track) for uid, track in self.tracks.items())
+        queue = tuple(
+            QueueEntry(t.unit, t.routine, t.due_s - self.started_s) for t in self.queue.runnable()
+        )
+        elapsed = self.scope.now() - self.started_s
+        labels = tuple(self.scope.channel_labels)
+        self.ctx.publish("state", LoopState(elapsed, labels, units, queue, tuple(self.recent)))
 
     def next_step(self, thread: Thread) -> Step | None:
         """The thread's next step, or None when its routine has ended or failed."""
@@ -144,6 +229,8 @@ class Orchestrator:
             thread.due_s = self.scope.now() + step.seconds
         elif isinstance(step, Record):
             self.log("record", thread, name=step.name, values=list(step.values))
+            elapsed = self.scope.now() - self.started_s
+            self.series[thread.unit].append((elapsed, step.values))
         elif isinstance(step, Scan):
             thread.sending = self.scan_unit(thread, step)
 
@@ -181,13 +268,15 @@ class Orchestrator:
         frame = self.field.on_dish(self.scope.scan(self.scan, step.lines))
         now = self.scope.now()
         found = self.tracker.locate(track, frame, now)
+        thread.urgent = False
         if found is None:
-            self.log(
-                "lost", thread, x_um=x, y_um=y, radius_um=self.tracker.radius_um(now - track.seen_s)
-            )
+            radius = self.tracker.radius_um(now - track.seen_s)
+            self.log("lost", thread, x_um=x, y_um=y, radius_um=radius)
+            self.lost.add(thread.unit)
             shift = (0.0, 0.0)
         else:
             self.tracker.follow(track, found, frame, now)
+            self.lost.discard(thread.unit)
             shift = found.shift_um
         seen = self.unit_image(track, frame, shift, now)
         index = self.save_frame(thread, track, seen)

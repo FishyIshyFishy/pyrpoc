@@ -393,11 +393,13 @@ and keeping focus as it drifts.
   - the queue, with overdue steps first;
   - recent events.
 - [ ] **Steering, all through live program inputs** that the loop reads
-  between steps:
-  - run a step now;
-  - add a unit (drawn in the panel) or remove one;
-  - pause or resume a unit;
-  - change a routine's settings for the rest of the run.
+  between steps (every loop program declares them live):
+  - run a step now: the panel adds a numbered request to `RUN_NOW`, and the
+    loop takes each request once;
+  - add a unit (drawn in the panel) or remove one: `UNITS`;
+  - pause or resume a unit: `PAUSED_UNITS`;
+  - change a routine's settings for the rest of the run: its own live inputs,
+    such as the period, edited in the Acquisition panel.
 
   The loop compares what it reads with what it read last, applies the change
   and logs what it actually did.

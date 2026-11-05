@@ -1,5 +1,6 @@
-"""Units drawn over a survey's overview: draw, move, reshape, group and delete them. They are
-the ``UNITS`` program input, and are kept in ``units.json`` in the survey's folder."""
+"""Units drawn over a survey's overview: draw, move, reshape, group and delete them, and while
+a loop runs on them, watch and steer it. Units are the ``UNITS`` program input, kept in
+``units.json`` in the survey's folder."""
 
 from __future__ import annotations
 
@@ -8,21 +9,25 @@ from pathlib import Path
 from typing import Any
 
 import pyqtgraph as pg
-from PyQt6.QtCore import QRectF, Qt
+from PyQt6.QtCore import QRectF, Qt, QTimer
 from PyQt6.QtGui import QKeyEvent
-from PyQt6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QSplitter, QVBoxLayout
+from PyQt6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QSplitter, QVBoxLayout, QWidget
 
 from pyrpoc.core.library import Library
 from pyrpoc.core.panels import DataPanel, data_panel_registry
 from pyrpoc.core.program_input import ParameterError, ProgramInputs
 from pyrpoc.core.program_output import ProgramOutput
-from pyrpoc.plugins.program_io.inputs import UNITS, Unit
-from pyrpoc.plugins.program_io.outputs import Mosaic, SurveyResult
+from pyrpoc.plugins.program_io.inputs import PAUSED_UNITS, RUN_NOW, UNITS, RunNow, Unit
+from pyrpoc.plugins.program_io.outputs import LoopState, Mosaic, SurveyResult, UnitState
 
 from .canvas import UnitCanvas
+from .loop_view import LoopView
 from .picture import backdrop, tinted
 from .units_file import read_units, write_units
 from .units_table import UnitsTable
+
+# How often a running loop's state is looked at again.
+WATCH_MS = 500
 
 
 def same_run(a: ProgramOutput[Any], b: ProgramOutput[Any]) -> bool:
@@ -42,29 +47,20 @@ class AutonomyPanel(DataPanel[SurveyResult]):
         self.folder: Path | None = None
         self.chosen: int | None = None
         self.backdrop_of: str | None = None
+        self.loop: ProgramOutput[LoopState] | None = None
 
         root = QVBoxLayout(self.body)
         root.setContentsMargins(0, 0, 0, 0)
         root.addLayout(self.build_tools())
-        splitter = QSplitter(Qt.Orientation.Horizontal, self.body)
-        splitter.setChildrenCollapsible(False)
-        self.canvas = UnitCanvas(splitter)
-        self.table = UnitsTable(splitter)
-        splitter.addWidget(self.canvas)
-        splitter.addWidget(self.table)
-        splitter.setStretchFactor(0, 1)
-        splitter.setSizes([700, 260])
-        root.addWidget(splitter, 1)
+        root.addWidget(self.build_splitter(), 1)
         self.status = QLabel("", self.body)
         self.status.setWordWrap(True)
         root.addWidget(self.status)
-
-        self.canvas.drawn.connect(self.on_drawn)
-        self.canvas.reshaped.connect(self.on_reshaped)
-        self.canvas.selected.connect(self.choose)
-        self.table.chosen.connect(self.choose)
-        self.table.regrouped.connect(self.on_regrouped)
-        inputs.subscribe(self.on_input_changed)
+        self.connect_signals()
+        self.watch = QTimer(self)
+        self.watch.setInterval(WATCH_MS)
+        self.watch.timeout.connect(self.follow_loop)
+        self.watch.start()
         self.connect_source()
         self.show_units()
 
@@ -75,13 +71,42 @@ class AutonomyPanel(DataPanel[SurveyResult]):
         self.draw_button.setToolTip(
             "Click each corner; double-click, or click the first corner, to close it"
         )
-        self.draw_button.toggled.connect(self.on_draw_toggled)
         row.addWidget(self.draw_button)
         self.delete_button = QPushButton("Delete", self.body)
-        self.delete_button.clicked.connect(self.delete_chosen)
         row.addWidget(self.delete_button)
         row.addStretch(1)
         return row
+
+    def build_splitter(self) -> QSplitter:
+        splitter = QSplitter(Qt.Orientation.Horizontal, self.body)
+        splitter.setChildrenCollapsible(False)
+        self.canvas = UnitCanvas(splitter)
+        side = QWidget(splitter)
+        layout = QVBoxLayout(side)
+        layout.setContentsMargins(0, 0, 0, 0)
+        self.table = UnitsTable(side)
+        layout.addWidget(self.table, 1)
+        # Only while there is a loop to watch: drawing units needs none of it.
+        self.loop_view = LoopView(side)
+        self.loop_view.setVisible(False)
+        layout.addWidget(self.loop_view, 1)
+        splitter.addWidget(self.canvas)
+        splitter.addWidget(side)
+        splitter.setStretchFactor(0, 1)
+        splitter.setSizes([700, 300])
+        return splitter
+
+    def connect_signals(self) -> None:
+        self.draw_button.toggled.connect(self.on_draw_toggled)
+        self.delete_button.clicked.connect(self.delete_chosen)
+        self.canvas.drawn.connect(self.on_drawn)
+        self.canvas.reshaped.connect(self.on_reshaped)
+        self.canvas.selected.connect(self.choose)
+        self.table.chosen.connect(self.choose)
+        self.table.regrouped.connect(self.on_regrouped)
+        self.loop_view.run_now.connect(self.ask_run_now)
+        self.loop_view.pause.connect(self.toggle_pause)
+        self.inputs.subscribe(self.on_input_changed)
 
     @property
     def units(self) -> tuple[Unit, ...]:
@@ -126,23 +151,62 @@ class AutonomyPanel(DataPanel[SurveyResult]):
             write_units(self.folder, units)
 
     def on_input_changed(self, key: str) -> None:
-        if key == UNITS.key:
+        if key in (UNITS.key, PAUSED_UNITS.key):
             self.show_units()
+
+    def loop_state(self) -> LoopState | None:
+        return None if self.loop is None else self.loop.value
 
     def show_units(self) -> None:
         units = self.units
         if self.chosen not in {unit.id for unit in units}:
             self.chosen = None
+        state = self.loop_state()
+        states: dict[int, UnitState] = {} if state is None else {u.id: u for u in state.units}
+        elapsed = 0.0 if state is None else state.elapsed_s
         self.canvas.show_units(units, self.chosen)
-        self.table.show_units(units, self.chosen)
+        self.table.show_units(units, self.chosen, states, elapsed)
         self.delete_button.setEnabled(self.chosen is not None)
+        running = self.loop is not None and not self.loop.finished
+        paused = self.chosen in self.inputs.get(PAUSED_UNITS.key)
+        self.loop_view.set_unit(self.chosen is not None, paused, running)
         if self.folder is not None:
             self.status.setText(f"{len(units)} units, kept in this survey's folder")
+
+    def follow_loop(self) -> None:
+        """Show the newest loop's state, while there is one."""
+        loops = self.library.matching(LoopState)
+        self.loop = max(loops, key=lambda each: each.provenance.started_at) if loops else None
+        state = self.loop_state()
+        self.loop_view.setVisible(state is not None)
+        if self.loop is None or state is None:
+            self.canvas.show_tracked([])
+            return
+        running = not self.loop.finished
+        self.loop_view.show_state(state, running)
+        self.canvas.show_tracked([unit.outline for unit in state.units if unit.state != "done"])
+        self.show_units()
 
     def choose(self, unit_id: int | None) -> None:
         if unit_id != self.chosen:
             self.chosen = unit_id
             self.show_units()
+
+    def ask_run_now(self) -> None:
+        if self.chosen is None:
+            return
+        asked: tuple[RunNow, ...] = self.inputs.get(RUN_NOW.key)
+        serial = max((request.serial for request in asked), default=0) + 1
+        self.inputs.set(RUN_NOW.key, (*asked, RunNow(serial, self.chosen)))
+
+    def toggle_pause(self) -> None:
+        if self.chosen is None:
+            return
+        paused: tuple[int, ...] = self.inputs.get(PAUSED_UNITS.key)
+        if self.chosen in paused:
+            self.inputs.set(PAUSED_UNITS.key, tuple(u for u in paused if u != self.chosen))
+        else:
+            self.inputs.set(PAUSED_UNITS.key, (*paused, self.chosen))
 
     def on_draw_toggled(self, on: bool) -> None:
         if on:
@@ -183,5 +247,6 @@ class AutonomyPanel(DataPanel[SurveyResult]):
         self.canvas.clear_image()
 
     def detach(self) -> None:
+        self.watch.stop()
         self.inputs.unsubscribe(self.on_input_changed)
         super().detach()

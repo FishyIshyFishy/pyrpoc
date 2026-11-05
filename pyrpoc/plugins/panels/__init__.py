@@ -6,6 +6,7 @@ from __future__ import annotations
 from pyrpoc.core.panels import data_panel_registry
 
 from .autonomy.panel import AutonomyPanel
+from .curves.panel import CurvesPanel
 from .image.panel import ImagePanel
 from .mask_editor.panel import MaskEditorPanel
 from .mosaic.panel import MosaicPanel
@@ -15,6 +16,7 @@ from .spectrum.panel import SpectrumPanel
 __all__ = [
     "data_panel_registry",
     "AutonomyPanel",
+    "CurvesPanel",
     "ImagePanel",
     "MaskEditorPanel",
     "MosaicPanel",

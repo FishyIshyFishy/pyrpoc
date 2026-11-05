@@ -21,6 +21,8 @@ class Thread:
     started: bool = False
     finished: bool = False
     paused: bool = False
+    # Asked to run at once: it goes ahead of everything due, until its next scan.
+    urgent: bool = False
 
     @property
     def key(self) -> str:
@@ -40,9 +42,9 @@ class Queue:
         return [thread for thread in self.threads if not thread.finished]
 
     def runnable(self) -> list[Thread]:
-        """The threads that can run, earliest due first."""
+        """The threads that can run: those asked to run now, then the earliest due."""
         ready = [thread for thread in self.active() if not thread.paused]
-        return sorted(ready, key=lambda thread: thread.due_s)
+        return sorted(ready, key=lambda thread: (not thread.urgent, thread.due_s))
 
     def of_unit(self, unit: int) -> list[Thread]:
         return [thread for thread in self.active() if thread.unit == unit]

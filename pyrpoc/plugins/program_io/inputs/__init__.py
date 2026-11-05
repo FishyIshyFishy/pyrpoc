@@ -47,11 +47,15 @@ from .scan import (
     ScanGeometry,
 )
 from .split import T0_SAMPLES, T1_SAMPLES, SplitWindows
+from .steering import PAUSED_UNITS, RUN_NOW, RunNow
 from .survey import FIELD_PIXELS, FIELD_UM, SURVEY_HEIGHT_UM, SURVEY_WIDTH_UM, TILE_OVERLAP
 from .trigger import FRAME_TRIGGER_PFI, PIXEL_CLOCK_CTR, PIXEL_CLOCK_PFI, TriggerLines
 from .units import UNITS, Unit, UnitsField
 
 __all__ = [
+    "PAUSED_UNITS",
+    "RUN_NOW",
+    "RunNow",
     "DURATION_MIN",
     "FOCUS_CHECK_S",
     "PERIOD_S",

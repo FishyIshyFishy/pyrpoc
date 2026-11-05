@@ -4,7 +4,15 @@ package registers them all."""
 from __future__ import annotations
 
 from .arrays import ArrayData, DecayHistogram, Image, RawSamples, Spectrum
-from .loop import LoopEvent, LoopUnits, UnitFrame, UnitSnapshot
+from .loop import (
+    LoopEvent,
+    LoopState,
+    LoopUnits,
+    QueueEntry,
+    UnitFrame,
+    UnitSnapshot,
+    UnitState,
+)
 from .mosaic import Mosaic, Overview, PlacedTile
 from .records import (
     CalibrationPoint,
@@ -34,6 +42,7 @@ __all__ = [
     "Image",
     "JsonWriter",
     "LoopEvent",
+    "LoopState",
     "LoopUnits",
     "Mosaic",
     "MotionRate",
@@ -41,6 +50,7 @@ __all__ = [
     "NpzWriter",
     "Overview",
     "PlacedTile",
+    "QueueEntry",
     "RawSamples",
     "Record",
     "Spectrum",
@@ -50,4 +60,5 @@ __all__ = [
     "UnitFrame",
     "UnitFramesWriter",
     "UnitSnapshot",
+    "UnitState",
 ]

@@ -15,9 +15,10 @@ from pyrpoc.plugins.program_io.inputs import (
     TREATED_GROUP,
     UNITS,
 )
-from pyrpoc.plugins.program_io.outputs import LoopEvent, LoopUnits, UnitFrame
+from pyrpoc.plugins.program_io.outputs import LoopEvent, LoopState, LoopUnits, UnitFrame
 
 from ...building_blocks.loop.monitor import run_monitor
+from ...building_blocks.loop.steering import STEERING
 from ...building_blocks.microscope import DigitalLine
 from ...building_blocks.runners import Single
 from ..dish_microscope import DishMicroscope
@@ -37,8 +38,8 @@ class SimulatedLongitudinalMonitor(Program):
         InputSection("Treatment", (TREAT, TREATED_GROUP)),
         InputSection("Focus", (FOCUS_CHECK_S, FOCUS_FINAL_STEP_UM)),
     ]
-    live = [PERIOD_S, DURATION_MIN]
-    emits = {"log": LoopEvent, "frames": UnitFrame, "units": LoopUnits}
+    live = [PERIOD_S, DURATION_MIN, *STEERING]
+    emits = {"log": LoopEvent, "frames": UnitFrame, "units": LoopUnits, "state": LoopState}
     runners = [Single()]
 
     def run(self, ctx: RunContext) -> None:
