@@ -267,17 +267,8 @@ class Orchestrator:
         self.scope.move_z(z)
         frame = self.field.on_dish(self.scope.scan(self.scan, step.lines))
         now = self.scope.now()
-        found = self.tracker.locate(track, frame, now)
         thread.urgent = False
-        if found is None:
-            radius = self.tracker.radius_um(now - track.seen_s)
-            self.log("lost", thread, x_um=x, y_um=y, radius_um=radius)
-            self.lost.add(thread.unit)
-            shift = (0.0, 0.0)
-        else:
-            self.tracker.follow(track, found, frame, now)
-            self.lost.discard(thread.unit)
-            shift = found.shift_um
+        shift = self.find_unit(thread, track, frame, now)
         seen = self.unit_image(track, frame, shift, now)
         index = self.save_frame(thread, track, seen)
         cx, cy = track.centre
@@ -292,10 +283,26 @@ class Orchestrator:
             y_um=cy,
             z_um=z,
             shift_um=list(shift),
-            found=found is not None,
+            found=thread.unit not in self.lost,
             lines=[[line.port, line.line] for line in step.lines],
         )
         return seen
+
+    def find_unit(
+        self, thread: Thread, track: Track, frame: np.ndarray, now: float
+    ) -> tuple[float, float]:
+        """Follow the unit to where it is in ``frame``, returning how far it moved; a unit not
+        found stays where it was and is logged as lost."""
+        found = self.tracker.locate(track, frame, now)
+        if found is None:
+            x, y = track.centre
+            radius = self.tracker.radius_um(now - track.seen_s)
+            self.log("lost", thread, x_um=x, y_um=y, radius_um=radius)
+            self.lost.add(thread.unit)
+            return (0.0, 0.0)
+        self.tracker.follow(track, found, frame, now)
+        self.lost.discard(thread.unit)
+        return found.shift_um
 
     def unit_image(
         self, track: Track, frame: np.ndarray, shift: tuple[float, float], now: float
