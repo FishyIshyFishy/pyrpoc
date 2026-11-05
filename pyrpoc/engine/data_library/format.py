@@ -17,7 +17,7 @@ from pyrpoc.core.saving import writer_registry
 from .grouping import program_display_name
 
 FORMAT = "pyrpoc-recording"
-FORMAT_VERSION = 5
+FORMAT_VERSION = 6
 META_SUFFIX = "_meta.json"
 # Every note in an Experiment, in one file a person can read without the app.
 NOTES_FILE = "notes.txt"
@@ -37,6 +37,17 @@ class RunRecord:
     started_at: str
     ended_at: str | None
     error: str | None
+
+
+@dataclass(frozen=True)
+class LiveRead:
+    """A run reading a live input whose value changed since it last read it."""
+
+    run_id: int
+    read_at: str
+    key: str
+    # As the input's rules encode it.
+    value: Any
 
 
 @dataclass
@@ -65,6 +76,8 @@ class RecordingRecord:
     notes: str
     # The earlier recordings it read: their metadata file names in its folder, by program key.
     inputs: dict[str, str]
+    # Each change to a live input a run read, in the order read.
+    live_reads: list[LiveRead]
 
 
 def pyrpoc_version() -> str:
@@ -167,6 +180,15 @@ def decode_record(raw: dict[str, Any]) -> RecordingRecord:
         },
         notes=str(raw["notes"]),
         inputs={str(key): str(name) for key, name in raw["inputs"].items()},
+        live_reads=[
+            LiveRead(
+                run_id=int(read["run_id"]),
+                read_at=str(read["read_at"]),
+                key=str(read["key"]),
+                value=read["value"],
+            )
+            for read in raw["live_reads"]
+        ],
     )
 
 

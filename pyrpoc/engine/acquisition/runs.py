@@ -145,6 +145,8 @@ class Runs(QObject):
         self.edited.emit()
 
     def on_run_finished(self, run: Run) -> None:
+        # Here, on the thread program inputs are set on, so no change lands mid-close.
+        run.live.close()
         self.live_runs.discard(run)
         self.publish_in_use()
         # Only a saved run of a program others read can change what they read.

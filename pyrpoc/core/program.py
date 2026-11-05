@@ -6,7 +6,7 @@ from __future__ import annotations
 import threading
 from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass
-from typing import Any, TypeVar
+from typing import Any, Protocol, TypeVar
 
 from pyrpoc.core.device import Device
 from pyrpoc.core.program_input import InputSection, ProgramInput, ProgramInputValues
@@ -16,6 +16,7 @@ from pyrpoc.core.registry import Registry
 from .runner import Runner
 
 D = TypeVar("D", bound=Device)
+T = TypeVar("T")
 
 
 class Cancelled(Exception):
@@ -74,6 +75,10 @@ class Program:
     # Earlier runs it reads; it cannot start until each has one to read.
     reads: list[EarlierRun] = []
 
+    # Its inputs that a run may read again while it runs, to follow edits made after it
+    # started. The rest stay as they were when it started.
+    live: list[ProgramInput[Any]] = []
+
     # Named outputs, and the kind of ``Data`` each one carries.
     emits: dict[str, type[Data]] = {}
 
@@ -89,14 +94,24 @@ class Program:
         return [each for section in cls.sections for each in section.inputs]
 
 
+class LiveValues(Protocol):
+    """The current values of one run's live inputs, safe to read from the run's thread."""
+
+    def keys(self) -> frozenset[str]: ...
+
+    def current(self, key: str) -> Any: ...
+
+
 class RunContext:
-    """What a running program is handed: its input values, the earlier runs it reads, its
-    devices, its outputs, status and cancel."""
+    """What a running program is handed: its input values as they were when it started, the
+    current values of its live inputs, the earlier runs it reads, its devices, its outputs,
+    status and cancel."""
 
     def __init__(
         self,
         *,
         inputs: ProgramInputValues,
+        live: LiveValues,
         earlier: Mapping[str, Mapping[str, ProgramOutput[Any]]],
         devices: Mapping[type[Device], Device],
         outputs: dict[str, ProgramOutput[Any]],
@@ -104,11 +119,22 @@ class RunContext:
         on_status: Callable[[str], None],
     ):
         self.inputs = inputs
+        self._live = live
         self._earlier = dict(earlier)
         self.devices = DeviceMap(devices)
         self.outputs = outputs
         self._cancel = cancel
         self._on_status = on_status
+
+    def current(self, program_input: ProgramInput[T]) -> T:
+        """The value of a live input now, which may have changed since the run started."""
+        # Read between a program's own steps, so a value never changes under it mid-step.
+        if program_input.key not in self._live.keys():
+            raise KeyError(
+                f"{program_input.key!r} is not declared in live; this program declares "
+                f"{sorted(self._live.keys())}"
+            )
+        return self._live.current(program_input.key)
 
     def earlier(self, run: EarlierRun) -> Mapping[str, ProgramOutput[Any]]:
         """The outputs of the earlier run chosen for ``run``, by name, each holding its last

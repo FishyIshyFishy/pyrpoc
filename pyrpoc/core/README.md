@@ -23,6 +23,9 @@ when you switch between them.
 
 Pressing run starts a **run**. It takes a snapshot of the program's input
 values, claims its devices so no other run can use them, and does the work.
+A program may declare some inputs **live**: a run reads their current value
+whenever it chooses, between its own steps, so edits made while it runs reach
+it. Its recording logs each change it was given, and when.
 Whatever it measures, it **publishes** into its **program outputs**, such as an
 image or a spectrum. Each published value is saved to disk as it arrives, if
 saving is on.
@@ -65,10 +68,10 @@ of the app meet.
 | Piece | What it is |
 |---|---|
 | **Device** | A piece of hardware the microscope has. Its settings are a `DeviceConfig`, whose fields each carry a `Field`. |
-| **Program** | One kind of experiment: the devices it needs, the program inputs it reads (laid out in `InputSection`s), the earlier runs it reads, the outputs it publishes, and the runners that can start it. Its `run` does the work. |
+| **Program** | One kind of experiment: the devices it needs, the program inputs it reads (laid out in `InputSection`s) and which of them are live, the earlier runs it reads, the outputs it publishes, and the runners that can start it. Its `run` does the work. |
 | **EarlierRun** | An earlier run in the same Experiment that a program reads, named by the `program_key` of the program that made it, never by a file. Which recording that is, the engine decides; the program only gets its outputs. |
-| **Run** | One execution of a program. It gets a frozen copy of the program's input values, claims its devices, and publishes into its program outputs. |
-| **RunContext** | What a running program is handed: its input values, the outputs of the earlier runs it reads, its devices, its outputs, status and cancel. |
+| **Run** | One execution of a program. It gets a copy of the program's input values as they were when it started, and the current value of each live input whenever it asks. It claims its devices and publishes into its program outputs. |
+| **RunContext** | What a running program is handed: its input values at the start, the current value of each live input (`current`), the outputs of the earlier runs it reads, its devices, its outputs, status and cancel. |
 | **Runner** | A way to start a program, such as once, continuously, or armed until a pixel is picked. The program declares it. The runner adds controls through its `RunnerContext`, and whichever panel shows the program draws them. A runner may watch program inputs. |
 
 ### Program inputs: user → program
@@ -78,7 +81,8 @@ of the app meet.
 | **ProgramInput** | The declaration of one value a program reads: a key, a default, and a `Field`. **One key means one value everywhere.** The key names the value itself, never a section or a program, and is declared once with `declare`. A second declaration of a key fails. Every program and panel that uses the value imports that one declaration. |
 | **Field** | The rules a value follows: how it is checked (`coerce`), saved (`encode`) and loaded (`decode`). It can also supply its own `Editor` widget. Bad values raise `ParameterError`. |
 | **ProgramInputs** | The collection of current values, by key. Any part of the app may read a value, set one (checked by its `Field`) or subscribe. It is saved with the session. |
-| **ProgramInputValues** | The values one run was given. A program reads them as `ctx.inputs[SOME_INPUT]`, and they go into the run's recording. |
+| **ProgramInputValues** | The values one run was given when it started. A program reads them as `ctx.inputs[SOME_INPUT]`, and they go into the run's recording. |
+| **LiveValues** | The current values of one run's live inputs, as `RunContext.current` reads them. The engine fills it from `ProgramInputs` and owns the hand-off between threads, so a program sees only values and a panel never knows a run is reading. |
 | **InputSection** | A heading and the inputs under it. It is layout only: each program writes its own to group its inputs on screen. A section never appears in a key, a session or a recording. |
 
 ### Program outputs: program → user
@@ -132,7 +136,7 @@ defines it. Nothing else lists them.
 | `registry.py` | `Registry` |
 | `device.py` | `Device` + `device_registry` |
 | `device_config.py` | `DeviceConfig`, and how its fields carry their `Field` |
-| `program.py` | `Program`, `EarlierRun`, `RunContext` + `program_registry` |
+| `program.py` | `Program`, `EarlierRun`, `LiveValues`, `RunContext` + `program_registry` |
 | `runner.py` | `Runner`, `RunnerContext`, `Control`, `Button`, `Toggle` |
 | `program_input.py` | `ProgramInput` + `declare`, `Field`, `Editor`, `ProgramInputValues`, `ProgramInputs`, `InputSection` |
 | `program_output.py` | `ProgramOutput`, `Data` + `data_kind_registry`, `Provenance`, `Origin` |

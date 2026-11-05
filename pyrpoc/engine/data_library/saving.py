@@ -3,12 +3,14 @@
 
 from __future__ import annotations
 
+import threading
 from pathlib import Path
 from typing import Any
 
 from pyrpoc.core.program_output import Data, ProgramOutput, utc_now
 from pyrpoc.core.saving import Writer, writer_registry
 from pyrpoc.engine.data_library.format import (
+    LiveRead,
     OutputRecord,
     RecordingRecord,
     RunRecord,
@@ -49,6 +51,9 @@ class RecordingSaver:
         self.writers: dict[str, Writer[Any]] = {}
         self.outputs: dict[str, ProgramOutput[Any]] = {}
         self.runs: list[RunRecord] = []
+        self.live_reads: list[LiveRead] = []
+        # Runs write from their own threads, and runs in a series overlap the GUI thread.
+        self.lock = threading.Lock()
         self.notes = notes
         # The note as the file last held it, so the Experiment's notes are rebuilt only when
         # it changes.
@@ -83,17 +88,23 @@ class RecordingSaver:
         # A series can run for hours; the file should list every run so far.
         self.write_metadata(ended_at=None, last_error=None)
 
+    def log_live(self, read: LiveRead) -> None:
+        """Record a run being given a changed live input, on disk at once."""
+        self.live_reads.append(read)
+        self.write_metadata(ended_at=None, last_error=None)
+
     def finalize(self, error: Exception | None) -> None:
         """Rewrite the metadata."""
         # The program outputs are finalized first, so every writer's paths are complete by now.
         self.write_metadata(ended_at=utc_now(), last_error=str(error) if error else None)
 
     def write_metadata(self, *, ended_at: str | None, last_error: str | None) -> None:
-        note = self.note()
-        write_record(self.meta_path, self.record(ended_at, last_error, note))
-        if note != self.written_note:
-            write_folder_notes(experiment_of(self.meta_path))
-            self.written_note = note
+        with self.lock:
+            note = self.note()
+            write_record(self.meta_path, self.record(ended_at, last_error, note))
+            if note != self.written_note:
+                write_folder_notes(experiment_of(self.meta_path))
+                self.written_note = note
 
     def note(self) -> str:
         """The recording's note now: it may be edited while the recording runs."""
@@ -116,6 +127,7 @@ class RecordingSaver:
             },
             notes=note,
             inputs=self.inputs,
+            live_reads=list(self.live_reads),
         )
 
 

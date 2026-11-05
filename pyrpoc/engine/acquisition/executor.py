@@ -26,6 +26,7 @@ from pyrpoc.engine.data_library.saving import RecordingSaver
 from pyrpoc.engine.data_library.store import LibraryStore
 
 from . import claims
+from .live import LiveFeed
 
 
 class MissingEarlierRun(Exception):
@@ -45,9 +46,11 @@ class Run:
         provenance: Provenance,
         devices: dict[type[Device], Device],
         recording: Recording,
+        live: LiveFeed,
         series: Series | None,
     ):
         self.program = program
+        self.live = live
         self.provenance = provenance
         self.devices = devices
         self.recording = recording
@@ -133,7 +136,14 @@ class Executor:
                 run_id=self._run_id,
             )
             recording, stale = self.recording_for(program, key, provenance, note, series)
-            run = Run(program, provenance, devices, recording, series)
+            saver = recording.saver
+            live = LiveFeed(
+                inputs,
+                program.live,
+                self._run_id,
+                saver.log_live if saver is not None else None,
+            )
+            run = Run(program, provenance, devices, recording, live, series)
             recording.active += 1
             recording.last_run = run
             if recording.saver is not None:
@@ -247,6 +257,7 @@ class Executor:
     def launch(self, run: Run, values: ProgramInputValues, earlier: Earlier) -> None:
         ctx = RunContext(
             inputs=values,
+            live=run.live,
             earlier=earlier,
             devices=run.devices,
             outputs=run.outputs,
