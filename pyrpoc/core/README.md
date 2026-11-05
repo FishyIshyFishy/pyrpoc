@@ -78,7 +78,7 @@ of the app meet.
 
 | Piece | What it is |
 |---|---|
-| **ProgramInput** | The declaration of one value a program reads: a key, a default, and a `Field`. **One key means one value everywhere.** The key names the value itself, never a section or a program, and is declared once with `declare`. A second declaration of a key fails. An input declared with `in_session=False` is left out of the session, and starts at its default each launch. Runs and recordings see it as usual. Every program and panel that uses the value imports that one declaration. |
+| **ProgramInput** | The declaration of one value a program reads: a key, a default, and a `Field`. **One key means one value everywhere.** The key names the value itself, never a section or a program, and is declared once with `declare`. A second declaration of a key fails. An input declared with `persisted=False` is never written to a file: the session and recordings leave its value out, so it starts at its default each launch. Runs, programs and panels see it as usual. Every program and panel that uses the value imports that one declaration. |
 | **Field** | The rules a value follows: how it is checked (`coerce`), saved (`encode`) and loaded (`decode`). It can also supply its own `Editor` widget. Bad values raise `ParameterError`. |
 | **ProgramInputs** | The collection of current values, by key. Any part of the app may read a value, set one (checked by its `Field`) or subscribe. It is saved with the session. |
 | **ProgramInputValues** | The values one run was given when it started. A program reads them as `ctx.inputs[SOME_INPUT]`, and they go into the run's recording. |

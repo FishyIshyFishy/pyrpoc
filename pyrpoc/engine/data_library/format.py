@@ -17,7 +17,7 @@ from pyrpoc.core.saving import writer_registry
 from .grouping import program_display_name
 
 FORMAT = "pyrpoc-recording"
-FORMAT_VERSION = 6
+FORMAT_VERSION = 7
 META_SUFFIX = "_meta.json"
 # Every note in an Experiment, in one file a person can read without the app.
 NOTES_FILE = "notes.txt"
@@ -46,8 +46,10 @@ class LiveRead:
     run_id: int
     read_at: str
     key: str
-    # As the input's rules encode it.
+    # As the input's rules encode it, or None for an input that is not persisted.
     value: Any
+    # False for an input that is not persisted: the read is logged, its value is not.
+    recorded: bool
 
 
 @dataclass
@@ -186,6 +188,7 @@ def decode_record(raw: dict[str, Any]) -> RecordingRecord:
                 read_at=str(read["read_at"]),
                 key=str(read["key"]),
                 value=read["value"],
+                recorded=bool(read["recorded"]),
             )
             for read in raw["live_reads"]
         ],

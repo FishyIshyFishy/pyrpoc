@@ -30,19 +30,26 @@ class LiveFeed:
         self.inputs = inputs
         self.run_id = run_id
         self.on_read = on_read
-        self.rules = {each.key: each.rule for each in live}
+        self.declared = {each.key: each for each in live}
         self.lock = threading.Lock()
-        self.values = {key: inputs.get(key) for key in self.rules}
-        # What the run has been given, encoded, so reading an unchanged value logs nothing.
-        self.seen = {key: rule.encode(self.values[key]) for key, rule in self.rules.items()}
+        self.values = {key: inputs.get(key) for key in self.declared}
+        # What the run has been given, so reading an unchanged value logs nothing.
+        self.seen = {key: self.mark(key, value) for key, value in self.values.items()}
         inputs.subscribe(self.on_set)
 
     def keys(self) -> frozenset[str]:
-        return frozenset(self.rules)
+        return frozenset(self.declared)
+
+    def mark(self, key: str, value: Any) -> Any:
+        """What tells one value of ``key`` from another: its encoding, or for an input that
+        is not persisted the value itself, since every set stores a new one."""
+        # Encoding a value too large to persist on every read is the cost this avoids.
+        program_input = self.declared[key]
+        return program_input.rule.encode(value) if program_input.persisted else value
 
     def on_set(self, key: str) -> None:
         """Take a new value, on the thread that set it."""
-        if key in self.rules:
+        if key in self.declared:
             with self.lock:
                 self.values[key] = self.inputs.get(key)
 
@@ -50,13 +57,21 @@ class LiveFeed:
         """The value now, logging it if the run has not been given it before."""
         with self.lock:
             value = self.values[key]
-        encoded = self.rules[key].encode(value)
-        if encoded != self.seen[key]:
-            self.seen[key] = encoded
-            # None for a run that is not saved: there is no recording to log into.
-            if self.on_read is not None:
-                self.on_read(LiveRead(self.run_id, utc_now(), key, encoded))
+        mark = self.mark(key, value)
+        if not self.changed(key, mark):
+            return value
+        self.seen[key] = mark
+        # None for a run that is not saved: there is no recording to log into.
+        if self.on_read is not None:
+            persisted = self.declared[key].persisted
+            encoded = mark if persisted else None
+            self.on_read(LiveRead(self.run_id, utc_now(), key, encoded, persisted))
         return value
+
+    def changed(self, key: str, mark: Any) -> bool:
+        if self.declared[key].persisted:
+            return mark != self.seen[key]
+        return mark is not self.seen[key]
 
     def close(self) -> None:
         """Stop following changes, on the thread that sets them."""

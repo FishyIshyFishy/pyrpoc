@@ -52,15 +52,15 @@ class ProgramInputsStore:
         return ProgramInputValues({each.key: self.get(each.key) for each in inputs})
 
     def encode(self, inputs: Sequence[ProgramInput[Any]]) -> dict[str, Any]:
-        """The current values of ``inputs`` as JSON, by key."""
-        return {each.key: each.rule.encode(self.get(each.key)) for each in inputs}
+        """The current values of those of ``inputs`` that are persisted, as JSON, by key."""
+        return {each.key: each.rule.encode(self.get(each.key)) for each in inputs if each.persisted}
 
     def to_dict(self) -> dict[str, Any]:
-        """Every value set or read so far that the session keeps, as JSON, by key."""
+        """Every persisted value set or read so far, as JSON, by key."""
         return {
             key: program_input.rule.encode(value)
             for key, value in self._values.items()
-            if (program_input := program_input_registry[key]).in_session
+            if (program_input := program_input_registry[key]).persisted
         }
 
     def load_dict(self, raw: Mapping[str, Any]) -> None:
