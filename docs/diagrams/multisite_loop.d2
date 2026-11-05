@@ -13,16 +13,9 @@ classes: {
   scratch: {shape: cylinder; style: {fill: "#e3f2e6"; stroke: "#3c8d4f"; stroke-dash: 3}}
 }
 
-legend: |md
-  **Identity.** A unit's *key* is made once, by `Unit.new()`, wherever the unit comes from
-  (drawn, or found by software) and never reused. Its *number* is what people see: the
-  roster gives one as the unit joins, and never gives it again. Deleting unit 3 and drawing
-  it again makes a new key, so the loop runs it as unit 4.
-
-  **Collapse.** Stopped or cut short, the loop leaves its scratch. Starting it again in that
-  folder replays the scratch and carries on: each routine from its history, each unit from
-  where it was last found.
-| {near: bottom-left}
+# Notes are nodes beside what they explain, not pinned to a corner, which reserved empty space.
+identity: "Identity: a unit's key is made once, by Unit.new(),\nwherever the unit comes from, and never reused.\nIts number is what people see: given as it joins,\nnever given again. Deleting unit 3 and drawing\nit again makes unit 4." {style: {fill: "#ffffff"; stroke: "#bbbbbb"; font-color: "#444444"; bold: false}}
+collapse: "Collapse: stopped or cut short, the loop leaves\nits scratch. Started again in that folder, it replays\nthe scratch and carries on: each routine from its\nhistory, each unit from where it was last found." {style: {fill: "#ffffff"; stroke: "#bbbbbb"; font-color: "#444444"; bold: false}}
 
 units: "UNITS\nthe units drawn" {class: input}
 command: "UNIT_COMMAND\nAddUnit, EditUnit, RemoveUnit,\nPauseUnit, ResumeUnit, RunUnitNow" {class: request}
@@ -71,3 +64,6 @@ folder.scratch -> multisite.begin: "carry on" {style.stroke-dash: 4}
 
 clean: "CleanFolder(carries_on=True)\nallows the runs the\nscratch names" {class: check}
 folder.scratch -> clean {style.stroke-dash: 4}
+
+multisite.roster -- identity {style: {stroke: "#bbbbbb"; stroke-dash: 3}}
+folder.scratch -- collapse {style: {stroke: "#bbbbbb"; stroke-dash: 3}}
