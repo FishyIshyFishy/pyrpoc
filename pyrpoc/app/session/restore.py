@@ -4,12 +4,14 @@ to save, apply it back at launch, and the devices a first launch gets."""
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 from pyrpoc.app.application import Application
 from pyrpoc.app.window import MainWindow
-from pyrpoc.core.device import Device
-from pyrpoc.core.panels import has_panel
+from pyrpoc.core.device import Device, decode_config, encode_config
+from pyrpoc.engine.device_inventory.inventory import DeviceInventory
 from pyrpoc.plugins import data_panel_registry, device_registry
+from pyrpoc.utils.widgets.device_panel import has_panel
 
 from .file import (
     BAD_STATE,
@@ -35,7 +37,7 @@ def capture_working(app: Application) -> WorkingState:
             key=device_registry.key_for(type(device)),
             instance_id=device.instance_id,
             panel_open=device in app.inventory.open_panels,
-            state=device.export_state(),
+            state=export_device(app.inventory, device),
         )
         for device in app.inventory.devices
     ]
@@ -51,7 +53,7 @@ def capture_working(app: Application) -> WorkingState:
 def capture_screen(window: MainWindow) -> ScreenState:
     views = [
         ViewState(
-            key=panel.type_key,
+            key=panel.registry_key,
             instance_id=panel.instance_id,
             user_label=panel.user_label,
             state=panel.export_persistence_state(),
@@ -69,7 +71,7 @@ def restore_devices(state: WorkingState, app: Application) -> list[Device]:
     for row in state.devices:
         try:
             device = app.inventory.add(row.key, instance_id=row.instance_id or None)
-            device.import_state(row.state)
+            import_device(app.inventory, device, row.state)
         except BAD_STATE:
             log.warning("skipping saved device %r", row.key, exc_info=True)
             continue
@@ -78,10 +80,26 @@ def restore_devices(state: WorkingState, app: Application) -> list[Device]:
     return reopen
 
 
+def export_device(inventory: DeviceInventory, device: Device) -> dict[str, Any]:
+    return {
+        "config": encode_config(device.config),
+        "last_test_ok": inventory.status[device].last_test_ok,
+    }
+
+
+def import_device(inventory: DeviceInventory, device: Device, raw: dict[str, Any]) -> None:
+    """Restore a device from session JSON; a malformed part is left at its default."""
+    config = raw.get("config")
+    if isinstance(config, dict):
+        device.config = decode_config(device.config_cls, config)
+    value = raw.get("last_test_ok")
+    inventory.status[device].last_test_ok = value if isinstance(value, bool) else None
+
+
 def restore_panels(state: ScreenState, app: Application, window: MainWindow) -> None:
     for row in state.views:
         try:
-            panel = data_panel_registry.get(row.key)(app.library, app.inputs)
+            panel = data_panel_registry.get(row.key)(app.library, app.inputs, app.requests)
             if row.instance_id:
                 panel.instance_id = row.instance_id
             panel.user_label = row.user_label

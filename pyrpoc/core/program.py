@@ -4,18 +4,19 @@ is handed while running."""
 from __future__ import annotations
 
 import threading
-from collections.abc import Callable, Iterator, Mapping
-from dataclasses import dataclass
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from typing import Any, Protocol, TypeVar
 
 from pyrpoc.core.device import Device
-from pyrpoc.core.program_input import InputSection, ProgramInput, ProgramInputValues
-from pyrpoc.core.program_output import Data, ProgramOutput
+from pyrpoc.core.program_input import ProgramInput, ProgramInputValues
+from pyrpoc.core.program_output import ProgramOutput
 from pyrpoc.core.registry import Registry
+from pyrpoc.core.requests import Request
 
 from .runner import Runner
 
 D = TypeVar("D", bound=Device)
+OutputT = TypeVar("OutputT", bound=ProgramOutput)
 T = TypeVar("T")
 
 
@@ -47,18 +48,9 @@ class DeviceMap(Mapping[type[Device], Device]):
         return f"DeviceMap({self._devices!r})"
 
 
-@dataclass(frozen=True)
-class EarlierRun:
-    """An earlier run in the same Experiment that a program reads, named by the program that
-    made it."""
-
-    program_key: str
-
-
 class Program:
-    """One experiment: the devices it uses, the program inputs it reads (laid out
-    in input sections), its outputs, the runners that start it, and ``run``,
-    which does the work."""
+    """One experiment: the devices it uses, the program inputs it reads, its outputs, the
+    runners that start it, and ``run``, which does the work."""
 
     display_name: str = "Program"
 
@@ -69,29 +61,41 @@ class Program:
     # Device classes to claim. Claims propagate along ``backed_by``.
     devices: list[type[Device]] = []
 
-    # The program inputs it reads, grouped as a panel shows them.
-    sections: list[InputSection] = []
+    # Every program input it reads.
+    inputs: list[ProgramInput[Any]] = []
 
-    # Earlier runs it reads; it cannot start until each has one to read.
-    reads: list[EarlierRun] = []
+    # Screen layout only: headings, each over some of its inputs. An input on no card gets no
+    # row, and with no cards every input is shown.
+    cards: dict[str, Sequence[ProgramInput[Any]]] = {}
+
+    # Outputs of earlier recordings in the same Experiment it reads, by the name it reads each
+    # under, and the type each must be. It cannot start until each has one to read.
+    reads: dict[str, type[ProgramOutput]] = {}
 
     # Its inputs that a run may read again while it runs, to follow edits made after it
     # started. The rest stay as they were when it started.
     live: list[ProgramInput[Any]] = []
 
-    # Named outputs, and the kind of ``Data`` each one carries.
-    emits: dict[str, type[Data]] = {}
+    # The requests panels may post to a run of it, which it takes when it chooses.
+    requests: list[Request[Any]] = []
+
+    # Named outputs, and the type of each.
+    emits: dict[str, type[ProgramOutput]] = {}
 
     # The ways this program can be started, in the order their controls are drawn.
     runners: list[Runner] = []
 
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        super().__init_subclass__(**kwargs)
+        # A card showing an input the program does not read would edit a value no run gets.
+        unread = [
+            each.key for card in cls.cards.values() for each in card if each not in cls.inputs
+        ]
+        if unread:
+            raise TypeError(f"{cls.__name__}'s cards show inputs it does not read: {unread}")
+
     def run(self, ctx: RunContext) -> None:
         raise NotImplementedError
-
-    @classmethod
-    def inputs(cls) -> list[ProgramInput[Any]]:
-        """Every program input it reads, in section order."""
-        return [each for section in cls.sections for each in section.inputs]
 
 
 class LiveValues(Protocol):
@@ -102,24 +106,37 @@ class LiveValues(Protocol):
     def current(self, key: str) -> Any: ...
 
 
+class PostedRequests(Protocol):
+    """The requests posted to one run and not yet taken, safe to take from the run's
+    thread."""
+
+    def accepts(self) -> frozenset[Request[Any]]: ...
+
+    def take(self, request: Request[Any]) -> list[Any]:
+        """The values posted with ``request`` since it was last taken, oldest first."""
+        ...
+
+
 class RunContext:
     """What a running program is handed: its input values as they were when it started, the
-    current values of its live inputs, the earlier runs it reads, its devices, its outputs,
-    status and cancel."""
+    current values of its live inputs, the requests posted to it, the earlier outputs it reads,
+    its devices, its outputs, status and cancel."""
 
     def __init__(
         self,
         *,
         inputs: ProgramInputValues,
         live: LiveValues,
-        earlier: Mapping[str, Mapping[str, ProgramOutput[Any]]],
+        requests: PostedRequests,
+        earlier: Mapping[str, ProgramOutput],
         devices: Mapping[type[Device], Device],
-        outputs: dict[str, ProgramOutput[Any]],
+        outputs: dict[str, ProgramOutput],
         cancel: threading.Event,
         on_status: Callable[[str], None],
     ):
         self.inputs = inputs
         self._live = live
+        self._requests = requests
         self._earlier = dict(earlier)
         self.devices = DeviceMap(devices)
         self.outputs = outputs
@@ -136,36 +153,44 @@ class RunContext:
             )
         return self._live.current(program_input.key)
 
-    def earlier(self, run: EarlierRun) -> Mapping[str, ProgramOutput[Any]]:
-        """The outputs of the earlier run chosen for ``run``, by name, each holding its last
-        value."""
-        if run.program_key not in self._earlier:
+    def requests(self, request: Request[T]) -> list[T]:
+        """The values posted with ``request`` since the run last asked, oldest first; each is
+        given once."""
+        if request not in self._requests.accepts():
             raise KeyError(
-                f"{run.program_key!r} is not declared in reads; this program declares "
-                f"{sorted(self._earlier)}"
+                f"{request.key!r} is not declared in requests; this program declares "
+                f"{sorted(each.key for each in self._requests.accepts())}"
             )
-        return self._earlier[run.program_key]
+        return self._requests.take(request)
 
-    def output_for(self, output: str) -> ProgramOutput[Any]:
-        if output not in self.outputs:
+    def earlier(self, name: str, output_type: type[OutputT]) -> OutputT:
+        """The earlier output chosen for ``name``, which ``reads`` declares as
+        ``output_type``. It is read, never added to."""
+        if name not in self._earlier:
             raise KeyError(
-                f"{output!r} is not declared in emits; this program declares {sorted(self.outputs)}"
+                f"{name!r} is not declared in reads; this program declares {sorted(self._earlier)}"
             )
-        return self.outputs[output]
-
-    def publish(self, output: str, value: Data) -> None:
-        """Make ``value``, of the kind ``emits`` declares, the current value of
-        one of this run's outputs."""
-        program_output = self.output_for(output)
-        if type(value) is not program_output.kind:
+        program_output = self._earlier[name]
+        # Narrows for the type checker, and catches a program asking for the wrong type.
+        if not isinstance(program_output, output_type):
             raise TypeError(
-                f"{output!r} carries {program_output.kind.name}, not {type(value).name}"
+                f"{name!r} is a {type(program_output).__name__}, not {output_type.__name__}"
             )
-        program_output.publish(value)
+        return program_output
 
-    def describe(self, output: str, **metadata: Any) -> None:
-        """Record metadata about one output, once per run."""
-        self.output_for(output).metadata.update(metadata)
+    def output(self, name: str, output_type: type[OutputT]) -> OutputT:
+        """This run's output ``name``, which ``emits`` declares as ``output_type``."""
+        if name not in self.outputs:
+            raise KeyError(
+                f"{name!r} is not declared in emits; this program declares {sorted(self.outputs)}"
+            )
+        program_output = self.outputs[name]
+        # Narrows for the type checker, and catches a program asking for the wrong type.
+        if not isinstance(program_output, output_type):
+            raise TypeError(
+                f"{name!r} is a {type(program_output).__name__}, not {output_type.__name__}"
+            )
+        return program_output
 
     def status(self, text: str) -> None:
         self._on_status(text)

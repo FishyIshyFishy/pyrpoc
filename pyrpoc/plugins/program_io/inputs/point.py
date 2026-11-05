@@ -9,8 +9,9 @@ from typing import Any
 from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtWidgets import QDoubleSpinBox, QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
-from pyrpoc.core.program_input import Editor, Field, FieldValues, ParameterError, declare
+from pyrpoc.core.program_input import Field, ParameterError, declare
 from pyrpoc.plugins.program_io.inputs.pixel_pick import PixelPick
+from pyrpoc.utils.widgets.editors import Editor, FieldValues, editor_for
 
 from .scan import ScanGeometry
 
@@ -24,7 +25,6 @@ class Point:
     # alone: a pixel only means something against the scan it was picked from.
     fast_v: float = 0.0
     slow_v: float = 0.0
-    source_id: str = ""
     source_label: str = ""
     pixel_x: int = -1
     pixel_y: int = -1
@@ -36,24 +36,23 @@ class Point:
         # since the image was taken.
         scan = ScanGeometry.from_parameters(pick.parameters, pick.source_label)
         fast_v, slow_v = scan.voltage_at(pick.x, pick.y)
-        return cls(fast_v, slow_v, pick.source_id, pick.source_label, pick.x, pick.y)
+        return cls(fast_v, slow_v, pick.source_label, pick.x, pick.y)
 
     @property
     def picked(self) -> bool:
         """Whether this point was picked from data rather than typed."""
-        return bool(self.source_id) and self.pixel_x >= 0 and self.pixel_y >= 0
+        return bool(self.source_label) and self.pixel_x >= 0 and self.pixel_y >= 0
 
     def describe(self) -> str:
         """Where this point came from, for the label under the spin boxes."""
         if not self.picked:
             return "typed"
-        return f"{self.source_label or self.source_id} px ({self.pixel_x}, {self.pixel_y})"
+        return f"{self.source_label} px ({self.pixel_x}, {self.pixel_y})"
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "fast_v": self.fast_v,
             "slow_v": self.slow_v,
-            "source_id": self.source_id,
             "source_label": self.source_label,
             "pixel_x": self.pixel_x,
             "pixel_y": self.pixel_y,
@@ -72,7 +71,6 @@ class Point:
             return cls(
                 fast_v=float(raw.get("fast_v", 0.0)),
                 slow_v=float(raw.get("slow_v", 0.0)),
-                source_id=str(raw.get("source_id", "")),
                 source_label=str(raw.get("source_label", "")),
                 pixel_x=int(raw.get("pixel_x", -1)),
                 pixel_y=int(raw.get("pixel_y", -1)),
@@ -129,7 +127,6 @@ class PointPicker(QWidget):
         return Point(
             self.fast_spin.value(),
             self.slow_spin.value(),
-            self._point.source_id,
             self._point.source_label,
             self._point.pixel_x,
             self._point.pixel_y,
@@ -170,18 +167,20 @@ class PointField(Field):
     def encode(self, value: Point) -> Any:
         return value.to_dict()
 
-    def editor(self, parent: Any, values: FieldValues) -> Editor:
-        del values
-        picker = PointPicker(parent)
-        return Editor(
-            picker,
-            get=picker.value,
-            set=picker.set_value,
-            connect=lambda cb: picker.changed.connect(cb),
-            summary=picker.summary,
-            spec=self,
-            wide=True,
-        )
+
+@editor_for(PointField)
+def point_editor(spec: PointField, parent: QWidget, values: FieldValues) -> Editor:
+    del values
+    picker = PointPicker(parent)
+    return Editor(
+        picker,
+        get=picker.value,
+        set=picker.set_value,
+        connect=lambda cb: picker.changed.connect(cb),
+        summary=picker.summary,
+        spec=spec,
+        wide=True,
+    )
 
 
 GALVO_TARGET = declare(

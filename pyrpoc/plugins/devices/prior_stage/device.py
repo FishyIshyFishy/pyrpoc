@@ -11,8 +11,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Literal
 
-from pyrpoc.core import device_config as C
-from pyrpoc.core.device import Device, device_registry
+from pyrpoc.core.device import Device, DeviceConfig, device_registry
 from pyrpoc.utils.value_rules import int_field
 
 from .sdk import PriorError, PriorSession
@@ -35,7 +34,7 @@ class MotionProfile:
 
 
 @dataclass
-class PriorConfig(C.DeviceConfig):
+class PriorConfig(DeviceConfig):
     com_port: int = int_field(
         "COM Port", 4, minimum=1, maximum=256, tooltip="COM port of the Prior controller (4 = COM4)"
     )
@@ -80,7 +79,7 @@ class PriorStage(Device):
 
     def open_session(self) -> None:
         if self.session is not None:
-            raise PriorError(f"{self.name} is already connected")
+            raise PriorError(f"{self.display_name} is already connected")
         self.session = PriorSession.connect(self.config.com_port)
 
     def close_session(self) -> None:
@@ -96,7 +95,9 @@ class PriorStage(Device):
 
     def require_session(self) -> PriorSession:
         if self.session is None:
-            raise PriorError(f"{self.name} is not connected; connect it in the Devices panel")
+            raise PriorError(
+                f"{self.display_name} is not connected; connect it in the Devices panel"
+            )
         return self.session
 
     def command(self, text: str) -> str:

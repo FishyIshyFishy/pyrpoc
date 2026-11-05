@@ -1,24 +1,25 @@
 """``RunEvents``: starts runs and reports them on the GUI thread."""
 
 # Runs report on their worker threads; these signals carry that onto the GUI thread. They are the
-# only subscriber to each program output a run opens, because ``ProgramOutput.publish`` runs on
+# only subscriber to each program output a run opens, because a program adds to its outputs on
 # the worker thread.
 
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
-from pathlib import Path
 
 from PyQt6.QtCore import QObject, pyqtSignal
 
-from pyrpoc.core.device import Device, MissingDevice
+from pyrpoc.core.device import Device
 from pyrpoc.core.program import Program
 from pyrpoc.core.program_input import ParameterError
-from pyrpoc.core.saving import SaveTarget
 from pyrpoc.engine.acquisition.claims import DeviceBusy
-from pyrpoc.engine.acquisition.executor import Executor, MissingEarlierRun, Run, RunCallbacks
+from pyrpoc.engine.acquisition.executor import Executor, Run, RunCallbacks
 from pyrpoc.engine.acquisition.program_inputs import ProgramInputsStore
-from pyrpoc.engine.acquisition.recording import Series
+from pyrpoc.engine.acquisition.readiness import NotReady
+from pyrpoc.engine.acquisition.requests import RequestsStore
+from pyrpoc.engine.acquisition.save_target import SaveTarget
+from pyrpoc.engine.data_library.earlier import EarlierOutput
 from pyrpoc.engine.data_library.format import RecordingError
 from pyrpoc.engine.data_library.store import LibraryFull, LibraryStore
 
@@ -30,14 +31,15 @@ class RunEvents(QObject):
     run_status = pyqtSignal(object, str)
     run_failed = pyqtSignal(object, str)
     run_finished = pyqtSignal(object)
-    # Refused before any run existed: a missing or busy device, a bad parameter, an earlier
-    # run it reads that is missing or unreadable, or a full library.
+    # Refused before any run existed: something it needs is missing, a device is busy, a
+    # parameter is bad, an earlier recording it reads is unreadable, or the library is full.
     start_refused = pyqtSignal(str)
 
-    def __init__(self, library: LibraryStore, parent: QObject):
+    def __init__(self, library: LibraryStore, requests: RequestsStore, parent: QObject):
         super().__init__(parent)
         self.executor = Executor(
             library,
+            requests,
             RunCallbacks(
                 on_status=self.run_status.emit,
                 on_failed=self.run_failed.emit,
@@ -53,8 +55,8 @@ class RunEvents(QObject):
         devices: list[Device],
         save: SaveTarget,
         note: str,
-        earlier: Mapping[str, Path],
-        series: Series | None,
+        earlier: Mapping[str, EarlierOutput],
+        repeat: bool,
         claim: Callable[[Run], None],
     ) -> Run | None:
         """Start ``program`` and return its run, or report through ``start_refused`` why it
@@ -70,21 +72,11 @@ class RunEvents(QObject):
                 save=save,
                 note=note,
                 earlier=earlier,
-                series=series,
+                repeat=repeat,
             )
-        except (
-            MissingDevice,
-            DeviceBusy,
-            ParameterError,
-            MissingEarlierRun,
-            RecordingError,
-            LibraryFull,
-        ) as exc:
+        except (NotReady, DeviceBusy, ParameterError, RecordingError, LibraryFull) as exc:
             self.start_refused.emit(str(exc))
             return None
         claim(run)
         self.run_started.emit(run)
         return run
-
-    def end_series(self, series: Series) -> None:
-        self.executor.end_series(series)

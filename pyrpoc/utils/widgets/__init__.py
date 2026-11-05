@@ -1,5 +1,5 @@
-"""Generic Qt widgets that know no feature: tables, cards, the parameter form,
-icons, colours and histogram levels."""
+"""Generic Qt widgets that know no feature: the panel bases, tables, cards, the
+parameter form, icons, colours and histogram levels."""
 
 from __future__ import annotations
 

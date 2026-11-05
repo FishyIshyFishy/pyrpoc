@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from pyrpoc.core.device_config import spec_field
+from pyrpoc.core.device import spec_field
 from pyrpoc.core.program_input import ProgramInput, declare
 
 from .rules import BoolField, ChannelsField, ChoiceField, FloatField, IntField, PathField, TextField

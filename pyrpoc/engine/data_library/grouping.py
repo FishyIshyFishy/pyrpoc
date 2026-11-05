@@ -1,28 +1,16 @@
-"""How open program outputs group into recordings and Experiments, and how that tree sorts."""
+"""How open recordings group into Experiments, and how that tree sorts."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any
 
 from pyrpoc.core.program import program_registry
-from pyrpoc.core.program_output import ProgramOutput
+from pyrpoc.core.recording import Recording
 
-# The group of outputs no recording on disk holds.
+# The group of recordings no folder holds.
 UNSAVED = "Unsaved"
-
-
-def experiment_of(meta_path: Path) -> Path:
-    """The Experiment a recording belongs to: the folder it sits in."""
-    return meta_path.parent
-
-
-def group_label(program_output: ProgramOutput[Any]) -> str:
-    """The name of the group ``program_output`` is listed under."""
-    meta_path = program_output.meta_path
-    return UNSAVED if meta_path is None else experiment_of(meta_path).name
 
 
 def program_display_name(program_key: str) -> str:
@@ -33,16 +21,9 @@ def program_display_name(program_key: str) -> str:
     return program_key
 
 
-@dataclass
-class RecordingNode:
-    """One run's outputs: a recording on disk, or an unsaved run."""
-
-    key: str
-    name: str
-    program: str
-    started_at: str
-    meta_path: Path | None
-    outputs: list[ProgramOutput[Any]] = field(default_factory=list)
+def recording_title(recording: Recording) -> str:
+    """What the recording was called, or its program when it was not named."""
+    return recording.name or program_display_name(recording.program_key)
 
 
 @dataclass
@@ -52,7 +33,7 @@ class ExperimentNode:
 
     label: str
     folder: Path | None
-    recordings: list[RecordingNode] = field(default_factory=list)
+    recordings: list[Recording] = field(default_factory=list)
 
     @property
     def key(self) -> str:
@@ -69,42 +50,16 @@ class SortBy(Enum):
     DATE = "date"
 
 
-def recording_key(program_output: ProgramOutput[Any]) -> str:
-    """What names the recording ``program_output`` belongs to: its file, or its run when it
-    is not saved."""
-    meta_path = program_output.meta_path
-    return f"run:{program_output.run_id}" if meta_path is None else recording_key_of(meta_path)
-
-
-def recording_key_of(meta_path: Path) -> str:
-    return str(meta_path)
-
-
-def build_tree(outputs: list[ProgramOutput[Any]], folders: list[Path]) -> list[ExperimentNode]:
-    """Every output under its recording and Experiment, plus each opened folder that has
-    none."""
-    experiments: dict[str, ExperimentNode] = {}
-    for folder in folders:
-        experiments[str(folder)] = ExperimentNode(folder.name, folder)
-    recordings: dict[str, RecordingNode] = {}
-    for program_output in outputs:
-        meta_path = program_output.meta_path
-        folder = None if meta_path is None else experiment_of(meta_path)
-        group_key = UNSAVED if folder is None else str(folder)
-        if group_key not in experiments:
-            experiments[group_key] = ExperimentNode(group_label(program_output), folder)
-        key = recording_key(program_output)
-        if key not in recordings:
-            provenance = program_output.provenance
-            recordings[key] = RecordingNode(
-                key=key,
-                name=program_output.run_name,
-                program=program_display_name(provenance.program_key),
-                started_at=provenance.started_at,
-                meta_path=meta_path,
-            )
-            experiments[group_key].recordings.append(recordings[key])
-        recordings[key].outputs.append(program_output)
+def build_tree(recordings: list[Recording], folders: list[Path]) -> list[ExperimentNode]:
+    """Every recording under its Experiment, plus each opened folder that has none."""
+    experiments: dict[Path | None, ExperimentNode] = {
+        folder: ExperimentNode(folder.name, folder) for folder in folders
+    }
+    for recording in recordings:
+        folder = recording.folder
+        if folder not in experiments:
+            experiments[folder] = ExperimentNode(UNSAVED if folder is None else folder.name, folder)
+        experiments[folder].recordings.append(recording)
     return list(experiments.values())
 
 
@@ -116,9 +71,9 @@ def sort_tree(
     for experiment in experiments:
         experiment.recordings.sort(
             key=lambda r: (
-                (r.name.casefold(), r.started_at)
+                (recording_title(r).casefold(), r.started_at)
                 if by is SortBy.NAME
-                else (r.started_at, r.name.casefold())
+                else (r.started_at, recording_title(r).casefold())
             ),
             reverse=descending,
         )

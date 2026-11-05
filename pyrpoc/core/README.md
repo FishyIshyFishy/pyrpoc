@@ -1,13 +1,13 @@
 # core: how pyrpoc fits together
 
 `core/` defines the abstract pieces of pyrpoc and how they connect. Nothing
-else lives here: no specific device, program, input, kind of data, value rule
+else lives here: no specific device, program, input, program output, value rule
 or panel. Those are all built from these pieces somewhere else, and register
 themselves so nothing in core has to list them.
 
-Core should rarely change. Adding hardware, an experiment, a setting, a kind
-of data or a panel never touches it. If core has to change, the architecture
-is changing.
+Core should rarely change. Adding hardware, an experiment, a setting, a type
+of program output or a panel never touches it. If core has to change, the
+architecture is changing.
 
 ## In plain words
 
@@ -21,41 +21,55 @@ inputs too: drawing masks in the Mask Editor sets the masks, and clicking an
 image sets the picked pixel. A setting that two programs share keeps its value
 when you switch between them.
 
-Pressing run starts a **run**. It takes a snapshot of the program's input
-values, claims its devices so no other run can use them, and does the work.
+Pressing run starts a **run**, and every run opens one **recording**. The run
+takes a snapshot of the program's input values, claims its devices so no other
+run can use them, and fills the recording's **program outputs**, such as an
+image or a spectrum. Single does the program's work once. Continuous does it
+again and again into the same recording until you stop it, so a long
+continuous run is still one recording. Editing an input while it runs ends
+that recording and starts a new one with the new values.
+
 A program may declare some inputs **live**: a run reads their current value
 whenever it chooses, between its own steps, so edits made while it runs reach
-it. Its recording logs each change it was given, and when.
-Whatever it measures, it **publishes** into its **program outputs**, such as an
-image or a spectrum. Each published value is saved to disk as it arrives, if
-saving is on.
+it without starting a new recording. A program may also accept **requests**,
+such as "visit this unit now": a panel posts one and the running program takes
+it once. The recording logs every live change and request it was given, and
+when.
 
-A run saved to disk is a **recording**. The recordings saved into one folder
-form an **Experiment**: choosing where runs save is choosing the Experiment.
-With no folder set, nothing is saved.
-A program may read **earlier runs** in its Experiment, named by the program
-that made them: a survey reads a galvo calibration. It cannot start until the
-folder holds one. It reads the latest unless you pick another, the run is
-handed it already loaded, and its recording names what it read.
-A note written before a run is saved with it. It is not a program input: no
-program reads it.
+A program output is one named part of a recording, of one type: an
+`ImageOutput`, a `SpectrumOutput`, a `MosaicOutput`. Its type decides
+everything about its content: what it holds, how a program adds to it, how a
+panel reads it, and how it is written to files and read back. Core knows only
+that it has a name, belongs to a recording, can say it changed, and holds some
+memory. Everything stays in memory while the recording is open.
 
-Program outputs collect in the **library**. Panels show what's in the library
+The recordings saved into one folder form an **Experiment**: choosing where
+runs save is choosing the Experiment. With no folder set, nothing is saved. A
+note written before a run is saved with its recording. It is not a program
+input: no program reads it.
+
+A program can read the outputs of an earlier recording in the same folder. It
+names the type of output it needs, not the program that made it, so programs
+never depend on each other.
+
+Open recordings collect in the **library**. Panels show what's in the library
 and let you act on it, which sets more program inputs, and the loop repeats.
 
 ```
- ProgramInputs ──▶ Run ──▶ ProgramOutputs ──▶ Library ──▶ panels show them
-       ▲                                                        │
-       └────────────── panels set program inputs ◀──────────────┘
+ ProgramInputs ──▶ Run ──▶ Recording ──▶ Library ──▶ panels show it
+  Requests    ──▶          (its outputs)               │
+       ▲                                               │
+       └──── panels set program inputs, post requests ◀┘
 ```
 
 ## The collections
 
 A **collection** is something the app keeps in memory while it runs, holding
-the current set of one kind of thing. There are three:
+the current set of one kind of thing. There are four:
 - **Device inventory:** the hardware.
 - **ProgramInputs:** every setting's current value.
-- **Library:** the open program outputs.
+- **Requests:** commands posted for running programs, each taken once.
+- **Library:** the open recordings.
 
 Any part of the app can look in a collection, change it through its own
 operations, and be told when it changes. Collections are the only place parts
@@ -67,79 +81,89 @@ of the app meet.
 
 | Piece | What it is |
 |---|---|
-| **Device** | A piece of hardware the microscope has. Its settings are a `DeviceConfig`, whose fields each carry a `Field`. |
-| **Program** | One kind of experiment: the devices it needs, the program inputs it reads (laid out in `InputSection`s) and which of them are live, the earlier runs it reads, the outputs it publishes, and the runners that can start it. Its `run` does the work. |
-| **EarlierRun** | An earlier run in the same Experiment that a program reads, named by the `program_key` of the program that made it, never by a file. Which recording that is, the engine decides; the program only gets its outputs. |
-| **Run** | One execution of a program. It gets a copy of the program's input values as they were when it started, and the current value of each live input whenever it asks. It claims its devices and publishes into its program outputs. |
-| **RunContext** | What a running program is handed: its input values at the start, the current value of each live input (`current`), the outputs of the earlier runs it reads, its devices, its outputs, status and cancel. |
-| **Runner** | A way to start a program, such as once, continuously, or armed until a pixel is picked. The program declares it. The runner adds controls through its `RunnerContext`, and whichever panel shows the program draws them. A runner may watch program inputs. |
+| **Device** | A piece of hardware the microscope has: its identity, its settings (a `DeviceConfig`, whose fields each carry a `Field`) and maybe a connection. |
+| **Program** | One kind of experiment: the devices it needs, the program inputs it reads, the outputs it fills, the earlier outputs it reads, the requests it accepts, and the runners that can start it. Its `run` does the work. |
+| **RunContext** | What a running program is handed: its input values, the current value of its live inputs, its requests, the earlier outputs it reads, its devices, its outputs, status and cancel. |
+| **Runner** | A way to start a program, such as once, continuously, or armed until a pixel is picked. The program declares it. It may offer the user a `Control` through its `RunnerContext`. Core says only that a control exists: what it is, such as a button or a toggle, is its type, and the panel showing the program draws each by its type. A runner may watch program inputs. |
+
+A run is not a piece of core: it is the engine executing one recording.
 
 ### Program inputs: user → program
 
 | Piece | What it is |
 |---|---|
-| **ProgramInput** | The declaration of one value a program reads: a key, a default, and a `Field`. **One key means one value everywhere.** The key names the value itself, never a section or a program, and is declared once with `declare`. A second declaration of a key fails. An input declared with `persisted=False` is never written to a file: the session and recordings leave its value out, so it starts at its default each launch. Runs, programs and panels see it as usual. Every program and panel that uses the value imports that one declaration. |
-| **Field** | The rules a value follows: how it is checked (`coerce`), saved (`encode`) and loaded (`decode`). It can also supply its own `Editor` widget. Bad values raise `ParameterError`. |
-| **ProgramInputs** | The collection of current values, by key. Any part of the app may read a value, set one (checked by its `Field`) or subscribe. It is saved with the session. |
-| **ProgramInputValues** | The values one run was given when it started. A program reads them as `ctx.inputs[SOME_INPUT]`, and they go into the run's recording. |
-| **LiveValues** | The current values of one run's live inputs, as `RunContext.current` reads them. The engine fills it from `ProgramInputs` and owns the hand-off between threads, so a program sees only values and a panel never knows a run is reading. |
-| **InputSection** | A heading and the inputs under it. It is layout only: each program writes its own to group its inputs on screen. A section never appears in a key, a session or a recording. |
+| **ProgramInput** | The declaration of one value a program reads: a key, a default, and a `Field`. **One key means one value everywhere.** The key names the value itself, never a group or a program, and is declared once with `declare`. A second declaration of a key fails. Every program and panel that uses the value imports that one declaration. |
+| **Field** | The rules a value follows: how it is checked (`coerce`), saved (`encode`) and loaded (`decode`). Bad values raise `ParameterError`. How a value is edited on screen is not part of its rules. |
+| **ProgramInputs** | The collection of current values, by key. Any part of the app may read a value, set one (checked by its `Field`) or subscribe. It is saved with the session, except inputs declared `restored=False`, which start at their default each launch. |
+| **Request** | The declaration of one command a running program may accept: a key and the `Field` its posted value follows. Declared once, like a program input, and imported by the programs that accept it and the panels that post it. |
+| **Requests** | The collection where panels post requests. Each posted value is checked by its `Field` and given once to every running program that accepts it, which takes it with `ctx.requests(SOME_REQUEST)` when it chooses. |
+| **ProgramInputValues** | The values one run was given. A program reads them as `ctx.inputs[SOME_INPUT]`. Every one is saved with the recording. |
+
+A program lists its inputs flat. It may also lay them out in `cards` for the
+Acquisition panel, which is screen layout only: a card never appears in a
+key, a session or a recording. An input on no card gets no row, and with no
+cards every input is shown.
 
 ### Program outputs: program → user
 
 | Piece | What it is |
 |---|---|
-| **ProgramOutput** | One named output of one run. Every value published into it is one `Data` of its declared kind. Memory holds the latest value, where it came from (`Provenance`), and its writer. It holds no notes: what the user writes about a run belongs to the run, and the engine keeps it beside the run's recording. |
-| **Data** | One value a program produced. It is immutable, and **only programs make it**. Each kind registers in `data_kind_registry` under its name, which is how a recording on disk finds its class again. |
-| **Library** | The program outputs that are open: acquired now, or loaded from disk. Nothing else. It also names the group each output is listed under (`group_label`), so pickers can group outputs without knowing what a group is. |
-| **SaveTarget, Writer** | Where a run saves (its folder is the Experiment), and how one kind of `Data` is written to files and read back. Writers register in `writer_registry`. |
+| **Recording** | What one run produced: what made it (program, name, start time, input values, devices, the earlier recordings it read), where it is saved (or nothing, when unsaved), its note, whether it is finished, and its program outputs. Two outputs are of the same recording when their `recording` is the same object. Its folder is its Experiment. |
+| **ProgramOutput** | One named part of a recording, of one type. Each type is a subclass that owns its content, how programs add to it, how panels read it, and how it is written to files and read back. Many programs may fill the same type. Types register in `program_output_registry`, which is how a recording on disk finds them again. |
+| **Library** | The recordings that are open: acquired now, or loaded from disk. Nothing else. You can add one, close one, list them, and subscribe. |
 
 ### Views
 
 | Piece | What it is |
 |---|---|
-| **Panel** | A dock widget: something the user sees and acts in. It reads the collections and calls their operations. The Acquisition panel is one like any other. |
-| **DataPanel** | A panel that shows one program output of the kind it `renders`, chosen with a `SourcePicker`, which lists them under the library's group labels. |
-| **DevicePanel** | One device's controls and configuration, in a dock of its own. |
+| **Panel** | A dock widget: something the user sees and acts in. It reads the collections and calls their operations. The Acquisition panel is one like any other. What a panel shows, and how it picks what to show, is its own business. |
 
 ## The rules
 
 1. **Data flows one way.** Only a run, or loading a recording, creates a
-   `ProgramOutput`.
+   `Recording`.
 2. **Panels and programs never call each other.** They meet only through the
-   ProgramInputs and the Library.
+   collections.
 3. **Every panel is equal.** None is special in code. The app hands each
    panel the collections it needs.
 4. **Working state and screen state are separate.** Working state is what the
-   app is: the three collections, and where runs save. Screen state is only
-   how it's shown: dock layout, zoom, which program a panel shows. The session
-   saves them separately.
+   app is: the collections, and where runs save. Screen state is only how it's
+   shown: dock layout, zoom, which program a panel shows. The session saves
+   them separately.
 
 ## Where the specific things live
 
-Each kind of thing registers through the registry in the core file that
-defines it. Nothing else lists them.
+Each kind of thing registers through the registry in the file that defines
+its base, in core or, for panels, in `utils/widgets/`. Nothing else lists them.
 
 | To add | Put it in | Registers with |
 |---|---|---|
 | A device | `plugins/devices/` | `device_registry` |
 | A program | `plugins/programs/` | `program_registry` |
 | A program input, shared by programs and panels | `plugins/program_io/inputs/` | `declare` |
-| A kind of data, and how it is saved | `plugins/program_io/outputs/` | `data_kind_registry`, `writer_registry` |
-| A panel | `plugins/panels/` | `data_panel_registry`, `device_panel_registry` |
+| A request, shared by the programs that accept it and the panels that post it | `plugins/program_io/requests/` | (declaring it: a key is declared once) |
+| A type of program output, with its files | `plugins/program_io/outputs/`, one file each | `program_output_registry` |
+| A panel showing program outputs | `plugins/panels/` | `data_panel_registry` (`utils/widgets/data_panel.py`) |
+| A device's own panel | beside its device in `plugins/devices/` | `device_panel_registry` (`utils/widgets/device_panel.py`) |
 | A common value rule, like a whole number or a choice | `utils/value_rules/` | (none: inputs and device settings use them directly) |
+| The on-screen editor of a kind of `Field` | beside that `Field` | `editor_for` (`utils/widgets/editors.py`) |
+| A kind of runner `Control`, like a button or a toggle | `utils/controls.py` | its view, with `control_view_for` (`utils/widgets/control_views.py`) |
+
+The bases panels build on live in `utils/widgets/`: `DataPanel` with its
+`SourcePicker`, and `DevicePanel`, given its device and a `DeviceLink` to it.
+Each keeps its own registry, since each is built from different collections.
 
 ## The files
 
 | File | Holds |
 |---|---|
 | `registry.py` | `Registry` |
-| `device.py` | `Device` + `device_registry` |
-| `device_config.py` | `DeviceConfig`, and how its fields carry their `Field` |
-| `program.py` | `Program`, `EarlierRun`, `LiveValues`, `RunContext` + `program_registry` |
-| `runner.py` | `Runner`, `RunnerContext`, `Control`, `Button`, `Toggle` |
-| `program_input.py` | `ProgramInput` + `declare`, `Field`, `Editor`, `ProgramInputValues`, `ProgramInputs`, `InputSection` |
-| `program_output.py` | `ProgramOutput`, `Data` + `data_kind_registry`, `Provenance`, `Origin` |
+| `device.py` | `Device` + `device_registry`, and `DeviceConfig`, whose fields carry their `Field` |
+| `program.py` | `Program`, `RunContext` + `program_registry` |
+| `runner.py` | `Runner`, `RunnerContext`, `Control` |
+| `program_input.py` | `ProgramInput` + `declare`, `Field`, `ProgramInputValues`, `ProgramInputs` |
+| `requests.py` | `Request` + `request_registry`, `Requests` |
+| `recording.py` | `Recording` |
+| `program_output.py` | `ProgramOutput` + `program_output_registry` |
 | `library.py` | `Library` |
-| `saving.py` | `SaveTarget`, `Writer` + `writer_registry` |
-| `panels.py` | `Panel`, `DataPanel`, `SourcePicker`, `DevicePanel` + their registries. The only file here that uses Qt. |
+| `panels.py` | `Panel`. The only file here that uses Qt. |

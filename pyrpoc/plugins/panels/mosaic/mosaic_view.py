@@ -32,7 +32,7 @@ class MosaicView(QWidget):
     def __init__(self, parent: QWidget):
         super().__init__(parent)
         self.stitcher: Stitcher | None = None
-        self.stitched_id: str | None = None
+        self.stitched: object | None = None
 
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
@@ -55,12 +55,13 @@ class MosaicView(QWidget):
         root.addLayout(row)
 
     def stitch(
-        self, output_id: str, frames: Sequence[np.ndarray], layout: MosaicLayout
+        self, source: object, frames: Sequence[np.ndarray], layout: MosaicLayout
     ) -> np.ndarray:
-        """The tiles so far blended into one ``(C, H, W)`` image."""
-        if self.stitcher is None or output_id != self.stitched_id:
+        """The tiles so far of ``source``, the mosaic they came from, blended into one
+        ``(C, H, W)`` image."""
+        if self.stitcher is None or source is not self.stitched:
             self.stitcher = Stitcher(layout)
-            self.stitched_id = output_id
+            self.stitched = source
         count = min(len(frames), len(layout.tiles))
         steps = self.stitcher.steps(frames, self.fallback.value() / 100.0)
         positions = tile_positions(layout, steps, count)
@@ -71,6 +72,6 @@ class MosaicView(QWidget):
         return composite(frames, positions)
 
     def clear(self) -> None:
-        self.stitcher, self.stitched_id = None, None
+        self.stitcher, self.stitched = None, None
         self.status.setText("")
         self.image.clear_image()

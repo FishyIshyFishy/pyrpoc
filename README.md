@@ -1,60 +1,21 @@
 # pyrpoc v3.1
+With any feedback or suggestions, please reach out to sing1125@purdue.edu.
 
-Author: Ishaan Singh, Zhang Group (https://sites.google.com/view/zhangresearchgroup). With any feedback or suggestions, please reach out to sing1125@purdue.edu.
+Zhang Group (https://sites.google.com/view/zhangresearchgroup). 
 
-The instructions for install below are only for windows, as your instrument control system likely is a windows computer. If you would like instructions for a linux or mac system, please email.
+
 
 ## Installation
+The instructions here are for windows. This project uses `uv`: to get set up, follow  [Astral's instructions for installing uv](https://docs.astral.sh/uv/getting-started/installation/#__tabbed_1_2). Then, with `uv` installed:
 
-This project uses a free tool called `uv` that handles everything for you. To get set up with it on windows, install the instuctions below. 
+1. Open PowerShell (Windows start button, search PowerShell, click it). You do not need administrator mode. 
+2. Enter the command `uv tool install pyrpoc`
+3. The first install can take several minutes. Let it run, then you are good to go! To upgrade later, use `uv tool upgrade pyrpoc`
 
-1. Click the Windows start button and search for powershell. 
-2. In the list that appears, right-click on powershell and choose **run as administrator**. If a popup comes up to ask *"Do you want to allow this app to make changes?"*, click yes.
-3. Type the word **PowerShell**.
-4. Copy the line below, paste it into that window, and press enter to run the command. This command is straight from [Astral's instructions for installing uv](https://docs.astral.sh/uv/getting-started/installation/#__tabbed_1_2).
-
-   ```
-   powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
-   ```
-5. After install is complete, fully close powershell. 
-
-Now that `uv` is installed, you can install the pyrpoc software itself.
-
-1. Open PowerShell again (Windows start button → search **PowerShell** → click it). You do **not** need administrator mode. 
-2. Copy the line below, paste it into the window (right-click inside the window to paste), and press **Enter**:
-
-   ```
-   uv tool install pyrpoc
-   ```
-
-3. Wait until the text stops scrolling. This step downloads the correct version of Python and every component the software needs, so the first install can take several minutes.
-
-
-## Running the software
-
-Any time you want to open pyrpoc, open the command line and type the command `pyrpoc`. To update, also in the command line run:
-
-```
-uv tool upgrade pyrpoc
-```
+Then, any time you want to open pyrpoc, open the command line and type the command `pyrpoc`. 
 
 ## Developer installation
 
-1. Navigate to the desired project directory and clone the repository:
-   ```
-   git clone https://github.com/FishyIshyFishy/pyrpoc.git
-   cd pyrpoc
-   ```
-   
-2. Create the virtual environment and install the project in editable mode along with the development dependencies
-   ```
-   uv sync
-   ```
-   
-3. Run the software from the clone:
-   ```
-   uv run pyrpoc
-   ```
-   Add `--simulated` (`uv run pyrpoc --simulated`) to also get programs that fake their data, for working without instruments. Without the flag they don't exist.
-
-4. To type check, use `uv run pyright`. When dependencies change, adjust `pyproject.toml` and rerun `uv sync`. To add packages, use `uv add <package-name>`. To add a dev only package, use `uv add --dev <package-name>`.
+1. Clone the repository and navigate to the project root.
+2. Create the virtual environment and install the project in editable mode along with the development dependencies with `uv sync`
+3. Run the software from the clone with `uv run pyrpoc`. Use `uv run pyrpoc --simulated` when running on a personal computer to have simulated programs/acquisitions/etc. . 

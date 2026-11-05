@@ -1,54 +1,58 @@
-"""``EarlierChoices``: the recordings in the save folder that programs read, and which one
-each reads."""
+"""``EarlierChoices``: the earlier outputs in the save folder that programs can read, and which
+one each read name reads."""
 
 from __future__ import annotations
 
 from pathlib import Path
 
 from pyrpoc.core.program import program_registry
-from pyrpoc.engine.data_library.earlier import EarlierRecording, earlier_recordings
+from pyrpoc.core.program_output import ProgramOutput
+from pyrpoc.engine.data_library.earlier import EarlierOutput, Unreadable, earlier_outputs
 
 
-def read_program_keys() -> set[str]:
-    """Every program some registered program reads an earlier run of."""
-    return {each.program_key for cls in program_registry.entries.values() for each in cls.reads}
+def any_reads() -> bool:
+    """Whether some registered program reads an earlier output."""
+    return any(cls.reads for cls in program_registry.entries.values())
 
 
 class EarlierChoices:
-    """The finished recordings in one folder of each program that others read, and the one
-    picked for each. One pick per program key, shared by every program that reads it."""
+    """The earlier outputs in one folder, the recordings there that cannot be read, and the
+    one picked for each read name. A pick is shared by every program reading that name."""
 
     def __init__(self) -> None:
-        self.found: dict[str, list[EarlierRecording]] = {}
-        # Picked by the user; a key with no pick reads the latest.
-        self.picked: dict[str, Path] = {}
+        self.found: list[EarlierOutput] = []
+        self.unreadable: list[Unreadable] = []
+        # Picked by the user; a name with no pick reads the latest.
+        self.picked: dict[str, EarlierOutput] = {}
 
     def refresh(self, folder: Path | None) -> None:
         """Look again at what ``folder`` holds."""
-        keys = read_program_keys()
-        self.found = {} if folder is None or not keys else earlier_recordings(folder, keys)
-        # A pick that left the folder, or a folder that changed, goes back to the latest.
-        held = {each.meta_path for recordings in self.found.values() for each in recordings}
-        self.picked = {key: path for key, path in self.picked.items() if path in held}
-
-    def options(self, program_key: str) -> list[EarlierRecording]:
-        """The recordings of ``program_key`` to choose from, newest first."""
-        return self.found.get(program_key, [])
-
-    def picked_path(self, program_key: str) -> Path | None:
-        """The recording the user picked for ``program_key``, or None to read the latest."""
-        return self.picked.get(program_key)
-
-    def pick(self, program_key: str, meta_path: Path | None) -> None:
-        if meta_path is None:
-            self.picked.pop(program_key, None)
+        if folder is None or not any_reads():
+            self.found, self.unreadable = [], []
         else:
-            self.picked[program_key] = meta_path
+            self.found, self.unreadable = earlier_outputs(folder)
+        # A pick that left the folder, or a folder that changed, goes back to the latest.
+        self.picked = {name: each for name, each in self.picked.items() if each in self.found}
 
-    def chosen(self, program_key: str) -> Path | None:
-        """What a run of a program reading ``program_key`` reads, or None when there is
-        nothing to read."""
-        options = self.options(program_key)
+    def options(self, output_type: type[ProgramOutput]) -> list[EarlierOutput]:
+        """The outputs that are an ``output_type``, its daughter types included, newest
+        first."""
+        return [each for each in self.found if issubclass(each.output_type, output_type)]
+
+    def picked_for(self, name: str, output_type: type[ProgramOutput]) -> EarlierOutput | None:
+        """The output the user picked for ``name``, or None to read the latest."""
+        picked = self.picked.get(name)
+        return picked if picked is not None and picked in self.options(output_type) else None
+
+    def pick(self, name: str, choice: EarlierOutput | None) -> None:
+        if choice is None:
+            self.picked.pop(name, None)
+        else:
+            self.picked[name] = choice
+
+    def chosen(self, name: str, output_type: type[ProgramOutput]) -> EarlierOutput | None:
+        """What a run reads for ``name``, or None when there is nothing to read."""
+        options = self.options(output_type)
         if not options:
             return None
-        return self.picked.get(program_key, options[0].meta_path)
+        return self.picked_for(name, output_type) or options[0]

@@ -12,14 +12,35 @@ from PyQt6.QtCore import QObject, QTimer, pyqtSignal
 from PyQt6.QtGui import QAction
 
 from pyrpoc.core.device import Device
-from pyrpoc.core.panels import DevicePanel, device_panel_registry, has_panel
 from pyrpoc.engine.device_inventory.inventory import DeviceInventory
+from pyrpoc.utils.widgets.device_panel import DevicePanel, device_panel_registry, has_panel
 
 
 def dock_object_name(device: Device) -> str:
     safe = "".join(ch if ch.isalnum() or ch in {"_", "-"} else "_" for ch in device.instance_id)
     # ADS restores docks by object name, so renaming this strands saved layouts.
     return f"dock.device.{safe}"
+
+
+class InventoryLink:
+    """A device panel's way to its device's place in the inventory."""
+
+    def __init__(self, inventory: DeviceInventory, device: Device):
+        self.inventory = inventory
+        self.device = device
+
+    @property
+    def name(self) -> str:
+        return self.inventory.name(self.device)
+
+    def connect(self) -> None:
+        self.inventory.try_open_session(self.device)
+
+    def fault(self) -> str | None:
+        return self.inventory.fault(self.device)
+
+    def changed(self) -> None:
+        self.inventory.device_changed()
 
 
 class DeviceDocks(QObject):
@@ -56,7 +77,7 @@ class DeviceDocks(QObject):
             self.docks[device].raise_()
             return
         panel = device_panel_registry.get(device.registry_key)(
-            device, self.inventory.device_changed
+            device, InventoryLink(self.inventory, device)
         )
         panel.set_in_use(device in self.inventory.in_use)
         dock = qtads.CDockWidget(panel.title)
@@ -117,7 +138,7 @@ class DeviceDocks(QObject):
         self.actions_changed.emit()
 
     def make_action(self, device: Device) -> QAction:
-        action = QAction(device.name, self)
+        action = QAction(self.inventory.name(device), self)
         action.setCheckable(True)
         action.setChecked(device in self.docks)
         # Listed even without a panel, so the menu shows every device there is.

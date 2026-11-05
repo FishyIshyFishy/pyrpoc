@@ -19,11 +19,11 @@ from PyQt6.QtWidgets import (
 )
 
 from pyrpoc.core.library import Library
-from pyrpoc.core.panels import DataPanel, data_panel_registry
 from pyrpoc.core.program_input import ProgramInputs
-from pyrpoc.core.program_output import ProgramOutput
+from pyrpoc.core.requests import Requests
 from pyrpoc.plugins.program_io.inputs import PICK, PixelPick
-from pyrpoc.plugins.program_io.outputs import Image
+from pyrpoc.plugins.program_io.outputs import ImageOutput
+from pyrpoc.utils.widgets.data_panel import DataPanel, data_panel_registry
 from pyrpoc.utils.widgets.icons import asset_icon
 from pyrpoc.utils.widgets.levels import autoscale_levels, mono_levels
 
@@ -59,19 +59,21 @@ class TileState:
 
 
 @data_panel_registry.register("image")
-class ImagePanel(DataPanel[Image]):
+class ImagePanel(DataPanel[ImageOutput]):
     display_name = "Tiled channels"
     group = "2D Image Views"
     order = 21
-    renders = Image
+    renders = ImageOutput
 
-    def __init__(self, library: Library, inputs: ProgramInputs):
-        super().__init__(library, inputs)
+    def __init__(self, library: Library, inputs: ProgramInputs, requests: Requests):
+        super().__init__(library, inputs, requests)
         pg.setConfigOptions(imageAxisOrder="row-major")
         self._tiles: list[ChannelTile] = []
         self._pending_state: list[TileState] = []
         self._suspend_lut_signal = False
         self.tool: Tool | None = None
+        # The ``(C, H, W)`` image on screen.
+        self.shown_image: np.ndarray | None = None
         self.shape: Shape | None = None
         self.measure_settings = MeasureSettings()
         self.tool_buttons = self.build_tool_buttons()
@@ -133,13 +135,17 @@ class ImagePanel(DataPanel[Image]):
             if tile.measure is not source:
                 tile.measure.apply_shape(shape)
 
-    def show_value(self, program_output: ProgramOutput[Image], value: Image) -> None:
-        del program_output
-        self.sync_channel_tiles(len(value.channels))
-        for index, plane in enumerate(value.array):
+    def draw(self, program_output: ImageOutput) -> None:
+        """Draw its newest image."""
+        if not len(program_output):
+            return
+        self.shown_image = program_output[-1]
+        self.sync_channel_tiles(len(program_output.channels))
+        for index, plane in enumerate(self.shown_image):
             self.update_channel_image(index, plane)
 
     def clear(self) -> None:
+        self.shown_image = None
         self.sync_channel_tiles(0)
 
     def sync_channel_tiles(self, count: int) -> None:
@@ -225,19 +231,19 @@ class ImagePanel(DataPanel[Image]):
         # Checked against the frame: a click just outside the pixels is still
         # inside the view box, and an out-of-range pixel would park the galvos
         # outside the scan.
-        program_output, image = self.shown_output, self.shown_value
+        program_output, image = self.shown_output, self.shown_image
         if program_output is None or image is None:
             return False
-        _, height, width = image.array.shape
+        _, height, width = image.shape
         if not (0 <= x < width and 0 <= y < height):
             return False
         self.inputs.set(PICK.key, PixelPick.on(program_output, x, y))
         return True
 
     def on_autoscale_toggled(self, index: int) -> None:
-        image = self.shown_value
+        image = self.shown_image
         if image is not None:
-            self.update_channel_image(index, image.array[index])
+            self.update_channel_image(index, image[index])
 
     def on_lut_levels_changed(self, index: int) -> None:
         if self._suspend_lut_signal:

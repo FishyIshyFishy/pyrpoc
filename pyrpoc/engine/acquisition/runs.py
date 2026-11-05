@@ -3,22 +3,21 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from pathlib import Path
 
 from PyQt6.QtCore import QObject, pyqtSignal
 
 from pyrpoc.core.program import program_registry
-from pyrpoc.core.saving import SaveTarget
-from pyrpoc.engine.data_library.grouping import program_display_name
+from pyrpoc.engine.acquisition.save_target import SaveTarget
+from pyrpoc.engine.data_library.earlier import EarlierOutput
 from pyrpoc.engine.data_library.model import LibraryModel
 from pyrpoc.engine.device_inventory.inventory import DeviceInventory
 
-from . import claims
-from .earlier import EarlierChoices, read_program_keys
+from . import readiness
+from .earlier import EarlierChoices, any_reads
 from .events import RunEvents
 from .executor import Run
 from .program_inputs import ProgramInputsStore
-from .recording import Series
+from .requests import RequestsStore
 
 
 class Runs(QObject):
@@ -27,7 +26,7 @@ class Runs(QObject):
 
     save_changed = pyqtSignal()
     note_changed = pyqtSignal()
-    # The recordings programs can read changed, or which one is picked.
+    # The earlier outputs programs can read changed, or which one is picked.
     earlier_changed = pyqtSignal()
     # What a program needs may have arrived or gone: a device, or a name to save under.
     readiness_changed = pyqtSignal()
@@ -39,16 +38,18 @@ class Runs(QObject):
         inventory: DeviceInventory,
         library: LibraryModel,
         inputs: ProgramInputsStore,
+        requests: RequestsStore,
         parent: QObject,
     ):
         super().__init__(parent)
         self.inventory = inventory
         self.inputs = inputs
+        self.requests = requests
         self.save = SaveTarget()
         # The note for the next run. Run metadata, not a program input: no program reads it.
         self.note = ""
         self.earlier = EarlierChoices()
-        self.events = RunEvents(library.store, self)
+        self.events = RunEvents(library.store, requests, self)
         self.live_runs: set[Run] = set()
         self.events.run_started.connect(self.on_run_started)
         self.events.run_finished.connect(self.on_run_finished)
@@ -56,7 +57,7 @@ class Runs(QObject):
         self.save_changed.connect(self.readiness_changed.emit)
         self.earlier_changed.connect(self.readiness_changed.emit)
 
-    def start(self, program_key: str, series: Series | None, claim: Callable[[Run], None]) -> None:
+    def start(self, program_key: str, repeat: bool, claim: Callable[[Run], None]) -> None:
         """Start ``program_key`` with what the workbench holds right now, or report
         why not through ``events.start_refused``. A run that starts takes the note."""
         program = program_registry.get(program_key)()
@@ -68,7 +69,7 @@ class Runs(QObject):
             self.save,
             self.note,
             self.chosen_earlier(program_key),
-            series,
+            repeat,
             claim,
         )
         # Cleared so one note is never copied onto runs it was not written for.
@@ -77,41 +78,30 @@ class Runs(QObject):
 
     def blockers(self, program_key: str) -> list[str]:
         """What has to be supplied before ``program_key`` can run."""
-        required = list(program_registry.get(program_key).devices)
-        missing = [cls.display_name for cls in claims.missing(required, self.inventory.devices)]
-        if self.save.enabled and self.save.folder is None:
-            missing.append("a folder to save into")
-        if self.save.enabled and not self.save.filename:
-            missing.append("a name to save under")
-        for each in program_registry.get(program_key).reads:
-            if self.earlier.chosen(each.program_key) is None:
-                missing.append(self.missing_earlier(each.program_key))
-        return missing
+        return readiness.missing(
+            program_registry.get(program_key),
+            self.inventory.devices,
+            self.save,
+            self.chosen_earlier(program_key),
+        )
 
-    def missing_earlier(self, program_key: str) -> str:
-        """How a blocker names an earlier run with nothing to read."""
-        name = program_display_name(program_key)
-        if self.save.folder is None:
-            return f"a folder with {name} saved in it"
-        return f"{name} saved in this folder"
-
-    def chosen_earlier(self, program_key: str) -> dict[str, Path]:
-        """The recording each earlier run ``program_key`` reads would be read from now."""
-        chosen: dict[str, Path] = {}
-        for each in program_registry.get(program_key).reads:
-            path = self.earlier.chosen(each.program_key)
-            if path is not None:
-                chosen[each.program_key] = path
+    def chosen_earlier(self, program_key: str) -> dict[str, EarlierOutput]:
+        """The earlier output each name ``program_key`` reads would be read from now."""
+        chosen: dict[str, EarlierOutput] = {}
+        for name, output_type in program_registry.get(program_key).reads.items():
+            choice = self.earlier.chosen(name, output_type)
+            if choice is not None:
+                chosen[name] = choice
         return chosen
 
     def refresh_earlier(self) -> None:
-        """Look again at the recordings in the save folder that programs read."""
+        """Look again at the earlier outputs in the save folder."""
         self.earlier.refresh(self.save.folder)
         self.earlier_changed.emit()
 
-    def pick_earlier(self, program_key: str, meta_path: Path | None) -> None:
-        """Read ``meta_path`` wherever ``program_key`` is read, or the latest when None."""
-        self.earlier.pick(program_key, meta_path)
+    def pick_earlier(self, name: str, choice: EarlierOutput | None) -> None:
+        """Read ``choice`` wherever ``name`` is read, or the latest when None."""
+        self.earlier.pick(name, choice)
         self.earlier_changed.emit()
 
     def set_save(
@@ -145,13 +135,14 @@ class Runs(QObject):
         self.edited.emit()
 
     def on_run_finished(self, run: Run) -> None:
-        # Here, on the thread program inputs are set on, so no change lands mid-close.
+        # Here, on the thread program inputs are set and requests posted on, so neither lands
+        # mid-close.
         run.live.close()
+        self.requests.close(run.inbox)
         self.live_runs.discard(run)
         self.publish_in_use()
-        # Only a saved run of a program others read can change what they read.
-        saved = run.recording.saver is not None
-        if saved and run.provenance.program_key in read_program_keys():
+        # Only a saved run can change what later runs read.
+        if run.saver is not None and any_reads():
             self.refresh_earlier()
 
     def publish_in_use(self) -> None:

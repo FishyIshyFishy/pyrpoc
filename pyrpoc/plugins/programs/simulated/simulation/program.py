@@ -11,9 +11,8 @@ from functools import reduce
 import numpy as np
 
 from pyrpoc.core.program import Program, RunContext
-from pyrpoc.core.program_input import InputSection
 from pyrpoc.plugins.program_io.inputs import MASK_LINES, MASKS, NUM_FRAMES, X_PIXELS, Y_PIXELS, Mask
-from pyrpoc.plugins.program_io.outputs import Image
+from pyrpoc.plugins.program_io.outputs import ImageOutput
 
 from ...building_blocks.functions.run_loops import count_off
 from ...building_blocks.runners import Continuous, Single
@@ -74,17 +73,39 @@ class Simulation(Program):
     group = "Simulations"
     order = 20
     devices = []
-    sections = [
-        InputSection("Frame", (X_PIXELS, Y_PIXELS, SIMULATED_CHANNELS)),
-        InputSection("Frames", (NUM_FRAMES,)),
-        InputSection(
-            "Signal",
-            (SIGNAL_PATTERN, SIGNAL_LEVEL, NOISE_LEVEL, DRIFT_PIXELS_PER_FRAME, MASK_GAIN),
-        ),
-        InputSection("Modulation", (MASKS, MASK_LINES)),
-        InputSection("Pacing", (FRAME_INTERVAL_MS,)),
+    inputs = [
+        X_PIXELS,
+        Y_PIXELS,
+        SIMULATED_CHANNELS,
+        NUM_FRAMES,
+        SIGNAL_PATTERN,
+        SIGNAL_LEVEL,
+        NOISE_LEVEL,
+        DRIFT_PIXELS_PER_FRAME,
+        MASK_GAIN,
+        MASKS,
+        MASK_LINES,
+        FRAME_INTERVAL_MS,
     ]
-    emits = {"intensity": Image}
+    # MASKS has no row: masks are drawn and edited in a Mask Editor.
+    cards = {
+        "Frame": (
+            X_PIXELS,
+            Y_PIXELS,
+            SIMULATED_CHANNELS,
+        ),
+        "Frames": (NUM_FRAMES,),
+        "Signal": (
+            SIGNAL_PATTERN,
+            SIGNAL_LEVEL,
+            NOISE_LEVEL,
+            DRIFT_PIXELS_PER_FRAME,
+            MASK_GAIN,
+        ),
+        "Modulation": (MASK_LINES,),
+        "Pacing": (FRAME_INTERVAL_MS,),
+    }
+    emits = {"intensity": ImageOutput}
     runners = [Single(), Continuous()]
 
     def run(self, ctx: RunContext) -> None:
@@ -98,5 +119,5 @@ class Simulation(Program):
 
         for index in count_off(ctx, ctx.inputs[NUM_FRAMES], "frame"):
             frame = synthetic_frame(frame_shape, signal, seed=seed, frame_index=index, lit=lit)
-            ctx.publish("intensity", Image(frame, labels))
+            ctx.output("intensity", ImageOutput).add(frame, labels)
             ctx.sleep(interval_ms / 1000.0)

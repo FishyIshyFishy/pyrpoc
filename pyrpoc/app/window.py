@@ -17,7 +17,7 @@ from pyrpoc.app.application import Application
 from pyrpoc.app.device_docks import DeviceDocks
 from pyrpoc.app.menubar import MainMenuBar
 from pyrpoc.app.theme.manager import ThemeController
-from pyrpoc.core.panels import DataPanel, Panel, has_panel
+from pyrpoc.core.panels import Panel
 from pyrpoc.core.program_output import ProgramOutput
 from pyrpoc.core.registry import grouped
 from pyrpoc.engine.acquisition.panel import AcquisitionPanel
@@ -26,6 +26,8 @@ from pyrpoc.engine.device_inventory.panel import DevicesPanel
 
 # Importing the plugins registers every device, program and panel.
 from pyrpoc.plugins import data_panel_registry, device_registry
+from pyrpoc.utils.widgets.data_panel import DataPanel
+from pyrpoc.utils.widgets.device_panel import has_panel
 
 qtads.CDockManager.setConfigFlag(qtads.CDockManager.eConfigFlag.DisableTabTextEliding, True)
 qtads.CDockManager.setConfigFlag(qtads.CDockManager.eConfigFlag.OpaqueSplitterResize, False)
@@ -165,7 +167,9 @@ class MainWindow(QWidget):
 
     def add_panel_of_type(self, key: str) -> None:
         """Add one, from the menu."""
-        self.add_panel(data_panel_registry.get(key)(self.app.library, self.app.inputs))
+        self.add_panel(
+            data_panel_registry.get(key)(self.app.library, self.app.inputs, self.app.requests)
+        )
 
     def add_panel(self, panel: DataPanel) -> None:
         self.add_panel_dock(panel)
@@ -206,7 +210,7 @@ class MainWindow(QWidget):
         taken = {
             number
             for other, number in self.panel_ordinals.items()
-            if other.type_key == panel.type_key
+            if other.registry_key == panel.registry_key
         }
         number = 1
         while number in taken:

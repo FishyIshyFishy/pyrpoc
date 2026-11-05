@@ -10,12 +10,10 @@ back to back, to follow how the spectrum shifts as the dye bleaches."""
 from __future__ import annotations
 
 import time
-from typing import Any
 
 import numpy as np
 
 from pyrpoc.core.program import Program, RunContext, program_registry
-from pyrpoc.core.program_input import InputSection
 from pyrpoc.plugins.devices import DAQ, AndorCCD, Galvo
 from pyrpoc.plugins.program_io.inputs import (
     CCD_EXPOSURE_S,
@@ -29,16 +27,13 @@ from pyrpoc.plugins.program_io.inputs import (
     ScanGeometry,
     rate_hz,
 )
-from pyrpoc.plugins.program_io.outputs import Spectrum
+from pyrpoc.plugins.program_io.outputs import SpectrumSeriesOutput
 from pyrpoc.plugins.programs.building_blocks.functions.ccd_read import spectrum_readout
 
 from ..building_blocks.functions.ccd_read import configure_spectrum, read_spectrum
 from ..building_blocks.functions.daq_tasks import sweeping
 from ..building_blocks.functions.galvo_raster import pixel_samples
 from ..building_blocks.functions.roi_scan import (
-    Box,
-    region_layout,
-    region_source,
     roi_region,
     roi_waveform,
     row_spans,
@@ -49,17 +44,11 @@ from ..building_blocks.runners import Single
 
 def plan_sweep(
     scan: ScanGeometry, masks: tuple[Mask, ...], center_fraction: float, sample_rate_hz: float
-) -> tuple[np.ndarray, dict[str, Any]]:
-    """The region's looping waveform, and what the recording says of it. The
-    dwell is the one played, which truncates to whole samples."""
+) -> np.ndarray:
+    """The region's looping waveform."""
     samples_per_pixel = pixel_samples(scan.dwell_time_us, sample_rate_hz)
     spans = row_spans(roi_region(masks, center_fraction, scan))
-    waveform = roi_waveform(scan, spans, samples_per_pixel)
-    pixels_swept = waveform.shape[1] // samples_per_pixel
-    metadata = region_layout(region_source(masks), spans, Box.around(spans), pixels_swept)
-    metadata["dwell_s"] = samples_per_pixel / sample_rate_hz
-    metadata["period_s"] = waveform.shape[1] / sample_rate_hz
-    return waveform, metadata
+    return roi_waveform(scan, spans, samples_per_pixel)
 
 
 @program_registry.register("roi_spectral_series")
@@ -68,36 +57,46 @@ class RoiSpectralSeries(Program):
     group = "Custom"
     order = 50
     devices = [Galvo, AndorCCD]
-    sections = [
-        InputSection("Scan", SCAN_GEOMETRY_INPUTS),
-        InputSection("DAQ", (SAMPLE_RATE_MHZ,)),
-        InputSection("Region", (MASKS, CENTER_REGION_FRACTION)),
-        InputSection("Frames", (NUM_FRAMES,)),
-        InputSection("CCD Readout", (CCD_EXPOSURE_S, CCD_FRAMES_TO_AVERAGE)),
+    inputs = [
+        *SCAN_GEOMETRY_INPUTS,
+        SAMPLE_RATE_MHZ,
+        MASKS,
+        CENTER_REGION_FRACTION,
+        NUM_FRAMES,
+        CCD_EXPOSURE_S,
+        CCD_FRAMES_TO_AVERAGE,
     ]
-    emits = {"spectrum": Spectrum}
+    # MASKS has no row: masks are drawn and edited in a Mask Editor.
+    cards = {
+        "Scan": SCAN_GEOMETRY_INPUTS,
+        "DAQ": (SAMPLE_RATE_MHZ,),
+        "Region": (CENTER_REGION_FRACTION,),
+        "Frames": (NUM_FRAMES,),
+        "CCD Readout": (
+            CCD_EXPOSURE_S,
+            CCD_FRAMES_TO_AVERAGE,
+        ),
+    }
+    emits = {"spectrum": SpectrumSeriesOutput}
     # Once only: each start is one bleaching series of a set length.
     runners = [Single()]
 
     def run(self, ctx: RunContext) -> None:
         sample_rate_hz = rate_hz(ctx.inputs)
-        waveform, sweep = plan_sweep(
+        waveform = plan_sweep(
             ScanGeometry.from_inputs(ctx.inputs),
             ctx.inputs[MASKS],
             ctx.inputs[CENTER_REGION_FRACTION],
             sample_rate_hz,
         )
-        ctx.describe("spectrum", sweep=sweep)
         ccd = ctx.devices[AndorCCD]
         readout = spectrum_readout(ctx.inputs)
         # Before the sweep, so the first read starts as soon as the region is swept.
         configure_spectrum(ctx, ccd, readout, "spectrum")
-        times: list[list[float]] = []
+        series = ctx.output("spectrum", SpectrumSeriesOutput)
         # The DAQ is bound though ``devices`` does not name it: claims follow ``backed_by``.
         with sweeping(ctx.devices[DAQ], ctx.devices[Galvo], waveform, sample_rate_hz) as began:
             for _ in count_off(ctx, ctx.inputs[NUM_FRAMES], "spectrum"):
                 start = time.monotonic() - began
                 read_spectrum(ctx, ccd, readout, "spectrum")
-                times.append([start, time.monotonic() - began])
-                # Every frame, so a run cut short still says when its spectra were taken.
-                ctx.describe("spectrum", frame_times_s=times)
+                series.mark_time(start, time.monotonic() - began)

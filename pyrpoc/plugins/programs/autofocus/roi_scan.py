@@ -4,7 +4,6 @@ its bounding box so it can be scored for focus."""
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
 
 import cv2
 import numpy as np
@@ -24,7 +23,6 @@ from ..building_blocks.functions.galvo_raster import pixel_samples
 from ..building_blocks.functions.roi_scan import (
     Box,
     RowSpan,
-    region_layout,
     roi_region,
     roi_waveform,
     row_spans,
@@ -107,8 +105,3 @@ class RoiRaster:
         """One region scan as a ``(C, H, W)`` frame of the bounding box."""
         raw = acquire(self.daq, self.galvo, self.waveform, {}, self.sample_rate_hz)
         return place_rows(raw, self.scan, self.spans, self.samples_per_pixel, self.box)
-
-    def layout_metadata(self, source: str) -> dict[str, Any]:
-        """Where the published frame sits on the full scan grid."""
-        pixels_swept = int(self.waveform.shape[1] // self.samples_per_pixel)
-        return region_layout(source, self.spans, self.box, pixels_swept)

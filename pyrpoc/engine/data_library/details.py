@@ -1,4 +1,4 @@
-"""One library entry's metadata, read-only, and its run's note, editable."""
+"""One recording's metadata, read-only, and its note, editable."""
 
 from __future__ import annotations
 
@@ -19,9 +19,9 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from pyrpoc.core.program_output import ProgramOutput
+from pyrpoc.core.recording import Recording
 
-from .grouping import program_display_name
+from .grouping import program_display_name, recording_title
 
 
 def local_time(iso: str) -> str:
@@ -37,26 +37,23 @@ def add_branch(parent: QTreeWidgetItem, key: str, value: Any) -> None:
 
 
 class DetailsDialog(QDialog):
-    """``save_note`` stores the run's note and returns why it could not reach the
-    recording's file, or None."""
+    """One recording's metadata and its outputs, read-only, and its note, editable.
+    ``save_note`` stores the note and returns why it could not reach the recording's file, or
+    None."""
 
     def __init__(
-        self,
-        program_output: ProgramOutput[Any],
-        note: str,
-        save_note: Callable[[str], str | None],
-        parent: QWidget,
+        self, recording: Recording, save_note: Callable[[str], str | None], parent: QWidget
     ):
         super().__init__(parent)
         self.save_note = save_note
-        self.setWindowTitle(f"{program_output.run_name} · {program_output.name}")
+        self.setWindowTitle(recording_title(recording))
         self.resize(560, 640)
 
         root = QVBoxLayout(self)
-        root.addLayout(self.build_summary(program_output))
-        root.addWidget(self.build_tree(program_output), 2)
-        root.addWidget(QLabel("Note (one per run, shared by all its outputs)", self))
-        self.notes_edit = QPlainTextEdit(note, self)
+        root.addLayout(self.build_summary(recording))
+        root.addWidget(self.build_tree(recording), 2)
+        root.addWidget(QLabel("Note", self))
+        self.notes_edit = QPlainTextEdit(recording.note, self)
         self.notes_edit.setPlaceholderText("What happened in this run, and anything to remember.")
         root.addWidget(self.notes_edit, 1)
 
@@ -67,22 +64,16 @@ class DetailsDialog(QDialog):
         buttons.rejected.connect(self.reject)
         root.addWidget(buttons)
 
-    def build_summary(self, program_output: ProgramOutput[Any]) -> QFormLayout:
-        value = program_output.value
+    def build_summary(self, recording: Recording) -> QFormLayout:
+        outputs = ", ".join(
+            f"{name} ({output.type_key})" for name, output in recording.outputs.items()
+        )
         rows = [
-            ("Name", program_output.run_name),
-            ("Output", f"{program_output.name} ({program_output.kind.name})"),
-            ("Program", program_display_name(program_output.provenance.program_key)),
-            ("Origin", program_output.origin.value),
-            ("Started", local_time(program_output.provenance.started_at)),
-            ("Published", str(program_output.published)),
-            ("Value", "-" if value is None else value.summary()),
-            (
-                "File",
-                str(program_output.meta_path)
-                if program_output.meta_path is not None
-                else "Not saved",
-            ),
+            ("Name", recording_title(recording)),
+            ("Program", program_display_name(recording.program_key)),
+            ("Started", local_time(recording.started_at)),
+            ("Outputs", outputs or "-"),
+            ("File", str(recording.location) if recording.location is not None else "Not saved"),
         ]
         form = QFormLayout()
         for label, text in rows:
@@ -91,16 +82,11 @@ class DetailsDialog(QDialog):
             form.addRow(f"{label}:", value)
         return form
 
-    def build_tree(self, program_output: ProgramOutput[Any]) -> QTreeWidget:
-        """Parameters, devices and what the program described, as they were
-        when the recording started."""
+    def build_tree(self, recording: Recording) -> QTreeWidget:
+        """Parameters and devices, as they were when the recording started."""
         tree = QTreeWidget(self)
         tree.setHeaderLabels(["Setting", "Value"])
-        sections = {
-            "Parameters": program_output.provenance.parameters,
-            "Devices": program_output.provenance.devices,
-            "Program metadata": program_output.metadata,
-        }
+        sections = {"Parameters": recording.parameters, "Devices": recording.devices}
         for title, values in sections.items():
             section = QTreeWidgetItem(tree, [title, ""])
             for key, value in values.items():

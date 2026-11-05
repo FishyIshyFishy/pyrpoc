@@ -1,11 +1,10 @@
-"""Brightfield: grab frames from the camera and publish them like confocal ones."""
+"""Brightfield: grab frames from the camera and add them to an image output like confocal ones."""
 
 from __future__ import annotations
 
 import numpy as np
 
 from pyrpoc.core.program import Program, RunContext, program_registry
-from pyrpoc.core.program_input import InputSection
 from pyrpoc.plugins.devices import ToupcamCamera
 from pyrpoc.plugins.program_io.inputs import (
     CAMERA_BINNED,
@@ -14,7 +13,7 @@ from pyrpoc.plugins.program_io.inputs import (
     NUM_FRAMES,
     CameraSettings,
 )
-from pyrpoc.plugins.program_io.outputs import Image
+from pyrpoc.plugins.program_io.outputs import ImageOutput
 
 from ..building_blocks.functions.run_loops import count_off
 from ..building_blocks.runners import Continuous, Single
@@ -23,7 +22,7 @@ from ..building_blocks.runners import Continuous, Single
 def to_grey(frame: np.ndarray) -> np.ndarray:
     """An ``(H, W, 3)`` colour frame as a one-channel ``(1, H, W)`` image."""
     # An unweighted mean, so the SDK's channel order (BGR or RGB) cannot skew it. TODO: make
-    # colour readout configurable, publishing the three planes as R/G/B channels of the Image once
+    # colour readout configurable, adding the three planes as R/G/B channels of the image once
     # the SDK's channel order is checked.
     return frame.mean(axis=2, dtype=np.float32)[None]
 
@@ -34,11 +33,16 @@ class Brightfield(Program):
     group = "Brightfield"
     order = 50
     devices = [ToupcamCamera]
-    sections = [
-        InputSection("Camera", (CAMERA_EXPOSURE_MS, CAMERA_GAIN_PCT, CAMERA_BINNED)),
-        InputSection("Frames", (NUM_FRAMES,)),
-    ]
-    emits = {"intensity": Image}
+    inputs = [CAMERA_EXPOSURE_MS, CAMERA_GAIN_PCT, CAMERA_BINNED, NUM_FRAMES]
+    cards = {
+        "Camera": (
+            CAMERA_EXPOSURE_MS,
+            CAMERA_GAIN_PCT,
+            CAMERA_BINNED,
+        ),
+        "Frames": (NUM_FRAMES,),
+    }
+    emits = {"intensity": ImageOutput}
     runners = [Single(), Continuous()]
 
     def run(self, ctx: RunContext) -> None:
@@ -51,6 +55,7 @@ class Brightfield(Program):
         )
         try:
             for _ in count_off(ctx, ctx.inputs[NUM_FRAMES], "frame"):
-                ctx.publish("intensity", Image(to_grey(camera.grab(ctx.sleep)), ["brightfield"]))
+                frame = to_grey(camera.grab(ctx.sleep))
+                ctx.output("intensity", ImageOutput).add(frame, ["brightfield"])
         finally:
             camera.stop()

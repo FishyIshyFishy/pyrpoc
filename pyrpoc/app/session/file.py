@@ -14,7 +14,8 @@ from pyrpoc.core.program_input import ParameterError
 
 log = logging.getLogger(__name__)
 
-# Bump when the shape changes; a session of any other version is not read.
+# Bump when the shape changes, do not read previous sessions
+# TODO: perhaps some sort of backwards compat here would be good? Low priority.
 SCHEMA_VERSION = 11
 
 # What malformed session JSON raises on its way into the application.
