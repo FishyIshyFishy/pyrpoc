@@ -140,17 +140,15 @@ from hardware.
 These register only through `register()`, which `main.add_simulations()` calls
 next to the simulated programs.
 
-- [ ] **Simulated Dish:** a device that owns one `Dish` and its settings. The
-  dish lives as long as the device does, so its cells, dose and drift carry
-  over from run to run, as a real sample's would.
-- [ ] **Simulated Scanner,** `backed_by` the Simulated Dish:
-  - "scan this region in volts at this many pixels and this dwell, and return
-    the frame";
-  - an optional "scan this ROI" with a mask, for autofocus.
-- [ ] **Simulated Stage,** `backed_by` the Simulated Dish: the move and
-  position calls programs use on the Prior stage, in µm, plus z.
-- [ ] Each device answers in the dish's time. Its `wait` and `sleep` take dish
-  seconds, so the faster clock shortens real waits.
+- [ ] **Simulated Dish:** a device that owns one `Dish` and its settings, and the stage
+  the dish sits on. Its stage calls are named as the Prior stage's are
+  (`xy_position`, `move_xy_to`, `move_z_to`, `wait_until_stopped`,
+  `stop_smoothly`). Its panel shows the settings, moves the stage and shows
+  the dish's time. The dish lives as long as the device does, so cells, dose
+  and drift carry over from run to run, as a real sample's would.
+- [ ] **Simulated Scanner,** `backed_by` the Simulated Dish: "scan these volts
+  at this dwell and return the frame", taking as long as the scan would.
+- [ ] Waits are in dish seconds, so the faster clock shortens real waits.
 
 ### Simulated programs
 
@@ -193,7 +191,7 @@ input.
   residual, the channel and feature used, and the scan it used. It's small and
   goes in the recording's metadata.
 - [ ] **Real version:** the existing `Raster` and the Prior stage.
-- [ ] **Simulated version:** the Simulated Scanner and Simulated Stage.
+- [ ] **Simulated version:** the Simulated Scanner and Simulated Dish.
 - [ ] **Done when:** on the dish, the measured µm per volt is within 2% of the
   true value on both axes, and a field with nothing in it fails with a clear
   message.

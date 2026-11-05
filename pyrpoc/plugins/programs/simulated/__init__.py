@@ -1,12 +1,12 @@
-"""Programs that fake their data, for working without instruments, with the
-program inputs and fake detector only they use. Only ``pyrpoc --simulated``
-imports this package."""
+"""Programs that acquire from the simulated dish or fake their data, for working without
+instruments, with the program inputs and fake detector only they use. Only
+``pyrpoc --simulated`` imports this package."""
 
 from __future__ import annotations
 
 from pyrpoc.core.program import program_registry
 
-from .mosaic_simulation.program import MosaicSimulation
+from .confocal.program import SimulatedConfocal
 from .simulation.program import Simulation
 
 
@@ -15,4 +15,4 @@ def register() -> None:
     # Registered here rather than where each is defined, so they exist only
     # when this is called.
     program_registry.add("simulation", Simulation)
-    program_registry.add("mosaic_simulation", MosaicSimulation)
+    program_registry.add("simulated_confocal", SimulatedConfocal)
