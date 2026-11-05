@@ -29,7 +29,7 @@ class SimulatedSurvey(Program):
     emits = SURVEY_EMITS
     runners = [Single()]
     # Each step of the pipeline starts in a folder holding only the steps before it.
-    checks = [CleanFolder()]
+    checks = [CleanFolder(carries_on=False)]
 
     def run(self, ctx: RunContext) -> None:
         # The simulated scanner has no mirrors to turn around, so no overscan.

@@ -1,19 +1,15 @@
-"""``Steering``: what the user asked of a loop since it last looked, read between its steps."""
+"""``Steering``: the changes to its units a loop is asked for, read between its steps."""
 
 from __future__ import annotations
 
 from typing import Protocol
 
-from pyrpoc.plugins.program_io.outputs import Unit
+from pyrpoc.plugins.program_io.requests import UnitCommand
 
 
 class Steering(Protocol):
-    """The units to run now, those paused, and those asked to run at once."""
+    """Where a loop's unit commands come from, whoever gives them: a person or software."""
 
-    def units(self) -> tuple[Unit, ...]: ...
-
-    def paused(self) -> frozenset[int]: ...
-
-    def run_now(self) -> list[int]:
-        """The units asked to run at once since the loop last looked."""
+    def commands(self) -> list[UnitCommand]:
+        """The commands given since the loop last looked, oldest first."""
         ...

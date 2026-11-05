@@ -1,31 +1,56 @@
-"""The orchestrator: runs every unit's routines, the earliest due step first, tracking each unit
-and keeping focus before it is scanned, and logging everything it does."""
+"""The orchestrator: runs every unit's routines, the earliest due step first, takes the commands
+that change its units between steps, and logs everything it does."""
 
 from __future__ import annotations
 
 from collections.abc import Sequence
-from dataclasses import dataclass
-from typing import Any
-
-import numpy as np
+from dataclasses import dataclass, replace
 
 from pyrpoc.core.program_input import ParameterError
-from pyrpoc.plugins.program_io.outputs import FrameTag, LoopEvent, Unit
+from pyrpoc.plugins.program_io.outputs import (
+    CommandRefused,
+    LoopFinished,
+    LoopResumed,
+    LoopStarted,
+    Measured,
+    RoutineEnded,
+    RoutineFailed,
+    RunNowAsked,
+    StepDue,
+    Unit,
+    UnitEdited,
+    UnitJoined,
+    UnitLeft,
+    UnitPaused,
+    UnitRecord,
+    UnitResumed,
+)
+from pyrpoc.plugins.program_io.requests import (
+    AddUnit,
+    EditUnit,
+    PauseUnit,
+    RemoveUnit,
+    ResumeUnit,
+    RunUnitNow,
+    UnitCommand,
+    command_key,
+)
 
-from ....focus.tenengrad import tenengrad
-from ...analysis.content import content_channels, content_region
 from ...interfaces.field import FieldOfView
 from ...interfaces.microscope import Microscope
 from ...interfaces.progress import Progress
 from .focus_keeper import FocusKeeper
 from .queue import Queue, Thread
-from .routine import Record, RoutineSpec, Scan, Seen, Step, Wait
+from .resume import Resumption
+from .roster import Roster
+from .routine import NO_HISTORY, Record, RoutineSpec, Scan, Step, Wait
+from .scanning import UnitScanner
 from .sink import LoopSink
 from .steering import Steering
 from .survey_map import SurveyMap
-from .tracking import Track, Tracker, crop_centred, outline_mask, start_track, window_px
+from .tracking import Track, Tracker, placed_track, start_track, window_px
 
-# The longest the loop waits at once, so edits and stops are taken up promptly.
+# The longest the loop waits at once, so commands and stops are taken up promptly.
 IDLE_S = 1.0
 
 
@@ -41,14 +66,17 @@ class LoopSetup:
     routines: tuple[RoutineSpec, ...]
 
 
+def fits(unit: Unit, field: FieldOfView) -> bool:
+    """Whether ``unit``, with its margin, fits in one field."""
+    return max(window_px(unit, field.um_per_px)) <= field.pixels
+
+
 def check_units(units: Sequence[Unit], field: FieldOfView) -> None:
-    """Refuse units the loop cannot run: none at all, or one larger than a field."""
+    """Refuse starting units the loop cannot run: none at all, or one larger than a field."""
     if not units:
-        raise ParameterError("needs at least one unit: draw them over the survey in Autonomy")
-    for unit in units:
-        height, width = window_px(unit, field.um_per_px)
-        if max(height, width) > field.pixels:
-            raise ParameterError(f"unit {unit.id} is larger than one field of view")
+        raise ParameterError("needs at least one unit drawn over the survey")
+    if not all(fits(unit, field) for unit in units):
+        raise ParameterError("a unit is larger than one field of view")
 
 
 class Orchestrator:
@@ -67,54 +95,72 @@ class Orchestrator:
         self.setup = setup
         self.sink = sink
         self.steering = steering
-        self.field = setup.field
-        self.scan = setup.field.scan()
-        self.tracker = Tracker(setup.field, setup.survey.motion)
+        tracker = Tracker(setup.field, setup.survey.motion)
         self.focus = FocusKeeper(setup.survey.focus, setup.focus_check_s, setup.final_step_um)
+        self.scanner = UnitScanner(scope, setup.field, tracker, self.focus, sink)
         self.queue = Queue()
+        self.roster = Roster(())
         self.tracks: dict[int, Track] = {}
-        self.frames: dict[str, int] = {}
-        self.lost: set[int] = set()
-        # Every unit run on, as drawn when it started, removed ones too: their frames remain.
-        self.ran: dict[int, Unit] = {}
-        self.paused: frozenset[int] = frozenset()
 
-    def add_unit(self, unit: Unit, now_s: float) -> None:
-        """Start tracking ``unit`` from the survey, and start each routine for it."""
-        seen = self.setup.survey.seen_at(unit)
-        self.tracks[unit.id] = start_track(unit, self.setup.survey.overview, self.field, seen)
-        x, y = unit.centre
-        outline = [list(point) for point in unit.outline]
-        details = {"group": unit.group, "outline": outline, "x_um": x, "y_um": y}
-        self.log_event("added", unit.id, "", details)
-        self.ran[unit.id] = unit
-        self.sink.keep_units(tuple(self.ran.values()))
-        for spec in self.setup.routines:
-            thread = Thread(unit.id, spec.name, spec.start(unit), now_s)
-            self.queue.add(thread)
-            self.log("due", thread, due_s=now_s)
-
-    def log(self, event: str, thread: Thread | None, **details: Any) -> None:
-        unit = None if thread is None else thread.unit
-        routine = "" if thread is None else thread.routine
-        self.log_event(event, unit, routine, details)
-
-    def log_event(
-        self, event: str, unit: int | None, routine: str, details: dict[str, Any]
-    ) -> None:
-        self.sink.log(LoopEvent(self.scope.now(), event, unit, routine, details))
-
-    def run(self, units: Sequence[Unit]) -> None:
-        """Run every thread of ``units``, and of units added since, to its end, or until the
-        run is stopped."""
-        routines = [r.name for r in self.setup.routines]
-        self.log("start", None, channels=list(self.scope.channel_labels), routines=routines)
+    def start(self, units: Sequence[Unit]) -> None:
+        """Start afresh on ``units``."""
+        names = tuple(spec.name for spec in self.setup.routines)
         now = self.scope.now()
+        self.sink.log(LoopStarted(now, tuple(self.scope.channel_labels), names))
         for unit in units:
-            self.add_unit(unit, now)
+            self.join(unit, now)
+        self.sink.keep_units(self.roster.records())
+
+    def resume(self, reached: Resumption) -> None:
+        """Carry on from where a loop cut short had reached."""
+        self.roster = Roster(reached.records.values())
+        self.focus.offset_um = reached.focus_offset_um
+        if reached.focus_checked_s is not None:
+            self.focus.checked_s = reached.focus_checked_s
+        self.sink.log(LoopResumed(self.scope.now()))
+        for record in self.roster.records():
+            if record.left_s is None:
+                self.carry_on(record, reached)
+        self.sink.keep_units(self.roster.records())
+
+    def carry_on(self, record: UnitRecord, reached: Resumption) -> None:
+        """Track ``record``'s unit from where it was last known to be, and carry on each of its
+        routines that had not ended."""
+        placed = reached.placed[record.number]
+        if placed is None:
+            self.tracks[record.number] = self.survey_track(record.unit)
+        else:
+            at = record.unit.moved_to(placed.x_um, placed.y_um)
+            self.tracks[record.number] = placed_track(at, placed.seen_s)
+        for spec in self.setup.routines:
+            progress = reached.threads.get((record.number, spec.name))
+            if progress is None or progress.ended:
+                continue
+            steps = spec.start(record.unit, progress.history())
+            thread = Thread(record.number, spec.name, steps, progress.due_s)
+            thread.paused = record.paused
+            self.queue.add(thread)
+            self.scanner.frames[thread.key] = progress.frames
+
+    def survey_track(self, unit: Unit) -> Track:
+        """A track from the survey's overview, where the unit was drawn."""
+        survey = self.setup.survey
+        return start_track(unit, survey.overview, self.setup.field, survey.seen_at(unit))
+
+    def join(self, unit: Unit, now_s: float) -> None:
+        """Number ``unit``, start tracking it from the survey, and start each routine for it."""
+        number = self.roster.join(unit, now_s).number
+        self.tracks[number] = self.survey_track(unit)
+        self.sink.log(UnitJoined(now_s, number, unit.key, unit.group, unit.outline))
+        for spec in self.setup.routines:
+            self.queue.add(Thread(number, spec.name, spec.start(unit, NO_HISTORY), now_s))
+            self.sink.log(StepDue(now_s, number, spec.name, now_s))
+
+    def run(self) -> None:
+        """Run every routine to its end, taking commands between steps, or until stopped."""
         while self.queue.active():
             self.progress.check_cancel()
-            self.between_steps()
+            self.take_commands()
             runnable = self.queue.runnable()
             if not runnable:
                 self.scope.wait(IDLE_S)
@@ -124,45 +170,98 @@ class Orchestrator:
                 self.scope.wait(min(thread.due_s - now, IDLE_S))
                 continue
             self.advance(thread)
-        self.log("finish", None)
+        self.sink.log(LoopFinished(self.scope.now()))
 
-    def between_steps(self) -> None:
-        """Take up what the panel asked for since the last step."""
-        self.steer_units()
-        self.steer_pauses()
-        self.steer_run_now()
+    def take_commands(self) -> None:
+        """Carry out the commands given since the last step, and keep the units if any
+        changed."""
+        changed = [self.take(command) for command in self.steering.commands()]
+        if any(changed):
+            self.sink.keep_units(self.roster.records())
 
-    def steer_units(self) -> None:
-        """Start units drawn since the loop began, and stop units deleted."""
-        units = {unit.id: unit for unit in self.steering.units()}
+    def take(self, command: UnitCommand) -> bool:
+        """Carry out ``command``, returning whether it changed the units."""
+        match command:
+            case AddUnit(unit):
+                return self.add(command, unit)
+            case EditUnit(unit):
+                return self.edit(command, unit)
+            case RemoveUnit():
+                return self.remove(command)
+            case PauseUnit() | ResumeUnit():
+                return self.pause(command, isinstance(command, PauseUnit))
+            case RunUnitNow():
+                self.run_now(command)
+                return False
+
+    def refuse(self, command: UnitCommand, reason: str) -> None:
+        self.sink.log(CommandRefused(self.scope.now(), command.word, command_key(command), reason))
+
+    def present(self, command: UnitCommand) -> UnitRecord | None:
+        """The unit ``command`` names, or None, refusing it, when the loop does not have it."""
+        record = self.roster.present(command_key(command))
+        if record is None:
+            self.refuse(command, "the loop has no such unit")
+        return record
+
+    def add(self, command: AddUnit, unit: Unit) -> bool:
+        if self.roster.has(unit.key):
+            self.refuse(command, "a unit with this key already joined")
+            return False
+        if not fits(unit, self.setup.field):
+            self.refuse(command, "larger than one field of view")
+            return False
+        self.join(unit, self.scope.now())
+        return True
+
+    def edit(self, command: EditUnit, unit: Unit) -> bool:
+        record = self.present(command)
+        if record is None:
+            return False
+        if not fits(unit, self.setup.field):
+            self.refuse(command, "larger than one field of view")
+            return False
         now = self.scope.now()
-        for uid, unit in units.items():
-            if uid not in self.tracks:
-                self.add_unit(unit, now)
-        removed = [uid for uid in self.tracks if uid not in units and self.queue.of_unit(uid)]
-        for uid in removed:
-            for thread in self.queue.of_unit(uid):
-                thread.finished = True
-            self.log_event("removed", uid, "", {})
+        if unit.outline != record.unit.outline:
+            # A new outline says where the unit is now, so tracking starts again from there.
+            self.tracks[record.number] = placed_track(unit, now)
+        self.roster.update(replace(record, unit=unit))
+        self.sink.log(UnitEdited(now, record.number, unit.group, unit.outline))
+        return True
 
-    def steer_pauses(self) -> None:
-        paused = self.steering.paused()
-        if paused == self.paused:
+    def remove(self, command: RemoveUnit) -> bool:
+        record = self.present(command)
+        if record is None:
+            return False
+        for thread in self.queue.of_unit(record.number):
+            thread.finished = True
+        now = self.scope.now()
+        self.roster.update(replace(record, left_s=now))
+        self.sink.log(UnitLeft(now, record.number))
+        return True
+
+    def pause(self, command: PauseUnit | ResumeUnit, paused: bool) -> bool:
+        record = self.present(command)
+        if record is None or record.paused == paused:
+            return False
+        for thread in self.queue.of_unit(record.number):
+            thread.paused = paused
+        self.roster.update(replace(record, paused=paused))
+        event = UnitPaused if paused else UnitResumed
+        self.sink.log(event(self.scope.now(), record.number))
+        return True
+
+    def run_now(self, command: RunUnitNow) -> None:
+        record = self.present(command)
+        if record is None:
             return
-        for uid in paused ^ self.paused:
-            self.log_event("paused" if uid in paused else "resumed", uid, "", {})
-        self.paused = paused
-        for thread in self.queue.active():
-            thread.paused = thread.unit in paused
-
-    def steer_run_now(self) -> None:
-        for uid in self.steering.run_now():
-            threads = self.queue.of_unit(uid)
-            for thread in threads:
-                thread.urgent = True
-            # Logged only for a unit it can run, so the log never shows a request it ignored.
-            if threads:
-                self.log_event("run now", uid, "", {})
+        threads = self.queue.of_unit(record.number)
+        if not threads:
+            self.refuse(command, "its routines have all ended")
+            return
+        for thread in threads:
+            thread.urgent = True
+        self.sink.log(RunNowAsked(self.scope.now(), record.number))
 
     def next_step(self, thread: Thread) -> Step | None:
         """The thread's next step, or None when its routine has ended or failed."""
@@ -170,12 +269,13 @@ class Orchestrator:
             step = thread.steps.send(thread.sending) if thread.started else next(thread.steps)
         except StopIteration:
             thread.finished = True
-            self.log("done", thread)
+            self.sink.log(RoutineEnded(self.scope.now(), thread.unit, thread.routine))
             return None
         except (ValueError, ArithmeticError, IndexError, KeyError) as exc:
             # A routine's own mistake ends only that routine, and is logged.
             thread.finished = True
-            self.log("error", thread, message=str(exc))
+            now = self.scope.now()
+            self.sink.log(RoutineFailed(now, thread.unit, thread.routine, str(exc)))
             return None
         thread.started, thread.sending = True, None
         return step
@@ -185,101 +285,10 @@ class Orchestrator:
         step = self.next_step(thread)
         if isinstance(step, Wait):
             thread.due_s = self.scope.now() + step.seconds
-            self.log("due", thread, due_s=thread.due_s)
+            self.sink.log(StepDue(self.scope.now(), thread.unit, thread.routine, thread.due_s))
         elif isinstance(step, Record):
-            self.log("record", thread, name=step.name, values=list(step.values))
+            now = self.scope.now()
+            self.sink.log(Measured(now, thread.unit, thread.routine, step.name, step.values))
         elif isinstance(step, Scan):
-            thread.sending = self.scan_unit(thread, step)
-
-    def keep_focus(self, thread: Thread, x_um: float, y_um: float) -> None:
-        """Find focus again on this unit if a check is due."""
-        now = self.scope.now()
-        if not self.focus.due(now):
-            return
-        self.scope.move_z(self.focus.z_at(x_um, y_um))
-        frame = self.field.on_dish(self.scope.scan(self.scan, ()))
-        channels = content_channels(frame)
-        if not channels:
-            return
-        weights = content_region(frame, channels)
-
-        def measure(z_um: float) -> float:
-            self.scope.move_z(z_um)
-            return tenengrad(
-                self.field.on_dish(self.scope.scan(self.scan, ()))[list(channels)], weights
-            )
-
-        z = self.focus.check(measure, x_um, y_um, now)
-        self.log("focus", thread, z_um=z, offset_um=self.focus.offset_um)
-
-    def scan_unit(self, thread: Thread, step: Scan) -> Seen:
-        """Scan a field centred where the unit was last seen, find it there, and give the
-        routine its image."""
-        track = self.tracks[thread.unit]
-        due = thread.due_s
-        x, y = track.centre
-        self.scope.move_xy(x, y)
-        self.keep_focus(thread, x, y)
-        z = self.focus.z_at(x, y)
-        self.scope.move_z(z)
-        frame = self.field.on_dish(self.scope.scan(self.scan, step.lines))
-        now = self.scope.now()
-        thread.urgent = False
-        shift = self.find_unit(thread, track, frame, now)
-        seen = self.unit_image(track, frame, shift, now)
-        index = self.save_frame(thread, track, seen)
-        cx, cy = track.centre
-        self.log(
-            "scan",
-            thread,
-            due_s=due,
-            ran_s=now,
-            late_s=max(0.0, now - due),
-            frame=index,
-            x_um=cx,
-            y_um=cy,
-            z_um=z,
-            shift_um=list(shift),
-            found=thread.unit not in self.lost,
-            lines=[[line.port, line.line] for line in step.lines],
-        )
-        return seen
-
-    def find_unit(
-        self, thread: Thread, track: Track, frame: np.ndarray, now: float
-    ) -> tuple[float, float]:
-        """Follow the unit to where it is in ``frame``, returning how far it moved; a unit not
-        found stays where it was and is logged as lost."""
-        found = self.tracker.locate(track, frame, now)
-        if found is None:
-            x, y = track.centre
-            radius = self.tracker.radius_um(now - track.seen_s)
-            self.log("lost", thread, x_um=x, y_um=y, radius_um=radius)
-            self.lost.add(thread.unit)
-            return (0.0, 0.0)
-        self.tracker.follow(track, found, frame, now)
-        self.lost.discard(thread.unit)
-        return found.shift_um
-
-    def unit_image(
-        self, track: Track, frame: np.ndarray, shift: tuple[float, float], now: float
-    ) -> Seen:
-        """The unit's window of the frame, centred on where it was found."""
-        size = window_px(track.unit, self.field.um_per_px)
-        centre = self.field.pixels / 2.0
-        at = (centre + shift[0] / self.field.um_per_px, centre + shift[1] / self.field.um_per_px)
-        return Seen(
-            crop_centred(frame, at, size), outline_mask(track.unit, size, self.field.um_per_px), now
-        )
-
-    def save_frame(self, thread: Thread, track: Track, seen: Seen) -> int:
-        """Add the unit's image, before the log row that names it."""
-        index = self.frames.get(thread.key, 0)
-        self.frames[thread.key] = index + 1
-        cx, cy = track.centre
-        height, width = seen.mask.shape
-        left = cx - width * self.field.um_per_px / 2.0
-        top = cy - height * self.field.um_per_px / 2.0
-        tag = FrameTag(thread.unit, thread.routine, left, top)
-        self.sink.add_frame(seen.image, self.scope.channel_labels, tag)
-        return index
+            thread.urgent = False
+            thread.sending = self.scanner.scan(thread, self.tracks[thread.unit], step)

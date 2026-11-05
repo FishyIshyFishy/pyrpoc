@@ -60,7 +60,9 @@ class RigMicroscope:
         self.stage.wait_until_stopped("z", self.ctx.sleep)
 
     def now(self) -> float:
-        return time.monotonic()
+        # Wall time, not monotonic: a loop carried on after the computer restarts must find its
+        # due times still meaning the same moments.
+        return time.time()
 
     def wait(self, seconds: float) -> None:
         self.ctx.sleep(seconds)

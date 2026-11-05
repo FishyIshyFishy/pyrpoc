@@ -23,12 +23,12 @@ SPREAD_ALLOWANCE = 2.0
 
 @dataclass
 class Track:
-    """Where one unit is now: its outline as tracked, the image last matched, on which channel,
-    how far that image's centre sits from the unit's in pixels (x, y), and when it was last
-    seen."""
+    """Where one unit is now: its outline as tracked, the image last matched (None until the
+    next scan, when the unit is taken to be where its outline says), on which channel, how far
+    that image's centre sits from the unit's in pixels (x, y), and when it was last seen."""
 
     unit: Unit
-    template: np.ndarray
+    template: np.ndarray | None
     channel: int
     template_offset_px: tuple[float, float]
     seen_s: float
@@ -128,12 +128,14 @@ class Tracker:
     def locate(self, track: Track, frame: np.ndarray, now_s: float) -> Found | None:
         """Where the unit is in ``frame``, a field centred on its last centre, or None when it
         is not found within reach."""
+        radius_um = self.radius_um(now_s - track.seen_s)
+        if track.template is None:
+            return Found((0.0, 0.0), radius_um)
         pixels = self.field.pixels
         t_height, t_width = track.template.shape
         offset_x, offset_y = track.template_offset_px
         expected = ((pixels - t_width) / 2.0 + offset_x, (pixels - t_height) / 2.0 + offset_y)
         room = max(0.0, (pixels - max(t_height, t_width)) / 2.0)
-        radius_um = self.radius_um(now_s - track.seen_s)
         radius_px = min(radius_um / self.field.um_per_px, room)
         found = locate_near(track.template, frame[track.channel], expected, radius_px)
         if found is None:
@@ -152,7 +154,11 @@ class Tracker:
             centre + found.shift_um[0] / self.field.um_per_px,
             centre + found.shift_um[1] / self.field.um_per_px,
         )
-        height, width = track.template.shape
+        if track.template is None:
+            height, width = window_px(track.unit, self.field.um_per_px)
+            track.channel = strongest_channel(crop_centred(frame, shifted, (height, width)))
+        else:
+            height, width = track.template.shape
         plane = frame[track.channel : track.channel + 1]
         track.template = crop_centred(plane, shifted, (height, width))[0]
         # The crop starts on a whole pixel, so its centre misses the unit's by up to half a
@@ -169,3 +175,9 @@ def start_track(unit: Unit, overview: Overview, field: FieldOfView, seen_s: floa
     """A track starting from the survey, where the unit was drawn."""
     template, channel = overview_template(unit, overview, field.um_per_px)
     return Track(unit, template, channel, (0.0, 0.0), seen_s)
+
+
+def placed_track(unit: Unit, seen_s: float) -> Track:
+    """A track taking the unit to be where ``unit`` says at the next scan, and learning its look
+    from that frame: for a unit redrawn where it is now, or carried on after a resume."""
+    return Track(unit, None, 0, (0.0, 0.0), seen_s)

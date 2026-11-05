@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from pyrpoc.plugins.program_io.outputs import Unit
 
 from ..interfaces.microscope import DigitalLine
-from ..stages.loop.routine import Record, Routine, Scan, Wait, seen_from
+from ..stages.loop.routine import Record, Routine, RoutineHistory, Scan, Wait, seen_from
 
 
 @dataclass(frozen=True)
@@ -29,11 +29,17 @@ class Treatment:
     line: DigitalLine
 
 
-def monitor(unit: Unit, now: Callable[[], Monitoring], treatment: Treatment | None) -> Routine:
-    """Monitor ``unit``; a ``treatment`` of None treats nobody."""
-    if treatment is not None and unit.group == treatment.group:
+def monitor(
+    unit: Unit,
+    history: RoutineHistory,
+    now: Callable[[], Monitoring],
+    treatment: Treatment | None,
+) -> Routine:
+    """Monitor ``unit``, carrying on from ``history``; a ``treatment`` of None treats nobody."""
+    # Any scan in the history means the treatment, which comes first, was already given.
+    if treatment is not None and unit.group == treatment.group and not history.scans_s:
         yield Scan((treatment.line,))
-    started: float | None = None
+    started = history.records[0].time_s if history.records else None
     while True:
         seen = seen_from((yield Scan(())))
         started = seen.time_s if started is None else started

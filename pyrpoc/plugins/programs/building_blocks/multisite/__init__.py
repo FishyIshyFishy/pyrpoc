@@ -5,7 +5,14 @@ from __future__ import annotations
 
 from .bindings.calibration import CALIBRATION_EMITS, run_calibration
 from .bindings.clean_folder import CleanFolder
-from .bindings.loop import LOOP_EMITS, LOOP_FOCUS_INPUTS, LOOP_READS, STEERING, run_loop
+from .bindings.loop import (
+    LOOP_EMITS,
+    LOOP_FOCUS_INPUTS,
+    LOOP_READS,
+    LOOP_REQUESTS,
+    LOOP_UNITS,
+    run_loop,
+)
 from .bindings.monitor import MONITOR_INPUTS, MONITOR_LIVE, TREATMENT_INPUTS, monitor_routine
 from .bindings.rig import RigMicroscope
 from .bindings.survey import (
@@ -23,10 +30,11 @@ __all__ = [
     "LOOP_EMITS",
     "LOOP_FOCUS_INPUTS",
     "LOOP_READS",
+    "LOOP_REQUESTS",
+    "LOOP_UNITS",
     "MONITOR_INPUTS",
     "MONITOR_LIVE",
     "REGION_INPUTS",
-    "STEERING",
     "SURVEY_EMITS",
     "SURVEY_FOCUS_INPUTS",
     "SURVEY_READS",

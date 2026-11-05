@@ -52,3 +52,9 @@ def read_planes(path: Path, channels: int) -> list[np.ndarray]:
     if len(pages) % channels:
         raise ValueError(f"{path.name} holds {len(pages)} pages, not whole frames of {channels}")
     return [np.stack(pages[start : start + channels]) for start in range(0, len(pages), channels)]
+
+
+def frame_count(path: Path, channels: int) -> int:
+    """How many whole ``(C, H, W)`` frames of ``append_planes`` pages ``path`` holds."""
+    with tifffile.TiffFile(str(path)) as tif:
+        return len(tif.pages) // channels

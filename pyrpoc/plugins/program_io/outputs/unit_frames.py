@@ -13,7 +13,7 @@ import numpy as np
 from pyrpoc.core.program_output import program_output_registry
 from pyrpoc.core.recording import Recording
 
-from .building_blocks.tiff import append_planes, read_planes
+from .building_blocks.tiff import append_planes, frame_count, read_planes
 from .image import ImageOutput
 
 # The ``paths`` keys of the frames' tags and channels, beside one key per unit and routine.
@@ -23,7 +23,8 @@ CHANNELS_KEY = "channels"
 
 @dataclass(frozen=True)
 class FrameTag:
-    """Whose frame it is, in which routine, and the dish position of its top-left pixel."""
+    """Whose frame it is, by the number the loop gave the unit, in which routine, and the dish
+    position of its top-left pixel."""
 
     unit: int
     routine: str
@@ -38,15 +39,18 @@ def stack_key(unit: int, routine: str) -> str:
 @program_output_registry.register("unit_frames")
 class UnitFramesOutput(ImageOutput):
     """An ``ImageOutput`` of every frame in the order taken, frame ``i`` tagged ``tags[i]``.
-    Each unit's frames in each routine are one file, ``<folder>/<routine>/unit<id>.tiff``, a
-    page per channel of each frame, so a unit opens elsewhere held still. The tags are
-    appended to ``<root>_<name>_tags.jsonl`` and the channels named in
+    Each unit's frames in each routine go onto one file, ``<folder>/<routine>/unit<number>.tiff``,
+    a page per channel of each frame, so a unit opens elsewhere held still. A file already
+    there is added to, never replaced: each tag, appended to ``<root>_<name>_tags.jsonl``, says
+    which of its file's frames is this output's. The channels are named in
     ``<root>_<name>_channels.json``."""
 
     def __init__(self, *, name: str, recording: Recording, root: Path | None):
         super().__init__(name=name, recording=recording, root=root)
         self.tags: list[FrameTag] = []
         self.stacks: dict[tuple[int, str], Path] = {}
+        # The index the next frame of each stack takes in its file.
+        self.next_frame: dict[tuple[int, str], int] = {}
 
     def add_frame(self, array: np.ndarray, channels: Sequence[str], tag: FrameTag) -> None:
         with self.lock:
@@ -59,17 +63,22 @@ class UnitFramesOutput(ImageOutput):
         tag = self.tags[len(self.arrays) - 1]
         key = (tag.unit, tag.routine)
         if key not in self.stacks:
-            # Named by routine and unit alone, since a folder holds one loop.
-            path = root.parent / tag.routine / f"unit{tag.unit}.tiff"
-            path.parent.mkdir(exist_ok=True)
-            path.unlink(missing_ok=True)
-            self.stacks[key] = path
-            self.paths[stack_key(*key)] = path
+            self.open_stack(root, key)
+        index = self.next_frame[key]
+        self.next_frame[key] = index + 1
         append_planes(self.stacks[key], array)
         tags = root.with_name(f"{root.name}_{self.name}_tags.jsonl")
         with tags.open("a", encoding="utf-8") as log:
-            log.write(json.dumps(asdict(tag)) + "\n")
+            log.write(json.dumps({**asdict(tag), "frame": index}) + "\n")
         self.paths[TAGS_KEY] = tags
+
+    def open_stack(self, root: Path, key: tuple[int, str]) -> None:
+        unit, routine = key
+        path = root.parent / routine / f"unit{unit}.tiff"
+        path.parent.mkdir(exist_ok=True)
+        self.next_frame[key] = frame_count(path, len(self.channels)) if path.exists() else 0
+        self.stacks[key] = path
+        self.paths[stack_key(*key)] = path
 
     def write_channels(self, root: Path) -> None:
         path = root.with_name(f"{root.name}_{self.name}_channels.json")
@@ -91,18 +100,16 @@ class UnitFramesOutput(ImageOutput):
         if TAGS_KEY not in files:
             return output
         lines = files[TAGS_KEY].read_text(encoding="utf-8").splitlines()
-        tags = [FrameTag(**json.loads(line)) for line in lines if line]
+        raw = [json.loads(line) for line in lines if line]
         channels = [str(label) for label in json.loads(files[CHANNELS_KEY].read_text("utf-8"))]
+        tags = [FrameTag(r["unit"], r["routine"], r["left_um"], r["top_um"]) for r in raw]
         stacks = {
             key: read_planes(files[stack_key(*key)], len(channels))
             for key in {(tag.unit, tag.routine) for tag in tags}
         }
-        taken = dict.fromkeys(stacks, 0)
-        arrays = []
-        for tag in tags:
-            key = (tag.unit, tag.routine)
-            arrays.append(stacks[key][taken[key]])
-            taken[key] += 1
+        arrays = [
+            stacks[(tag.unit, tag.routine)][r["frame"]] for tag, r in zip(tags, raw, strict=True)
+        ]
         output.fill(arrays, channels)
         output.tags = tags
         return output

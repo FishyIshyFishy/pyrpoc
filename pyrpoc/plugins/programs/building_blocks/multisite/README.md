@@ -35,7 +35,22 @@ A stage is given:
 
 A stage never sees a run, a device or a ProgramOutput. It can be driven by fakes, and the outputs can change without touching the stage.
 
+## Units in a loop
+- **Identity.** A `Unit` has a key it keeps for life, made by `Unit.new` wherever the unit comes from: drawn by a person or found by software. The loop gives each unit a number as it joins (`Roster`) and never gives a number twice, so a unit deleted and drawn again is a new unit with a new number.
+- **Changes are commands.** A loop starts on the `UNITS` input. While it runs, units change only through `UNIT_COMMAND` requests: add, edit, remove, pause, resume, run now. The loop takes them between steps through `Steering`, and logs a refusal for one it cannot carry out. A new outline in an edit says where the unit is now, so tracking starts again from there.
+- **What it publishes.** `UnitsOutput` holds every unit the loop has had, as a `UnitRecord`; `LoopLogOutput` holds every event, one typed class per kind; `UnitFramesOutput` holds every frame.
+
+## The scratch
+While a loop runs, it keeps `loop_scratch.jsonl` in its folder: the name of each recording that ran it, and a copy of every event. When every routine has ended, the scratch goes.
+
+If a loop is stopped or cut short, the scratch stays. Starting the loop again in that folder carries it on:
+- `CleanFolder(carries_on=True)` lets the recordings the scratch names stay in the folder;
+- `resumption()` replays the events into each unit, its routines' progress and history, and the focus offset;
+- the new run's log starts with every earlier event, so the run that finishes the loop tells all of it.
+
+The units drawn when a loop is carried on are not used: the scratch is. A routine carries on from its `RoutineHistory`, and each unit is taken to be where it was last found, its look learnt again from the next scan.
+
 ## Adding to it
-- **A routine:** one file in `routines/` that yields `Scan`, `Wait` and `Record` steps for one unit. Add its binding in `bindings/` for the program inputs it reads, and a program that hands it to `run_loop`.
+- **A routine:** one file in `routines/` that yields `Scan`, `Wait` and `Record` steps for one unit, starting from its `RoutineHistory` (empty unless the loop is carried on). Add its binding in `bindings/` for the program inputs it reads, and a program that hands it to `run_loop`.
 - **An instrument:** a class with the `Microscope` methods. The simulated one lives with the simulated programs, so this package never knows about the simulation.
 - **A stage:** a new folder in `stages/` with its own sink protocol. Add a binding and export its `run_*` here.

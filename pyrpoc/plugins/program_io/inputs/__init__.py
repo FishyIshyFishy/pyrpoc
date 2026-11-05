@@ -48,7 +48,6 @@ from .scan import (
     ScanGeometry,
 )
 from .split import T0_SAMPLES, T1_SAMPLES, SplitWindows
-from .steering import PAUSED_UNITS, UnitIdsField
 from .survey import FIELD_PIXELS, FIELD_UM, SURVEY_HEIGHT_UM, SURVEY_WIDTH_UM, TILE_OVERLAP
 from .trigger import FRAME_TRIGGER_PFI, PIXEL_CLOCK_CTR, PIXEL_CLOCK_PFI, TriggerLines
 from .units import UNITS, UnitsField
@@ -61,7 +60,6 @@ __all__ = [
     "FIELD_PIXELS",
     "FIELD_UM",
     "FOCUS_CHECK_S",
-    "PAUSED_UNITS",
     "PERIOD_S",
     "SURVEY_HEIGHT_UM",
     "SURVEY_WIDTH_UM",
@@ -71,7 +69,6 @@ __all__ = [
     "TREATMENT_LINE",
     "TREATMENT_PORT",
     "UNITS",
-    "UnitIdsField",
     "UnitsField",
     "CAMERA_BINNED",
     "CAMERA_EXPOSURE_MS",
