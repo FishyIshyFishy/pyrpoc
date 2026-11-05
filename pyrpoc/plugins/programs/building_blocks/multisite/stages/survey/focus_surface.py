@@ -8,12 +8,8 @@ import numpy as np
 from pyrpoc.plugins.program_io.inputs import FocusSearch
 from pyrpoc.plugins.program_io.outputs import FocusPlane
 
-from ...analysis.noise import MAD_TO_SIGMA
+from ...analysis.plane_fit import PLANE_POINTS, fit_plane
 
-# A plane needs three points; until then the last focus found is the best guess.
-PLANE_POINTS = 3
-# A point this many robust deviations from the plane is an autofocus that went wrong.
-OUTLIER_DEVIATIONS = 3.0
 # How many deviations of the plane's own spread the search must cover either side.
 SEARCH_DEVIATIONS = 3.0
 
@@ -34,21 +30,12 @@ class FocusSurface:
         self.plane = self.fit()
 
     def fit(self) -> FocusPlane:
-        """The plane through the points, refitted without the ones far from it."""
         points = np.asarray(self.points)
+        # Until a plane can be fitted, the last focus found is the best guess.
         if len(points) < PLANE_POINTS:
             return FocusPlane(float(points[-1, 2]), 0.0, 0.0, 0.0, len(points))
-        design = np.column_stack([np.ones(len(points)), points[:, 0], points[:, 1]])
-        keep = np.ones(len(points), dtype=bool)
-        for _ in range(2):
-            coefficients, *_ = np.linalg.lstsq(design[keep], points[keep, 2], rcond=None)
-            errors = points[:, 2] - design @ coefficients
-            spread = max(float(np.median(np.abs(errors[keep]))) * MAD_TO_SIGMA, self.least_spread)
-            keep = np.abs(errors) <= OUTLIER_DEVIATIONS * spread
-            if keep.sum() < PLANE_POINTS:
-                keep = np.ones(len(points), dtype=bool)
-        z0, tilt_x, tilt_y = (float(value) for value in coefficients)
-        return FocusPlane(z0, tilt_x, tilt_y, spread, int(keep.sum()))
+        plane = fit_plane(points, self.least_spread)
+        return FocusPlane(plane.z0, plane.tilt_x, plane.tilt_y, plane.spread, plane.kept)
 
     def predict(self, x_um: float, y_um: float) -> float:
         return self.plane.z_at(x_um, y_um)

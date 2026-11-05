@@ -1,14 +1,11 @@
-"""How fast what was imaged moves: features in an early tile found again in a later frame of
+"""How fast what was imaged moves: features in an early frame found again in a later frame of
 the same place, and the distance each moved over the time between."""
 
 from __future__ import annotations
 
 import numpy as np
 
-from pyrpoc.plugins.program_io.outputs import MotionRate
-
 from .features import Box, clear_features
-from .noise import MAD_TO_SIGMA
 from .shifts import locate_near
 
 EDGE_MARGIN_PX = 4
@@ -32,13 +29,3 @@ def feature_speeds(
             moved_px = float(np.hypot(found[0] - corner[0], found[1] - corner[1]))
             speeds.append(moved_px * um_per_px / minutes)
     return speeds
-
-
-def motion_rate(speeds: list[float]) -> MotionRate | None:
-    """The median speed and its robust spread, or None with nothing measured."""
-    if not speeds:
-        return None
-    values = np.asarray(speeds)
-    median = float(np.median(values))
-    spread = float(np.median(np.abs(values - median))) * MAD_TO_SIGMA
-    return MotionRate(median, spread, len(values))

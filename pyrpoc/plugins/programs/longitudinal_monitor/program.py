@@ -15,18 +15,19 @@ from pyrpoc.plugins.program_io.inputs import (
 )
 from pyrpoc.plugins.program_io.requests import RUN_NOW
 
-from ..building_blocks.multisite.bindings.rig import RigMicroscope
-from ..building_blocks.multisite.interfaces.microscope import DigitalLine
-from ..building_blocks.multisite.routines.monitor import (
-    FOCUS_INPUTS,
+from ..building_blocks.multisite import (
     LOOP_EMITS,
+    LOOP_FOCUS_INPUTS,
     LOOP_READS,
     MONITOR_INPUTS,
     MONITOR_LIVE,
+    STEERING,
     TREATMENT_INPUTS,
-    run_monitor,
+    DigitalLine,
+    RigMicroscope,
+    monitor_routine,
+    run_loop,
 )
-from ..building_blocks.multisite.stages.loop.steering import STEERING
 from ..building_blocks.runners import Single
 
 RIG_TREATMENT = (*TREATMENT_INPUTS, TREATMENT_PORT, TREATMENT_LINE)
@@ -43,7 +44,7 @@ class LongitudinalMonitor(Program):
         *STEERING,
         *MONITOR_INPUTS,
         *RIG_TREATMENT,
-        *FOCUS_INPUTS,
+        *LOOP_FOCUS_INPUTS,
         EXTRA_LEFT,
         EXTRA_RIGHT,
         SAMPLE_RATE_MHZ,
@@ -52,7 +53,7 @@ class LongitudinalMonitor(Program):
     cards = {
         "Monitor": MONITOR_INPUTS,
         "Treatment": RIG_TREATMENT,
-        "Focus": FOCUS_INPUTS,
+        "Focus": LOOP_FOCUS_INPUTS,
         "Scan": (EXTRA_LEFT, EXTRA_RIGHT),
         "DAQ": (SAMPLE_RATE_MHZ,),
     }
@@ -64,4 +65,4 @@ class LongitudinalMonitor(Program):
     def run(self, ctx: RunContext) -> None:
         overscan = (ctx.inputs[EXTRA_LEFT], ctx.inputs[EXTRA_RIGHT])
         line = DigitalLine(ctx.inputs[TREATMENT_PORT], ctx.inputs[TREATMENT_LINE])
-        run_monitor(ctx, RigMicroscope(ctx), overscan, line)
+        run_loop(ctx, RigMicroscope(ctx), overscan, (monitor_routine(ctx, line),))

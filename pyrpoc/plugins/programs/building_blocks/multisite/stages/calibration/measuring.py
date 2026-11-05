@@ -12,19 +12,15 @@ from typing import Literal
 
 import numpy as np
 
-from pyrpoc.core.program import RunContext
 from pyrpoc.plugins.program_io.inputs import ScanGeometry
-from pyrpoc.plugins.program_io.outputs import (
-    CalibrationPoint,
-    GalvoCalibration,
-    GalvoCalibrationOutput,
-    ImageOutput,
-)
+from pyrpoc.plugins.program_io.outputs import CalibrationPoint, GalvoCalibration
 
 from ...analysis.features import Box, clear_feature
 from ...analysis.noise import strongest_channel
 from ...analysis.shifts import locate_near
 from ...interfaces.microscope import Microscope
+from ...interfaces.progress import Progress
+from .fit import CalibrationError, fit
 
 Axis = Literal["x", "y"]
 
@@ -39,17 +35,9 @@ SEARCH_PX = 8.0
 SEARCH_FRACTION = 0.25
 # The feature must have this fraction of the view to move in, either way, along each axis.
 ROOM_FRACTION = 0.125
-# A point further than this many median deviations from the fit is a mismatch, not a measure.
-OUTLIER_DEVIATIONS = 5.0
-# A fit whose residual is more than this fraction of the largest move did not measure a line.
-WORST_RESIDUAL = 0.02
 # The real moves, as fractions of the room the feature has before it would leave the view.
 MOVE_FRACTIONS = (0.25, 0.5, 0.75, 1.0)
 EDGE_MARGIN_PX = 4
-
-
-class CalibrationError(Exception):
-    """The calibration could not be measured."""
 
 
 def volts_per_pixel(scan: ScanGeometry, axis: Axis) -> float:
@@ -124,22 +112,6 @@ class Calibrating:
         )
 
 
-def fit(moves: np.ndarray, shifts: np.ndarray) -> tuple[float, float]:
-    """The slope through the origin of shift against move, refitted without mismatched
-    points, and the residual in µm."""
-    keep = np.ones(len(moves), dtype=bool)
-    for _ in range(2):
-        slope = float(np.sum(moves[keep] * shifts[keep]) / np.sum(moves[keep] ** 2))
-        errors = np.abs(shifts - slope * moves)
-        spread = float(np.median(errors[keep])) * 1.4826 + 1e-6
-        keep = errors <= OUTLIER_DEVIATIONS * spread
-    slope = float(np.sum(moves[keep] * shifts[keep]) / np.sum(moves[keep] ** 2))
-    residual = float(np.sqrt(np.mean((shifts[keep] - slope * moves[keep]) ** 2))) / abs(slope)
-    if residual > WORST_RESIDUAL * float(np.max(np.abs(moves))) or keep.sum() < len(moves) // 2:
-        raise CalibrationError("the measured shifts do not fall on a line: try another spot")
-    return slope, residual
-
-
 def measure_axis(
     session: Calibrating, axis: Axis, room: float, status: Callable[[str], None]
 ) -> tuple[float, float, list[CalibrationPoint]]:
@@ -185,23 +157,17 @@ def start_calibrating(
     return Calibrating(scope, scan, show, channel, template, origin, corner), feature
 
 
-def calibrate(ctx: RunContext, scope: Microscope, scan: ScanGeometry) -> None:
-    """Measure both axes, adding every frame to ``view`` and the result to ``calibration``."""
-    view = ctx.output("view", ImageOutput)
-
-    def show(frame: np.ndarray) -> None:
-        view.add(frame, scope.channel_labels)
-
+def calibrate(
+    scope: Microscope, progress: Progress, scan: ScanGeometry, show: Callable[[np.ndarray], None]
+) -> GalvoCalibration:
+    """Measure both axes with ``scan``, handing every frame taken to ``show``."""
     session, feature = start_calibrating(scope, scan, show)
     shape = (scan.y_pixels, scan.x_pixels)
     try:
-        x = measure_axis(session, "x", room_px(feature, shape, "x"), ctx.status)
-        y = measure_axis(session, "y", room_px(feature, shape, "y"), ctx.status)
+        x = measure_axis(session, "x", room_px(feature, shape, "x"), progress.status)
+        y = measure_axis(session, "y", room_px(feature, shape, "y"), progress.status)
     except BaseException:
         scope.stop()
         raise
-    result = GalvoCalibration(
-        x[0], y[0], x[1], y[1], scope.channel_labels[session.channel], (*x[2], *y[2])
-    )
-    ctx.output("calibration", GalvoCalibrationOutput).set(result)
-    ctx.status(f"{result.um_per_volt_x:.3f} × {result.um_per_volt_y:.3f} µm per volt")
+    channel = scope.channel_labels[session.channel]
+    return GalvoCalibration(x[0], y[0], x[1], y[1], channel, (*x[2], *y[2]))

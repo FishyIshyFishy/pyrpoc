@@ -4,15 +4,14 @@ from __future__ import annotations
 
 from pyrpoc.core.program import Program, RunContext
 from pyrpoc.plugins.devices.simulated import SimulatedScanner
-from pyrpoc.plugins.program_io.outputs import GalvoCalibrationOutput
 
-from ...building_blocks.multisite.stages.survey.walk import (
-    FOCUS_INPUTS,
+from ...building_blocks.multisite import (
     REGION_INPUTS,
     SURVEY_EMITS,
+    SURVEY_FOCUS_INPUTS,
+    SURVEY_READS,
     TILE_INPUTS,
-    SurveySettings,
-    survey,
+    run_survey,
 )
 from ...building_blocks.runners import Single
 from ..dish_microscope import DishMicroscope
@@ -23,14 +22,12 @@ class SimulatedSurvey(Program):
     group = "Simulations"
     order = 31
     devices = [SimulatedScanner]
-    reads = {"calibration": GalvoCalibrationOutput}
-    inputs = [*REGION_INPUTS, *TILE_INPUTS, *FOCUS_INPUTS]
-    cards = {"Region": REGION_INPUTS, "Tiles": TILE_INPUTS, "Focus Search": FOCUS_INPUTS}
+    reads = SURVEY_READS
+    inputs = [*REGION_INPUTS, *TILE_INPUTS, *SURVEY_FOCUS_INPUTS]
+    cards = {"Region": REGION_INPUTS, "Tiles": TILE_INPUTS, "Focus Search": SURVEY_FOCUS_INPUTS}
     emits = SURVEY_EMITS
     runners = [Single()]
 
     def run(self, ctx: RunContext) -> None:
-        calibration = ctx.earlier("calibration", GalvoCalibrationOutput).measured()
         # The simulated scanner has no mirrors to turn around, so no overscan.
-        settings = SurveySettings.from_inputs(ctx.inputs, calibration, (0, 0))
-        survey(ctx, DishMicroscope(ctx), settings)
+        run_survey(ctx, DishMicroscope(ctx), (0, 0))

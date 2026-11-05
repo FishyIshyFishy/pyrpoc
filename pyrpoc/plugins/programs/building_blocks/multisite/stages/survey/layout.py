@@ -1,11 +1,10 @@
-"""The survey's overview: neighbouring tiles registered near where the stage put them, every
-position solved at once, and the tiles blended into one image."""
+"""Placing the tiles into the overview: neighbouring tiles registered near where the stage
+put them, every position solved at once, and the tiles blended into one image."""
 
 from __future__ import annotations
 
 import math
 from collections.abc import Sequence
-from dataclasses import dataclass
 
 import numpy as np
 
@@ -17,6 +16,7 @@ from ...analysis.stitching import (
     register_near,
     solve_positions,
 )
+from ...interfaces.overview import Overview
 from .grid import Tile
 
 # The overview's longest side; a larger survey is stitched at a coarser pixel.
@@ -27,14 +27,6 @@ REGISTRATION_PX = 0.25
 # and at least this many pixels: enough for stage error and drift, too little to jump a cell.
 SEARCH_FRACTION = 0.05
 SEARCH_PX = 8.0
-
-
-@dataclass(frozen=True)
-class Overview:
-    """The whole survey as one ``(C, H, W)`` image, and where it lies on the dish."""
-
-    planes: np.ndarray
-    placement: Placement
 
 
 def neighbours(tiles: Sequence[Tile]) -> list[tuple[int, int]]:

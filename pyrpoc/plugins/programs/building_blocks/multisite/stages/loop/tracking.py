@@ -14,7 +14,7 @@ from pyrpoc.plugins.program_io.outputs import MotionRate
 from ...analysis.noise import strongest_channel
 from ...analysis.shifts import locate_near
 from ...interfaces.field import FieldOfView
-from ..survey.layout import Overview
+from ...interfaces.overview import Overview
 
 # Room kept around a unit in its template and its frames, for its edges and blur.
 MARGIN_UM = 5.0
