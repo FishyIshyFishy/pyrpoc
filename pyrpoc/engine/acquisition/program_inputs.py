@@ -56,17 +56,19 @@ class ProgramInputsStore:
         return {each.key: each.rule.encode(self.get(each.key)) for each in inputs}
 
     def to_dict(self) -> dict[str, Any]:
-        """Every value set or read so far, as JSON, by key."""
+        """Every restored value set or read so far, as JSON, by key."""
         return {
-            key: program_input_registry[key].rule.encode(value)
+            key: program_input.rule.encode(value)
             for key, value in self._values.items()
+            if (program_input := program_input_registry[key]).restored
         }
 
     def load_dict(self, raw: Mapping[str, Any]) -> None:
-        """Take values from saved JSON, skipping any whose input no longer
-        exists or whose value its rules refuse."""
+        """Take values from saved JSON, skipping any whose input no longer exists,
+        is not restored, or whose value its rules refuse."""
         for key, value in raw.items():
-            if key not in program_input_registry:
+            # A session saved before an input was declared restored=False may still hold it.
+            if key not in program_input_registry or not program_input_registry[key].restored:
                 continue
             try:
                 self._values[key] = program_input_registry[key].rule.decode(value)
