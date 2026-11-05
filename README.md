@@ -2,7 +2,9 @@
 With any feedback or suggestions, please reach out to sing1125@purdue.edu.
 
 Author: Ishaan K. Singh
+
 Contributors: Callum Appel, Karsten J. Mohn
+
 Zhang Group (https://sites.google.com/view/zhangresearchgroup). 
 
 
