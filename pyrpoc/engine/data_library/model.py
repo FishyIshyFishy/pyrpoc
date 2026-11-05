@@ -5,11 +5,11 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any, TypeVar
+from typing import TypeVar
 
 from PyQt6.QtCore import QObject, QTimer, pyqtSignal
 
-from pyrpoc.core.program_output import Data, ProgramOutput
+from pyrpoc.core.program_output import ProgramOutput
 
 from .format import (
     RecordingError,
@@ -21,11 +21,11 @@ from .format import (
 from .grouping import experiment_of, recording_key, recording_key_of
 from .store import LibraryFull, LibraryStore
 
-D = TypeVar("D", bound=Data)
+OutputT = TypeVar("OutputT", bound=ProgramOutput)
 
 
 class LibraryModel(QObject):
-    # A program output got a new value. Emitted from the thread that published; Qt
+    # A program output changed. Emitted from the thread that changed it; Qt
     # delivers it on the GUI thread, which is the only one panels may touch.
     output_changed = pyqtSignal(object)
     auto_purge_changed = pyqtSignal(bool)
@@ -39,7 +39,7 @@ class LibraryModel(QObject):
         # Experiment folders opened whole, kept so one with no recordings still shows.
         self.folders: list[Path] = []
         # Purging closes entries, which redraws panels, so it runs on the GUI
-        # thread; coalesced so a burst of publishes checks once. Runs never wait
+        # thread; coalesced so a burst of changes checks once. Runs never wait
         # on this thread, so it cannot stall acquisition.
         self._purge_timer = QTimer(self)
         self._purge_timer.setSingleShot(True)
@@ -55,19 +55,19 @@ class LibraryModel(QObject):
         for program_output in self.store.all():
             program_output.subscribe(self.output_changed.emit)
 
-    def add(self, program_output: ProgramOutput[D]) -> ProgramOutput[D]:
+    def add(self, program_output: OutputT) -> OutputT:
         return self.store.add(program_output)
 
-    def by_id(self, output_id: str, kind: type[D]) -> ProgramOutput[D] | None:
-        return self.store.by_id(output_id, kind)
+    def by_id(self, output_id: str, output_type: type[OutputT]) -> OutputT | None:
+        return self.store.by_id(output_id, output_type)
 
-    def matching(self, kind: type[D]) -> list[ProgramOutput[D]]:
-        return self.store.matching(kind)
+    def matching(self, output_type: type[OutputT]) -> list[OutputT]:
+        return self.store.matching(output_type)
 
-    def all(self) -> list[ProgramOutput[Any]]:
+    def all(self) -> list[ProgramOutput]:
         return self.store.all()
 
-    def group_label(self, program_output: ProgramOutput[Any]) -> str:
+    def group_label(self, program_output: ProgramOutput) -> str:
         return self.store.group_label(program_output)
 
     def subscribe(self, callback: Callable[[], None]) -> None:
@@ -136,11 +136,11 @@ class LibraryModel(QObject):
         for program_output in outputs:
             self.store.add(program_output)
 
-    def note_of(self, program_output: ProgramOutput[Any]) -> str:
+    def note_of(self, program_output: ProgramOutput) -> str:
         """The note of the run ``program_output`` came from."""
         return self.store.notes.get(recording_key(program_output))
 
-    def set_note(self, program_output: ProgramOutput[Any], note: str) -> str | None:
+    def set_note(self, program_output: ProgramOutput, note: str) -> str | None:
         """Set the note of the run ``program_output`` came from, and write it into its
         recording and its Experiment's notes if the recording is finished on disk; returns
         why the files could not be updated, or None."""
@@ -157,7 +157,7 @@ class LibraryModel(QObject):
             return str(exc)
         return None
 
-    def close(self, program_output: ProgramOutput[Any]) -> None:
+    def close(self, program_output: ProgramOutput) -> None:
         """Drop ``program_output`` from memory. Files already saved stay on disk."""
         program_output.unsubscribe(self.output_changed.emit)
         self.store.remove(program_output)

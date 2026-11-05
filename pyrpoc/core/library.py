@@ -3,30 +3,28 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any, Protocol, TypeVar
-
-from pyrpoc.core.program_output import Data
+from typing import Protocol, TypeVar
 
 from .program_output import ProgramOutput
 
-D = TypeVar("D", bound=Data)
+OutputT = TypeVar("OutputT", bound=ProgramOutput)
 
 
 class Library(Protocol):
     """The open program outputs: add one, look one up, list them, name the group each is
     listed under, and subscribe to changes."""
 
-    def add(self, program_output: ProgramOutput[D]) -> ProgramOutput[D]: ...
+    def add(self, program_output: OutputT) -> OutputT: ...
 
-    def by_id(self, output_id: str, kind: type[D]) -> ProgramOutput[D] | None:
-        """The open program output with this id, if it holds ``kind``."""
+    def by_id(self, output_id: str, output_type: type[OutputT]) -> OutputT | None:
+        """The open program output with this id, if it is an ``output_type``."""
         ...
 
-    def matching(self, kind: type[D]) -> list[ProgramOutput[D]]:
-        """Program outputs of this kind, newest first."""
+    def matching(self, output_type: type[OutputT]) -> list[OutputT]:
+        """Program outputs of this type, newest first."""
         ...
 
-    def group_label(self, program_output: ProgramOutput[Any]) -> str:
+    def group_label(self, program_output: ProgramOutput) -> str:
         """The name of the group ``program_output`` is listed under."""
         ...
 

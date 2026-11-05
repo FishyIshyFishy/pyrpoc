@@ -16,9 +16,9 @@ from pyrpoc.plugins.program_io.inputs import (
     Y_TILES,
     MosaicGrid,
 )
-from pyrpoc.plugins.program_io.outputs import Image, Mosaic, MosaicTile
+from pyrpoc.plugins.program_io.outputs import MosaicOutput, MosaicTile
 
-from ...building_blocks.functions.run_loops import grow, walk
+from ...building_blocks.functions.run_loops import walk
 from ...building_blocks.runners import Single
 from ..frame import SIMULATED_CHANNELS, FrameShape
 from ..pacing import FRAME_INTERVAL_MS
@@ -55,7 +55,7 @@ class MosaicSimulation(Program):
         InputSection("Specimen", (UM_PER_PIXEL, NOISE_LEVEL)),
         InputSection("Pacing", (FRAME_INTERVAL_MS,)),
     ]
-    emits = {"mosaic": Mosaic}
+    emits = {"mosaic": MosaicOutput}
     runners = [Single()]
 
     def run(self, ctx: RunContext) -> None:
@@ -68,9 +68,9 @@ class MosaicSimulation(Program):
         # Fixed for the run so every tile is cut from the same slide.
         seed = int(np.random.default_rng().integers(2**31))
 
-        mosaic = Mosaic(tiles, ())
+        mosaic = ctx.output("mosaic", MosaicOutput)
+        mosaic.plan(tiles)
         for index, tile in walk(ctx, tiles):
             frame = tile_frame(index, tile, frame_shape=frame_shape, specimen=specimen, seed=seed)
-            mosaic = grow(mosaic, Image(frame, labels))
-            ctx.publish("mosaic", mosaic)
+            mosaic.add(frame, labels)
             ctx.sleep(interval_ms / 1000.0)

@@ -5,7 +5,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any
 
 from pyrpoc.core.program import program_registry
 from pyrpoc.core.program_output import ProgramOutput
@@ -19,7 +18,7 @@ def experiment_of(meta_path: Path) -> Path:
     return meta_path.parent
 
 
-def group_label(program_output: ProgramOutput[Any]) -> str:
+def group_label(program_output: ProgramOutput) -> str:
     """The name of the group ``program_output`` is listed under."""
     meta_path = program_output.meta_path
     return UNSAVED if meta_path is None else experiment_of(meta_path).name
@@ -42,7 +41,7 @@ class RecordingNode:
     program: str
     started_at: str
     meta_path: Path | None
-    outputs: list[ProgramOutput[Any]] = field(default_factory=list)
+    outputs: list[ProgramOutput] = field(default_factory=list)
 
 
 @dataclass
@@ -69,7 +68,7 @@ class SortBy(Enum):
     DATE = "date"
 
 
-def recording_key(program_output: ProgramOutput[Any]) -> str:
+def recording_key(program_output: ProgramOutput) -> str:
     """What names the recording ``program_output`` belongs to: its file, or its run when it
     is not saved."""
     meta_path = program_output.meta_path
@@ -80,7 +79,7 @@ def recording_key_of(meta_path: Path) -> str:
     return str(meta_path)
 
 
-def build_tree(outputs: list[ProgramOutput[Any]], folders: list[Path]) -> list[ExperimentNode]:
+def build_tree(outputs: list[ProgramOutput], folders: list[Path]) -> list[ExperimentNode]:
     """Every output under its recording and Experiment, plus each opened folder that has
     none."""
     experiments: dict[str, ExperimentNode] = {}

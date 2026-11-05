@@ -7,7 +7,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
 
 import cv2
 import numpy as np
@@ -81,11 +80,6 @@ def roi_region(masks: tuple[Mask, ...], center_fraction: float, scan: ScanGeomet
     return region
 
 
-def region_source(masks: tuple[Mask, ...]) -> str:
-    """What the region was drawn from, for the recording."""
-    return ", ".join(mask.describe() for mask in masks) or "center"
-
-
 def row_spans(region: np.ndarray) -> list[RowSpan]:
     """Each lit row, from its first lit pixel to its last."""
     # A gap inside a row is scanned rather than jumped, so every row is one sweep.
@@ -110,16 +104,3 @@ def roi_waveform(scan: ScanGeometry, spans: list[RowSpan], samples_per_pixel: in
     slow = scan.slow_volts(rows)
     pixels = np.vstack((fast, slow)).astype(np.float64)
     return np.repeat(pixels, samples_per_pixel, axis=1)
-
-
-def region_layout(source: str, spans: list[RowSpan], box: Box, pixels_swept: int) -> dict[str, Any]:
-    """Where the region sits on the full scan grid, for the recording."""
-    return {
-        "source": source,
-        "top": box.top,
-        "left": box.left,
-        "height": box.height,
-        "width": box.width,
-        "rows": len(spans),
-        "pixels_swept": pixels_swept,
-    }

@@ -1,4 +1,4 @@
-"""Confocal: raster the galvo, read the analog inputs, publish a frame."""
+"""Confocal: raster the galvo, read the analog inputs, add a frame."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from pyrpoc.plugins.program_io.inputs import (
     SAMPLE_RATE_MHZ,
     SCAN_GEOMETRY_INPUTS,
 )
-from pyrpoc.plugins.program_io.outputs import Image
+from pyrpoc.plugins.program_io.outputs import ImageOutput
 
 from ..building_blocks.functions.galvo_raster import Raster
 from ..building_blocks.functions.run_loops import count_off
@@ -31,10 +31,10 @@ class Confocal(Program):
         InputSection("DAQ", (SAMPLE_RATE_MHZ,)),
         InputSection("Modulation", (MASKS, MASK_LINES)),
     ]
-    emits = {"intensity": Image}
+    emits = {"intensity": ImageOutput}
     runners = [Single(), Continuous()]
 
     def run(self, ctx: RunContext) -> None:
         raster = Raster.for_run(ctx)
         for _ in count_off(ctx, ctx.inputs[NUM_FRAMES], "frame"):
-            ctx.publish("intensity", Image(raster.frame(), raster.channel_labels))
+            ctx.output("intensity", ImageOutput).add(raster.frame(), raster.channel_labels)

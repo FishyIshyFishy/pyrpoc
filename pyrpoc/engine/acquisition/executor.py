@@ -33,7 +33,7 @@ class MissingEarlierRun(Exception):
     """A program cannot start: an earlier run it reads has no recording chosen."""
 
 
-Earlier = dict[str, dict[str, ProgramOutput[Any]]]
+Earlier = dict[str, dict[str, ProgramOutput]]
 
 
 class Run:
@@ -63,7 +63,7 @@ class Run:
         return self.provenance.run_id
 
     @property
-    def outputs(self) -> dict[str, ProgramOutput[Any]]:
+    def outputs(self) -> dict[str, ProgramOutput]:
         return self.recording.outputs
 
     def stop(self) -> None:
@@ -237,21 +237,20 @@ class Executor:
             inputs=key.inputs,
             notes=self.library.notes,
         )
-        saver.prepare(dict(program.emits))
+        saver.prepare()
         return saver
 
     def open_outputs(
         self, program: Program, provenance: Provenance, saver: RecordingSaver | None
-    ) -> dict[str, ProgramOutput[Any]]:
+    ) -> dict[str, ProgramOutput]:
         return {
-            output: ProgramOutput(
+            output: output_type(
                 name=output,
-                kind=kind,
                 provenance=provenance,
                 origin=Origin.ACQUIRED,
-                writer=saver.writer_for(output) if saver is not None else None,
+                root=saver.root if saver is not None else None,
             )
-            for output, kind in program.emits.items()
+            for output, output_type in program.emits.items()
         }
 
     def launch(self, run: Run, values: ProgramInputValues, earlier: Earlier) -> None:

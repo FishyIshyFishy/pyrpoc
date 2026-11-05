@@ -10,12 +10,13 @@ from typing import Any, Protocol, TypeVar
 
 from pyrpoc.core.device import Device
 from pyrpoc.core.program_input import InputSection, ProgramInput, ProgramInputValues
-from pyrpoc.core.program_output import Data, ProgramOutput
+from pyrpoc.core.program_output import ProgramOutput
 from pyrpoc.core.registry import Registry
 
 from .runner import Runner
 
 D = TypeVar("D", bound=Device)
+OutputT = TypeVar("OutputT", bound=ProgramOutput)
 T = TypeVar("T")
 
 
@@ -81,8 +82,8 @@ class Program:
     # started. The rest stay as they were when it started.
     live: list[ProgramInput[Any]] = []
 
-    # Named outputs, and the kind of ``Data`` each one carries.
-    emits: dict[str, type[Data]] = {}
+    # Named outputs, and the type of each.
+    emits: dict[str, type[ProgramOutput]] = {}
 
     # The ways this program can be started, in the order their controls are drawn.
     runners: list[Runner] = []
@@ -114,9 +115,9 @@ class RunContext:
         *,
         inputs: ProgramInputValues,
         live: LiveValues,
-        earlier: Mapping[str, Mapping[str, ProgramOutput[Any]]],
+        earlier: Mapping[str, Mapping[str, ProgramOutput]],
         devices: Mapping[type[Device], Device],
-        outputs: dict[str, ProgramOutput[Any]],
+        outputs: dict[str, ProgramOutput],
         cancel: threading.Event,
         on_status: Callable[[str], None],
     ):
@@ -138,7 +139,7 @@ class RunContext:
             )
         return self._live.current(program_input.key)
 
-    def earlier(self, run: EarlierRun) -> Mapping[str, ProgramOutput[Any]]:
+    def earlier(self, run: EarlierRun) -> Mapping[str, ProgramOutput]:
         """The outputs of the earlier run chosen for ``run``, by name, each holding its last
         value."""
         if run.program_key not in self._earlier:
@@ -148,26 +149,19 @@ class RunContext:
             )
         return self._earlier[run.program_key]
 
-    def output_for(self, output: str) -> ProgramOutput[Any]:
-        if output not in self.outputs:
+    def output(self, name: str, output_type: type[OutputT]) -> OutputT:
+        """This run's output ``name``, which ``emits`` declares as ``output_type``."""
+        if name not in self.outputs:
             raise KeyError(
-                f"{output!r} is not declared in emits; this program declares {sorted(self.outputs)}"
+                f"{name!r} is not declared in emits; this program declares {sorted(self.outputs)}"
             )
-        return self.outputs[output]
-
-    def publish(self, output: str, value: Data) -> None:
-        """Make ``value``, of the kind ``emits`` declares, the current value of
-        one of this run's outputs."""
-        program_output = self.output_for(output)
-        if type(value) is not program_output.kind:
+        program_output = self.outputs[name]
+        # Narrows for the type checker, and catches a program asking for the wrong type.
+        if not isinstance(program_output, output_type):
             raise TypeError(
-                f"{output!r} carries {program_output.kind.name}, not {type(value).name}"
+                f"{name!r} is a {type(program_output).__name__}, not {output_type.__name__}"
             )
-        program_output.publish(value)
-
-    def describe(self, output: str, **metadata: Any) -> None:
-        """Record metadata about one output, once per run."""
-        self.output_for(output).metadata.update(metadata)
+        return program_output
 
     def status(self, text: str) -> None:
         self._on_status(text)

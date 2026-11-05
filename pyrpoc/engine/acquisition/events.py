@@ -1,7 +1,7 @@
 """``RunEvents``: starts runs and reports them on the GUI thread."""
 
 # Runs report on their worker threads; these signals carry that onto the GUI thread. They are the
-# only subscriber to each program output a run opens, because ``ProgramOutput.publish`` runs on
+# only subscriber to each program output a run opens, because a program adds to its outputs on
 # the worker thread.
 
 from __future__ import annotations

@@ -27,7 +27,7 @@ from pyrpoc.plugins.program_io.inputs import (
     TriggerLines,
     rate_hz,
 )
-from pyrpoc.plugins.program_io.outputs import DecayHistogram, Image
+from pyrpoc.plugins.program_io.outputs import HistogramOutput, ImageOutput
 
 from ..building_blocks.functions.run_loops import count_off
 from ..building_blocks.runners import Continuous, Single
@@ -53,9 +53,9 @@ def acquire_frame(ctx: RunContext, flim: FlimMeasurement) -> None:
     )
     ctx.sleep(histogram.frame_settle_s)
     cube = read_histograms(flim, histogram.histogram_bins, scan)
-    ctx.publish("histogram", DecayHistogram(cube))
+    ctx.output("histogram", HistogramOutput).add(cube, ())
     # Photon counts summed over the decay: the intensity image.
-    ctx.publish("intensity", Image(cube.sum(axis=2)[np.newaxis], ["intensity"]))
+    ctx.output("intensity", ImageOutput).add(cube.sum(axis=2)[np.newaxis], ["intensity"])
 
 
 @program_registry.register("flim")
@@ -74,20 +74,13 @@ class FLIM(Program):
             (LASER_FREQUENCY_MHZ, HISTOGRAM_BINS, HISTOGRAM_BINWIDTH_PS, FRAME_SETTLE_S),
         ),
     ]
-    emits = {"intensity": Image, "histogram": DecayHistogram}
+    emits = {"intensity": ImageOutput, "histogram": HistogramOutput}
     runners = [Single(), Continuous()]
 
     def run(self, ctx: RunContext) -> None:
         scan = ScanGeometry.from_inputs(ctx.inputs)
         histogram = HistogramSettings.from_inputs(ctx.inputs)
         tagger = ctx.devices[TimeTagger]
-        ctx.describe(
-            "histogram",
-            laser_period_ps=histogram.laser_period_ps,
-            binwidth_ps=histogram.histogram_binwidth_ps,
-            n_bins=histogram.histogram_bins,
-        )
-
         ctx.status("starting the time tagger")
         tagger.create_tagger()
         tagger.configure_for_flim()

@@ -1,18 +1,26 @@
-"""``Mosaic``: images taken across a stage grid, and ``MosaicTile``, one stop of it."""
+"""``MosaicOutput``: images taken across a stage grid, and ``MosaicTile``, one stop of it."""
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import json
+from collections.abc import Sequence
+from dataclasses import asdict, dataclass
+from pathlib import Path
 
-from pyrpoc.core.program_output import Data, data_kind_registry
+import numpy as np
 
-from .arrays import Image
+from pyrpoc.core.program_output import Origin, Provenance, program_output_registry
+
+from .building_blocks.tiff import read_pages
+from .image import ImageOutput
+
+# The ``paths`` key of the grid, beside one key per channel.
+TILES_KEY = "tiles"
 
 
 @dataclass(frozen=True)
 class MosaicTile:
-    """One stop of a mosaic's stage grid: ``row`` grows along stage y and
-    ``col`` along x."""
+    """One stop of a mosaic's stage grid: ``row`` grows along stage y and ``col`` along x."""
 
     row: int
     col: int
@@ -20,22 +28,42 @@ class MosaicTile:
     y_um: float
 
 
-@data_kind_registry.register("Mosaic")
-@dataclass(frozen=True, eq=False)
-class Mosaic(Data):
-    """Images taken across a stage grid: ``tiles`` is the whole plan in order,
-    and ``images[i]`` was taken at ``tiles[i]``."""
+@program_output_registry.register("mosaic")
+class MosaicOutput(ImageOutput):
+    """An ``ImageOutput`` taken across a grid: ``tiles`` is the whole plan in order, and image
+    ``i`` was taken at ``tiles[i]``. The grid is saved as ``<root>_<name>_tiles.json``, before
+    the first image, so a mosaic cut short still says where its images belong."""
 
-    tiles: tuple[MosaicTile, ...]
-    images: tuple[Image, ...]
+    def __init__(self, *, name: str, provenance: Provenance, origin: Origin, root: Path | None):
+        super().__init__(name=name, provenance=provenance, origin=origin, root=root)
+        self.tiles: tuple[MosaicTile, ...] = ()
 
-    def __post_init__(self) -> None:
-        if len(self.images) > len(self.tiles):
-            raise ValueError(f"a mosaic of {len(self.tiles)} tiles got {len(self.images)} images")
+    def plan(self, tiles: tuple[MosaicTile, ...]) -> None:
+        """Set the grid, before any image is added."""
+        with self.lock:
+            if self.arrays:
+                raise ValueError(f"{self.name} already holds images; plan it first")
+            self.tiles = tiles
+            if self.root is not None:
+                path = self.root.with_name(f"{self.root.name}_{self.name}_tiles.json")
+                path.write_text(json.dumps([asdict(tile) for tile in tiles], indent=2))
+                self.paths[TILES_KEY] = path
+        self.changed()
 
-    @property
-    def nbytes(self) -> int:
-        return sum(image.nbytes for image in self.images)
+    def add(self, array: np.ndarray, channels: Sequence[str]) -> None:
+        if len(self) >= len(self.tiles):
+            raise ValueError(f"{self.name} has {len(self.tiles)} tiles, all imaged")
+        super().add(array, channels)
 
-    def summary(self) -> str:
-        return f"{len(self.images)}/{len(self.tiles)} tiles"
+    @classmethod
+    def load(cls, *, name: str, provenance: Provenance, files: dict[str, Path]) -> MosaicOutput:
+        output = cls(name=name, provenance=provenance, origin=Origin.LOADED, root=None)
+        raw = json.loads(files[TILES_KEY].read_text(encoding="utf-8"))
+        output.tiles = tuple(
+            MosaicTile(int(t["row"]), int(t["col"]), float(t["x_um"]), float(t["y_um"]))
+            for t in raw
+        )
+        channels = {key: path for key, path in files.items() if key != TILES_KEY}
+        if channels:
+            output.fill(read_pages(channels), list(channels))
+        return output

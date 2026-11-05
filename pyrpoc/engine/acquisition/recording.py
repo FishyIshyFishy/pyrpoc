@@ -35,7 +35,7 @@ class Recording:
     def __init__(
         self,
         key: RecordingKey,
-        outputs: dict[str, ProgramOutput[Any]],
+        outputs: dict[str, ProgramOutput],
         saver: RecordingSaver | None,
     ):
         self.key = key
@@ -53,8 +53,7 @@ class Recording:
         # Collected rather than raised: a failed save is still a failure, and the other closers
         # must still run.
         closers: list[Callable[[], None]] = [
-            lambda d=program_output: d.finalize(self.error)
-            for program_output in self.outputs.values()
+            lambda d=program_output: d.close(self.error) for program_output in self.outputs.values()
         ]
         saver = self.saver
         if saver is not None:

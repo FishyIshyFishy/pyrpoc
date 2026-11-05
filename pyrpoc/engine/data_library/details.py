@@ -42,7 +42,7 @@ class DetailsDialog(QDialog):
 
     def __init__(
         self,
-        program_output: ProgramOutput[Any],
+        program_output: ProgramOutput,
         note: str,
         save_note: Callable[[str], str | None],
         parent: QWidget,
@@ -67,16 +67,13 @@ class DetailsDialog(QDialog):
         buttons.rejected.connect(self.reject)
         root.addWidget(buttons)
 
-    def build_summary(self, program_output: ProgramOutput[Any]) -> QFormLayout:
-        value = program_output.value
+    def build_summary(self, program_output: ProgramOutput) -> QFormLayout:
         rows = [
             ("Name", program_output.run_name),
-            ("Output", f"{program_output.name} ({program_output.kind.name})"),
+            ("Output", f"{program_output.name} ({program_output.type_key})"),
             ("Program", program_display_name(program_output.provenance.program_key)),
             ("Origin", program_output.origin.value),
             ("Started", local_time(program_output.provenance.started_at)),
-            ("Published", str(program_output.published)),
-            ("Value", "-" if value is None else value.summary()),
             (
                 "File",
                 str(program_output.meta_path)
@@ -91,15 +88,13 @@ class DetailsDialog(QDialog):
             form.addRow(f"{label}:", value)
         return form
 
-    def build_tree(self, program_output: ProgramOutput[Any]) -> QTreeWidget:
-        """Parameters, devices and what the program described, as they were
-        when the recording started."""
+    def build_tree(self, program_output: ProgramOutput) -> QTreeWidget:
+        """Parameters and devices, as they were when the recording started."""
         tree = QTreeWidget(self)
         tree.setHeaderLabels(["Setting", "Value"])
         sections = {
             "Parameters": program_output.provenance.parameters,
             "Devices": program_output.provenance.devices,
-            "Program metadata": program_output.metadata,
         }
         for title, values in sections.items():
             section = QTreeWidgetItem(tree, [title, ""])

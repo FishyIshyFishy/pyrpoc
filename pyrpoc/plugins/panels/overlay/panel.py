@@ -21,8 +21,7 @@ from PyQt6.QtWidgets import (
 from pyrpoc.core.library import Library
 from pyrpoc.core.panels import DataPanel, data_panel_registry
 from pyrpoc.core.program_input import ProgramInputs
-from pyrpoc.core.program_output import ProgramOutput
-from pyrpoc.plugins.program_io.outputs import Image
+from pyrpoc.plugins.program_io.outputs import ImageOutput
 from pyrpoc.utils.widgets.colors import color_for_index, color_map_from_rgb
 from pyrpoc.utils.widgets.levels import autoscale_levels, mono_levels
 
@@ -55,11 +54,11 @@ def channel_lut(hist_widget: pg.HistogramLUTWidget) -> np.ndarray:
 
 
 @data_panel_registry.register("overlay")
-class OverlayPanel(DataPanel[Image]):
+class OverlayPanel(DataPanel[ImageOutput]):
     display_name = "Overlaid channels"
     group = "2D Image Views"
     order = 20
-    renders = Image
+    renders = ImageOutput
 
     def __init__(self, library: Library, inputs: ProgramInputs):
         super().__init__(library, inputs)
@@ -105,12 +104,14 @@ class OverlayPanel(DataPanel[Image]):
         return scroll
 
     def frame(self) -> np.ndarray | None:
-        shown = self.shown_value
-        return None if shown is None else shown.array
+        shown = self.shown_output
+        return None if shown is None or not len(shown) else shown[-1]
 
-    def show_value(self, program_output: ProgramOutput[Image], value: Image) -> None:
-        del program_output
-        arr = value.array
+    def draw(self, program_output: ImageOutput) -> None:
+        """Composite its newest image."""
+        if not len(program_output):
+            return
+        arr = program_output[-1]
         self.sync_controls(arr.shape[0])
         for index in range(arr.shape[0]):
             self.update_channel(index, arr[index])

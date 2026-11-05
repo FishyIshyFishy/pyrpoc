@@ -13,7 +13,7 @@ import numpy as np
 from pyrpoc.core.program import Program, RunContext
 from pyrpoc.core.program_input import InputSection
 from pyrpoc.plugins.program_io.inputs import MASK_LINES, MASKS, NUM_FRAMES, X_PIXELS, Y_PIXELS, Mask
-from pyrpoc.plugins.program_io.outputs import Image
+from pyrpoc.plugins.program_io.outputs import ImageOutput
 
 from ...building_blocks.functions.run_loops import count_off
 from ...building_blocks.runners import Continuous, Single
@@ -84,7 +84,7 @@ class Simulation(Program):
         InputSection("Modulation", (MASKS, MASK_LINES)),
         InputSection("Pacing", (FRAME_INTERVAL_MS,)),
     ]
-    emits = {"intensity": Image}
+    emits = {"intensity": ImageOutput}
     runners = [Single(), Continuous()]
 
     def run(self, ctx: RunContext) -> None:
@@ -98,5 +98,5 @@ class Simulation(Program):
 
         for index in count_off(ctx, ctx.inputs[NUM_FRAMES], "frame"):
             frame = synthetic_frame(frame_shape, signal, seed=seed, frame_index=index, lit=lit)
-            ctx.publish("intensity", Image(frame, labels))
+            ctx.output("intensity", ImageOutput).add(frame, labels)
             ctx.sleep(interval_ms / 1000.0)

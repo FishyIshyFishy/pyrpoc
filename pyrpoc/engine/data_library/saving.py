@@ -1,5 +1,4 @@
-"""``RecordingSaver``: one recording's writers, one per output chosen by its kind of
-``Data``, and its metadata file."""
+"""``RecordingSaver``: one recording's metadata file, beside the files its outputs write."""
 
 from __future__ import annotations
 
@@ -7,8 +6,7 @@ import threading
 from pathlib import Path
 from typing import Any
 
-from pyrpoc.core.program_output import Data, ProgramOutput, utc_now
-from pyrpoc.core.saving import Writer, writer_registry
+from pyrpoc.core.program_output import ProgramOutput, utc_now
 from pyrpoc.engine.data_library.format import (
     LiveRead,
     OutputRecord,
@@ -25,8 +23,8 @@ from pyrpoc.engine.data_library.notes import Notes
 
 
 class RecordingSaver:
-    """One recording's writers and metadata file, at the first free numbered stem of
-    ``root``."""
+    """One recording's metadata file, at the first free numbered stem of ``root``, where its
+    outputs write their files too."""
 
     def __init__(
         self,
@@ -48,8 +46,7 @@ class RecordingSaver:
         self.devices = dict(devices)
         self.started_at = started_at
         self.inputs = dict(inputs)
-        self.writers: dict[str, Writer[Any]] = {}
-        self.outputs: dict[str, ProgramOutput[Any]] = {}
+        self.outputs: dict[str, ProgramOutput] = {}
         self.runs: list[RunRecord] = []
         self.live_reads: list[LiveRead] = []
         # Runs write from their own threads, and runs in a series overlap the GUI thread.
@@ -59,18 +56,11 @@ class RecordingSaver:
         # it changes.
         self.written_note = ""
 
-    def prepare(self, outputs: dict[str, type[Data]]) -> None:
-        """Create the output directory and a writer per output."""
+    def prepare(self) -> None:
+        """Create the folder the recording is saved in."""
         self.root.parent.mkdir(parents=True, exist_ok=True)
-        for output, kind in outputs.items():
-            self.writers[output] = writer_registry.get(kind.name)(
-                self.root, output, self.parameters
-            )
 
-    def writer_for(self, output: str) -> Writer[Any]:
-        return self.writers[output]
-
-    def begin(self, outputs: dict[str, ProgramOutput[Any]]) -> None:
+    def begin(self, outputs: dict[str, ProgramOutput]) -> None:
         """Take the program outputs the writers feed, which the metadata describes."""
         self.outputs = outputs
         for program_output in outputs.values():
@@ -95,7 +85,7 @@ class RecordingSaver:
 
     def finalize(self, error: Exception | None) -> None:
         """Rewrite the metadata."""
-        # The program outputs are finalized first, so every writer's paths are complete by now.
+        # The program outputs are closed first, so every output's paths are complete by now.
         self.write_metadata(ended_at=utc_now(), last_error=str(error) if error else None)
 
     def write_metadata(self, *, ended_at: str | None, last_error: str | None) -> None:
@@ -122,7 +112,7 @@ class RecordingSaver:
             parameters=self.parameters,
             devices=self.devices,
             outputs={
-                output: output_record(program_output, self.writers[output])
+                output: output_record(program_output)
                 for output, program_output in self.outputs.items()
             },
             notes=note,
@@ -131,10 +121,7 @@ class RecordingSaver:
         )
 
 
-def output_record(program_output: ProgramOutput[Any], writer: Writer[Any]) -> OutputRecord:
-    return OutputRecord(
-        kind=program_output.kind.name,
-        published=program_output.published,
-        files={key: path.name for key, path in writer.paths.items()},
-        metadata=dict(program_output.metadata),
-    )
+def output_record(program_output: ProgramOutput) -> OutputRecord:
+    with program_output.lock:
+        files = {key: path.name for key, path in program_output.paths.items()}
+    return OutputRecord(type=program_output.type_key, files=files)

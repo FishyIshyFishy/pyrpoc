@@ -1,14 +1,12 @@
 """Autofocus: scan one region at each z, score it by Tenengrad, and climb the Prior's focus
 drive to the sharpest z."""
 
-# Each region frame is published as it is taken, so the climb can be watched.
+# Each region frame is added as it is taken, so the climb can be watched.
 
 from __future__ import annotations
 
 import time
 from collections.abc import Callable
-from dataclasses import asdict
-from typing import Any
 
 from pyrpoc.core.program import (
     Cancelled,
@@ -28,9 +26,8 @@ from pyrpoc.plugins.program_io.inputs import (
     SCAN_GEOMETRY_INPUTS,
     FocusSearch,
 )
-from pyrpoc.plugins.program_io.outputs import Image
+from pyrpoc.plugins.program_io.outputs import FocusResult, FocusStackOutput, FocusStep
 
-from ..building_blocks.functions.roi_scan import region_source
 from ..building_blocks.runners import Single
 from .climb import ClimbResult, ClimbStep, climb
 from .roi_scan import RoiRaster
@@ -53,30 +50,27 @@ def return_to_start(stage: PriorStage, start_z_um: float) -> None:
 class FocusRun:
     """One climb's measurements and what it records of them."""
 
-    def __init__(self, ctx: RunContext, stage: PriorStage, raster: RoiRaster, start_z_um: float):
+    def __init__(self, ctx: RunContext, stage: PriorStage, raster: RoiRaster):
         self.ctx = ctx
         self.stage = stage
         self.raster = raster
-        self.history: dict[str, Any] = {"start_z_um": start_z_um, "steps": []}
+        self.search = ctx.output("intensity", FocusStackOutput)
 
     def measure(self, z_um: float) -> float:
         self.ctx.check_cancel()
         move_z(self.stage, z_um, self.ctx.sleep)
         frame = self.raster.frame()
-        self.ctx.publish("intensity", Image(frame, self.raster.channel_labels))
+        self.search.add(frame, self.raster.channel_labels)
         return tenengrad(frame, self.raster.weights)
 
     def report(self, step: ClimbStep) -> None:
-        # Recorded every step, so a run cut short still says where it went.
-        self.history["steps"].append(asdict(step))
-        self.ctx.describe("intensity", autofocus=self.history)
+        self.search.add_step(FocusStep(step.z_um, step.metric, step.step_um))
         self.ctx.status(
             f"z {step.z_um:.2f} µm · tenengrad {step.metric:.4g} · step {step.step_um:g} µm"
         )
 
     def finish(self, result: ClimbResult) -> None:
-        self.history.update(asdict(result))
-        self.ctx.describe("intensity", autofocus=self.history)
+        self.search.settle(FocusResult(result.best_z_um, result.best_metric, result.at_edge))
         move_z(self.stage, result.best_z_um, self.ctx.sleep)
         if result.at_edge:
             self.ctx.status(
@@ -102,19 +96,15 @@ class Autofocus(Program):
             (FOCUS_SEARCH_RANGE_UM, FOCUS_INITIAL_STEP_UM, FOCUS_FINAL_STEP_UM),
         ),
     ]
-    emits = {"intensity": Image}
+    emits = {"intensity": FocusStackOutput}
     # Once only: each start is one complete search.
     runners = [Single()]
 
     def run(self, ctx: RunContext) -> None:
         stage = ctx.devices[PriorStage]
         raster = RoiRaster.for_run(ctx)
-        ctx.describe(
-            "intensity",
-            roi=raster.layout_metadata(region_source(ctx.inputs[MASKS])),
-        )
         start_z_um = stage.z_position()
-        focus = FocusRun(ctx, stage, raster, start_z_um)
+        focus = FocusRun(ctx, stage, raster)
         try:
             result = climb(
                 focus.measure, focus.report, start_z_um, FocusSearch.from_inputs(ctx.inputs)

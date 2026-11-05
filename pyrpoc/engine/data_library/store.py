@@ -5,14 +5,14 @@ from __future__ import annotations
 
 import threading
 from collections.abc import Callable
-from typing import Any, TypeVar
+from typing import TypeVar
 
-from pyrpoc.core.program_output import Data, ProgramOutput
+from pyrpoc.core.program_output import ProgramOutput
 
 from .grouping import group_label
 from .notes import Notes
 
-D = TypeVar("D", bound=Data)
+OutputT = TypeVar("OutputT", bound=ProgramOutput)
 
 # Everything open together, in bytes. Big enough for hours of typical imaging,
 # small enough to leave a lab PC's RAM for the rest of the session.
@@ -33,37 +33,37 @@ class LibraryStore:
         # Close the oldest finished entries whenever the total is over the limit.
         self.auto_purge = False
         self.notes = Notes()
-        self._outputs: list[ProgramOutput[Any]] = []
+        self._outputs: list[ProgramOutput] = []
         self._subscribers: list[Callable[[], None]] = []
         self._lock = threading.RLock()
 
-    def add(self, program_output: ProgramOutput[D]) -> ProgramOutput[D]:
+    def add(self, program_output: OutputT) -> OutputT:
         with self._lock:
             self._outputs.append(program_output)
         self.notify()
         return program_output
 
-    def remove(self, program_output: ProgramOutput[Any]) -> None:
+    def remove(self, program_output: ProgramOutput) -> None:
         with self._lock:
             self._outputs.remove(program_output)
         self.notify()
 
-    def all(self) -> list[ProgramOutput[Any]]:
+    def all(self) -> list[ProgramOutput]:
         with self._lock:
             return list(self._outputs)
 
-    def by_id(self, output_id: str, kind: type[D]) -> ProgramOutput[D] | None:
-        """The open program output with this id, if it holds ``kind``."""
-        # Ids come from saved sessions, so one may name a closed entry or another kind.
-        with self._lock:
-            return next((d for d in self._outputs if d.id == output_id and d.kind is kind), None)
+    def by_id(self, output_id: str, output_type: type[OutputT]) -> OutputT | None:
+        """The open program output with this id, if it is an ``output_type``."""
+        # Ids come from saved sessions, so one may name a closed entry or another type.
+        return next((d for d in self.matching(output_type) if d.id == output_id), None)
 
-    def matching(self, kind: type[D]) -> list[ProgramOutput[D]]:
-        """Program outputs of this kind, newest first."""
+    def matching(self, output_type: type[OutputT]) -> list[OutputT]:
+        """Program outputs of this type, newest first."""
+        # isinstance picks one type out of all the open outputs, and narrows them to it.
         with self._lock:
-            return [d for d in reversed(self._outputs) if d.kind is kind]
+            return [d for d in reversed(self._outputs) if isinstance(d, output_type)]
 
-    def group_label(self, program_output: ProgramOutput[Any]) -> str:
+    def group_label(self, program_output: ProgramOutput) -> str:
         return group_label(program_output)
 
     def subscribe(self, callback: Callable[[], None]) -> None:
@@ -99,7 +99,7 @@ class LibraryStore:
                 "panel, or turn on auto-purge there, to acquire or load more."
             )
 
-    def purgeable(self) -> list[ProgramOutput[Any]]:
+    def purgeable(self) -> list[ProgramOutput]:
         """What auto-purge may close, oldest first: finished entries, never one
         still being written."""
         with self._lock:

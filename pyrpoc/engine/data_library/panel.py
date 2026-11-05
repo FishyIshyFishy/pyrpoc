@@ -8,7 +8,6 @@ from __future__ import annotations
 from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
-from typing import Any
 
 from PyQt6.QtCore import QPoint, Qt, QUrl
 from PyQt6.QtGui import QAction, QDesktopServices
@@ -53,7 +52,7 @@ NODE_ROLE = Qt.ItemDataRole.UserRole
 # 1024-based, to match the number a task manager shows.
 UNITS = ("B", "KB", "MB", "GB", "TB")
 
-Node = ExperimentNode | RecordingNode | ProgramOutput[Any]
+Node = ExperimentNode | RecordingNode | ProgramOutput
 
 
 def format_size(nbytes: int) -> str:
@@ -75,7 +74,7 @@ def taken(iso: str) -> str:
     return datetime.fromisoformat(iso).astimezone().strftime("%Y-%m-%d %H:%M")
 
 
-def outputs_of(node: Node) -> list[ProgramOutput[Any]]:
+def outputs_of(node: Node) -> list[ProgramOutput]:
     if isinstance(node, ExperimentNode):
         return [each for recording in node.recordings for each in recording.outputs]
     if isinstance(node, RecordingNode):
@@ -238,7 +237,7 @@ class DataLibraryPanel(Panel):
         item.setToolTip(NAME, f"{where}\n\n{note}" if note else where)
         self.attach(item, recording)
         for program_output in recording.outputs:
-            child = QTreeWidgetItem(item, [program_output.name, program_output.kind.name])
+            child = QTreeWidgetItem(item, [program_output.name, program_output.type_key])
             self.attach(child, program_output)
             self.output_items[program_output.id] = child
             self.set_size(child, program_output.nbytes)
@@ -292,7 +291,7 @@ class DataLibraryPanel(Panel):
         order = Qt.SortOrder.DescendingOrder if self.descending else Qt.SortOrder.AscendingOrder
         tree_header(self.tree).setSortIndicator(column, order)
 
-    def on_output_changed(self, program_output: ProgramOutput[Any]) -> None:
+    def on_output_changed(self, program_output: ProgramOutput) -> None:
         """Update one row's size and the total, not the whole tree: a running acquisition
         appends several times a second, and a rebuild would flicker."""
         item = self.output_items.get(program_output.id)

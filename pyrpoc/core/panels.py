@@ -12,12 +12,12 @@ from PyQt6.QtWidgets import QComboBox, QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
 from pyrpoc.core.library import Library
 from pyrpoc.core.program_input import ProgramInputs
-from pyrpoc.core.program_output import Data, ProgramOutput
+from pyrpoc.core.program_output import ProgramOutput
 from pyrpoc.core.registry import Registry
 
 from .device import Device, make_instance_id
 
-D = TypeVar("D", bound=Data)
+OutputT = TypeVar("OutputT", bound=ProgramOutput)
 
 
 class Panel(QWidget):
@@ -48,14 +48,14 @@ class Panel(QWidget):
         del state
 
 
-class SourcePicker(QWidget, Generic[D]):
-    """A dropdown naming one open program output of kind ``renders``, under the group the
+class SourcePicker(QWidget, Generic[OutputT]):
+    """A dropdown naming one open program output of type ``renders``, under the group the
     library lists it in. "Latest" follows the newest one."""
 
     # The chosen program output may have changed; the panel re-reads ``current()``.
     changed = pyqtSignal()
 
-    def __init__(self, renders: type[D], library: Library, parent: QWidget):
+    def __init__(self, renders: type[OutputT], library: Library, parent: QWidget):
         super().__init__(parent)
         self.renders = renders
         self.library = library
@@ -89,9 +89,9 @@ class SourcePicker(QWidget, Generic[D]):
         self.combo.blockSignals(False)
         self.changed.emit()
 
-    def groups(self) -> dict[str, list[ProgramOutput[D]]]:
+    def groups(self) -> dict[str, list[OutputT]]:
         """The matching outputs by group, the group with the newest output first."""
-        groups: dict[str, list[ProgramOutput[D]]] = {}
+        groups: dict[str, list[OutputT]] = {}
         for program_output in self.library.matching(self.renders):
             groups.setdefault(self.library.group_label(program_output), []).append(program_output)
         return groups
@@ -115,7 +115,7 @@ class SourcePicker(QWidget, Generic[D]):
         self._follow_latest = self.combo.currentData() is None
         self.changed.emit()
 
-    def current(self) -> ProgramOutput[D] | None:
+    def current(self) -> OutputT | None:
         chosen = self.combo.currentData()
         if chosen is None:
             candidates = self.library.matching(self.renders)
@@ -123,12 +123,12 @@ class SourcePicker(QWidget, Generic[D]):
         return self.library.by_id(chosen, self.renders)
 
 
-class DataPanel(Panel, Generic[D]):
-    """A panel showing one open program output of the kind it ``renders``: a source
-    picker above a ``body`` the subclass fills through ``show_value``."""
+class DataPanel(Panel, Generic[OutputT]):
+    """A panel showing one open program output of the type it ``renders``: a source
+    picker above a ``body`` the subclass fills through ``draw``."""
 
-    # The one kind of data this panel shows.
-    renders: type[D]
+    # The one type of program output this panel shows.
+    renders: type[OutputT]
 
     # The heading it is listed under, and its place in the Add menu.
     group: str
@@ -147,8 +147,7 @@ class DataPanel(Panel, Generic[D]):
         self.source = SourcePicker(self.renders, library, self)
         root.addWidget(self.source)
         root.addWidget(self.body, 1)
-        self.shown_output: ProgramOutput[D] | None = None
-        self.shown_value: D | None = None
+        self.shown_output: OutputT | None = None
 
     def connect_source(self) -> None:
         """Start redrawing on source changes."""
@@ -165,25 +164,20 @@ class DataPanel(Panel, Generic[D]):
     def library(self) -> Library:
         return self.source.library
 
-    def program_output(self) -> ProgramOutput[D] | None:
+    def program_output(self) -> OutputT | None:
         return self.source.current()
 
     def refresh(self) -> None:
         program_output = self.program_output()
+        self.shown_output = program_output
         if program_output is None:
-            self.shown_output = self.shown_value = None
             self.clear()
             return
-        value = program_output.value
-        # A program output with no value yet, as when a run has just started, leaves the
-        # last value on screen so levels and layout carry over.
-        # Library changes re-announce the source even when nothing new arrived.
-        if value is None or (program_output is self.shown_output and value is self.shown_value):
-            return
-        self.shown_output, self.shown_value = program_output, value
-        self.show_value(program_output, value)
+        self.draw(program_output)
 
-    def show_value(self, program_output: ProgramOutput[D], value: D) -> None:
+    def draw(self, program_output: OutputT) -> None:
+        """Draw ``program_output``. One that holds nothing yet, as when a run has just started,
+        should leave what is on screen, so levels and layout carry over."""
         raise NotImplementedError
 
     def clear(self) -> None:

@@ -7,8 +7,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from pyrpoc.core.program_input import Field, ParameterError, declare
-from pyrpoc.core.program_output import ProgramOutput
-from pyrpoc.plugins.program_io.outputs.arrays import Image
+from pyrpoc.plugins.program_io.outputs.image import ImageOutput
 
 
 @dataclass(frozen=True)
@@ -23,7 +22,7 @@ class PixelPick:
     y: int
 
     @classmethod
-    def on(cls, output: ProgramOutput[Image], x: int, y: int) -> PixelPick:
+    def on(cls, output: ImageOutput, x: int, y: int) -> PixelPick:
         """A pick of pixel ``(x, y)`` of ``output``."""
         return cls(output.id, output.label, dict(output.provenance.parameters), x, y)
 

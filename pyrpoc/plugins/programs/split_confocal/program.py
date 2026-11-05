@@ -1,5 +1,5 @@
 """Split confocal: confocal's scan, each pixel's samples split into two
-windows, the mask TTL gated to the first, and the raw samples published too."""
+windows, the mask TTL gated to the first, and the raw samples kept too."""
 
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ from pyrpoc.plugins.program_io.inputs import (
     T1_SAMPLES,
     SplitWindows,
 )
-from pyrpoc.plugins.program_io.outputs import Image, RawSamples
+from pyrpoc.plugins.program_io.outputs import ImageOutput, SamplesOutput
 
 from ..building_blocks.functions.galvo_raster import Raster
 from ..building_blocks.functions.run_loops import count_off
@@ -39,7 +39,7 @@ class SplitConfocal(Program):
         InputSection("Split", (T0_SAMPLES, T1_SAMPLES)),
         InputSection("Modulation", (MASKS, MASK_LINES)),
     ]
-    emits = {"intensity": Image, "raw_pixel_stream": RawSamples}
+    emits = {"intensity": ImageOutput, "raw_pixel_stream": SamplesOutput}
     runners = [Single(), Continuous()]
 
     def run(self, ctx: RunContext) -> None:
@@ -52,5 +52,5 @@ class SplitConfocal(Program):
 
         for _ in count_off(ctx, ctx.inputs[NUM_FRAMES], "frame"):
             samples = raster.samples()
-            ctx.publish("intensity", Image(split_frame(samples, split), labels))
-            ctx.publish("raw_pixel_stream", RawSamples(samples))
+            ctx.output("intensity", ImageOutput).add(split_frame(samples, split), labels)
+            ctx.output("raw_pixel_stream", SamplesOutput).add(samples, raster.channel_labels)

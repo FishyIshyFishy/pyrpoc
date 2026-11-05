@@ -7,10 +7,10 @@ from pyrpoc.core.program import Program, RunContext, program_registry
 from pyrpoc.core.program_input import InputSection
 from pyrpoc.plugins.devices import DAQ, AndorCCD, Galvo
 from pyrpoc.plugins.program_io.inputs import CCD_EXPOSURE_S, CCD_FRAMES_TO_AVERAGE, GALVO_TARGET
-from pyrpoc.plugins.program_io.outputs import Spectrum
+from pyrpoc.plugins.program_io.outputs import SpectrumOutput
 from pyrpoc.plugins.programs.building_blocks.functions.ccd_read import spectrum_readout
 
-from ..building_blocks.functions.ccd_read import publish_spectrum
+from ..building_blocks.functions.ccd_read import take_spectrum
 from ..building_blocks.functions.galvo_park import aim_at_pixel, park_galvos
 from ..building_blocks.runners import ArmAndRun, Continuous, Single
 
@@ -25,7 +25,7 @@ class PinpointRaman(Program):
         InputSection("Point", (GALVO_TARGET,)),
         InputSection("CCD Readout", (CCD_EXPOSURE_S, CCD_FRAMES_TO_AVERAGE)),
     ]
-    emits = {"spectrum": Spectrum}
+    emits = {"spectrum": SpectrumOutput}
     runners = [
         Single(),
         Continuous(),
@@ -45,4 +45,4 @@ class PinpointRaman(Program):
         # The DAQ is bound though ``devices`` does not name it: claims follow
         # ``backed_by``, and the mirrors are voltages on the card.
         park_galvos(ctx.devices[DAQ], ctx.devices[Galvo], point)
-        publish_spectrum(ctx, ctx.devices[AndorCCD], readout, "spectrum")
+        take_spectrum(ctx, ctx.devices[AndorCCD], readout, "spectrum")
