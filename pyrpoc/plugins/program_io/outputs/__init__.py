@@ -9,11 +9,10 @@ from .histogram import HistogramOutput
 from .image import ImageOutput
 from .loop_log import LoopEvent, LoopLogOutput, LoopView, QueueEntry, UnitView
 from .mosaic import MosaicOutput, MosaicTile
-from .placed_image import PlacedImageOutput, Placement
 from .samples import SamplesOutput
 from .spectrum import SpectrumOutput
 from .spectrum_series import SpectrumSeriesOutput
-from .survey import FocusPlane, MotionRate, SurveyFinding, SurveyOutput, SurveyTile
+from .survey import FocusPlane, MotionRate, Placement, SurveyFinding, SurveyOutput, SurveyTile
 from .unit_frames import FrameTag, UnitFramesOutput
 
 __all__ = [
@@ -26,7 +25,6 @@ __all__ = [
     "LoopLogOutput",
     "LoopView",
     "MotionRate",
-    "PlacedImageOutput",
     "Placement",
     "QueueEntry",
     "SurveyFinding",
