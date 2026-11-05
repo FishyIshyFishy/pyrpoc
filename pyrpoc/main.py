@@ -100,18 +100,20 @@ def parse_args() -> tuple[argparse.Namespace, list[str]]:
     parser.add_argument(
         "--simulated",
         action="store_true",
-        help="add programs that fake their data, for working without instruments",
+        help="add a simulated dish, its devices and programs, for working without instruments",
     )
     return parser.parse_known_args()
 
 
 def add_simulations() -> None:
-    """Register the simulated programs."""
-    # Imported here, not at the top: importing the package registers its
+    """Register the simulated devices and programs."""
+    # Imported here, not at the top: importing the programs registers their
     # program inputs, which must not exist without --simulated.
-    from pyrpoc.plugins.programs.simulated import register
+    from pyrpoc.plugins.devices.simulated import register as register_devices
+    from pyrpoc.plugins.programs.simulated import register as register_programs
 
-    register()
+    register_devices()
+    register_programs()
 
 
 def main() -> int:

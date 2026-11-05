@@ -6,6 +6,7 @@ import json
 from collections.abc import Sequence
 from dataclasses import asdict, dataclass
 from pathlib import Path
+from typing import TypeVar
 
 import numpy as np
 
@@ -17,6 +18,8 @@ from .image import ImageOutput
 
 # The ``paths`` key of the grid, beside one key per channel.
 TILES_KEY = "tiles"
+
+M = TypeVar("M", bound="MosaicOutput")
 
 
 @dataclass(frozen=True)
@@ -57,7 +60,7 @@ class MosaicOutput(ImageOutput):
         super().add(array, channels)
 
     @classmethod
-    def load(cls, *, name: str, recording: Recording, files: dict[str, Path]) -> MosaicOutput:
+    def load(cls: type[M], *, name: str, recording: Recording, files: dict[str, Path]) -> M:
         output = cls(name=name, recording=recording, root=None)
         raw = json.loads(files[TILES_KEY].read_text(encoding="utf-8"))
         output.tiles = tuple(
