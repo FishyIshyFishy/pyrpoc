@@ -54,6 +54,7 @@ class Runs(QObject):
         self.events.run_started.connect(self.on_run_started)
         self.events.run_finished.connect(self.on_run_finished)
         inventory.changed.connect(self.readiness_changed.emit)
+        inventory.edited.connect(self.post_device_edits)
         self.save_changed.connect(self.readiness_changed.emit)
         self.earlier_changed.connect(self.readiness_changed.emit)
 
@@ -99,8 +100,8 @@ class Runs(QObject):
         self.earlier.refresh(self.save.folder)
         self.earlier_changed.emit()
 
-    def pick_earlier(self, name: str, choice: EarlierOutput | None) -> None:
-        """Read ``choice`` wherever ``name`` is read, or the latest when None."""
+    def pick_earlier(self, name: str, choice: EarlierOutput) -> None:
+        """Read ``choice`` wherever ``name`` is read."""
         self.earlier.pick(name, choice)
         self.earlier_changed.emit()
 
@@ -111,7 +112,10 @@ class Runs(QObject):
         directory: str | None = None,
         enabled: bool | None = None,
     ) -> None:
-        """Change only the fields given."""
+        """Change only the fields given. Refused while a run is going, since a recording cannot
+        move to another folder or name partway through."""
+        if self.live_runs:
+            raise RuntimeError("the save target cannot change while a run is going")
         if name is not None:
             self.save.name = name
         moved = directory is not None and directory != self.save.directory
@@ -137,13 +141,18 @@ class Runs(QObject):
     def on_run_finished(self, run: Run) -> None:
         # Here, on the thread program inputs are set and requests posted on, so neither lands
         # mid-close.
-        run.live.close()
+        run.inbox.close()
         self.requests.close(run.inbox)
         self.live_runs.discard(run)
         self.publish_in_use()
         # Only a saved run can change what later runs read.
         if run.saver is not None and any_reads():
             self.refresh_earlier()
+
+    def post_device_edits(self) -> None:
+        """Post an edit to the devices to every run going, which takes it between passes."""
+        for run in self.live_runs:
+            run.inbox.devices_edited()
 
     def publish_in_use(self) -> None:
         """Tell the inventory every device a live run holds, backing devices included."""

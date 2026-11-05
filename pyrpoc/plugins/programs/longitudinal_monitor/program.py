@@ -13,20 +13,22 @@ from pyrpoc.plugins.program_io.inputs import (
     TREATMENT_LINE,
     TREATMENT_PORT,
 )
-from pyrpoc.plugins.program_io.requests import RUN_NOW
 
-from ..building_blocks.loop.monitor import (
-    FOCUS_INPUTS,
+from ..building_blocks.multisite import (
     LOOP_EMITS,
+    LOOP_FOCUS_INPUTS,
     LOOP_READS,
+    LOOP_REQUESTS,
+    LOOP_UNITS,
     MONITOR_INPUTS,
     MONITOR_LIVE,
     TREATMENT_INPUTS,
-    run_monitor,
+    CleanFolder,
+    DigitalLine,
+    RigMicroscope,
+    monitor_routine,
+    run_loop,
 )
-from ..building_blocks.loop.steering import STEERING
-from ..building_blocks.microscope import DigitalLine
-from ..building_blocks.rig import RigMicroscope
 from ..building_blocks.runners import Single
 
 RIG_TREATMENT = (*TREATMENT_INPUTS, TREATMENT_PORT, TREATMENT_LINE)
@@ -40,28 +42,31 @@ class LongitudinalMonitor(Program):
     devices = [Galvo, DAQ, PriorStage]
     reads = LOOP_READS
     inputs = [
-        *STEERING,
+        *LOOP_UNITS,
         *MONITOR_INPUTS,
         *RIG_TREATMENT,
-        *FOCUS_INPUTS,
+        *LOOP_FOCUS_INPUTS,
         EXTRA_LEFT,
         EXTRA_RIGHT,
         SAMPLE_RATE_MHZ,
     ]
-    # The units and pauses have no row: they are drawn and set in the Autonomy panel.
+    # The units have no row: they are drawn over the survey.
     cards = {
         "Monitor": MONITOR_INPUTS,
         "Treatment": RIG_TREATMENT,
-        "Focus": FOCUS_INPUTS,
+        "Focus": LOOP_FOCUS_INPUTS,
         "Scan": (EXTRA_LEFT, EXTRA_RIGHT),
         "DAQ": (SAMPLE_RATE_MHZ,),
     }
-    live = [*STEERING, *MONITOR_LIVE]
-    requests = [RUN_NOW]
+    live = list(MONITOR_LIVE)
+    requests = LOOP_REQUESTS
     emits = LOOP_EMITS
     runners = [Single()]
+    # Each step of the pipeline starts in a folder holding only the steps before it, and a loop
+    # cut short may be carried on in its own folder.
+    checks = [CleanFolder(carries_on=True)]
 
     def run(self, ctx: RunContext) -> None:
         overscan = (ctx.inputs[EXTRA_LEFT], ctx.inputs[EXTRA_RIGHT])
         line = DigitalLine(ctx.inputs[TREATMENT_PORT], ctx.inputs[TREATMENT_LINE])
-        run_monitor(ctx, RigMicroscope(ctx), overscan, line)
+        run_loop(ctx, RigMicroscope(ctx), overscan, (monitor_routine(ctx, line),))

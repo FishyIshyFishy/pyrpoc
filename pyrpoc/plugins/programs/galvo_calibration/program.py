@@ -5,10 +5,13 @@ from __future__ import annotations
 from pyrpoc.core.program import Program, RunContext, program_registry
 from pyrpoc.plugins.devices import DAQ, Galvo, PriorStage
 from pyrpoc.plugins.program_io.inputs import SAMPLE_RATE_MHZ, SCAN_GEOMETRY_INPUTS, ScanGeometry
-from pyrpoc.plugins.program_io.outputs import GalvoCalibrationOutput, ImageOutput
 
-from ..building_blocks.calibration import calibrate
-from ..building_blocks.rig import RigMicroscope
+from ..building_blocks.multisite import (
+    CALIBRATION_EMITS,
+    CleanFolder,
+    RigMicroscope,
+    run_calibration,
+)
 from ..building_blocks.runners import Single
 
 
@@ -20,8 +23,10 @@ class GalvoCalibrationProgram(Program):
     devices = [Galvo, DAQ, PriorStage]
     inputs = [*SCAN_GEOMETRY_INPUTS, SAMPLE_RATE_MHZ]
     cards = {"Scan": SCAN_GEOMETRY_INPUTS, "DAQ": (SAMPLE_RATE_MHZ,)}
-    emits = {"calibration": GalvoCalibrationOutput, "view": ImageOutput}
+    emits = CALIBRATION_EMITS
     runners = [Single()]
+    # Each step of the pipeline starts in a folder holding only the steps before it.
+    checks = [CleanFolder(carries_on=False)]
 
     def run(self, ctx: RunContext) -> None:
-        calibrate(ctx, RigMicroscope(ctx), ScanGeometry.from_inputs(ctx.inputs))
+        run_calibration(ctx, RigMicroscope(ctx), ScanGeometry.from_inputs(ctx.inputs))

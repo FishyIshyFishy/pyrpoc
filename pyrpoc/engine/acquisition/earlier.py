@@ -22,7 +22,7 @@ class EarlierChoices:
     def __init__(self) -> None:
         self.found: list[EarlierOutput] = []
         self.unreadable: list[Unreadable] = []
-        # Picked by the user; a name with no pick reads the latest.
+        # Picked by the user; a name with no pick reads the newest.
         self.picked: dict[str, EarlierOutput] = {}
 
     def refresh(self, folder: Path | None) -> None:
@@ -40,18 +40,16 @@ class EarlierChoices:
         return [each for each in self.found if issubclass(each.output_type, output_type)]
 
     def picked_for(self, name: str, output_type: type[ProgramOutput]) -> EarlierOutput | None:
-        """The output the user picked for ``name``, or None to read the latest."""
+        """The output the user picked for ``name``, or None when there is no pick."""
         picked = self.picked.get(name)
         return picked if picked is not None and picked in self.options(output_type) else None
 
-    def pick(self, name: str, choice: EarlierOutput | None) -> None:
-        if choice is None:
-            self.picked.pop(name, None)
-        else:
-            self.picked[name] = choice
+    def pick(self, name: str, choice: EarlierOutput) -> None:
+        self.picked[name] = choice
 
     def chosen(self, name: str, output_type: type[ProgramOutput]) -> EarlierOutput | None:
-        """What a run reads for ``name``, or None when there is nothing to read."""
+        """What a run reads for ``name``: the pick, else the newest, or None when there is
+        nothing to read."""
         options = self.options(output_type)
         if not options:
             return None

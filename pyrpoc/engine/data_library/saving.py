@@ -8,10 +8,9 @@ from pathlib import Path
 from pyrpoc.core.program_output import ProgramOutput
 from pyrpoc.core.recording import Recording, utc_now
 from pyrpoc.engine.data_library.format import (
-    LiveRead,
     OutputRecord,
     RecordingRecord,
-    TakenRequest,
+    Taken,
     free_root,
     meta_path_for,
     pyrpoc_version,
@@ -34,8 +33,7 @@ class RecordingSaver:
     def __init__(self, recording: Recording, meta_path: Path):
         self.recording = recording
         self.meta_path = meta_path
-        self.live_reads: list[LiveRead] = []
-        self.requests: list[TakenRequest] = []
+        self.taken: list[Taken] = []
         # A run writes from its own thread, and a note edit from the GUI thread.
         self.lock = threading.Lock()
 
@@ -47,14 +45,13 @@ class RecordingSaver:
         if self.recording.note:
             save_note(self.recording)
 
-    def log_live(self, read: LiveRead) -> None:
-        """Record a run being given a changed live input, on disk at once."""
-        self.live_reads.append(read)
+    def log_taken(self, taken: Taken) -> None:
+        """Record the run taking something from its inbox, on disk at once."""
+        self.taken.append(taken)
         self.write_metadata(ended_at=None, last_error=None)
 
-    def log_request(self, taken: TakenRequest) -> None:
-        """Record a run taking a request, on disk at once."""
-        self.requests.append(taken)
+    def part_begun(self) -> None:
+        """Put a new part of the recording, and its outputs, on disk at once."""
         self.write_metadata(ended_at=None, last_error=None)
 
     def finalize(self, error: Exception | None) -> None:
@@ -75,21 +72,23 @@ class RecordingSaver:
             started_at=recording.started_at,
             ended_at=ended_at,
             last_error=last_error,
-            parameters=recording.parameters,
-            devices=recording.devices,
+            parts=list(recording.parts),
             outputs={
-                name: output_record(program_output)
+                name: output_record(program_output, self.meta_path.parent)
                 for name, program_output in recording.outputs.items()
             },
             # Read each time: the note may be edited while the recording runs.
             notes=recording.note,
             inputs=recording.reads,
-            live_reads=list(self.live_reads),
-            requests=list(self.requests),
+            taken=list(self.taken),
         )
 
 
-def output_record(program_output: ProgramOutput) -> OutputRecord:
+def output_record(program_output: ProgramOutput, folder: Path) -> OutputRecord:
+    """Its type and files, each named from ``folder``, so an output may keep files in folders
+    of its own."""
     with program_output.lock:
-        files = {key: path.name for key, path in program_output.paths.items()}
+        files = {
+            key: path.relative_to(folder).as_posix() for key, path in program_output.paths.items()
+        }
     return OutputRecord(type=program_output.type_key, files=files)

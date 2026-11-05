@@ -146,6 +146,61 @@ forbidden_modules = [
 ]
 
 [[tool.importlinter.contracts]]
+name = "Inside multisite: bindings > routines > stages > interfaces > analysis"
+type = "layers"
+containers = ["pyrpoc.plugins.programs.building_blocks.multisite"]
+layers = ["bindings", "routines", "stages", "interfaces", "analysis"]
+
+[[tool.importlinter.contracts]]
+name = "Multisite's stages never import each other"
+type = "independence"
+modules = [
+  "pyrpoc.plugins.programs.building_blocks.multisite.stages.calibration",
+  "pyrpoc.plugins.programs.building_blocks.multisite.stages.survey",
+  "pyrpoc.plugins.programs.building_blocks.multisite.stages.loop",
+]
+
+# Indirect imports are allowed: stages use value types from program_io, whose modules
+# import the core. What is forbidden is reaching for a run, a device or an output.
+[[tool.importlinter.contracts]]
+name = "Only multisite's bindings know runs, devices and program outputs"
+type = "forbidden"
+source_modules = [
+  "pyrpoc.plugins.programs.building_blocks.multisite.analysis",
+  "pyrpoc.plugins.programs.building_blocks.multisite.interfaces",
+  "pyrpoc.plugins.programs.building_blocks.multisite.stages",
+  "pyrpoc.plugins.programs.building_blocks.multisite.routines",
+]
+forbidden_modules = [
+  "pyrpoc.core.program",
+  "pyrpoc.core.program_output",
+  "pyrpoc.plugins.devices",
+]
+allow_indirect_imports = true
+
+[[tool.importlinter.contracts]]
+name = "Multisite's analysis is maths on arrays: it imports nothing else of pyrpoc"
+type = "forbidden"
+source_modules = ["pyrpoc.plugins.programs.building_blocks.multisite.analysis"]
+forbidden_modules = ["pyrpoc.core", "pyrpoc.utils", "pyrpoc.plugins.program_io", "pyrpoc.plugins.devices"]
+
+[[tool.importlinter.contracts]]
+name = "Programs use multisite only through the package root"
+type = "forbidden"
+source_modules = [
+  "pyrpoc.plugins.programs.*.program",
+  "pyrpoc.plugins.programs.simulated.*",
+]
+forbidden_modules = [
+  "pyrpoc.plugins.programs.building_blocks.multisite.analysis",
+  "pyrpoc.plugins.programs.building_blocks.multisite.interfaces",
+  "pyrpoc.plugins.programs.building_blocks.multisite.stages",
+  "pyrpoc.plugins.programs.building_blocks.multisite.routines",
+  "pyrpoc.plugins.programs.building_blocks.multisite.bindings",
+]
+allow_indirect_imports = true
+
+[[tool.importlinter.contracts]]
 name = "The engine never names a plugin; it finds plugins through registries"
 type = "forbidden"
 source_modules = ["pyrpoc.engine"]
@@ -159,6 +214,7 @@ source_modules = [
   "pyrpoc.core.device",
   "pyrpoc.core.program",
   "pyrpoc.core.runner",
+  "pyrpoc.core.check",
   "pyrpoc.core.program_input",
   "pyrpoc.core.program_output",
   "pyrpoc.core.library",

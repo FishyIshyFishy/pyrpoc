@@ -7,6 +7,7 @@ Imports go one way: `app` → `engine` → `plugins` → `utils` → `core`.
 - `plugins/{devices,program_io,programs,panels}/`: things you add more of.
   - `program_io/inputs/` declares the program inputs programs and panels share; `program_io/requests/` the requests; `program_io/outputs/` holds the kinds of data programs publish and the writers that save them.
   - `programs/` and `panels/` may import `program_io/` and `devices/`, and never each other. `program_io/` and `devices/` know only `core/` and `utils/`.
+  - `programs/building_blocks/multisite/` is the calibrate → survey → loop package. Programs import only its root; inside, the layers run `bindings` > `routines` > `stages` > `interfaces` > `analysis` (see its README).
 - `engine/`: the app's working parts, one folder per collection: `acquisition/` > `data_library/` | `device_inventory/`. Each holds its no-Qt logic, its Qt model and its panel. They never import a plugin.
 - `app/`: the composition root (`application.py` wires the engine; window, menus, theme, `session/`). The only place that knows about everything.
 - New implementations register through the registry beside the base they build on: in `core/`, or in `utils/widgets/` for panels. Nothing else lists them.
