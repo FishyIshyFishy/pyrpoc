@@ -82,9 +82,10 @@ of the app meet.
 | Piece | What it is |
 |---|---|
 | **Device** | A piece of hardware the microscope has: its identity, its settings (a `DeviceConfig`, whose fields each carry a `Field`) and maybe a connection. |
-| **Program** | One kind of experiment: the devices it needs, the program inputs it reads, the outputs it fills, the earlier outputs it reads, the requests it accepts, and the runners that can start it. Its `run` does the work. |
+| **Program** | One kind of experiment: the devices it needs, the program inputs it reads, the outputs it fills, the earlier outputs it reads, the requests it accepts, the runners that can start it, and the checks it sets on starting. Its `run` does the work. |
 | **RunContext** | What a running program is handed: its input values, the current value of its live inputs, its requests, the earlier outputs it reads, its devices, its outputs, status and cancel. |
 | **Runner** | A way to start a program, such as once, continuously, or armed until a pixel is picked. The program declares it. It may offer the user a `Control` through its `RunnerContext`. Core says only that a control exists: what it is, such as a button or a toggle, is its type, and the panel showing the program draws each by its type. A runner may watch program inputs. |
+| **Check** | A condition a program sets on starting, judged with everything else a run needs before its recording opens, so a refused start leaves nothing behind. It sees the save folder, the recordings saved there and the reads chosen, through its `CheckContext`, and answers with what the run still needs. |
 
 A run is not a piece of core: it is the engine executing one recording.
 
@@ -161,6 +162,7 @@ Each keeps its own registry, since each is built from different collections.
 | `device.py` | `Device` + `device_registry`, and `DeviceConfig`, whose fields carry their `Field` |
 | `program.py` | `Program`, `RunContext` + `program_registry` |
 | `runner.py` | `Runner`, `RunnerContext`, `Control` |
+| `check.py` | `Check`, `CheckContext` |
 | `program_input.py` | `ProgramInput` + `declare`, `Field`, `ProgramInputValues`, `ProgramInputs` |
 | `requests.py` | `Request` + `request_registry`, `Requests` |
 | `recording.py` | `Recording` |

@@ -6,7 +6,7 @@ from pyrpoc.core.program import Program, RunContext
 from pyrpoc.plugins.devices.simulated import SimulatedScanner
 from pyrpoc.plugins.program_io.inputs import SCAN_GEOMETRY_INPUTS, ScanGeometry
 
-from ...building_blocks.multisite import CALIBRATION_EMITS, run_calibration
+from ...building_blocks.multisite import CALIBRATION_EMITS, CleanFolder, run_calibration
 from ...building_blocks.runners import Single
 from ..dish_microscope import DishMicroscope
 
@@ -20,6 +20,8 @@ class SimulatedGalvoCalibration(Program):
     cards = {"Scan": SCAN_GEOMETRY_INPUTS}
     emits = CALIBRATION_EMITS
     runners = [Single()]
+    # Each step of the pipeline starts in a folder holding only the steps before it.
+    checks = [CleanFolder()]
 
     def run(self, ctx: RunContext) -> None:
         run_calibration(ctx, DishMicroscope(ctx), ScanGeometry.from_inputs(ctx.inputs))

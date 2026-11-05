@@ -214,6 +214,7 @@ source_modules = [
   "pyrpoc.core.device",
   "pyrpoc.core.program",
   "pyrpoc.core.runner",
+  "pyrpoc.core.check",
   "pyrpoc.core.program_input",
   "pyrpoc.core.program_output",
   "pyrpoc.core.library",

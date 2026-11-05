@@ -17,6 +17,7 @@ from ..building_blocks.multisite import (
     SURVEY_FOCUS_INPUTS,
     SURVEY_READS,
     TILE_INPUTS,
+    CleanFolder,
     RigMicroscope,
     run_survey,
 )
@@ -47,6 +48,8 @@ class Survey(Program):
     }
     emits = SURVEY_EMITS
     runners = [Single()]
+    # Each step of the pipeline starts in a folder holding only the steps before it.
+    checks = [CleanFolder()]
 
     def run(self, ctx: RunContext) -> None:
         overscan = (ctx.inputs[EXTRA_LEFT], ctx.inputs[EXTRA_RIGHT])

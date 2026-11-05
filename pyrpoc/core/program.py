@@ -7,6 +7,7 @@ import threading
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from typing import Any, Protocol, TypeVar
 
+from pyrpoc.core.check import Check
 from pyrpoc.core.device import Device
 from pyrpoc.core.program_input import ProgramInput, ProgramInputValues
 from pyrpoc.core.program_output import ProgramOutput
@@ -84,6 +85,9 @@ class Program:
 
     # The ways this program can be started, in the order their controls are drawn.
     runners: list[Runner] = []
+
+    # Conditions of its own for starting, judged with the rest of what a run needs.
+    checks: list[Check] = []
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
         super().__init_subclass__(**kwargs)

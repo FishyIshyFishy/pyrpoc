@@ -23,6 +23,7 @@ from ..building_blocks.multisite import (
     MONITOR_LIVE,
     STEERING,
     TREATMENT_INPUTS,
+    CleanFolder,
     DigitalLine,
     RigMicroscope,
     monitor_routine,
@@ -61,6 +62,8 @@ class LongitudinalMonitor(Program):
     requests = [RUN_NOW]
     emits = LOOP_EMITS
     runners = [Single()]
+    # Each step of the pipeline starts in a folder holding only the steps before it.
+    checks = [CleanFolder()]
 
     def run(self, ctx: RunContext) -> None:
         overscan = (ctx.inputs[EXTRA_LEFT], ctx.inputs[EXTRA_RIGHT])

@@ -11,6 +11,7 @@ from ...building_blocks.multisite import (
     SURVEY_FOCUS_INPUTS,
     SURVEY_READS,
     TILE_INPUTS,
+    CleanFolder,
     run_survey,
 )
 from ...building_blocks.runners import Single
@@ -27,6 +28,8 @@ class SimulatedSurvey(Program):
     cards = {"Region": REGION_INPUTS, "Tiles": TILE_INPUTS, "Focus Search": SURVEY_FOCUS_INPUTS}
     emits = SURVEY_EMITS
     runners = [Single()]
+    # Each step of the pipeline starts in a folder holding only the steps before it.
+    checks = [CleanFolder()]
 
     def run(self, ctx: RunContext) -> None:
         # The simulated scanner has no mirrors to turn around, so no overscan.

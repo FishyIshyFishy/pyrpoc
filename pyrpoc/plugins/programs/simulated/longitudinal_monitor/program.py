@@ -14,6 +14,7 @@ from ...building_blocks.multisite import (
     MONITOR_LIVE,
     STEERING,
     TREATMENT_INPUTS,
+    CleanFolder,
     DigitalLine,
     monitor_routine,
     run_loop,
@@ -36,6 +37,8 @@ class SimulatedLongitudinalMonitor(Program):
     requests = [RUN_NOW]
     emits = LOOP_EMITS
     runners = [Single()]
+    # Each step of the pipeline starts in a folder holding only the steps before it.
+    checks = [CleanFolder()]
 
     def run(self, ctx: RunContext) -> None:
         routine = monitor_routine(ctx, DigitalLine(0, 0))
