@@ -1,4 +1,4 @@
-"""``UNITS``, the regions of the dish a loop experiments on, as a program input."""
+"""``UNITS``, the regions of the dish a loop starts on, as a program input."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from pyrpoc.plugins.program_io.outputs import Unit
 
 @dataclass(frozen=True)
 class UnitsField(Field):
-    """The rules for the units: a tuple of ``Unit`` with distinct ids."""
+    """The rules for the units: a tuple of ``Unit`` with distinct keys."""
 
     def coerce(self, value: Any) -> tuple[Unit, ...]:
         if value is None:
@@ -20,8 +20,8 @@ class UnitsField(Field):
         if isinstance(value, (str, bytes, dict)) or not isinstance(value, Iterable):
             raise ParameterError(f"{self.label}: expected a list of units")
         units = tuple(each if isinstance(each, Unit) else Unit.from_dict(each) for each in value)
-        if len({unit.id for unit in units}) != len(units):
-            raise ParameterError(f"{self.label}: two units share an id")
+        if len({unit.key for unit in units}) != len(units):
+            raise ParameterError(f"{self.label}: two units share a key")
         return units
 
     def encode(self, value: tuple[Unit, ...]) -> Any:
@@ -30,9 +30,9 @@ class UnitsField(Field):
 
 UNITS = declare(
     "units",
-    UnitsField("Units", "The regions drawn in the Autonomy panel"),
+    UnitsField("Units", "The regions drawn over the survey that a loop starts on"),
     (),
-    # They belong to the dish, not the session: the Autonomy panel keeps them in units.json in
-    # the survey's folder, and the session would rewrite thousands of them on every autosave.
+    # Thousands of outlines would be rewritten on every autosave. Once a loop has started, its
+    # units output is the record of them.
     restored=False,
 )

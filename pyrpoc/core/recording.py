@@ -24,9 +24,21 @@ class EarlierRead:
     output: str
 
 
+@dataclass(frozen=True)
+class RecordingPart:
+    """A stretch of a recording made with one set of settings: when it began, the program
+    input values and device settings it ran with, and the names of the outputs it filled."""
+
+    started_at: str
+    parameters: dict[str, Any]
+    devices: dict[str, Any]
+    outputs: tuple[str, ...]
+
+
 class Recording:
-    """What one run produced: the program, name, start time, input values, devices and
-    earlier recordings that made it, where it is saved, its note, and its program outputs."""
+    """What one run produced: the program, name and start time, its parts, each with the
+    settings that made it, the earlier recordings it read, where it is saved, its note, and its
+    program outputs."""
 
     def __init__(
         self,
@@ -34,8 +46,7 @@ class Recording:
         program_key: str,
         name: str,
         started_at: str,
-        parameters: dict[str, Any],
-        devices: dict[str, Any],
+        parts: list[RecordingPart],
         reads: dict[str, EarlierRead],
         location: Path | None,
         note: str,
@@ -45,8 +56,8 @@ class Recording:
         # The save filename, set whether or not it was saved; empty for an unnamed run.
         self.name = name
         self.started_at = started_at
-        self.parameters = parameters
-        self.devices = devices
+        # A new part begins each time the settings of a repeating run change between passes.
+        self.parts = parts
         # What it read of earlier recordings, by the name its program reads each under.
         self.reads = reads
         # Its metadata file, or None when it is not saved.
@@ -57,6 +68,10 @@ class Recording:
         self.finished = finished
         # Filled once by whoever opens it, since each output points back here.
         self.outputs: dict[str, ProgramOutput] = {}
+
+    def part_of(self, output_name: str) -> RecordingPart:
+        """The part that filled the output ``output_name``."""
+        return next(part for part in self.parts if output_name in part.outputs)
 
     @property
     def folder(self) -> Path | None:

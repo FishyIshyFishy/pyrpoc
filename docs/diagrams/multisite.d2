@@ -1,0 +1,78 @@
+# Multisite, board 1 of 2: the pipeline. Each step's inputs, the program, the outputs it fills,
+# and what later steps and panels read of them. See multisite_loop.d2 for inside a loop.
+vars: {d2-config: {layout-engine: elk}}
+direction: right
+
+classes: {
+  input: {style: {fill: "#fff3d6"; stroke: "#c79200"; border-radius: 6}}
+  live: {style: {fill: "#fff3d6"; stroke: "#c79200"; stroke-width: 3; stroke-dash: 3; border-radius: 6}}
+  request: {style: {fill: "#ffe7c2"; stroke: "#d9730d"; stroke-width: 2; border-radius: 6}}
+  prog: {style: {fill: "#e6f5e9"; stroke: "#3c8d4f"; stroke-width: 3; border-radius: 6}}
+  check: {shape: hexagon; style: {fill: "#e8f0fb"; stroke: "#3b6db3"}}
+  out: {style: {fill: "#f3ecfa"; stroke: "#7e57a8"; border-radius: 6}}
+  panel: {style: {fill: "#fde8e8"; stroke: "#b04a4a"; border-radius: 6}}
+  panel_new: {style: {fill: "#fde8e8"; stroke: "#b04a4a"; stroke-dash: 4; border-radius: 6}}
+}
+
+legend: |md
+  **Key**
+  - yellow: ProgramInputs, frozen at start (heavy dashed border: *live*)
+  - orange: Request, taken between steps
+  - green: program
+  - purple: ProgramOutput (`'name'` Type)
+  - blue hexagon: Check, judged before each start
+  - red: panel (dashed border: arrives in #67)
+
+  Every step runs with `CleanFolder`: its folder may hold only the recordings it reads, so each
+  read has one possible source. A loop's may also hold the runs of a loop it carries on.
+| {near: bottom-left}
+
+# ---------------------------------------------------------------- 1. calibration
+cal_in: "SCAN_GEOMETRY_INPUTS" {class: input}
+cal: "1. Galvo Calibration" {class: prog}
+calibration: "'calibration'\nGalvoCalibrationOutput\n.measured() -> GalvoCalibration\n(µm per volt, x and y)" {class: out}
+view: "'view' ImageOutput\nevery frame it looked at" {class: out}
+cal_in -> cal
+cal -> calibration
+cal -> view
+
+# ---------------------------------------------------------------- 2. survey
+sur_in: "SURVEY_WIDTH/HEIGHT_UM\nFIELD_UM, FIELD_PIXELS\nTILE_OVERLAP, focus search" {class: input}
+sur: "2. Survey" {class: prog}
+survey: "'survey'\nSurveyOutput (a MosaicOutput)\n.found() -> SurveyFinding\n  (FocusPlane, MotionRate)\n.overview() -> (planes, Placement)" {class: out}
+sur_in -> sur
+calibration -> sur: "reads"
+sur -> survey
+
+# ---------------------------------------------------------------- 3. loop
+units: "UNITS: tuple[Unit]\nthe units it starts on\nUnit = key + outline + group" {class: input}
+loop_in: "TREAT, TREATED_GROUP\nFOCUS_CHECK_S, ..." {class: input}
+monitor_live: "PERIOD_S, DURATION_MIN" {class: live}
+command: "UNIT_COMMAND\nadd, edit, remove, pause,\nresume, run now (by key)" {class: request}
+loop: "3. Longitudinal Monitor\n(any loop: routines on units)" {class: prog}
+log: "'log' LoopLogOutput\nevery LoopEvent\n.view() -> LoopView" {class: out}
+unit_records: "'units' UnitsOutput\nevery UnitRecord\n(number, Unit, joined, left, paused)" {class: out}
+frames: "'frames' UnitFramesOutput\neach frame tagged FrameTag\n(unit number, routine, position)" {class: out}
+units -> loop: "fresh start"
+loop_in -> loop
+monitor_live -> loop
+command -> loop: "while it runs"
+survey -> loop: "reads"
+calibration -> loop: "reads"
+loop -> log
+loop -> unit_records
+loop -> frames
+
+# ---------------------------------------------------------------- panels
+image: "Image panel" {class: panel}
+mosaic: "Mosaic panel" {class: panel}
+library: "Data Library" {class: panel}
+autonomy: "Autonomy (#67)\ndraws Unit.new() over the overview;\nsets UNITS before a loop,\nposts UNIT_COMMAND during one" {class: panel_new}
+curves: "Curves (#67)\nplots UnitView.series" {class: panel_new}
+view -> image
+frames -> image
+survey -> mosaic
+survey -> autonomy: ".overview()"
+log -> autonomy: ".view()"
+log -> curves: ".view()"
+unit_records -> library

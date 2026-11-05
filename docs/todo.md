@@ -6,7 +6,8 @@ AGENT: do not write here
 1. Finish autonomous implementation
 2. Dual galvo clean implementation
 3. Visual cleanup of mask cards, masks should not be a persisted parameter on session restore.
-
+4. Examine program_io/requests/, it is concerning that this is separated from inputs/, as engine/acquisition/inbox.py was supposed to simplify the talking-to-programs-while-they-run problem
+   
 ### Ideas
 - have ProgramOutputs inherit from PanelInputs or something along those lines. Each panel declares a thing it can take in? The coupling between programs and panels is a bit of a smell, but its possible its not as damaging as it feels, its just the code and UI are cluttered right now. Not sure what is best here.
 

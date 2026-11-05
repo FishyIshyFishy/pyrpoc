@@ -30,4 +30,4 @@ def monitor_routine(ctx: RunContext, line: DigitalLine) -> RoutineSpec:
     def now() -> Monitoring:
         return Monitoring(ctx.current(PERIOD_S), ctx.current(DURATION_MIN))
 
-    return RoutineSpec("monitor", lambda unit: monitor(unit, now, treatment))
+    return RoutineSpec("monitor", lambda unit, history: monitor(unit, history, now, treatment))

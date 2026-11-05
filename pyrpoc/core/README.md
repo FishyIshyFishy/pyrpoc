@@ -26,15 +26,20 @@ takes a snapshot of the program's input values, claims its devices so no other
 run can use them, and fills the recording's **program outputs**, such as an
 image or a spectrum. Single does the program's work once. Continuous does it
 again and again into the same recording until you stop it, so a long
-continuous run is still one recording. Editing an input while it runs ends
-that recording and starts a new one with the new values.
+continuous run is still one recording.
 
-A program may declare some inputs **live**: a run reads their current value
-whenever it chooses, between its own steps, so edits made while it runs reach
-it without starting a new recording. A program may also accept **requests**,
-such as "visit this unit now": a panel posts one and the running program takes
-it once. The recording logs every live change and request it was given, and
-when.
+Everything that changes for a running run goes to its **inbox**: edits to its
+program inputs, edits to its devices, and **requests**, such as "visit this
+unit now", which panels post. Each is taken at its own moment:
+- a request when the program asks for it;
+- a **live** input's edit when the program reads that input, between its own
+  steps;
+- every other edit between passes of a repeating run, where it begins a new
+  **part** of the recording, with new outputs of the same types (`intensity`,
+  then `intensity 2`), so each output was made with one set of settings.
+
+The recording logs everything the run took, when it was posted and when it was
+taken.
 
 A program output is one named part of a recording, of one type: an
 `ImageOutput`, a `SpectrumOutput`, a `MosaicOutput`. Its type decides
@@ -83,7 +88,7 @@ of the app meet.
 |---|---|
 | **Device** | A piece of hardware the microscope has: its identity, its settings (a `DeviceConfig`, whose fields each carry a `Field`) and maybe a connection. |
 | **Program** | One kind of experiment: the devices it needs, the program inputs it reads, the outputs it fills, the earlier outputs it reads, the requests it accepts, the runners that can start it, and the checks it sets on starting. Its `run` does the work. |
-| **RunContext** | What a running program is handed: its input values, the current value of its live inputs, its requests, the earlier outputs it reads, its devices, its outputs, status and cancel. |
+| **RunContext** | What a running program is handed for one part of its recording: its input values as the part began, its inbox (the current value of its live inputs, and its requests), the earlier outputs it reads, its devices, the part's outputs, status and cancel. |
 | **Runner** | A way to start a program, such as once, continuously, or armed until a pixel is picked. The program declares it. It may offer the user a `Control` through its `RunnerContext`. Core says only that a control exists: what it is, such as a button or a toggle, is its type, and the panel showing the program draws each by its type. A runner may watch program inputs. |
 | **Check** | A condition a program sets on starting, judged with everything else a run needs before its recording opens, so a refused start leaves nothing behind. It sees the save folder, the recordings saved there and the reads chosen, through its `CheckContext`, and answers with what the run still needs. |
 
@@ -109,7 +114,7 @@ cards every input is shown.
 
 | Piece | What it is |
 |---|---|
-| **Recording** | What one run produced: what made it (program, name, start time, input values, devices, the earlier recordings it read), where it is saved (or nothing, when unsaved), its note, whether it is finished, and its program outputs. Two outputs are of the same recording when their `recording` is the same object. Its folder is its Experiment. |
+| **Recording** | What one run produced: what made it (program, name, start time, the earlier recordings it read), its parts (each a `RecordingPart`: the input values and devices it ran with, and the outputs it filled), where it is saved (or nothing, when unsaved), its note, whether it is finished, and its program outputs. Two outputs are of the same recording when their `recording` is the same object. Its folder is its Experiment. |
 | **ProgramOutput** | One named part of a recording, of one type. Each type is a subclass that owns its content, how programs add to it, how panels read it, and how it is written to files and read back. Many programs may fill the same type. Types register in `program_output_registry`, which is how a recording on disk finds them again. |
 | **Library** | The recordings that are open: acquired now, or loaded from disk. Nothing else. You can add one, close one, list them, and subscribe. |
 
@@ -165,7 +170,7 @@ Each keeps its own registry, since each is built from different collections.
 | `check.py` | `Check`, `CheckContext` |
 | `program_input.py` | `ProgramInput` + `declare`, `Field`, `ProgramInputValues`, `ProgramInputs` |
 | `requests.py` | `Request` + `request_registry`, `Requests` |
-| `recording.py` | `Recording` |
+| `recording.py` | `Recording`, `RecordingPart` |
 | `program_output.py` | `ProgramOutput` + `program_output_registry` |
 | `library.py` | `Library` |
 | `panels.py` | `Panel`. The only file here that uses Qt. |

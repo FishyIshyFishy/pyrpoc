@@ -1,9 +1,10 @@
-"""``Unit``, one region of the dish a loop experiments on, and ``UnitsOutput``, the units a
-loop ran on."""
+"""``Unit``, one region of the dish a loop experiments on, ``UnitRecord``, a unit as a loop
+knows it, and ``UnitsOutput``, every unit a loop has had."""
 
 from __future__ import annotations
 
 import json
+import uuid
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
@@ -14,15 +15,23 @@ from pyrpoc.core.program_input import ParameterError
 from pyrpoc.core.program_output import ProgramOutput, program_output_registry
 from pyrpoc.core.recording import Recording
 
+Outline = tuple[tuple[float, float], ...]
+
 
 @dataclass(frozen=True)
 class Unit:
-    """One region of the dish: an id, an outline in dish µm, so it outlasts a change of
-    resolution, and the group it belongs to, such as treated or control."""
+    """One region of the dish: a key it keeps for life and no other unit ever has, an outline in
+    dish µm, so it outlasts a change of resolution, and the group it belongs to, such as
+    treated or control."""
 
-    id: int
-    outline: tuple[tuple[float, float], ...]
+    key: str
+    outline: Outline
     group: str
+
+    @classmethod
+    def new(cls, outline: Outline, group: str) -> Unit:
+        """A unit never seen before, with a key of its own."""
+        return cls(uuid.uuid4().hex, outline, group)
 
     @property
     def centre(self) -> tuple[float, float]:
@@ -50,9 +59,14 @@ class Unit:
     def moved_by(self, dx_um: float, dy_um: float) -> Unit:
         return replace(self, outline=tuple((x + dx_um, y + dy_um) for x, y in self.outline))
 
+    def moved_to(self, x_um: float, y_um: float) -> Unit:
+        """The same unit with its centre at (``x_um``, ``y_um``)."""
+        cx, cy = self.centre
+        return self.moved_by(x_um - cx, y_um - cy)
+
     def to_dict(self) -> dict[str, Any]:
         return {
-            "id": self.id,
+            "key": self.key,
             "outline": [list(point) for point in self.outline],
             "group": self.group,
         }
@@ -62,29 +76,61 @@ class Unit:
         """A unit from JSON, a boundary: anything malformed raises ``ParameterError``."""
         try:
             outline = tuple((float(x), float(y)) for x, y in raw["outline"])
-            unit = cls(int(raw["id"]), outline, str(raw["group"]))
+            unit = cls(str(raw["key"]), outline, str(raw["group"]))
         except (KeyError, TypeError, ValueError) as exc:
             raise ParameterError(f"a unit is malformed: {exc}") from exc
         if len(outline) < 3:
-            raise ParameterError(f"unit {unit.id} needs at least three points")
+            raise ParameterError(f"unit {unit.key} needs at least three points")
         return unit
+
+
+@dataclass(frozen=True)
+class UnitRecord:
+    """A unit as a loop knows it: the number the loop gave it on joining, never given to another
+    unit, the unit as last drawn or edited, when it joined and left on the instrument's clock,
+    and whether it is paused."""
+
+    number: int
+    unit: Unit
+    joined_s: float
+    left_s: float | None
+    paused: bool
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "number": self.number,
+            "unit": self.unit.to_dict(),
+            "joined_s": self.joined_s,
+            "left_s": self.left_s,
+            "paused": self.paused,
+        }
+
+    @classmethod
+    def from_dict(cls, raw: Any) -> UnitRecord:
+        left = raw["left_s"]
+        return cls(
+            int(raw["number"]),
+            Unit.from_dict(raw["unit"]),
+            float(raw["joined_s"]),
+            None if left is None else float(left),
+            bool(raw["paused"]),
+        )
 
 
 @program_output_registry.register("units")
 class UnitsOutput(ProgramOutput):
-    """Every unit a loop ran on, as drawn when it started on it, saved as
-    ``<root>_<name>.json`` each time one is added, so the units outlast the panel they were
-    drawn in."""
+    """Every unit a loop has had, those that left included, saved whole as
+    ``<root>_<name>.json`` whenever one joins, is edited, leaves, or is paused or resumed."""
 
     def __init__(self, *, name: str, recording: Recording, root: Path | None):
         super().__init__(name=name, recording=recording, root=root)
-        self.units: tuple[Unit, ...] = ()
+        self.records: tuple[UnitRecord, ...] = ()
         self.nbytes_saved = 0
 
-    def keep(self, units: tuple[Unit, ...]) -> None:
-        text = json.dumps({"units": [unit.to_dict() for unit in units]}, indent=2)
+    def keep(self, records: tuple[UnitRecord, ...]) -> None:
+        text = json.dumps({"units": [record.to_dict() for record in records]}, indent=2)
         with self.lock:
-            self.units = units
+            self.records = records
             self.nbytes_saved = len(text)
             if self.root is not None:
                 path = self.root.with_name(f"{self.root.name}_{self.name}.json")
@@ -102,6 +148,6 @@ class UnitsOutput(ProgramOutput):
         if files:
             (path,) = files.values()
             raw: Any = json.loads(path.read_text(encoding="utf-8"))
-            output.units = tuple(Unit.from_dict(each) for each in raw["units"])
+            output.records = tuple(UnitRecord.from_dict(each) for each in raw["units"])
             output.nbytes_saved = path.stat().st_size
         return output

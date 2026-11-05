@@ -60,11 +60,32 @@ Routine = Generator[Step, Seen | None, None]
 
 
 @dataclass(frozen=True)
-class RoutineSpec:
-    """A named routine, and how to start it for one unit."""
+class Recorded:
+    """A measurement a routine recorded earlier: its name, when, and its values."""
 
     name: str
-    start: Callable[[Unit], Routine]
+    time_s: float
+    values: tuple[float, ...]
+
+
+@dataclass(frozen=True)
+class RoutineHistory:
+    """What a routine already did for its unit before a loop was cut short and resumed: when
+    each scan ran, and what it recorded. Empty for a routine starting afresh."""
+
+    scans_s: tuple[float, ...]
+    records: tuple[Recorded, ...]
+
+
+NO_HISTORY = RoutineHistory((), ())
+
+
+@dataclass(frozen=True)
+class RoutineSpec:
+    """A named routine, and how to start it for one unit, carrying on from its history."""
+
+    name: str
+    start: Callable[[Unit, RoutineHistory], Routine]
 
 
 def seen_from(result: Seen | None) -> Seen:

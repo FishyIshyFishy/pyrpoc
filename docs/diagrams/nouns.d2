@@ -4,8 +4,10 @@ direction: right
 
 classes: {
   data: {style: {fill: "#f3ecfa"; stroke: "#7e57a8"; border-radius: 6}}
+  part: {style: {fill: "#faf6fd"; stroke: "#7e57a8"; stroke-dash: 3}}
   run: {style: {fill: "#e6f5e9"; stroke: "#3c8d4f"; stroke-width: 3; border-radius: 6}}
   coll: {style: {fill: "#fff3d6"; stroke: "#c79200"; stroke-width: 3; border-radius: 6}}
+  inbox: {style: {fill: "#e8f0fb"; stroke: "#3b6db3"; stroke-width: 2; border-radius: 6}}
   disk: {shape: cylinder; style: {fill: "#eeeeee"; stroke: "#777777"}}
 }
 
@@ -14,21 +16,29 @@ run: "Run\nexecuting one recording:\nSingle once, Continuous\nagain and again un
 folder: "Experiment = a folder" {
   style: {fill: "#fffaf0"; stroke: "#c79200"}
 
-  recording: "Recording\nwhat made it: program, inputs,\ndevices, earlier recordings read\nits note, its location" {
+  recording: "Recording\nwhat made it: program, earlier\nrecordings read; its note,\nits location" {
     style: {fill: "#faf6fd"; stroke: "#7e57a8"}
 
-    intensity: "ImageOutput\n'intensity'" {class: data}
-    histogram: "HistogramOutput\n'histogram'" {class: data}
+    part1: "Part 1\nthe inputs and devices\nit ran with" {
+      class: part
+      intensity: "ImageOutput\n'intensity'" {class: data}
+      histogram: "HistogramOutput\n'histogram'" {class: data}
+    }
+    part2: "Part 2\nafter an edit between passes" {
+      class: part
+      intensity2: "ImageOutput\n'intensity 2'" {class: data}
+      histogram2: "HistogramOutput\n'histogram 2'" {class: data}
+    }
   }
 }
 
-run -> folder.recording: "opens one, fills it" {style.stroke: "#d9730d"}
+run -> folder.recording: "opens one, fills it,\na part per set of settings" {style.stroke: "#d9730d"}
 
 library: "Library\nthe open recordings" {class: coll}
 files: "its own files\n(each output writes and\nreads back its own;\nthe engine writes _meta.json)" {class: disk}
 
 folder.recording -> library: "while open"
-folder.recording.intensity -> files: "if saving is on" {style.stroke-dash: 4}
+folder.recording.part1.intensity -> files: "if saving is on" {style.stroke-dash: 4}
 
-requests: "Requests\ncommands panels post" {class: coll}
-requests -> run: "each taken once,\nlogged in its recording" {style.stroke-dash: 4}
+inbox: "Inbox\nrequests, input edits and\ndevice edits posted to the run;\neverything taken is logged\nin the recording" {class: inbox}
+inbox -> run: "each taken at its moment" {style.stroke-dash: 4}

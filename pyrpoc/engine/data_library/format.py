@@ -11,10 +11,10 @@ from pathlib import Path
 from typing import Any
 
 from pyrpoc.core.program_output import ProgramOutput, program_output_registry
-from pyrpoc.core.recording import EarlierRead, Recording
+from pyrpoc.core.recording import EarlierRead, Recording, RecordingPart
 
 FORMAT = "pyrpoc-recording"
-FORMAT_VERSION = 8
+FORMAT_VERSION = 9
 META_SUFFIX = "_meta.json"
 
 
@@ -23,23 +23,17 @@ class RecordingError(Exception):
 
 
 @dataclass(frozen=True)
-class LiveRead:
-    """The run reading a live input whose value changed since it last read it."""
-
-    read_at: str
-    key: str
-    # As the input's rules encode it.
-    value: Any
-
-
-@dataclass(frozen=True)
-class TakenRequest:
-    """The run taking a request a panel posted to it."""
+class Taken:
+    """The run taking something posted to it: a request, or a change to one of its program
+    inputs or to its devices."""
 
     posted_at: str
     taken_at: str
+    # "request", "input" or "device".
+    kind: str
+    # The request's or input's key, or the device's class name.
     key: str
-    # As the request's rules encode it.
+    # As its rules encode it; a device's whole settings.
     value: Any
 
 
@@ -59,17 +53,14 @@ class RecordingRecord:
     started_at: str
     ended_at: str | None
     last_error: str | None
-    parameters: dict[str, Any]
-    devices: dict[str, Any]
+    parts: list[RecordingPart]
     outputs: dict[str, OutputRecord]
     # What the user wrote about the run, before or after it.
     notes: str
     # What it read of earlier recordings, by the name its program reads each under.
     inputs: dict[str, EarlierRead]
-    # Each change to a live input a run read, in the order read.
-    live_reads: list[LiveRead]
-    # Each request a run took, in the order taken.
-    requests: list[TakenRequest]
+    # Everything the run took from its inbox, in the order taken.
+    taken: list[Taken]
 
 
 def pyrpoc_version() -> str:
@@ -150,8 +141,15 @@ def decode_record(raw: dict[str, Any]) -> RecordingRecord:
         started_at=str(raw["started_at"]),
         ended_at=optional_str(raw["ended_at"]),
         last_error=optional_str(raw["last_error"]),
-        parameters=dict(raw["parameters"]),
-        devices=dict(raw["devices"]),
+        parts=[
+            RecordingPart(
+                started_at=str(part["started_at"]),
+                parameters=dict(part["parameters"]),
+                devices=dict(part["devices"]),
+                outputs=tuple(str(name) for name in part["outputs"]),
+            )
+            for part in raw["parts"]
+        ],
         outputs={
             str(output): OutputRecord(
                 type=str(entry["type"]),
@@ -164,22 +162,15 @@ def decode_record(raw: dict[str, Any]) -> RecordingRecord:
             str(name): EarlierRead(str(read["recording"]), str(read["output"]))
             for name, read in raw["inputs"].items()
         },
-        live_reads=[
-            LiveRead(
-                read_at=str(read["read_at"]),
-                key=str(read["key"]),
-                value=read["value"],
-            )
-            for read in raw["live_reads"]
-        ],
-        requests=[
-            TakenRequest(
+        taken=[
+            Taken(
                 posted_at=str(taken["posted_at"]),
                 taken_at=str(taken["taken_at"]),
+                kind=str(taken["kind"]),
                 key=str(taken["key"]),
                 value=taken["value"],
             )
-            for taken in raw["requests"]
+            for taken in raw["taken"]
         ],
     )
 
@@ -191,8 +182,7 @@ def load_recording(meta_path: Path) -> Recording:
         program_key=record.program_key,
         name=record.name,
         started_at=record.started_at,
-        parameters=record.parameters,
-        devices=record.devices,
+        parts=record.parts,
         reads=record.inputs,
         location=meta_path,
         note=record.notes,

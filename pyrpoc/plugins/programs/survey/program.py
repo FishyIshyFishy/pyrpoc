@@ -49,7 +49,7 @@ class Survey(Program):
     emits = SURVEY_EMITS
     runners = [Single()]
     # Each step of the pipeline starts in a folder holding only the steps before it.
-    checks = [CleanFolder()]
+    checks = [CleanFolder(carries_on=False)]
 
     def run(self, ctx: RunContext) -> None:
         overscan = (ctx.inputs[EXTRA_LEFT], ctx.inputs[EXTRA_RIGHT])
