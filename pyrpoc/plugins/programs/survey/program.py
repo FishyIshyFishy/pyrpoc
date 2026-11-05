@@ -10,16 +10,15 @@ from pyrpoc.plugins.program_io.inputs import (
     EXTRA_RIGHT,
     SAMPLE_RATE_MHZ,
 )
-from pyrpoc.plugins.program_io.outputs import GalvoCalibrationOutput
 
-from ..building_blocks.multisite.bindings.rig import RigMicroscope
-from ..building_blocks.multisite.stages.survey.walk import (
-    FOCUS_INPUTS,
+from ..building_blocks.multisite import (
     REGION_INPUTS,
     SURVEY_EMITS,
+    SURVEY_FOCUS_INPUTS,
+    SURVEY_READS,
     TILE_INPUTS,
-    SurveySettings,
-    survey,
+    RigMicroscope,
+    run_survey,
 )
 from ..building_blocks.runners import Single
 
@@ -30,12 +29,19 @@ class Survey(Program):
     group = "Autonomous"
     order = 31
     devices = [Galvo, DAQ, PriorStage]
-    reads = {"calibration": GalvoCalibrationOutput}
-    inputs = [*REGION_INPUTS, *TILE_INPUTS, *FOCUS_INPUTS, EXTRA_LEFT, EXTRA_RIGHT, SAMPLE_RATE_MHZ]
+    reads = SURVEY_READS
+    inputs = [
+        *REGION_INPUTS,
+        *TILE_INPUTS,
+        *SURVEY_FOCUS_INPUTS,
+        EXTRA_LEFT,
+        EXTRA_RIGHT,
+        SAMPLE_RATE_MHZ,
+    ]
     cards = {
         "Region": REGION_INPUTS,
         "Tiles": TILE_INPUTS,
-        "Focus Search": FOCUS_INPUTS,
+        "Focus Search": SURVEY_FOCUS_INPUTS,
         "Scan": (EXTRA_LEFT, EXTRA_RIGHT),
         "DAQ": (SAMPLE_RATE_MHZ,),
     }
@@ -43,7 +49,5 @@ class Survey(Program):
     runners = [Single()]
 
     def run(self, ctx: RunContext) -> None:
-        calibration = ctx.earlier("calibration", GalvoCalibrationOutput).measured()
         overscan = (ctx.inputs[EXTRA_LEFT], ctx.inputs[EXTRA_RIGHT])
-        settings = SurveySettings.from_inputs(ctx.inputs, calibration, overscan)
-        survey(ctx, RigMicroscope(ctx), settings)
+        run_survey(ctx, RigMicroscope(ctx), overscan)

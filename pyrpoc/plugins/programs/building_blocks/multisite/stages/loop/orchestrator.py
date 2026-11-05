@@ -9,27 +9,21 @@ from typing import Any
 
 import numpy as np
 
-from pyrpoc.core.program import RunContext
 from pyrpoc.core.program_input import ParameterError
 from pyrpoc.plugins.program_io.inputs import Unit
-from pyrpoc.plugins.program_io.outputs import (
-    FrameTag,
-    LoopEvent,
-    LoopLogOutput,
-    SurveyFinding,
-    SurveyOutput,
-    UnitFramesOutput,
-)
+from pyrpoc.plugins.program_io.outputs import FrameTag, LoopEvent
 
 from ....focus.tenengrad import tenengrad
 from ...analysis.content import content_channels, content_region
 from ...interfaces.field import FieldOfView
 from ...interfaces.microscope import Microscope
-from ..survey.layout import Overview
+from ...interfaces.progress import Progress
 from .focus_keeper import FocusKeeper
 from .queue import Queue, Thread
 from .routine import Record, RoutineSpec, Scan, Seen, Step, Wait
+from .sink import LoopSink
 from .steering import Steering
+from .survey_map import SurveyMap
 from .tracking import Track, Tracker, crop_centred, outline_mask, start_track, window_px
 
 # The longest the loop waits at once, so edits and stops are taken up promptly.
@@ -38,23 +32,14 @@ IDLE_S = 1.0
 
 @dataclass(frozen=True)
 class LoopSetup:
-    """What a loop runs from: the survey, what it found and its overview, the field each scan
-    covers, how often focus is checked and to what step, and the routines."""
+    """What a loop runs from: the survey's map of the dish, the field each scan covers, how
+    often focus is checked and to what step, and the routines."""
 
-    survey: SurveyOutput
-    finding: SurveyFinding
-    overview: Overview
+    survey: SurveyMap
     field: FieldOfView
     focus_check_s: float
     final_step_um: float
     routines: tuple[RoutineSpec, ...]
-
-
-def survey_time(survey: SurveyOutput, unit: Unit) -> float:
-    """When the survey imaged the unit: the time of the tile nearest its centre."""
-    cx, cy = unit.centre
-    distances = [(tile.x_um - cx) ** 2 + (tile.y_um - cy) ** 2 for tile in survey.tiles]
-    return survey.taken[int(np.argmin(distances))].time_s
 
 
 def check_units(units: Sequence[Unit], field: FieldOfView) -> None:
@@ -70,28 +55,33 @@ def check_units(units: Sequence[Unit], field: FieldOfView) -> None:
 class Orchestrator:
     """One loop in progress."""
 
-    def __init__(self, ctx: RunContext, scope: Microscope, setup: LoopSetup, units: Sequence[Unit]):
-        self.ctx = ctx
+    def __init__(
+        self,
+        progress: Progress,
+        scope: Microscope,
+        setup: LoopSetup,
+        sink: LoopSink,
+        steering: Steering,
+    ):
+        self.progress = progress
         self.scope = scope
         self.setup = setup
+        self.sink = sink
+        self.steering = steering
         self.field = setup.field
         self.scan = setup.field.scan()
-        self.log_output = ctx.output("log", LoopLogOutput)
-        self.frame_output = ctx.output("frames", UnitFramesOutput)
-        self.tracker = Tracker(setup.field, setup.finding.motion)
-        self.focus = FocusKeeper(setup.finding.focus, setup.focus_check_s, setup.final_step_um)
+        self.tracker = Tracker(setup.field, setup.survey.motion)
+        self.focus = FocusKeeper(setup.survey.focus, setup.focus_check_s, setup.final_step_um)
         self.queue = Queue()
         self.tracks: dict[int, Track] = {}
         self.frames: dict[str, int] = {}
         self.lost: set[int] = set()
-        self.steering = Steering(ctx)
         self.paused: frozenset[int] = frozenset()
-        self.units = tuple(units)
 
     def add_unit(self, unit: Unit, now_s: float) -> None:
         """Start tracking ``unit`` from the survey, and start each routine for it."""
-        seen = survey_time(self.setup.survey, unit)
-        self.tracks[unit.id] = start_track(unit, self.setup.overview, self.field, seen)
+        seen = self.setup.survey.seen_at(unit)
+        self.tracks[unit.id] = start_track(unit, self.setup.survey.overview, self.field, seen)
         x, y = unit.centre
         outline = [list(point) for point in unit.outline]
         details = {"group": unit.group, "outline": outline, "x_um": x, "y_um": y}
@@ -109,17 +99,18 @@ class Orchestrator:
     def log_event(
         self, event: str, unit: int | None, routine: str, details: dict[str, Any]
     ) -> None:
-        self.log_output.log(LoopEvent(self.scope.now(), event, unit, routine, details))
+        self.sink.log(LoopEvent(self.scope.now(), event, unit, routine, details))
 
-    def run(self) -> None:
-        """Run every thread to its end, or until the run is stopped."""
+    def run(self, units: Sequence[Unit]) -> None:
+        """Run every thread of ``units``, and of units added since, to its end, or until the
+        run is stopped."""
         routines = [r.name for r in self.setup.routines]
         self.log("start", None, channels=list(self.scope.channel_labels), routines=routines)
         now = self.scope.now()
-        for unit in self.units:
+        for unit in units:
             self.add_unit(unit, now)
         while self.queue.active():
-            self.ctx.check_cancel()
+            self.progress.check_cancel()
             self.between_steps()
             runnable = self.queue.runnable()
             if not runnable:
@@ -287,5 +278,5 @@ class Orchestrator:
         left = cx - width * self.field.um_per_px / 2.0
         top = cy - height * self.field.um_per_px / 2.0
         tag = FrameTag(thread.unit, thread.routine, left, top)
-        self.frame_output.add_frame(seen.image, self.scope.channel_labels, tag)
+        self.sink.add_frame(seen.image, self.scope.channel_labels, tag)
         return index
