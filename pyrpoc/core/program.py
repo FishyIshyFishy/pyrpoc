@@ -70,6 +70,8 @@ class Program:
     devices: list[type[Device]] = []
 
     # The program inputs it reads, grouped as a panel shows them.
+    # TODO: this is too much of a first class concern, grouping is solely visual
+    # in code, parameters are what matters, not sections of parameters
     sections: list[InputSection] = []
 
     # Earlier runs it reads; it cannot start until each has one to read.
