@@ -13,6 +13,7 @@ from .confocal.program import Confocal
 from .flim.program import FLIM
 from .galvo_calibration.program import GalvoCalibrationProgram
 from .galvo_pinpoint.program import GalvoPinpoint
+from .longitudinal_monitor.program import LongitudinalMonitor
 from .pinpoint_raman.program import PinpointRaman
 from .raman.program import Raman
 from .roi_spectral_series.program import RoiSpectralSeries
@@ -27,6 +28,7 @@ __all__ = [
     "FLIM",
     "GalvoCalibrationProgram",
     "GalvoPinpoint",
+    "LongitudinalMonitor",
     "Autofocus",
     "PinpointRaman",
     "Raman",

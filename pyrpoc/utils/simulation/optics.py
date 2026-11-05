@@ -16,6 +16,8 @@ PHOTONS_PER_US = 20.0
 BACKGROUND = 0.03
 # The light dose, in µs of dwell per µm², that bleaches a cell to 1/e.
 BLEACH_DOSE = 2000.0
+# A driven digital line gates the treatment light, which delivers this many times the dose.
+TREATMENT_GAIN = 25.0
 
 
 @dataclass(frozen=True)

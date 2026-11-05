@@ -36,10 +36,12 @@ class SimulatedScanner(Device):
         fast_volts: np.ndarray,
         slow_volts: np.ndarray,
         dwell_us: float,
+        treating: bool,
         sleep: Callable[[float], None],
     ) -> np.ndarray:
         """A ``(C, H, W)`` frame of the galvo held at each (fast, slow) volt pair for
-        ``dwell_us``, taking as long as the scan would."""
-        frame = dish.dish.scan(fast_volts, slow_volts, dwell_us)
+        ``dwell_us``, with the treatment light gated on or off, taking as long as the scan
+        would."""
+        frame = dish.dish.scan(fast_volts, slow_volts, dwell_us, treating)
         dish.wait(len(fast_volts) * len(slow_volts) * dwell_us * 1e-6, sleep)
         return frame

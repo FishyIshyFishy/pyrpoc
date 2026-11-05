@@ -30,5 +30,5 @@ class SimulatedConfocal(Program):
         dish = ctx.devices[SimulatedDish]
         scan = ScanGeometry.from_inputs(ctx.inputs)
         for _ in count_off(ctx, ctx.inputs[NUM_FRAMES], "frame"):
-            frame = dish_frame(scanner, dish, scan, ctx.sleep)
+            frame = dish_frame(scanner, dish, scan, False, ctx.sleep)
             ctx.publish("intensity", Image(frame, scanner.channel_labels))

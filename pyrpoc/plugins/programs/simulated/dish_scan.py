@@ -14,9 +14,10 @@ def dish_frame(
     scanner: SimulatedScanner,
     dish: SimulatedDish,
     scan: ScanGeometry,
+    treating: bool,
     sleep: Callable[[float], None],
 ) -> np.ndarray:
-    """One ``(C, H, W)`` frame of ``scan``'s displayed pixels."""
+    """One ``(C, H, W)`` frame of ``scan``'s displayed pixels, treating as it scans or not."""
     fast = scan.fast_volts(np.arange(scan.x_pixels))
     slow = scan.slow_volts(np.arange(scan.y_pixels))
-    return scanner.scan(dish, fast, slow, scan.dwell_time_us, sleep)
+    return scanner.scan(dish, fast, slow, scan.dwell_time_us, treating, sleep)

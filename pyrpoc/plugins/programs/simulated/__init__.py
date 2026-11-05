@@ -8,6 +8,7 @@ from pyrpoc.core.program import program_registry
 
 from .confocal.program import SimulatedConfocal
 from .galvo_calibration.program import SimulatedGalvoCalibration
+from .longitudinal_monitor.program import SimulatedLongitudinalMonitor
 from .simulation.program import Simulation
 from .survey.program import SimulatedSurvey
 
@@ -20,3 +21,4 @@ def register() -> None:
     program_registry.add("simulated_confocal", SimulatedConfocal)
     program_registry.add("simulated_galvo_calibration", SimulatedGalvoCalibration)
     program_registry.add("simulated_survey", SimulatedSurvey)
+    program_registry.add("simulated_longitudinal_monitor", SimulatedLongitudinalMonitor)

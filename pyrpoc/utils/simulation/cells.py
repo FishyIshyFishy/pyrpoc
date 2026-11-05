@@ -93,7 +93,7 @@ def square_cells(ix: int, iy: int, seed: int, mean_speed_um_min: float) -> tuple
     for index in range(generator.poisson(CELLS_PER_SQUARE)):
         cells.append(
             Cell(
-                id=(ix * 73856093) ^ (iy * 19349663) ^ index,
+                id=hash((seed, ix, iy, index)),
                 home_um=(
                     (ix + generator.random()) * LATTICE_UM,
                     (iy + generator.random()) * LATTICE_UM,

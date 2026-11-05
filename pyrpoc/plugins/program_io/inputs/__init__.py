@@ -22,6 +22,15 @@ from .histogram import (
     LASER_FREQUENCY_MHZ,
     HistogramSettings,
 )
+from .loop import (
+    DURATION_MIN,
+    FOCUS_CHECK_S,
+    PERIOD_S,
+    TREAT,
+    TREATED_GROUP,
+    TREATMENT_LINE,
+    TREATMENT_PORT,
+)
 from .mask import Mask
 from .masks import MASKS, MasksField, thumbnail
 from .modulation import MASK_LINES, MaskLine, lines_for
@@ -43,6 +52,13 @@ from .trigger import FRAME_TRIGGER_PFI, PIXEL_CLOCK_CTR, PIXEL_CLOCK_PFI, Trigge
 from .units import UNITS, Unit, UnitsField
 
 __all__ = [
+    "DURATION_MIN",
+    "FOCUS_CHECK_S",
+    "PERIOD_S",
+    "TREAT",
+    "TREATED_GROUP",
+    "TREATMENT_LINE",
+    "TREATMENT_PORT",
     "CAMERA_BINNED",
     "CAMERA_EXPOSURE_MS",
     "CAMERA_GAIN_PCT",

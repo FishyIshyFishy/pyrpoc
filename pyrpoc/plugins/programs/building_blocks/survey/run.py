@@ -110,7 +110,7 @@ class Surveying:
         self.taken: list[Taken] = []
 
     def frame(self) -> np.ndarray:
-        return self.field.on_dish(self.scope.scan(self.scan))
+        return self.field.on_dish(self.scope.scan(self.scan, ()))
 
     def focus(self, guess: float, frame: np.ndarray, channels: tuple[int, ...]) -> float:
         """The sharpest z near ``guess``, judged where ``frame`` shows content."""

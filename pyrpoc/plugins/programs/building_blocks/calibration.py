@@ -76,7 +76,7 @@ class Calibrating:
     last: tuple[float, float]
 
     def take(self) -> np.ndarray:
-        frame = self.scope.scan(self.scan)
+        frame = self.scope.scan(self.scan, ())
         self.show(frame)
         return frame
 
@@ -160,7 +160,7 @@ def start_calibrating(
     scope: Microscope, scan: ScanGeometry, show: Callable[[np.ndarray], None]
 ) -> tuple[Calibrating, Box]:
     """Find the feature to follow in a first frame."""
-    frame = scope.scan(scan)
+    frame = scope.scan(scan, ())
     show(frame)
     channel = strongest_channel(frame)
     plane = frame[channel]

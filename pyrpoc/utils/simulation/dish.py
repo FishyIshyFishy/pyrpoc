@@ -10,7 +10,7 @@ import numpy as np
 
 from .cells import Cell, cells_near
 from .clock import DishClock
-from .optics import FocalSurface, bleached, blur_sigma_um, blurred, detected
+from .optics import TREATMENT_GAIN, FocalSurface, bleached, blur_sigma_um, blurred, detected
 from .stage import StageMotion
 
 CHANNELS = 2
@@ -93,15 +93,18 @@ class Dish:
         seeded = cells_near(box, self.settings.seed, self.settings.cell_speed_um_min)
         return {cell.id: cell.position(minutes) for cell in seeded}
 
-    def scan(self, fast_volts: np.ndarray, slow_volts: np.ndarray, dwell_us: float) -> np.ndarray:
+    def scan(
+        self, fast_volts: np.ndarray, slow_volts: np.ndarray, dwell_us: float, treating: bool
+    ) -> np.ndarray:
         """A ``(C, H, W)`` frame of the galvo held at each (``fast_volts``, ``slow_volts``) for
-        ``dwell_us``, at the stage's current position."""
+        ``dwell_us``, at the stage's current position, with the treatment light on or off."""
         minutes = self.minutes()
         stage_x, stage_y, stage_z = self.stage.position()
         dx, dy = self.drift_um(minutes)
         xs = stage_x + dx + np.asarray(fast_volts, dtype=np.float64) * self.settings.um_per_volt[0]
         ys = stage_y + dy + np.asarray(slow_volts, dtype=np.float64) * self.settings.um_per_volt[1]
-        expected = self.render(xs, ys, minutes, dwell_us)
+        gain = TREATMENT_GAIN if treating else 1.0
+        expected = self.render(xs, ys, minutes, dwell_us * gain)
         pixel_um = abs(float(xs[1] - xs[0])) if len(xs) > 1 else 1.0
         centre_x, centre_y = float(xs.mean()), float(ys.mean())
         defocus = stage_z - self.settings.focus.z_at(centre_x, centre_y, minutes)

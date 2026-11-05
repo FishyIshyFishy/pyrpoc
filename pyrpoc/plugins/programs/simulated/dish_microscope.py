@@ -8,6 +8,7 @@ from pyrpoc.core.program import RunContext
 from pyrpoc.plugins.devices.simulated import SimulatedDish, SimulatedScanner
 from pyrpoc.plugins.program_io.inputs import ScanGeometry
 
+from ..building_blocks.microscope import DigitalLine
 from .dish_scan import dish_frame
 
 
@@ -23,9 +24,10 @@ class DishMicroscope:
     def channel_labels(self) -> list[str]:
         return self.scanner.channel_labels
 
-    def scan(self, scan: ScanGeometry) -> np.ndarray:
+    def scan(self, scan: ScanGeometry, lines: tuple[DigitalLine, ...]) -> np.ndarray:
         self.ctx.check_cancel()
-        return dish_frame(self.scanner, self.dish, scan, self.ctx.sleep)
+        # A driven line gates the dish's treatment light, wherever it is wired.
+        return dish_frame(self.scanner, self.dish, scan, bool(lines), self.ctx.sleep)
 
     def xy(self) -> tuple[float, float]:
         return self.dish.xy_position()
