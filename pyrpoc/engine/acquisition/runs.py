@@ -99,8 +99,8 @@ class Runs(QObject):
         self.earlier.refresh(self.save.folder)
         self.earlier_changed.emit()
 
-    def pick_earlier(self, name: str, choice: EarlierOutput | None) -> None:
-        """Read ``choice`` wherever ``name`` is read, or the latest when None."""
+    def pick_earlier(self, name: str, choice: EarlierOutput) -> None:
+        """Read ``choice`` wherever ``name`` is read."""
         self.earlier.pick(name, choice)
         self.earlier_changed.emit()
 

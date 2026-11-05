@@ -20,7 +20,8 @@ def option_text(each: EarlierOutput) -> str:
 
 
 class EarlierCard(BaseCardWidget):
-    """One dropdown per name read: the latest output of its type by default, or one picked."""
+    """One dropdown per name read, listing the outputs of its type newest first, with the newest
+    chosen until one is picked."""
 
     def __init__(self, runs: Runs, reads: dict[str, type[ProgramOutput]], parent: QWidget):
         super().__init__("Earlier recordings", parent)
@@ -28,8 +29,8 @@ class EarlierCard(BaseCardWidget):
         self.reads = reads
         self.combos: dict[str, QComboBox] = {}
         self.models: dict[str, QStandardItemModel] = {}
-        # What each row of each dropdown reads: None for "Latest" and for what cannot be read.
-        self.choices: dict[str, list[EarlierOutput | None]] = {}
+        # What each row of each dropdown reads. Rows past these cannot be chosen.
+        self.choices: dict[str, list[EarlierOutput]] = {}
         body = QWidget(self)
         column = QVBoxLayout(body)
         column.setContentsMargins(4, 4, 4, 4)
@@ -57,28 +58,20 @@ class EarlierCard(BaseCardWidget):
     def fill(self, combo: QComboBox, name: str) -> None:
         earlier = self.runs.earlier
         options = earlier.options(self.reads[name])
-        choices: list[EarlierOutput | None] = []
         combo.blockSignals(True)
         combo.clear()
         if not options:
             combo.addItem("None saved in this folder")
-            choices.append(None)
-        else:
-            # The first entry follows whatever is newest, so a new recording is read at once.
-            combo.addItem(f"Latest: {option_text(options[0])}")
-            choices.append(None)
-            for each in options:
-                combo.addItem(option_text(each))
-                choices.append(each)
+        for each in options:
+            combo.addItem(option_text(each))
         for each in earlier.unreadable:
             self.add_unreadable(name, each.meta_path.name.removesuffix(META_SUFFIX), each.reason)
-            choices.append(None)
-        picked = earlier.picked_for(name, self.reads[name])
-        if picked is not None:
-            combo.setCurrentIndex(choices.index(picked))
+        chosen = earlier.chosen(name, self.reads[name])
+        if chosen is not None:
+            combo.setCurrentIndex(options.index(chosen))
         combo.setEnabled(bool(options))
         combo.blockSignals(False)
-        self.choices[name] = choices
+        self.choices[name] = options
 
     def add_unreadable(self, name: str, stem: str, reason: str) -> None:
         """A row naming a recording that cannot be read, which cannot be chosen."""
@@ -88,11 +81,8 @@ class EarlierCard(BaseCardWidget):
         self.models[name].appendRow(item)
 
     def summary(self, name: str) -> str:
-        options = self.runs.earlier.options(self.reads[name])
-        if not options:
-            return "none saved"
-        picked = self.runs.earlier.picked_for(name, self.reads[name])
-        return f"latest ({options[0].name})" if picked is None else picked.name
+        chosen = self.runs.earlier.chosen(name, self.reads[name])
+        return "none saved" if chosen is None else chosen.name
 
     def on_picked(self, name: str, index: int) -> None:
         self.runs.pick_earlier(name, self.choices[name][index])
