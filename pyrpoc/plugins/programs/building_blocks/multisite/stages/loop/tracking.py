@@ -8,8 +8,7 @@ from dataclasses import dataclass
 import cv2
 import numpy as np
 
-from pyrpoc.plugins.program_io.inputs import Unit
-from pyrpoc.plugins.program_io.outputs import MotionRate
+from pyrpoc.plugins.program_io.outputs import MotionRate, Unit
 
 from ...analysis.noise import strongest_channel
 from ...analysis.shifts import locate_near

@@ -14,6 +14,7 @@ from .spectrum import SpectrumOutput
 from .spectrum_series import SpectrumSeriesOutput
 from .survey import FocusPlane, MotionRate, Placement, SurveyFinding, SurveyOutput, SurveyTile
 from .unit_frames import FrameTag, UnitFramesOutput
+from .units import Unit, UnitsOutput
 
 __all__ = [
     "CalibrationPoint",
@@ -30,7 +31,9 @@ __all__ = [
     "SurveyFinding",
     "SurveyOutput",
     "SurveyTile",
+    "Unit",
     "UnitFramesOutput",
+    "UnitsOutput",
     "UnitView",
     "FocusResult",
     "FocusStackOutput",
