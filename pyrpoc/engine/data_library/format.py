@@ -32,6 +32,17 @@ class LiveRead:
     value: Any
 
 
+@dataclass(frozen=True)
+class TakenRequest:
+    """The run taking a request a panel posted to it."""
+
+    posted_at: str
+    taken_at: str
+    key: str
+    # As the request's rules encode it.
+    value: Any
+
+
 @dataclass
 class OutputRecord:
     # The output's ``type_key`` in ``program_output_registry``.
@@ -57,6 +68,8 @@ class RecordingRecord:
     inputs: dict[str, EarlierRead]
     # Each change to a live input a run read, in the order read.
     live_reads: list[LiveRead]
+    # Each request a run took, in the order taken.
+    requests: list[TakenRequest]
 
 
 def pyrpoc_version() -> str:
@@ -158,6 +171,15 @@ def decode_record(raw: dict[str, Any]) -> RecordingRecord:
                 value=read["value"],
             )
             for read in raw["live_reads"]
+        ],
+        requests=[
+            TakenRequest(
+                posted_at=str(taken["posted_at"]),
+                taken_at=str(taken["taken_at"]),
+                key=str(taken["key"]),
+                value=taken["value"],
+            )
+            for taken in raw["requests"]
         ],
     )
 

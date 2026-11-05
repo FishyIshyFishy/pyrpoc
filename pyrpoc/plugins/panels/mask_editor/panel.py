@@ -32,6 +32,7 @@ from PyQt6.QtWidgets import (
 
 from pyrpoc.core.library import Library
 from pyrpoc.core.program_input import ProgramInputs
+from pyrpoc.core.requests import Requests
 from pyrpoc.plugins.panels.mask_editor.range_slider import RangeSlider
 from pyrpoc.plugins.panels.mask_editor.transforms import normalize_channels
 from pyrpoc.plugins.program_io.inputs import MASKS, Mask
@@ -87,8 +88,8 @@ class MaskEditorPanel(DataPanel[ImageOutput]):
     misc = True
     renders = ImageOutput
 
-    def __init__(self, library: Library, inputs: ProgramInputs):
-        super().__init__(library, inputs)
+    def __init__(self, library: Library, inputs: ProgramInputs, requests: Requests):
+        super().__init__(library, inputs, requests)
         # The ROIs of each mask, by id, and the mask being drawn on: "" until one is chosen.
         self.drafts: dict[str, list[MaskRoi]] = {}
         self.current = ""

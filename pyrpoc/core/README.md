@@ -95,6 +95,8 @@ A run is not a piece of core: it is the engine executing one recording.
 | **ProgramInput** | The declaration of one value a program reads: a key, a default, and a `Field`. **One key means one value everywhere.** The key names the value itself, never a group or a program, and is declared once with `declare`. A second declaration of a key fails. Every program and panel that uses the value imports that one declaration. |
 | **Field** | The rules a value follows: how it is checked (`coerce`), saved (`encode`) and loaded (`decode`). Bad values raise `ParameterError`. How a value is edited on screen is not part of its rules. |
 | **ProgramInputs** | The collection of current values, by key. Any part of the app may read a value, set one (checked by its `Field`) or subscribe. It is saved with the session, except inputs declared `restored=False`, which start at their default each launch. |
+| **Request** | The declaration of one command a running program may accept: a key and the `Field` its posted value follows. Declared once, like a program input, and imported by the programs that accept it and the panels that post it. |
+| **Requests** | The collection where panels post requests. Each posted value is checked by its `Field` and given once to every running program that accepts it, which takes it with `ctx.requests(SOME_REQUEST)` when it chooses. |
 | **ProgramInputValues** | The values one run was given. A program reads them as `ctx.inputs[SOME_INPUT]`. Every one is saved with the recording. |
 
 A program lists its inputs flat. It may also lay them out in `cards` for the
@@ -140,6 +142,7 @@ its base, in core or, for panels, in `utils/widgets/`. Nothing else lists them.
 | A device | `plugins/devices/` | `device_registry` |
 | A program | `plugins/programs/` | `program_registry` |
 | A program input, shared by programs and panels | `plugins/program_io/inputs/` | `declare` |
+| A request, shared by the programs that accept it and the panels that post it | `plugins/program_io/requests/` | (declaring it: a key is declared once) |
 | A type of program output, with its files | `plugins/program_io/outputs/`, one file each | `program_output_registry` |
 | A panel showing program outputs | `plugins/panels/` | `data_panel_registry` (`utils/widgets/data_panel.py`) |
 | A device's own panel | beside its device in `plugins/devices/` | `device_panel_registry` (`utils/widgets/device_panel.py`) |
@@ -160,7 +163,7 @@ Each keeps its own registry, since each is built from different collections.
 | `program.py` | `Program`, `RunContext` + `program_registry` |
 | `runner.py` | `Runner`, `RunnerContext`, `Control`, `Button`, `Toggle` |
 | `program_input.py` | `ProgramInput` + `declare`, `Field`, `ProgramInputValues`, `ProgramInputs` |
-| `requests.py` | `Requests` |
+| `requests.py` | `Request` + `request_registry`, `Requests` |
 | `recording.py` | `Recording` |
 | `program_output.py` | `ProgramOutput` + `program_output_registry` |
 | `library.py` | `Library` |

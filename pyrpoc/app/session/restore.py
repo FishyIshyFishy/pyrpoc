@@ -100,7 +100,7 @@ def import_device(inventory: DeviceInventory, device: Device, raw: dict[str, Any
 def restore_panels(state: ScreenState, app: Application, window: MainWindow) -> None:
     for row in state.views:
         try:
-            panel = data_panel_registry.get(row.key)(app.library, app.inputs)
+            panel = data_panel_registry.get(row.key)(app.library, app.inputs, app.requests)
             if row.instance_id:
                 panel.instance_id = row.instance_id
             panel.user_label = row.user_label

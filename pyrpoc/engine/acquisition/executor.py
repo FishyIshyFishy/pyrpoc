@@ -29,11 +29,12 @@ from pyrpoc.engine.data_library.store import LibraryStore
 from . import claims
 from .live import LiveFeed
 from .readiness import NotReady, missing
+from .requests import RequestInbox, RequestsStore
 
 
 class Run:
-    """One execution of one program: the recording it fills and its saver, whether it repeats,
-    and whether it is still going."""
+    """One execution of one program: the recording it fills and its saver, its live inputs and
+    the requests posted to it, whether it repeats, and whether it is still going."""
 
     def __init__(
         self,
@@ -43,6 +44,7 @@ class Run:
         recording: Recording,
         saver: RecordingSaver | None,
         live: LiveFeed,
+        inbox: RequestInbox,
         repeat: bool,
     ):
         self.program = program
@@ -51,6 +53,7 @@ class Run:
         self.recording = recording
         self.saver = saver
         self.live = live
+        self.inbox = inbox
         self.repeat = repeat
         self.cancel = threading.Event()
         # Set to end a repeating run once the work it is doing is done.
@@ -81,8 +84,9 @@ def device_state(devices: dict[type[Device], Device]) -> dict[str, Any]:
 
 
 class Executor:
-    def __init__(self, library: LibraryStore, callbacks: RunCallbacks):
+    def __init__(self, library: LibraryStore, requests: RequestsStore, callbacks: RunCallbacks):
         self.library = library
+        self.requests = requests
         self.callbacks = callbacks
         self.leases = claims.Leases()
         self._run_id = 0
@@ -129,7 +133,10 @@ class Executor:
                 note=note,
             )
             live = LiveFeed(inputs, program.live, saver.log_live if saver is not None else None)
-            run = Run(program, self._run_id, devices, recording, saver, live, repeat)
+            inbox = self.requests.open(
+                program.requests, saver.log_request if saver is not None else None
+            )
+            run = Run(program, self._run_id, devices, recording, saver, live, inbox, repeat)
             self.leases.take(run.id, devices.values())
             self.launch(run, values, read)
         return run
@@ -184,6 +191,7 @@ class Executor:
         ctx = RunContext(
             inputs=values,
             live=run.live,
+            requests=run.inbox,
             earlier=earlier,
             devices=run.devices,
             outputs=run.recording.outputs,

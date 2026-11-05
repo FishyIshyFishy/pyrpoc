@@ -11,6 +11,7 @@ from pyrpoc.engine.data_library.format import (
     LiveRead,
     OutputRecord,
     RecordingRecord,
+    TakenRequest,
     free_root,
     meta_path_for,
     pyrpoc_version,
@@ -34,6 +35,7 @@ class RecordingSaver:
         self.recording = recording
         self.meta_path = meta_path
         self.live_reads: list[LiveRead] = []
+        self.requests: list[TakenRequest] = []
         # A run writes from its own thread, and a note edit from the GUI thread.
         self.lock = threading.Lock()
 
@@ -48,6 +50,11 @@ class RecordingSaver:
     def log_live(self, read: LiveRead) -> None:
         """Record a run being given a changed live input, on disk at once."""
         self.live_reads.append(read)
+        self.write_metadata(ended_at=None, last_error=None)
+
+    def log_request(self, taken: TakenRequest) -> None:
+        """Record a run taking a request, on disk at once."""
+        self.requests.append(taken)
         self.write_metadata(ended_at=None, last_error=None)
 
     def finalize(self, error: Exception | None) -> None:
@@ -78,6 +85,7 @@ class RecordingSaver:
             notes=recording.note,
             inputs=recording.reads,
             live_reads=list(self.live_reads),
+            requests=list(self.requests),
         )
 
 

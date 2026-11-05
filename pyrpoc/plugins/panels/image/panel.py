@@ -20,6 +20,7 @@ from PyQt6.QtWidgets import (
 
 from pyrpoc.core.library import Library
 from pyrpoc.core.program_input import ProgramInputs
+from pyrpoc.core.requests import Requests
 from pyrpoc.plugins.program_io.inputs import PICK, PixelPick
 from pyrpoc.plugins.program_io.outputs import ImageOutput
 from pyrpoc.utils.widgets.data_panel import DataPanel, data_panel_registry
@@ -64,8 +65,8 @@ class ImagePanel(DataPanel[ImageOutput]):
     order = 21
     renders = ImageOutput
 
-    def __init__(self, library: Library, inputs: ProgramInputs):
-        super().__init__(library, inputs)
+    def __init__(self, library: Library, inputs: ProgramInputs, requests: Requests):
+        super().__init__(library, inputs, requests)
         pg.setConfigOptions(imageAxisOrder="row-major")
         self._tiles: list[ChannelTile] = []
         self._pending_state: list[TileState] = []

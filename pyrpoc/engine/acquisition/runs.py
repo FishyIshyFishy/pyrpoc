@@ -17,6 +17,7 @@ from .earlier import EarlierChoices, any_reads
 from .events import RunEvents
 from .executor import Run
 from .program_inputs import ProgramInputsStore
+from .requests import RequestsStore
 
 
 class Runs(QObject):
@@ -37,16 +38,18 @@ class Runs(QObject):
         inventory: DeviceInventory,
         library: LibraryModel,
         inputs: ProgramInputsStore,
+        requests: RequestsStore,
         parent: QObject,
     ):
         super().__init__(parent)
         self.inventory = inventory
         self.inputs = inputs
+        self.requests = requests
         self.save = SaveTarget()
         # The note for the next run. Run metadata, not a program input: no program reads it.
         self.note = ""
         self.earlier = EarlierChoices()
-        self.events = RunEvents(library.store, self)
+        self.events = RunEvents(library.store, requests, self)
         self.live_runs: set[Run] = set()
         self.events.run_started.connect(self.on_run_started)
         self.events.run_finished.connect(self.on_run_finished)
@@ -132,8 +135,10 @@ class Runs(QObject):
         self.edited.emit()
 
     def on_run_finished(self, run: Run) -> None:
-        # Here, on the thread program inputs are set on, so no change lands mid-close.
+        # Here, on the thread program inputs are set and requests posted on, so neither lands
+        # mid-close.
         run.live.close()
+        self.requests.close(run.inbox)
         self.live_runs.discard(run)
         self.publish_in_use()
         # Only a saved run can change what later runs read.

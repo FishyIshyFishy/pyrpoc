@@ -11,6 +11,7 @@ from pyrpoc.core.library import Library
 from pyrpoc.core.panels import Panel
 from pyrpoc.core.program_input import ProgramInputs
 from pyrpoc.core.registry import Registry
+from pyrpoc.core.requests import Requests
 
 from .source_picker import OutputT, SourcePicker
 
@@ -29,9 +30,10 @@ class DataPanel(Panel, Generic[OutputT]):
     # on data, not a way to look at it.
     misc: ClassVar[bool] = False
 
-    def __init__(self, library: Library, inputs: ProgramInputs):
+    def __init__(self, library: Library, inputs: ProgramInputs, requests: Requests):
         super().__init__()
         self.inputs = inputs
+        self.requests = requests
         root = QVBoxLayout(self)
         root.setContentsMargins(4, 4, 4, 4)
         root.setSpacing(4)

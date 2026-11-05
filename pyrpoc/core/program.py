@@ -11,6 +11,7 @@ from pyrpoc.core.device import Device
 from pyrpoc.core.program_input import ProgramInput, ProgramInputValues
 from pyrpoc.core.program_output import ProgramOutput
 from pyrpoc.core.registry import Registry
+from pyrpoc.core.requests import Request
 
 from .runner import Runner
 
@@ -75,6 +76,9 @@ class Program:
     # started. The rest stay as they were when it started.
     live: list[ProgramInput[Any]] = []
 
+    # The requests panels may post to a run of it, which it takes when it chooses.
+    requests: list[Request[Any]] = []
+
     # Named outputs, and the type of each.
     emits: dict[str, type[ProgramOutput]] = {}
 
@@ -102,16 +106,28 @@ class LiveValues(Protocol):
     def current(self, key: str) -> Any: ...
 
 
+class PostedRequests(Protocol):
+    """The requests posted to one run and not yet taken, safe to take from the run's
+    thread."""
+
+    def accepts(self) -> frozenset[Request[Any]]: ...
+
+    def take(self, request: Request[Any]) -> list[Any]:
+        """The values posted with ``request`` since it was last taken, oldest first."""
+        ...
+
+
 class RunContext:
     """What a running program is handed: its input values as they were when it started, the
-    current values of its live inputs, the earlier outputs it reads, its devices, its outputs,
-    status and cancel."""
+    current values of its live inputs, the requests posted to it, the earlier outputs it reads,
+    its devices, its outputs, status and cancel."""
 
     def __init__(
         self,
         *,
         inputs: ProgramInputValues,
         live: LiveValues,
+        requests: PostedRequests,
         earlier: Mapping[str, ProgramOutput],
         devices: Mapping[type[Device], Device],
         outputs: dict[str, ProgramOutput],
@@ -120,6 +136,7 @@ class RunContext:
     ):
         self.inputs = inputs
         self._live = live
+        self._requests = requests
         self._earlier = dict(earlier)
         self.devices = DeviceMap(devices)
         self.outputs = outputs
@@ -135,6 +152,16 @@ class RunContext:
                 f"{sorted(self._live.keys())}"
             )
         return self._live.current(program_input.key)
+
+    def requests(self, request: Request[T]) -> list[T]:
+        """The values posted with ``request`` since the run last asked, oldest first; each is
+        given once."""
+        if request not in self._requests.accepts():
+            raise KeyError(
+                f"{request.key!r} is not declared in requests; this program declares "
+                f"{sorted(each.key for each in self._requests.accepts())}"
+            )
+        return self._requests.take(request)
 
     def earlier(self, name: str, output_type: type[OutputT]) -> OutputT:
         """The earlier output chosen for ``name``, which ``reads`` declares as
