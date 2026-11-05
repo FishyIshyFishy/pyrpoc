@@ -4,7 +4,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
+from dataclasses import dataclass
 
 from pyrpoc.core.device import Device, DeviceError
 
@@ -49,15 +50,38 @@ def missing(required: list[type[Device]], inventory: list[Device]) -> list[type[
     ]
 
 
-def resolve(required: list[type[Device]], inventory: list[Device]) -> dict[type[Device], Device]:
-    """Bind each required class to an instance, or raise naming what is absent."""
-    absent = missing(required, inventory)
+def with_backing(required: list[type[Device]], chosen: Mapping[str, Device]) -> list[type[Device]]:
+    """``required``, then the classes backing the chosen devices, which are claimed with them."""
+    backing = [device.backed_by for device in chosen.values() if device.backed_by is not None]
+    return [*required, *backing]
+
+
+@dataclass(frozen=True)
+class Bound:
+    """The devices one run holds: one of each required class, and each chosen device by the
+    name the program uses it under."""
+
+    devices: dict[type[Device], Device]
+    chosen: dict[str, Device]
+
+    def held(self) -> set[Device]:
+        return {*self.devices.values(), *self.chosen.values()}
+
+
+def resolve(
+    required: list[type[Device]], chosen: Mapping[str, Device], inventory: list[Device]
+) -> Bound:
+    """Bind each required class to an instance beside the chosen devices, or raise naming what
+    is absent."""
+    classes = with_backing(required, chosen)
+    absent = missing(classes, inventory)
     if absent:
         raise MissingDevice([cls.display_name for cls in absent])
-    return {
+    devices = {
         cls: next(device for device in inventory if isinstance(device, cls))
-        for cls in expand(required)
+        for cls in expand(classes)
     }
+    return Bound(devices, dict(chosen))
 
 
 class Leases:
@@ -69,7 +93,6 @@ class Leases:
         self._held: dict[Device, int] = {}
 
     def check(self, devices: Iterable[Device]) -> None:
-        # A program binds one device of each type, so the type names which.
         busy = [device.display_name for device in devices if device in self._held]
         if busy:
             raise DeviceBusy(busy)

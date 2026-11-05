@@ -71,7 +71,7 @@ def synthetic_frame(
 class Simulation(Program):
     display_name = "2D image"
     group = "Simulations"
-    order = 20
+    order = 900
     devices = []
     inputs = [
         X_PIXELS,

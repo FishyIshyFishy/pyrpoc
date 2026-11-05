@@ -16,10 +16,12 @@ log = logging.getLogger(__name__)
 @dataclass
 class DeviceStatus:
     """What the workbench knows of one device beyond the hardware: which of its type it is,
-    and how connecting and testing it last went."""
+    the name the user gave it, and how connecting and testing it last went."""
 
     # Assigned once, so a device never renames itself when an earlier one is removed.
     number: int
+    # Empty until the user names it.
+    label: str
     last_error: str | None
     last_test_ok: bool | None
 
@@ -45,7 +47,7 @@ class DeviceInventory(QObject):
 
     def add(self, key: str, instance_id: str | None = None) -> Device:
         device = device_registry.get(key)(instance_id=instance_id)
-        self.status[device] = DeviceStatus(self.free_number(type(device)), None, None)
+        self.status[device] = DeviceStatus(self.free_number(type(device)), "", None, None)
         self.devices.append(device)
         self.changed.emit()
         self.edited.emit()
@@ -60,9 +62,18 @@ class DeviceInventory(QObject):
         return number
 
     def name(self, device: Device) -> str:
-        """The device's type, numbered when it is not the first of it."""
-        number = self.status[device].number
+        """The name the user gave the device, or else its type, numbered when it is not the
+        first of it."""
+        status = self.status[device]
+        if status.label:
+            return status.label
+        number = status.number
         return device.display_name if number == 1 else f"{device.display_name} {number}"
+
+    def rename(self, device: Device, label: str) -> None:
+        """Call the device ``label``, or by its type again when ``label`` is blank."""
+        self.status[device].label = label.strip()
+        self.device_changed()
 
     def fault(self, device: Device) -> str | None:
         """Why connecting or testing the device last failed, or None."""

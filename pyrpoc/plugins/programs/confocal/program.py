@@ -21,8 +21,8 @@ from ..building_blocks.runners import Continuous, Single
 @program_registry.register("confocal")
 class Confocal(Program):
     display_name = "Standard"
-    group = "Confocal Fluorescence"
-    order = 10
+    group = "Conventional"
+    order = 100
     devices = [Galvo, DAQ]
     inputs = [*SCAN_GEOMETRY_INPUTS, NUM_FRAMES, SAMPLE_RATE_MHZ, MASKS, MASK_LINES]
     # MASKS has no row: masks are drawn and edited in a Mask Editor.

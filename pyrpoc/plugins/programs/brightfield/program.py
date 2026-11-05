@@ -30,8 +30,8 @@ def to_grey(frame: np.ndarray) -> np.ndarray:
 @program_registry.register("brightfield")
 class Brightfield(Program):
     display_name = "Brightfield"
-    group = "Brightfield"
-    order = 50
+    group = "Developmental"
+    order = 230
     devices = [ToupcamCamera]
     inputs = [CAMERA_EXPOSURE_MS, CAMERA_GAIN_PCT, CAMERA_BINNED, NUM_FRAMES]
     cards = {

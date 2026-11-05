@@ -15,6 +15,17 @@ from .focus_search import (
     FocusSearch,
 )
 from .frame_count import NUM_FRAMES
+from .galvo_pair import (
+    BOTH,
+    PINPOINT_GALVO,
+    REFERENCE,
+    REGISTRATION_INPUTS,
+    SCAN_GALVOS,
+    SECOND,
+    SECOND_OFFSET_FAST_V,
+    SECOND_OFFSET_SLOW_V,
+    Registration,
+)
 from .histogram import (
     FRAME_SETTLE_S,
     HISTOGRAM_BINS,
@@ -34,6 +45,7 @@ from .split import T0_SAMPLES, T1_SAMPLES, SplitWindows
 from .trigger import FRAME_TRIGGER_PFI, PIXEL_CLOCK_CTR, PIXEL_CLOCK_PFI, TriggerLines
 
 __all__ = [
+    "BOTH",
     "CAMERA_BINNED",
     "CAMERA_EXPOSURE_MS",
     "CAMERA_GAIN_PCT",
@@ -53,10 +65,17 @@ __all__ = [
     "MASK_LINES",
     "NUM_FRAMES",
     "PICK",
+    "PINPOINT_GALVO",
     "PIXEL_CLOCK_CTR",
     "PIXEL_CLOCK_PFI",
+    "REFERENCE",
+    "REGISTRATION_INPUTS",
     "SAMPLE_RATE_MHZ",
+    "SCAN_GALVOS",
     "SCAN_GEOMETRY_INPUTS",
+    "SECOND",
+    "SECOND_OFFSET_FAST_V",
+    "SECOND_OFFSET_SLOW_V",
     "T0_SAMPLES",
     "T1_SAMPLES",
     "TILE_SPACING_UM",
@@ -75,6 +94,7 @@ __all__ = [
     "PickField",
     "PixelPick",
     "PointField",
+    "Registration",
     "ScanGeometry",
     "SplitWindows",
     "TriggerLines",

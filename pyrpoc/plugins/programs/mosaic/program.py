@@ -45,8 +45,8 @@ def image_tiles(ctx: RunContext, stage: PriorStage, tiles: tuple[MosaicTile, ...
 @program_registry.register("mosaic")
 class StageMosaic(Program):
     display_name = "Mosaic"
-    group = "Confocal Fluorescence"
-    order = 12
+    group = "Conventional"
+    order = 120
     devices = [Galvo, DAQ, PriorStage]
     inputs = [
         *SCAN_GEOMETRY_INPUTS,

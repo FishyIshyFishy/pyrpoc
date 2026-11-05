@@ -18,8 +18,8 @@ from ..building_blocks.runners import Continuous, Single
 @program_registry.register("raman")
 class Raman(Program):
     display_name = "Spectral readout"
-    group = "Raman"
-    order = 10
+    group = "Developmental"
+    order = 220
     devices = [AndorCCD]
     inputs = [CCD_EXPOSURE_S, CCD_FRAMES_TO_AVERAGE]
     cards = {

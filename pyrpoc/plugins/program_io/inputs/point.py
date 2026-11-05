@@ -185,6 +185,10 @@ def point_editor(spec: PointField, parent: QWidget, values: FieldValues) -> Edit
 
 GALVO_TARGET = declare(
     "galvo_target",
-    PointField("Target", "Galvo position to park at. Pick it off an image, or type volts directly"),
+    PointField(
+        "Target",
+        "Where to park, in the volts of the image it is picked from. Pick it off an image, or "
+        "type volts directly",
+    ),
     Point(),
 )

@@ -54,11 +54,12 @@ class LibraryState:
 
 @dataclass
 class WorkingState:
-    """What the app is: its devices, every program input's value, where runs
-    save, and the library's settings."""
+    """What the app is: its devices, every program input's value, the device chosen for each
+    name programs choose under, where runs save, and the library's settings."""
 
     devices: list[DeviceState] = field(default_factory=list)
     program_inputs: dict[str, Any] = field(default_factory=dict)
+    device_choices: dict[str, Any] = field(default_factory=dict)
     save: SaveState = field(default_factory=SaveState)
     library: LibraryState = field(default_factory=LibraryState)
 
@@ -150,6 +151,7 @@ def decode_working(raw: dict[str, Any]) -> WorkingState:
         program_inputs={
             str(key): value for key, value in as_object(raw.get("program_inputs")).items()
         },
+        device_choices=as_object(raw.get("device_choices")),
         save=decode_save(raw.get("save")),
         library=decode_library(raw.get("library")),
     )

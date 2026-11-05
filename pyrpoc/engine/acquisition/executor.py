@@ -39,7 +39,7 @@ class Run:
         self,
         program: Program,
         run_id: int,
-        devices: dict[type[Device], Device],
+        bound: claims.Bound,
         recording: Recording,
         saver: RecordingSaver | None,
         live: LiveFeed,
@@ -48,7 +48,7 @@ class Run:
     ):
         self.program = program
         self.id = run_id
-        self.devices = devices
+        self.bound = bound
         self.recording = recording
         self.saver = saver
         self.live = live
@@ -78,8 +78,16 @@ class RunCallbacks:
     on_finished: Callable[[Run], None]
 
 
-def device_state(devices: dict[type[Device], Device]) -> dict[str, Any]:
-    return {cls.__name__: encode_config(device.config) for cls, device in devices.items()}
+def device_state(bound: claims.Bound) -> dict[str, Any]:
+    """Each bound device's configuration by its class, and each chosen device's by its name."""
+    state: dict[str, Any] = {
+        cls.__name__: encode_config(device.config) for cls, device in bound.devices.items()
+    }
+    state["chosen"] = {
+        name: {"instance_id": device.instance_id, "config": encode_config(device.config)}
+        for name, device in bound.chosen.items()
+    }
+    return state
 
 
 class Executor:
@@ -96,6 +104,7 @@ class Executor:
         program: Program,
         inputs: ProgramInputsStore,
         inventory: list[Device],
+        chosen: Mapping[str, Device],
         *,
         program_key: str,
         save: SaveTarget,
@@ -104,17 +113,18 @@ class Executor:
         repeat: bool,
     ) -> Run:
         """Start ``program`` on a worker thread of its own, filling a new recording that
-        ``note`` goes to. ``earlier`` is the output chosen for each name it reads.
+        ``note`` goes to. ``chosen`` is the device chosen for each name it chooses, and
+        ``earlier`` the output chosen for each name it reads.
         Raises ``NotReady``, ``DeviceBusy``, ``ParameterError``, ``RecordingError`` or
         ``LibraryFull`` before anything starts."""
-        needs = missing(type(program), inventory, save, earlier)
+        needs = missing(type(program), inventory, chosen, save, earlier)
         if needs:
             raise NotReady(needs)
         # Read outside the lock: loading files must not hold up another run starting.
         read = load_earlier(earlier, self.library)
         with self._lock:
-            devices = claims.resolve(list(program.devices), inventory)
-            self.leases.check(devices.values())
+            bound = claims.resolve(list(program.devices), chosen, inventory)
+            self.leases.check(bound.held())
             values = self.resolve_inputs(program, inputs)
             self.library.check_room()
             self._run_id += 1
@@ -123,7 +133,7 @@ class Executor:
                 program_key=program_key,
                 # One encoding, shared by the recording and the session file.
                 parameters=inputs.encode(program.inputs),
-                devices=device_state(devices),
+                devices=device_state(bound),
                 reads={
                     name: EarlierRead(each.meta_path.name, each.output)
                     for name, each in earlier.items()
@@ -135,8 +145,8 @@ class Executor:
             inbox = self.requests.open(
                 program.requests, saver.log_request if saver is not None else None
             )
-            run = Run(program, self._run_id, devices, recording, saver, live, inbox, repeat)
-            self.leases.take(run.id, devices.values())
+            run = Run(program, self._run_id, bound, recording, saver, live, inbox, repeat)
+            self.leases.take(run.id, bound.held())
             self.launch(run, values, read)
         return run
 
@@ -192,7 +202,8 @@ class Executor:
             live=run.live,
             requests=run.inbox,
             earlier=earlier,
-            devices=run.devices,
+            devices=run.bound.devices,
+            chosen=run.bound.chosen,
             outputs=run.recording.outputs,
             cancel=run.cancel,
             on_status=lambda text: self.callbacks.on_status(run, text),

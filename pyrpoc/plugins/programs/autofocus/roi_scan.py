@@ -18,7 +18,7 @@ from pyrpoc.plugins.program_io.inputs import (
     rate_hz,
 )
 
-from ..building_blocks.functions.daq_tasks import acquire
+from ..building_blocks.functions.daq_tasks import acquire, galvo_channels
 from ..building_blocks.functions.galvo_raster import pixel_samples
 from ..building_blocks.functions.roi_scan import (
     Box,
@@ -103,5 +103,5 @@ class RoiRaster:
 
     def frame(self) -> np.ndarray:
         """One region scan as a ``(C, H, W)`` frame of the bounding box."""
-        raw = acquire(self.daq, self.galvo, self.waveform, {}, self.sample_rate_hz)
+        raw = acquire(self.daq, galvo_channels(self.galvo), self.waveform, {}, self.sample_rate_hz)
         return place_rows(raw, self.scan, self.spans, self.samples_per_pixel, self.box)

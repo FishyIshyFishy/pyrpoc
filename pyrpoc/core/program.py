@@ -61,6 +61,10 @@ class Program:
     # Device classes to claim. Claims propagate along ``backed_by``.
     devices: list[type[Device]] = []
 
+    # Devices the user chooses from the inventory, by the name it uses each under, and the class
+    # each must be. Claims propagate along ``backed_by``, as for ``devices``.
+    chooses: dict[str, type[Device]] = {}
+
     # Every program input it reads.
     inputs: list[ProgramInput[Any]] = []
 
@@ -120,7 +124,7 @@ class PostedRequests(Protocol):
 class RunContext:
     """What a running program is handed: its input values as they were when it started, the
     current values of its live inputs, the requests posted to it, the earlier outputs it reads,
-    its devices, its outputs, status and cancel."""
+    its devices and the devices chosen for it, its outputs, status and cancel."""
 
     def __init__(
         self,
@@ -130,6 +134,7 @@ class RunContext:
         requests: PostedRequests,
         earlier: Mapping[str, ProgramOutput],
         devices: Mapping[type[Device], Device],
+        chosen: Mapping[str, Device],
         outputs: dict[str, ProgramOutput],
         cancel: threading.Event,
         on_status: Callable[[str], None],
@@ -139,6 +144,7 @@ class RunContext:
         self._requests = requests
         self._earlier = dict(earlier)
         self.devices = DeviceMap(devices)
+        self._chosen = dict(chosen)
         self.outputs = outputs
         self._cancel = cancel
         self._on_status = on_status
@@ -177,6 +183,18 @@ class RunContext:
                 f"{name!r} is a {type(program_output).__name__}, not {output_type.__name__}"
             )
         return program_output
+
+    def chosen(self, name: str, device_type: type[D]) -> D:
+        """The device chosen for ``name``, which ``chooses`` declares as ``device_type``."""
+        if name not in self._chosen:
+            raise KeyError(
+                f"{name!r} is not declared in chooses; this program declares {sorted(self._chosen)}"
+            )
+        device = self._chosen[name]
+        # Narrows for the type checker, and catches a program asking for the wrong type.
+        if not isinstance(device, device_type):
+            raise TypeError(f"{name!r} is a {type(device).__name__}, not {device_type.__name__}")
+        return device
 
     def output(self, name: str, output_type: type[OutputT]) -> OutputT:
         """This run's output ``name``, which ``emits`` declares as ``output_type``."""

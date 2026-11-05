@@ -60,8 +60,8 @@ def acquire_frame(ctx: RunContext, flim: FlimMeasurement) -> None:
 @program_registry.register("flim")
 class FLIM(Program):
     display_name = "FLIM"
-    group = "FLIM"
-    order = 40
+    group = "Developmental"
+    order = 210
     devices = [Galvo, DAQ, TimeTagger]
     inputs = [
         *SCAN_GEOMETRY_INPUTS,
