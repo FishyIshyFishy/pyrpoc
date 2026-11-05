@@ -6,9 +6,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from pyrpoc.core.panels import source_text
 from pyrpoc.core.program_input import Field, ParameterError, declare
 from pyrpoc.plugins.program_io.outputs.image import ImageOutput
+from pyrpoc.utils.widgets.source_picker import source_text
 
 
 @dataclass(frozen=True)

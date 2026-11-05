@@ -131,8 +131,8 @@ key, a session or a recording.
 
 ## Where the specific things live
 
-Each kind of thing registers through the registry in the core file that
-defines it. Nothing else lists them.
+Each kind of thing registers through the registry in the file that defines
+its base, in core or, for panels, in `utils/widgets/`. Nothing else lists them.
 
 | To add | Put it in | Registers with |
 |---|---|---|
@@ -140,11 +140,13 @@ defines it. Nothing else lists them.
 | A program | `plugins/programs/` | `program_registry` |
 | A program input, shared by programs and panels | `plugins/program_io/inputs/` | `declare` |
 | A type of program output, with its files | `plugins/program_io/outputs/`, one file each | `program_output_registry` |
-| A panel | `plugins/panels/` | `panel_registry`, or the registry of the `utils/widgets/` base it builds on |
+| A panel showing program outputs | `plugins/panels/` | `data_panel_registry` (`utils/widgets/data_panel.py`) |
+| A device's own panel | beside its device in `plugins/devices/` | `device_panel_registry` (`utils/widgets/device_panel.py`) |
 | A common value rule, like a whole number or a choice | `utils/value_rules/` | (none: inputs and device settings use them directly) |
 
-Generic widgets that panels build on, such as a panel showing one program
-output with a picker for it, or a device's panel, live in `utils/widgets/`.
+The bases panels build on live in `utils/widgets/`: `DataPanel` with its
+`SourcePicker`, and `DevicePanel`, given its device and a `DeviceLink` to it.
+Each keeps its own registry, since each is built from different collections.
 
 ## The files
 
@@ -161,4 +163,4 @@ output with a picker for it, or a device's panel, live in `utils/widgets/`.
 | `program_output.py` | `ProgramOutput` + `program_output_registry` |
 | `library.py` | `Library` |
 | `saving.py` | `SaveTarget` |
-| `panels.py` | `Panel` + `panel_registry`. The only file here that uses Qt. |
+| `panels.py` | `Panel`. The only file here that uses Qt. |

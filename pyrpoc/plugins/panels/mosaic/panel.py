@@ -18,9 +18,9 @@ from PyQt6.QtWidgets import (
 )
 
 from pyrpoc.core.library import Library
-from pyrpoc.core.panels import DataPanel, data_panel_registry
 from pyrpoc.core.program_input import ProgramInputs
 from pyrpoc.plugins.program_io.outputs import MosaicOutput
+from pyrpoc.utils.widgets.data_panel import DataPanel, data_panel_registry
 
 from .channels import ChannelStrip
 from .layout import layout_of

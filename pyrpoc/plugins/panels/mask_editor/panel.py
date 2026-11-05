@@ -31,12 +31,12 @@ from PyQt6.QtWidgets import (
 )
 
 from pyrpoc.core.library import Library
-from pyrpoc.core.panels import DataPanel, data_panel_registry
 from pyrpoc.core.program_input import ProgramInputs
 from pyrpoc.plugins.panels.mask_editor.range_slider import RangeSlider
 from pyrpoc.plugins.panels.mask_editor.transforms import normalize_channels
 from pyrpoc.plugins.program_io.inputs import MASKS, Mask
 from pyrpoc.plugins.program_io.outputs import ImageOutput
+from pyrpoc.utils.widgets.data_panel import DataPanel, data_panel_registry
 
 from .canvas import MaskImageView, MaskRoi, Threshold
 from .dialog import RoiThresholdDialog

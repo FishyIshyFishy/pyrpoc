@@ -17,27 +17,28 @@ from PyQt6.QtWidgets import (
 )
 
 from pyrpoc.core.device import Device, device_registry
-from pyrpoc.core.panels import Panel, has_panel
+from pyrpoc.core.panels import Panel
+from pyrpoc.utils.widgets.device_panel import has_panel
 from pyrpoc.utils.widgets.table import ListTable, horizontal_header, viewport_of
 
 from .configure import ConfigureDialog
-from .inventory import DeviceInventory
+from .inventory import DeviceInventory, DeviceStatus
 
 NAME, STATUS, CONNECTION = range(3)
 COLUMNS = ["Device", "Status", "Connection"]
 
 
-def status_of(device: Device, in_use: bool) -> str:
+def status_of(device: Device, status: DeviceStatus, in_use: bool) -> str:
     if in_use:
         return "In use"
     if device.holds_session:
         if device.session_open:
             return "Connected"
-        return "Error" if device.last_error else "Disconnected"
+        return "Error" if status.last_error else "Disconnected"
     if device.owns_connection:
-        if device.last_test_ok is None:
+        if status.last_test_ok is None:
             return "Not tested"
-        return "OK" if device.last_test_ok else "Failed"
+        return "OK" if status.last_test_ok else "Failed"
     if device.backed_by is not None:
         return f"via {device.backed_by.display_name}"
     return "—"
@@ -93,11 +94,13 @@ class DevicesPanel(Panel):
         devices = self.inventory.devices
         self.table.setRowCount(len(devices))
         for row, device in enumerate(devices):
-            self.table.set_cell(row, NAME, device.name)
+            self.table.set_cell(row, NAME, self.inventory.name(device))
             status = self.table.set_cell(
-                row, STATUS, status_of(device, device in self.inventory.in_use)
+                row,
+                STATUS,
+                status_of(device, self.inventory.status[device], device in self.inventory.in_use),
             )
-            status.setToolTip(device.last_error or "")
+            status.setToolTip(self.inventory.fault(device) or "")
             self.table.set_cell(row, CONNECTION, device.connection_info())
 
     def show_row_menu(self, position: QPoint) -> None:

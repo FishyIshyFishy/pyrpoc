@@ -60,7 +60,7 @@ class ToupcamCamera(Device):
 
     def open_session(self) -> None:
         if self.session is not None:
-            raise ToupcamError(f"{self.name} is already connected")
+            raise ToupcamError(f"{self.display_name} is already connected")
         self.session = ToupcamSession.connect(self.config.camera)
 
     def close_session(self) -> None:
@@ -76,7 +76,9 @@ class ToupcamCamera(Device):
 
     def require_session(self) -> ToupcamSession:
         if self.session is None:
-            raise ToupcamError(f"{self.name} is not connected; connect it in the Devices panel")
+            raise ToupcamError(
+                f"{self.display_name} is not connected; connect it in the Devices panel"
+            )
         return self.session
 
     def start(self, *, exposure_us: int, gain_pct: int, binned: bool) -> None:
@@ -121,7 +123,7 @@ class ToupcamCamera(Device):
                 if size is not None:
                     return unpack_rgb24(buffer, *size)
             if time.monotonic() > deadline:
-                raise ToupcamError(f"no frame from {self.name} within the exposure time")
+                raise ToupcamError(f"no frame from {self.display_name} within the exposure time")
             sleep(POLL_S)
 
     def stop(self) -> None:

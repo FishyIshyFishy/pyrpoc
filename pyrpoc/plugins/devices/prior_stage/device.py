@@ -80,7 +80,7 @@ class PriorStage(Device):
 
     def open_session(self) -> None:
         if self.session is not None:
-            raise PriorError(f"{self.name} is already connected")
+            raise PriorError(f"{self.display_name} is already connected")
         self.session = PriorSession.connect(self.config.com_port)
 
     def close_session(self) -> None:
@@ -96,7 +96,9 @@ class PriorStage(Device):
 
     def require_session(self) -> PriorSession:
         if self.session is None:
-            raise PriorError(f"{self.name} is not connected; connect it in the Devices panel")
+            raise PriorError(
+                f"{self.display_name} is not connected; connect it in the Devices panel"
+            )
         return self.session
 
     def command(self, text: str) -> str:

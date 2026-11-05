@@ -141,7 +141,7 @@ class AndorCCD(Device):
 
     def open_session(self) -> None:
         if self.session is not None:
-            raise AndorError(f"{self.name} is already connected")
+            raise AndorError(f"{self.display_name} is already connected")
         self.session = AndorSession.connect(self.config.dll_path, self.config.target_temp_c)
 
     def close_session(self) -> None:
@@ -156,7 +156,9 @@ class AndorCCD(Device):
 
     def require_session(self) -> AndorSession:
         if self.session is None:
-            raise AndorError(f"{self.name} is not connected; connect it in the Devices panel")
+            raise AndorError(
+                f"{self.display_name} is not connected; connect it in the Devices panel"
+            )
         return self.session
 
     def temperature(self) -> Temperature:

@@ -9,7 +9,7 @@ Imports go one way: `app` → `engine` → `plugins` → `utils` → `core`.
   - `programs/` and `panels/` may import `program_io/` and `devices/`, and never each other. `program_io/` and `devices/` know only `core/` and `utils/`.
 - `engine/`: the app's working parts, one folder per collection: `acquisition/` > `data_library/` | `device_inventory/`. Each holds its no-Qt logic, its Qt model and its panel. They never import a plugin.
 - `app/`: the composition root (`application.py` wires the engine; window, menus, theme, `session/`). The only place that knows about everything.
-- New implementations register through the registry in the `core/` file that defines their kind. Nothing else lists them.
+- New implementations register through the registry beside the base they build on: in `core/`, or in `utils/widgets/` for panels. Nothing else lists them.
 - A whole new capability is a new folder in `engine/`, wired in `app/application.py`.
 
 ## Checks

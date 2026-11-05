@@ -19,10 +19,10 @@ from PyQt6.QtWidgets import (
 )
 
 from pyrpoc.core.library import Library
-from pyrpoc.core.panels import DataPanel, data_panel_registry
 from pyrpoc.core.program_input import ProgramInputs
 from pyrpoc.plugins.program_io.inputs import PICK, PixelPick
 from pyrpoc.plugins.program_io.outputs import ImageOutput
+from pyrpoc.utils.widgets.data_panel import DataPanel, data_panel_registry
 from pyrpoc.utils.widgets.icons import asset_icon
 from pyrpoc.utils.widgets.levels import autoscale_levels, mono_levels
 

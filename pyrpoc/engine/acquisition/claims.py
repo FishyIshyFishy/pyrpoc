@@ -61,7 +61,8 @@ class Leases:
         self._held: dict[Device, int] = {}
 
     def check(self, devices: Iterable[Device]) -> None:
-        busy = [device.name for device in devices if device in self._held]
+        # A program binds one device of each type, so the type names which.
+        busy = [device.display_name for device in devices if device in self._held]
         if busy:
             raise DeviceBusy(busy)
 
