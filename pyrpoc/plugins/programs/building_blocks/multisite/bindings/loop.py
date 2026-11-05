@@ -9,7 +9,7 @@ from typing import Any
 import numpy as np
 
 from pyrpoc.core.program import RunContext
-from pyrpoc.core.program_input import ParameterError, ProgramInput
+from pyrpoc.core.program_input import ProgramInput
 from pyrpoc.core.program_output import ProgramOutput
 from pyrpoc.plugins.program_io.inputs import (
     DWELL_TIME_US,
@@ -24,7 +24,6 @@ from pyrpoc.plugins.program_io.outputs import (
     GalvoCalibrationOutput,
     LoopEvent,
     LoopLogOutput,
-    PlacedImageOutput,
     SurveyOutput,
     UnitFramesOutput,
 )
@@ -42,10 +41,9 @@ STEERING: list[ProgramInput[Any]] = [UNITS, PAUSED_UNITS]
 LOOP_FOCUS_INPUTS = (FOCUS_CHECK_S, FOCUS_FINAL_STEP_UM)
 # What every loop fills: its log, and every frame of every unit.
 LOOP_EMITS: dict[str, type[ProgramOutput]] = {"log": LoopLogOutput, "frames": UnitFramesOutput}
-# What every loop reads: the survey, its overview, and the calibration its scans use.
+# What every loop reads: the survey, and the calibration its scans use.
 LOOP_READS: dict[str, type[ProgramOutput]] = {
     "survey": SurveyOutput,
-    "overview": PlacedImageOutput,
     "calibration": GalvoCalibrationOutput,
 }
 
@@ -83,16 +81,12 @@ class LoopOutputs:
 def survey_map_of(ctx: RunContext) -> tuple[SurveyMap, SurveyOutput]:
     """The map of the survey read, and the survey itself."""
     survey = ctx.earlier("survey", SurveyOutput)
-    overview = ctx.earlier("overview", PlacedImageOutput)
-    # Compared by file, since each read may be loaded on its own from the same recording.
-    if overview.recording.location != survey.recording.location:
-        raise ParameterError("the overview read is not the survey's own: choose them together")
     found = survey.found()
     visits = tuple(
         Visit(tile.x_um, tile.y_um, taken.time_s)
         for tile, taken in zip(survey.tiles, survey.taken, strict=True)
     )
-    return SurveyMap(found.focus, found.motion, Overview(*overview.latest()), visits), survey
+    return SurveyMap(found.focus, found.motion, Overview(*survey.overview()), visits), survey
 
 
 def field_of(ctx: RunContext, survey: SurveyOutput, overscan: tuple[int, int]) -> FieldOfView:
