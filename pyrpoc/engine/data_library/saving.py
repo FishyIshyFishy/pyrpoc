@@ -14,9 +14,10 @@ from pyrpoc.engine.data_library.format import (
     free_root,
     meta_path_for,
     pyrpoc_version,
-    write_folder_notes,
     write_record,
 )
+
+from .notes import save_note
 
 
 def save_location(root: Path) -> tuple[Path, Path]:
@@ -35,14 +36,14 @@ class RecordingSaver:
         self.live_reads: list[LiveRead] = []
         # A run writes from its own thread, and a note edit from the GUI thread.
         self.lock = threading.Lock()
-        # The note as the file last held it, so the Experiment's notes are rebuilt only when
-        # it changes.
-        self.written_note = ""
 
     def begin(self) -> None:
         """Create the folder, and put the recording on disk before its data."""
         self.meta_path.parent.mkdir(parents=True, exist_ok=True)
         self.write_metadata(ended_at=None, last_error=None)
+        # A note written before the run is set now, as one edited later is set by the library.
+        if self.recording.note:
+            save_note(self.recording)
 
     def log_live(self, read: LiveRead) -> None:
         """Record a run being given a changed live input, on disk at once."""
@@ -56,14 +57,9 @@ class RecordingSaver:
 
     def write_metadata(self, *, ended_at: str | None, last_error: str | None) -> None:
         with self.lock:
-            # Read each time: the note may be edited while the recording runs.
-            note = self.recording.note
-            write_record(self.meta_path, self.record(ended_at, last_error, note))
-            if note != self.written_note:
-                write_folder_notes(self.meta_path.parent)
-                self.written_note = note
+            write_record(self.meta_path, self.record(ended_at, last_error))
 
-    def record(self, ended_at: str | None, last_error: str | None, note: str) -> RecordingRecord:
+    def record(self, ended_at: str | None, last_error: str | None) -> RecordingRecord:
         recording = self.recording
         return RecordingRecord(
             pyrpoc_version=pyrpoc_version(),
@@ -78,7 +74,8 @@ class RecordingSaver:
                 name: output_record(program_output)
                 for name, program_output in recording.outputs.items()
             },
-            notes=note,
+            # Read each time: the note may be edited while the recording runs.
+            notes=recording.note,
             inputs=recording.reads,
             live_reads=list(self.live_reads),
         )

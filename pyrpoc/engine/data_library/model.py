@@ -10,13 +10,8 @@ from PyQt6.QtCore import QObject, QTimer, pyqtSignal
 
 from pyrpoc.core.recording import Recording
 
-from .format import (
-    RecordingError,
-    load_recording,
-    recordings_in,
-    write_folder_notes,
-    write_notes,
-)
+from .format import RecordingError, load_recording, recordings_in
+from .notes import save_note
 from .store import LibraryFull, LibraryStore
 
 
@@ -122,16 +117,12 @@ class LibraryModel(QObject):
         self.store.add(load_recording(meta_path))
 
     def set_note(self, recording: Recording, note: str) -> str | None:
-        """Set the recording's note, and write it into its file and its Experiment's notes if
-        it is finished on disk; returns why the files could not be updated, or None."""
-        # A recording still going writes the note itself the next time it updates its metadata.
-        # The note is kept in memory either way.
+        """Set the recording's note and save it where the recording is saved; returns why the
+        files could not be updated, or None."""
+        # Kept in memory even when the files cannot be written.
         recording.note = note
-        if recording.location is None or not recording.finished:
-            return None
         try:
-            write_notes(recording.location, note)
-            write_folder_notes(recording.location.parent)
+            save_note(recording)
         except (RecordingError, OSError) as exc:
             return str(exc)
         return None
