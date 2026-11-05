@@ -1,5 +1,12 @@
 # Autonomous microscopy, part 2: programs and panels
 
+**Status:** built, in the terms of the simplified core rather than the ones below. A
+survey is a `SurveyOutput` (a `MosaicOutput`) and a `PlacedImageOutput` overview. The
+loop logs to a `LoopLogOutput`, and `view()` folds that log into what the loop is doing
+now; there is no separate loop-state output. Frames are a `UnitFramesOutput` (an
+`ImageOutput`). Run now is the `RUN_NOW` request. `UNITS` and `PAUSED_UNITS` are live
+inputs that a session does not restore.
+
 This is the second of two implementation PRs. It builds the autonomous programs,
 data kinds, writers and panels in `plugins/`, on top of part 1
 (`engine_plan.md`): Experiments, upstream runs, live program inputs and large
