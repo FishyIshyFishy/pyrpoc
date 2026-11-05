@@ -7,7 +7,6 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
-from pathlib import Path
 
 from PyQt6.QtCore import QObject, pyqtSignal
 
@@ -19,6 +18,7 @@ from pyrpoc.engine.acquisition.claims import DeviceBusy
 from pyrpoc.engine.acquisition.executor import Executor, Run, RunCallbacks
 from pyrpoc.engine.acquisition.program_inputs import ProgramInputsStore
 from pyrpoc.engine.acquisition.readiness import NotReady
+from pyrpoc.engine.data_library.earlier import EarlierOutput
 from pyrpoc.engine.data_library.format import RecordingError
 from pyrpoc.engine.data_library.store import LibraryFull, LibraryStore
 
@@ -53,7 +53,7 @@ class RunEvents(QObject):
         devices: list[Device],
         save: SaveTarget,
         note: str,
-        earlier: Mapping[str, Path],
+        earlier: Mapping[str, EarlierOutput],
         repeat: bool,
         claim: Callable[[Run], None],
     ) -> Run | None:

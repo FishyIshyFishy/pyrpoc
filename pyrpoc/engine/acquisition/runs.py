@@ -3,17 +3,17 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from pathlib import Path
 
 from PyQt6.QtCore import QObject, pyqtSignal
 
 from pyrpoc.core.program import program_registry
 from pyrpoc.core.saving import SaveTarget
+from pyrpoc.engine.data_library.earlier import EarlierOutput
 from pyrpoc.engine.data_library.model import LibraryModel
 from pyrpoc.engine.device_inventory.inventory import DeviceInventory
 
 from . import readiness
-from .earlier import EarlierChoices, read_program_keys
+from .earlier import EarlierChoices, any_reads
 from .events import RunEvents
 from .executor import Run
 from .program_inputs import ProgramInputsStore
@@ -25,7 +25,7 @@ class Runs(QObject):
 
     save_changed = pyqtSignal()
     note_changed = pyqtSignal()
-    # The recordings programs can read changed, or which one is picked.
+    # The earlier outputs programs can read changed, or which one is picked.
     earlier_changed = pyqtSignal()
     # What a program needs may have arrived or gone: a device, or a name to save under.
     readiness_changed = pyqtSignal()
@@ -82,23 +82,23 @@ class Runs(QObject):
             self.chosen_earlier(program_key),
         )
 
-    def chosen_earlier(self, program_key: str) -> dict[str, Path]:
-        """The recording each earlier run ``program_key`` reads would be read from now."""
-        chosen: dict[str, Path] = {}
-        for each in program_registry.get(program_key).reads:
-            path = self.earlier.chosen(each.program_key)
-            if path is not None:
-                chosen[each.program_key] = path
+    def chosen_earlier(self, program_key: str) -> dict[str, EarlierOutput]:
+        """The earlier output each name ``program_key`` reads would be read from now."""
+        chosen: dict[str, EarlierOutput] = {}
+        for name, output_type in program_registry.get(program_key).reads.items():
+            choice = self.earlier.chosen(name, output_type)
+            if choice is not None:
+                chosen[name] = choice
         return chosen
 
     def refresh_earlier(self) -> None:
-        """Look again at the recordings in the save folder that programs read."""
+        """Look again at the earlier outputs in the save folder."""
         self.earlier.refresh(self.save.folder)
         self.earlier_changed.emit()
 
-    def pick_earlier(self, program_key: str, meta_path: Path | None) -> None:
-        """Read ``meta_path`` wherever ``program_key`` is read, or the latest when None."""
-        self.earlier.pick(program_key, meta_path)
+    def pick_earlier(self, name: str, choice: EarlierOutput | None) -> None:
+        """Read ``choice`` wherever ``name`` is read, or the latest when None."""
+        self.earlier.pick(name, choice)
         self.earlier_changed.emit()
 
     def set_save(
@@ -136,9 +136,8 @@ class Runs(QObject):
         run.live.close()
         self.live_runs.discard(run)
         self.publish_in_use()
-        # Only a saved run of a program others read can change what they read.
-        saved = run.saver is not None
-        if saved and run.recording.program_key in read_program_keys():
+        # Only a saved run can change what later runs read.
+        if run.saver is not None and any_reads():
             self.refresh_earlier()
 
     def publish_in_use(self) -> None:

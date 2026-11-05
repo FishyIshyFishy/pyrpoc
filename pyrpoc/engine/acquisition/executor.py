@@ -18,9 +18,10 @@ from pyrpoc.core.device_config import encode_config
 from pyrpoc.core.program import Cancelled, Program, RunContext
 from pyrpoc.core.program_input import ProgramInputValues
 from pyrpoc.core.program_output import ProgramOutput
-from pyrpoc.core.recording import Recording, utc_now
+from pyrpoc.core.recording import EarlierRead, Recording, utc_now
 from pyrpoc.core.saving import SaveTarget
 from pyrpoc.engine.acquisition.program_inputs import ProgramInputsStore
+from pyrpoc.engine.data_library.earlier import EarlierOutput
 from pyrpoc.engine.data_library.format import load_recording
 from pyrpoc.engine.data_library.saving import RecordingSaver, save_location
 from pyrpoc.engine.data_library.store import LibraryStore
@@ -28,8 +29,6 @@ from pyrpoc.engine.data_library.store import LibraryStore
 from . import claims
 from .live import LiveFeed
 from .readiness import NotReady, missing
-
-Earlier = dict[str, dict[str, ProgramOutput]]
 
 
 class Run:
@@ -98,18 +97,18 @@ class Executor:
         program_key: str,
         save: SaveTarget,
         note: str,
-        earlier: Mapping[str, Path],
+        earlier: Mapping[str, EarlierOutput],
         repeat: bool,
     ) -> Run:
         """Start ``program`` on a worker thread of its own, filling a new recording that
-        ``note`` goes to. ``earlier`` names the recording chosen for each earlier run it reads.
+        ``note`` goes to. ``earlier`` is the output chosen for each name it reads.
         Raises ``NotReady``, ``DeviceBusy``, ``ParameterError``, ``RecordingError`` or
         ``LibraryFull`` before anything starts."""
         needs = missing(type(program), inventory, save, earlier)
         if needs:
             raise NotReady(needs)
         # Read outside the lock: loading files must not hold up another run starting.
-        read = load_earlier(program, earlier)
+        read = load_earlier(earlier, self.library)
         with self._lock:
             devices = claims.resolve(list(program.devices), inventory)
             self.leases.check(devices.values())
@@ -122,7 +121,10 @@ class Executor:
                 # One encoding, shared by the recording and the session file.
                 parameters=inputs.encode(program.inputs()),
                 devices=device_state(devices),
-                reads={key: earlier[key].name for key in read},
+                reads={
+                    name: EarlierRead(each.meta_path.name, each.output)
+                    for name, each in earlier.items()
+                },
                 save=save,
                 note=note,
             )
@@ -139,7 +141,7 @@ class Executor:
         program_key: str,
         parameters: dict[str, Any],
         devices: dict[str, Any],
-        reads: dict[str, str],
+        reads: dict[str, EarlierRead],
         save: SaveTarget,
         note: str,
     ) -> tuple[Recording, RecordingSaver | None]:
@@ -176,7 +178,9 @@ class Executor:
         inputs.validate(declared)
         return inputs.values_for(declared)
 
-    def launch(self, run: Run, values: ProgramInputValues, earlier: Earlier) -> None:
+    def launch(
+        self, run: Run, values: ProgramInputValues, earlier: dict[str, ProgramOutput]
+    ) -> None:
         ctx = RunContext(
             inputs=values,
             live=run.live,
@@ -242,9 +246,18 @@ def close_recording(
     return errors
 
 
-def load_earlier(program: Program, chosen: Mapping[str, Path]) -> Earlier:
-    """The outputs of each earlier run ``program`` reads, loaded from the recording chosen
-    for it."""
-    return {
-        each.program_key: load_recording(chosen[each.program_key]).outputs for each in program.reads
+def load_earlier(
+    chosen: Mapping[str, EarlierOutput], library: LibraryStore
+) -> dict[str, ProgramOutput]:
+    """Each chosen earlier output, the library's open copy when it holds one, else loaded."""
+    # Loaded copies stay out of the library: reading one must not take a place there.
+    open_at: dict[Path, Recording] = {
+        recording.location: recording
+        for recording in library.recordings()
+        if recording.location is not None
     }
+    read: dict[str, ProgramOutput] = {}
+    for name, each in chosen.items():
+        recording = open_at.get(each.meta_path) or load_recording(each.meta_path)
+        read[name] = recording.outputs[each.output]
+    return read

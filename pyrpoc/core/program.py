@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import threading
 from collections.abc import Callable, Iterator, Mapping
-from dataclasses import dataclass
 from typing import Any, Protocol, TypeVar
 
 from pyrpoc.core.device import Device
@@ -48,14 +47,6 @@ class DeviceMap(Mapping[type[Device], Device]):
         return f"DeviceMap({self._devices!r})"
 
 
-@dataclass(frozen=True)
-class EarlierRun:
-    """An earlier run in the same Experiment that a program reads, named by the program that
-    made it."""
-
-    program_key: str
-
-
 class Program:
     """One experiment: the devices it uses, the program inputs it reads (laid out
     in input sections), its outputs, the runners that start it, and ``run``,
@@ -75,8 +66,9 @@ class Program:
     # in code, parameters are what matters, not sections of parameters
     sections: list[InputSection] = []
 
-    # Earlier runs it reads; it cannot start until each has one to read.
-    reads: list[EarlierRun] = []
+    # Outputs of earlier recordings in the same Experiment it reads, by the name it reads each
+    # under, and the type each must be. It cannot start until each has one to read.
+    reads: dict[str, type[ProgramOutput]] = {}
 
     # Its inputs that a run may read again while it runs, to follow edits made after it
     # started. The rest stay as they were when it started.
@@ -107,7 +99,7 @@ class LiveValues(Protocol):
 
 class RunContext:
     """What a running program is handed: its input values as they were when it started, the
-    current values of its live inputs, the earlier runs it reads, its devices, its outputs,
+    current values of its live inputs, the earlier outputs it reads, its devices, its outputs,
     status and cancel."""
 
     def __init__(
@@ -115,7 +107,7 @@ class RunContext:
         *,
         inputs: ProgramInputValues,
         live: LiveValues,
-        earlier: Mapping[str, Mapping[str, ProgramOutput]],
+        earlier: Mapping[str, ProgramOutput],
         devices: Mapping[type[Device], Device],
         outputs: dict[str, ProgramOutput],
         cancel: threading.Event,
@@ -139,15 +131,20 @@ class RunContext:
             )
         return self._live.current(program_input.key)
 
-    def earlier(self, run: EarlierRun) -> Mapping[str, ProgramOutput]:
-        """The outputs of the earlier run chosen for ``run``, by name, each holding its last
-        value."""
-        if run.program_key not in self._earlier:
+    def earlier(self, name: str, output_type: type[OutputT]) -> OutputT:
+        """The earlier output chosen for ``name``, which ``reads`` declares as
+        ``output_type``. It is read, never added to."""
+        if name not in self._earlier:
             raise KeyError(
-                f"{run.program_key!r} is not declared in reads; this program declares "
-                f"{sorted(self._earlier)}"
+                f"{name!r} is not declared in reads; this program declares {sorted(self._earlier)}"
             )
-        return self._earlier[run.program_key]
+        program_output = self._earlier[name]
+        # Narrows for the type checker, and catches a program asking for the wrong type.
+        if not isinstance(program_output, output_type):
+            raise TypeError(
+                f"{name!r} is a {type(program_output).__name__}, not {output_type.__name__}"
+            )
+        return program_output
 
     def output(self, name: str, output_type: type[OutputT]) -> OutputT:
         """This run's output ``name``, which ``emits`` declares as ``output_type``."""

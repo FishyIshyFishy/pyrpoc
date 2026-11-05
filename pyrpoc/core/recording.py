@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -12,6 +13,15 @@ if TYPE_CHECKING:  # pragma: no cover
 
 def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+@dataclass(frozen=True)
+class EarlierRead:
+    """The output of an earlier recording that a recording read under one name."""
+
+    # The earlier recording's metadata file name, in the same folder.
+    recording: str
+    output: str
 
 
 class Recording:
@@ -26,7 +36,7 @@ class Recording:
         started_at: str,
         parameters: dict[str, Any],
         devices: dict[str, Any],
-        reads: dict[str, str],
+        reads: dict[str, EarlierRead],
         location: Path | None,
         note: str,
         finished: bool,
@@ -37,7 +47,7 @@ class Recording:
         self.started_at = started_at
         self.parameters = parameters
         self.devices = devices
-        # The earlier recordings it read: their metadata file names in its folder, by name.
+        # What it read of earlier recordings, by the name its program reads each under.
         self.reads = reads
         # Its metadata file, or None when it is not saved.
         self.location = location

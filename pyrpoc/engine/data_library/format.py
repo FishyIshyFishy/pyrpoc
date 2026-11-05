@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from pyrpoc.core.program_output import ProgramOutput, program_output_registry
-from pyrpoc.core.recording import Recording
+from pyrpoc.core.recording import EarlierRead, Recording
 
 from .grouping import program_display_name
 
@@ -62,8 +62,8 @@ class RecordingRecord:
     outputs: dict[str, OutputRecord]
     # What the user wrote about the run, before or after it.
     notes: str
-    # The earlier recordings it read: their metadata file names in its folder, by program key.
-    inputs: dict[str, str]
+    # What it read of earlier recordings, by the name its program reads each under.
+    inputs: dict[str, EarlierRead]
     # Each change to a live input a run read, in the order read.
     live_reads: list[LiveRead]
 
@@ -156,7 +156,10 @@ def decode_record(raw: dict[str, Any]) -> RecordingRecord:
             for output, entry in raw["outputs"].items()
         },
         notes=str(raw["notes"]),
-        inputs={str(key): str(name) for key, name in raw["inputs"].items()},
+        inputs={
+            str(name): EarlierRead(str(read["recording"]), str(read["output"]))
+            for name, read in raw["inputs"].items()
+        },
         live_reads=[
             LiveRead(
                 read_at=str(read["read_at"]),

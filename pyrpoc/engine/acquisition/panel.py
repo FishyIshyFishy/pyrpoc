@@ -187,7 +187,8 @@ class AcquisitionPanel(Panel):
         self.state_changed.emit()
 
     def build_inputs(self, key: str) -> QWidget:
-        """The cards for ``key``'s earlier runs, if it reads any, above its program inputs."""
+        """The card for what ``key`` reads of earlier recordings, if any, above its program
+        inputs."""
         program = program_registry.get(key)
         if self.earlier_card is not None:
             self.earlier_card.detach()
