@@ -8,8 +8,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Protocol
 
-from pyrpoc.core import device_config as C
-from pyrpoc.core.device import Device, DeviceError, device_registry
+from pyrpoc.core.device import Device, DeviceConfig, DeviceError, device_registry
 from pyrpoc.utils.value_rules import float_field, int_field
 
 
@@ -28,7 +27,7 @@ class FlimMeasurement(Protocol):
 
 
 @dataclass
-class TaggerConfig(C.DeviceConfig):
+class TaggerConfig(DeviceConfig):
     laser_channel: int = int_field(
         "Laser Channel", 1, minimum=1, tooltip="Input channel for the laser sync (start)"
     )

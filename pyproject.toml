@@ -157,7 +157,6 @@ type = "forbidden"
 source_modules = [
   "pyrpoc.core.registry",
   "pyrpoc.core.device",
-  "pyrpoc.core.device_config",
   "pyrpoc.core.program",
   "pyrpoc.core.runner",
   "pyrpoc.core.program_input",
@@ -165,7 +164,6 @@ source_modules = [
   "pyrpoc.core.library",
   "pyrpoc.core.recording",
   "pyrpoc.core.requests",
-  "pyrpoc.core.saving",
 ]
 forbidden_modules = ["PyQt6", "pyqtgraph"]
 
@@ -178,6 +176,7 @@ source_modules = [
   "pyrpoc.engine.acquisition.readiness",
   "pyrpoc.engine.acquisition.program_inputs",
   "pyrpoc.engine.acquisition.requests",
+  "pyrpoc.engine.acquisition.save_target",
   "pyrpoc.engine.data_library.store",
   "pyrpoc.engine.data_library.saving",
   "pyrpoc.engine.data_library.format",

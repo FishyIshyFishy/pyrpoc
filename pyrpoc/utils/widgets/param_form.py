@@ -16,8 +16,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from pyrpoc.core.device import Device
-from pyrpoc.core.device_config import DeviceConfig, config_fields
+from pyrpoc.core.device import Device, DeviceConfig, config_fields
 from pyrpoc.core.program_input import Field, ParameterError, ProgramInput
 
 from .cards import BaseCardWidget

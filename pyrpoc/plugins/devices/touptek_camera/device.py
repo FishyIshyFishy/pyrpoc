@@ -12,8 +12,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from pyrpoc.core import device_config as C
-from pyrpoc.core.device import Device, device_registry
+from pyrpoc.core.device import Device, DeviceConfig, device_registry
 from pyrpoc.utils.value_rules import text_field
 
 from .sdk import ToupcamError, ToupcamSession, row_pitch, unpack_rgb24
@@ -25,7 +24,7 @@ FRAME_MARGIN_S = 2.0
 
 
 @dataclass
-class ToupcamConfig(C.DeviceConfig):
+class ToupcamConfig(DeviceConfig):
     camera: str = text_field(
         "Camera",
         "",

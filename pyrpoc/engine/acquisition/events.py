@@ -13,12 +13,12 @@ from PyQt6.QtCore import QObject, pyqtSignal
 from pyrpoc.core.device import Device
 from pyrpoc.core.program import Program
 from pyrpoc.core.program_input import ParameterError
-from pyrpoc.core.saving import SaveTarget
 from pyrpoc.engine.acquisition.claims import DeviceBusy
 from pyrpoc.engine.acquisition.executor import Executor, Run, RunCallbacks
 from pyrpoc.engine.acquisition.program_inputs import ProgramInputsStore
 from pyrpoc.engine.acquisition.readiness import NotReady
 from pyrpoc.engine.acquisition.requests import RequestsStore
+from pyrpoc.engine.acquisition.save_target import SaveTarget
 from pyrpoc.engine.data_library.earlier import EarlierOutput
 from pyrpoc.engine.data_library.format import RecordingError
 from pyrpoc.engine.data_library.store import LibraryFull, LibraryStore

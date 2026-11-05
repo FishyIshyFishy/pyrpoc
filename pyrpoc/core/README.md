@@ -84,7 +84,7 @@ of the app meet.
 | **Device** | A piece of hardware the microscope has: its identity, its settings (a `DeviceConfig`, whose fields each carry a `Field`) and maybe a connection. |
 | **Program** | One kind of experiment: the devices it needs, the program inputs it reads, the outputs it fills, the earlier outputs it reads, the requests it accepts, and the runners that can start it. Its `run` does the work. |
 | **RunContext** | What a running program is handed: its input values, the current value of its live inputs, its requests, the earlier outputs it reads, its devices, its outputs, status and cancel. |
-| **Runner** | A way to start a program, such as once, continuously, or armed until a pixel is picked. The program declares it. The runner adds controls through its `RunnerContext`, and whichever panel shows the program draws them. A runner may watch program inputs. |
+| **Runner** | A way to start a program, such as once, continuously, or armed until a pixel is picked. The program declares it. It may offer the user a `Control` through its `RunnerContext`. Core says only that a control exists: what it is, such as a button or a toggle, is its type, and the panel showing the program draws each by its type. A runner may watch program inputs. |
 
 A run is not a piece of core: it is the engine executing one recording.
 
@@ -111,7 +111,6 @@ cards every input is shown.
 | **Recording** | What one run produced: what made it (program, name, start time, input values, devices, the earlier recordings it read), where it is saved (or nothing, when unsaved), its note, whether it is finished, and its program outputs. Two outputs are of the same recording when their `recording` is the same object. Its folder is its Experiment. |
 | **ProgramOutput** | One named part of a recording, of one type. Each type is a subclass that owns its content, how programs add to it, how panels read it, and how it is written to files and read back. Many programs may fill the same type. Types register in `program_output_registry`, which is how a recording on disk finds them again. |
 | **Library** | The recordings that are open: acquired now, or loaded from disk. Nothing else. You can add one, close one, list them, and subscribe. |
-| **SaveTarget** | What a run is called and where it saves. Its folder is the Experiment. |
 
 ### Views
 
@@ -148,6 +147,7 @@ its base, in core or, for panels, in `utils/widgets/`. Nothing else lists them.
 | A device's own panel | beside its device in `plugins/devices/` | `device_panel_registry` (`utils/widgets/device_panel.py`) |
 | A common value rule, like a whole number or a choice | `utils/value_rules/` | (none: inputs and device settings use them directly) |
 | The on-screen editor of a kind of `Field` | beside that `Field` | `editor_for` (`utils/widgets/editors.py`) |
+| A kind of runner `Control`, like a button or a toggle | `utils/controls.py` | its view, with `control_view_for` (`utils/widgets/control_views.py`) |
 
 The bases panels build on live in `utils/widgets/`: `DataPanel` with its
 `SourcePicker`, and `DevicePanel`, given its device and a `DeviceLink` to it.
@@ -158,14 +158,12 @@ Each keeps its own registry, since each is built from different collections.
 | File | Holds |
 |---|---|
 | `registry.py` | `Registry` |
-| `device.py` | `Device` + `device_registry` |
-| `device_config.py` | `DeviceConfig`, and how its fields carry their `Field` |
+| `device.py` | `Device` + `device_registry`, and `DeviceConfig`, whose fields carry their `Field` |
 | `program.py` | `Program`, `RunContext` + `program_registry` |
-| `runner.py` | `Runner`, `RunnerContext`, `Control`, `Button`, `Toggle` |
+| `runner.py` | `Runner`, `RunnerContext`, `Control` |
 | `program_input.py` | `ProgramInput` + `declare`, `Field`, `ProgramInputValues`, `ProgramInputs` |
 | `requests.py` | `Request` + `request_registry`, `Requests` |
 | `recording.py` | `Recording` |
 | `program_output.py` | `ProgramOutput` + `program_output_registry` |
 | `library.py` | `Library` |
-| `saving.py` | `SaveTarget` |
 | `panels.py` | `Panel`. The only file here that uses Qt. |

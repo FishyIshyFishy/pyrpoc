@@ -27,8 +27,7 @@ from typing import Any, Literal
 
 import numpy as np
 
-from pyrpoc.core import device_config as C
-from pyrpoc.core.device import Device, device_registry
+from pyrpoc.core.device import Device, DeviceConfig, device_registry
 from pyrpoc.utils.value_rules import int_field, path_field
 
 from .sdk import ACQUIRING, IDLE, AndorError, AndorSession, Temperature, code_name
@@ -52,7 +51,7 @@ POLL_S = 0.02
 
 
 @dataclass
-class AndorCcdConfig(C.DeviceConfig):
+class AndorCcdConfig(DeviceConfig):
     dll_path: str = path_field(
         "SDK DLL",
         r"C:\Program Files\Andor SDK\atmcd64d.dll",

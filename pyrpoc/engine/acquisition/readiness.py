@@ -6,7 +6,7 @@ from collections.abc import Mapping
 
 from pyrpoc.core.device import Device
 from pyrpoc.core.program import Program
-from pyrpoc.core.saving import SaveTarget
+from pyrpoc.engine.acquisition.save_target import SaveTarget
 from pyrpoc.engine.data_library.earlier import EarlierOutput
 
 from . import claims

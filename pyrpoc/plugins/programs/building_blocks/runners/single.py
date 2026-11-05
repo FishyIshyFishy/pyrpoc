@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from pyrpoc.core.runner import Button, Runner, RunnerContext
+from pyrpoc.core.runner import Runner, RunnerContext
+from pyrpoc.utils.controls import Button
 
 
 @dataclass(frozen=True)

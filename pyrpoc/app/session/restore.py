@@ -8,8 +8,7 @@ from typing import Any
 
 from pyrpoc.app.application import Application
 from pyrpoc.app.window import MainWindow
-from pyrpoc.core.device import Device
-from pyrpoc.core.device_config import decode_config, encode_config
+from pyrpoc.core.device import Device, decode_config, encode_config
 from pyrpoc.engine.device_inventory.inventory import DeviceInventory
 from pyrpoc.plugins import data_panel_registry, device_registry
 from pyrpoc.utils.widgets.device_panel import has_panel

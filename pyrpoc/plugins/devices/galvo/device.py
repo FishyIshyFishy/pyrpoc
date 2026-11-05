@@ -7,15 +7,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from pyrpoc.core import device_config as C
-from pyrpoc.core.device import Device, device_registry
+from pyrpoc.core.device import Device, DeviceConfig, device_registry
 from pyrpoc.utils.value_rules import int_field
 
 from ..daq.device import DAQ
 
 
 @dataclass
-class GalvoConfig(C.DeviceConfig):
+class GalvoConfig(DeviceConfig):
     fast_ao: int = int_field(
         "Fast Axis AO",
         0,

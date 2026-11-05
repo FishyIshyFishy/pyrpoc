@@ -7,7 +7,7 @@ from collections.abc import Callable
 from PyQt6.QtCore import QObject, pyqtSignal
 
 from pyrpoc.core.program import program_registry
-from pyrpoc.core.saving import SaveTarget
+from pyrpoc.engine.acquisition.save_target import SaveTarget
 from pyrpoc.engine.data_library.earlier import EarlierOutput
 from pyrpoc.engine.data_library.model import LibraryModel
 from pyrpoc.engine.device_inventory.inventory import DeviceInventory

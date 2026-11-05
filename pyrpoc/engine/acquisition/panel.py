@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from html import escape
 from typing import Any
 
@@ -25,7 +24,7 @@ from PyQt6.QtWidgets import (
 from pyrpoc.core.panels import Panel
 from pyrpoc.core.program import program_registry
 from pyrpoc.core.registry import grouped
-from pyrpoc.core.runner import Control
+from pyrpoc.utils.widgets.control_views import ControlView, build_control_view
 from pyrpoc.utils.widgets.grouped_combo import GroupedComboBox
 from pyrpoc.utils.widgets.icons import asset_icon
 from pyrpoc.utils.widgets.param_form import ParamForm, input_form_section
@@ -75,7 +74,7 @@ class AcquisitionPanel(Panel):
         self.form: ParamForm | None = None
         self.earlier_card: EarlierCard | None = None
         # Each rendered control, its button, and the watcher keeping them in line.
-        self.control_buttons: list[tuple[Control, QPushButton, Callable[[], None]]] = []
+        self.control_views: list[ControlView] = []
 
         root = QVBoxLayout(self)
         root.setContentsMargins(8, 8, 8, 8)
@@ -245,50 +244,24 @@ class AcquisitionPanel(Panel):
 
     def render_controls(self) -> None:
         """Draw the shown program's controls, replacing whatever was there."""
-        # ``clicked`` rather than ``toggled``, so a runner moving its own toggle is shown without
-        # being mistaken for the user.
-        for control, button, watcher in self.control_buttons:
-            control.unwatch(watcher)
-            self.controls_strip.removeWidget(button)
-            button.deleteLater()
-        self.control_buttons = []
-
-        for control in self.host.controls:
-            button = QPushButton(self)
-            if control.icon is not None:
-                button.setIcon(asset_icon(control.icon))
-            else:
-                button.setText(control.label)
-            button.setToolTip(control.tooltip or control.label)
-            button.setCheckable(control.checkable)
-            button.setChecked(control.checked)
-            button.clicked.connect(control.activate)
-            watcher = self.make_watcher(control, button)
-            control.watch(watcher)
-            self.controls_strip.addWidget(button)
-            self.control_buttons.append((control, button, watcher))
+        for view in self.control_views:
+            view.close()
+            self.controls_strip.removeWidget(view.widget)
+            view.widget.deleteLater()
+        self.control_views = [build_control_view(control, self) for control in self.host.controls]
+        for view in self.control_views:
+            self.controls_strip.addWidget(view.widget)
         self.apply_enabled()
 
-    def make_watcher(self, control: Control, button: QPushButton) -> Callable[[], None]:
-        """Keep ``button`` in line with ``control`` when its runner changes it."""
-
-        def watcher() -> None:
-            if button.isChecked() != control.checked:
-                button.setChecked(control.checked)
-            self.apply_enabled()
-
-        return watcher
-
     def apply_enabled(self) -> None:
-        """Off while something is missing or a run is in progress, and off
-        whenever the control's runner says so."""
+        """Off while something is missing or a run is in progress."""
         missing = self.blockers()
         ready = not missing and not self.host.running
-        for control, button, _ in self.control_buttons:
-            button.setEnabled(ready and control.enabled)
-            # A dimmed button says why on hover, so the way forward is one mouse-over away.
+        for view in self.control_views:
+            view.widget.setEnabled(ready)
+            # A dimmed control says why on hover, so the way forward is one mouse-over away.
             reason = f"\nNeeds {', '.join(missing)}" if missing else ""
-            button.setToolTip((control.tooltip or control.label) + reason)
+            view.widget.setToolTip(view.tooltip + reason)
 
     def choose_directory(self) -> None:
         folder = self.runs.save.folder

@@ -6,8 +6,9 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from pyrpoc.core.program_input import ParameterError, ProgramInputs
-from pyrpoc.core.runner import Runner, RunnerContext, Toggle
+from pyrpoc.core.runner import Runner, RunnerContext
 from pyrpoc.plugins.program_io.inputs import PICK, PixelPick
+from pyrpoc.utils.controls import Toggle
 
 
 @dataclass(frozen=True)

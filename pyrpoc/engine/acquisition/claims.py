@@ -6,7 +6,15 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 
-from pyrpoc.core.device import Device, DeviceError, MissingDevice
+from pyrpoc.core.device import Device, DeviceError
+
+
+class MissingDevice(DeviceError):
+    """A program needs devices that are not in the inventory."""
+
+    def __init__(self, missing: list[str]):
+        self.missing = list(missing)
+        super().__init__("missing required devices: " + ", ".join(self.missing))
 
 
 class DeviceBusy(DeviceError):
