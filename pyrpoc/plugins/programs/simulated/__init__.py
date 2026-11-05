@@ -7,6 +7,7 @@ from __future__ import annotations
 from pyrpoc.core.program import program_registry
 
 from .confocal.program import SimulatedConfocal
+from .galvo_calibration.program import SimulatedGalvoCalibration
 from .simulation.program import Simulation
 
 
@@ -16,3 +17,4 @@ def register() -> None:
     # when this is called.
     program_registry.add("simulation", Simulation)
     program_registry.add("simulated_confocal", SimulatedConfocal)
+    program_registry.add("simulated_galvo_calibration", SimulatedGalvoCalibration)
