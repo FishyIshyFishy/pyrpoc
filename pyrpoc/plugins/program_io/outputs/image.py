@@ -15,8 +15,8 @@ from .building_blocks.tiff import append_pages, channel_paths, read_pages
 
 @program_output_registry.register("image")
 class ImageOutput(ArrayStack):
-    """``(channel, y, x)`` images, saved as ``<root>_<name>_<channel>.tiff`` with one page per
-    image, readable while the run goes."""
+    """``(channel, y, x)`` images, saved as ``<root>_<channel>.tiff`` with one page per image,
+    readable while the run goes."""
 
     axes = ("channel", "y", "x")
 
@@ -27,10 +27,7 @@ class ImageOutput(ArrayStack):
 
     def write(self, root: Path, array: np.ndarray) -> None:
         if not self.channel_files:
-            # Named by output too, so two image outputs of one recording never share a file.
-            self.channel_files = channel_paths(
-                root.with_name(f"{root.name}_{self.name}"), self.channels
-            )
+            self.channel_files = channel_paths(root, self.channels)
             self.paths |= self.channel_files
         append_pages(self.channel_files, array)
 
