@@ -10,8 +10,8 @@ from pyrpoc.core.program import RunContext
 from pyrpoc.plugins.devices import DAQ, Galvo, PriorStage
 from pyrpoc.plugins.program_io.inputs import ScanGeometry, rate_hz
 
-from .functions.galvo_raster import Raster, pixel_samples, raster_waveform
-from .microscope import DigitalLine
+from ...functions.galvo_raster import Raster, pixel_samples, raster_waveform
+from ..interfaces.microscope import DigitalLine
 
 
 class RigMicroscope:

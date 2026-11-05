@@ -13,7 +13,7 @@ import numpy as np
 
 from pyrpoc.plugins.program_io.inputs import Unit
 
-from ..microscope import DigitalLine
+from ...interfaces.microscope import DigitalLine
 
 
 @dataclass(frozen=True)

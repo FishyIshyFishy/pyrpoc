@@ -7,9 +7,9 @@ import numpy as np
 
 from pyrpoc.plugins.program_io.outputs import MotionRate
 
-from ..vision.features import Box, clear_features
-from ..vision.noise import MAD_TO_SIGMA
-from ..vision.shifts import locate_near
+from .features import Box, clear_features
+from .noise import MAD_TO_SIGMA
+from .shifts import locate_near
 
 EDGE_MARGIN_PX = 4
 # How far a feature is looked for, as a fraction of the field.

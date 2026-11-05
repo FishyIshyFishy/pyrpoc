@@ -32,16 +32,16 @@ from pyrpoc.plugins.program_io.outputs import (
     SurveyTile,
 )
 
-from ..field_of_view import FieldOfView
-from ..focus.climb import climb
-from ..focus.tenengrad import tenengrad
-from ..microscope import Microscope
-from ..vision.noise import strongest_channel
-from .content import content_channels, content_region
+from ....focus.climb import climb
+from ....focus.tenengrad import tenengrad
+from ...analysis.content import content_channels, content_region
+from ...analysis.motion import feature_speeds, motion_rate
+from ...analysis.noise import strongest_channel
+from ...interfaces.field import FieldOfView
+from ...interfaces.microscope import Microscope
 from .focus_surface import FocusSurface
 from .grid import Tile, snake
-from .motion import feature_speeds, motion_rate
-from .stitch import stitch
+from .layout import stitch
 
 # How many early tiles with content are revisited to measure motion.
 REVISITS = 6

@@ -12,9 +12,8 @@ from pyrpoc.plugins.program_io.inputs import (
 )
 from pyrpoc.plugins.program_io.outputs import GalvoCalibrationOutput
 
-from ..building_blocks.rig import RigMicroscope
-from ..building_blocks.runners import Single
-from ..building_blocks.survey.run import (
+from ..building_blocks.multisite.bindings.rig import RigMicroscope
+from ..building_blocks.multisite.stages.survey.walk import (
     FOCUS_INPUTS,
     REGION_INPUTS,
     SURVEY_EMITS,
@@ -22,6 +21,7 @@ from ..building_blocks.survey.run import (
     SurveySettings,
     survey,
 )
+from ..building_blocks.runners import Single
 
 
 @program_registry.register("survey")

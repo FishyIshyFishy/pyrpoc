@@ -21,10 +21,10 @@ from pyrpoc.plugins.program_io.outputs import (
     ImageOutput,
 )
 
-from .microscope import Microscope
-from .vision.features import Box, clear_feature
-from .vision.noise import strongest_channel
-from .vision.shifts import locate_near
+from ...analysis.features import Box, clear_feature
+from ...analysis.noise import strongest_channel
+from ...analysis.shifts import locate_near
+from ...interfaces.microscope import Microscope
 
 Axis = Literal["x", "y"]
 

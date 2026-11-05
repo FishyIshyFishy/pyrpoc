@@ -8,7 +8,7 @@ import numpy as np
 from pyrpoc.plugins.program_io.inputs import FocusSearch
 from pyrpoc.plugins.program_io.outputs import FocusPlane
 
-from ..vision.noise import MAD_TO_SIGMA
+from ...analysis.noise import MAD_TO_SIGMA
 
 # A plane needs three points; until then the last focus found is the best guess.
 PLANE_POINTS = 3

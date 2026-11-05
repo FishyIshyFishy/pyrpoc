@@ -7,7 +7,7 @@ from pyrpoc.plugins.devices.simulated import SimulatedScanner
 from pyrpoc.plugins.program_io.inputs import SCAN_GEOMETRY_INPUTS, ScanGeometry
 from pyrpoc.plugins.program_io.outputs import GalvoCalibrationOutput, ImageOutput
 
-from ...building_blocks.calibration import calibrate
+from ...building_blocks.multisite.stages.calibration.measuring import calibrate
 from ...building_blocks.runners import Single
 from ..dish_microscope import DishMicroscope
 

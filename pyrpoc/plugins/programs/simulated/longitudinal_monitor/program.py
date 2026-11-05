@@ -6,7 +6,8 @@ from pyrpoc.core.program import Program, RunContext
 from pyrpoc.plugins.devices.simulated import SimulatedScanner
 from pyrpoc.plugins.program_io.requests import RUN_NOW
 
-from ...building_blocks.loop.monitor import (
+from ...building_blocks.multisite.interfaces.microscope import DigitalLine
+from ...building_blocks.multisite.routines.monitor import (
     FOCUS_INPUTS,
     LOOP_EMITS,
     LOOP_READS,
@@ -15,8 +16,7 @@ from ...building_blocks.loop.monitor import (
     TREATMENT_INPUTS,
     run_monitor,
 )
-from ...building_blocks.loop.steering import STEERING
-from ...building_blocks.microscope import DigitalLine
+from ...building_blocks.multisite.stages.loop.steering import STEERING
 from ...building_blocks.runners import Single
 from ..dish_microscope import DishMicroscope
 

@@ -21,15 +21,15 @@ from pyrpoc.plugins.program_io.outputs import (
     UnitFramesOutput,
 )
 
-from ..field_of_view import FieldOfView
-from ..focus.tenengrad import tenengrad
-from ..microscope import Microscope
-from ..survey.content import content_channels, content_region
-from ..survey.stitch import Overview
-from .focus import FocusKeeper
+from ....focus.tenengrad import tenengrad
+from ...analysis.content import content_channels, content_region
+from ...interfaces.field import FieldOfView
+from ...interfaces.microscope import Microscope
+from ..survey.layout import Overview
+from .focus_keeper import FocusKeeper
 from .queue import Queue, Thread
+from .routine import Record, RoutineSpec, Scan, Seen, Step, Wait
 from .steering import Steering
-from .steps import Record, RoutineSpec, Scan, Seen, Step, Wait
 from .tracking import Track, Tracker, crop_centred, outline_mask, start_track, window_px
 
 # The longest the loop waits at once, so edits and stops are taken up promptly.

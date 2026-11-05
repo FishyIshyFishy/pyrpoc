@@ -11,13 +11,13 @@ import numpy as np
 
 from pyrpoc.plugins.program_io.outputs import Placement
 
-from .grid import Tile
-from .stitching import (
+from ...analysis.stitching import (
     Registration,
     composite,
     register_near,
     solve_positions,
 )
+from .grid import Tile
 
 # The overview's longest side; a larger survey is stitched at a coarser pixel.
 OVERVIEW_PX = 8192

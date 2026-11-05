@@ -15,7 +15,9 @@ from pyrpoc.plugins.program_io.inputs import (
 )
 from pyrpoc.plugins.program_io.requests import RUN_NOW
 
-from ..building_blocks.loop.monitor import (
+from ..building_blocks.multisite.bindings.rig import RigMicroscope
+from ..building_blocks.multisite.interfaces.microscope import DigitalLine
+from ..building_blocks.multisite.routines.monitor import (
     FOCUS_INPUTS,
     LOOP_EMITS,
     LOOP_READS,
@@ -24,9 +26,7 @@ from ..building_blocks.loop.monitor import (
     TREATMENT_INPUTS,
     run_monitor,
 )
-from ..building_blocks.loop.steering import STEERING
-from ..building_blocks.microscope import DigitalLine
-from ..building_blocks.rig import RigMicroscope
+from ..building_blocks.multisite.stages.loop.steering import STEERING
 from ..building_blocks.runners import Single
 
 RIG_TREATMENT = (*TREATMENT_INPUTS, TREATMENT_PORT, TREATMENT_LINE)

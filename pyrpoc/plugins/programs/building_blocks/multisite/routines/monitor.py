@@ -28,11 +28,11 @@ from pyrpoc.plugins.program_io.outputs import (
     UnitFramesOutput,
 )
 
-from ..field_of_view import FieldOfView
-from ..microscope import DigitalLine, Microscope
-from ..survey.stitch import Overview
-from .orchestrator import LoopSetup, Orchestrator, check_units
-from .steps import Record, Routine, RoutineSpec, Scan, Wait, seen_from
+from ..interfaces.field import FieldOfView
+from ..interfaces.microscope import DigitalLine, Microscope
+from ..stages.loop.orchestrator import LoopSetup, Orchestrator, check_units
+from ..stages.loop.routine import Record, Routine, RoutineSpec, Scan, Wait, seen_from
+from ..stages.survey.layout import Overview
 
 
 @dataclass(frozen=True)
