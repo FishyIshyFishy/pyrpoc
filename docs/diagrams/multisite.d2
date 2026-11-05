@@ -14,18 +14,20 @@ classes: {
   panel_new: {style: {fill: "#fde8e8"; stroke: "#b04a4a"; stroke-dash: 4; border-radius: 6}}
 }
 
-legend: |md
+# A node in the layout rather than pinned to a corner, which reserved a band of empty space.
+key: |md
   **Key**
-  - yellow: ProgramInputs, frozen at start (heavy dashed border: *live*)
-  - orange: Request, taken between steps
+  - yellow: ProgramInputs (dashed: *live*)
+  - orange: Request
   - green: program
-  - purple: ProgramOutput (`'name'` Type)
-  - blue hexagon: Check, judged before each start
-  - red: panel (dashed border: arrives in #67)
+  - purple: ProgramOutput
+  - red: panel (dashed: #67)
+| {style: {fill: "#ffffff"; stroke: "#bbbbbb"}}
 
-  Every step runs with `CleanFolder`: its folder may hold only the recordings it reads, so each
-  read has one possible source. A loop's may also hold the runs of a loop it carries on.
-| {near: bottom-left}
+clean: "CleanFolder, on every step\nthe folder holds only what the\nstep reads (a loop's: also the\nruns of a loop it carries on)" {class: check}
+clean -> cal {style.stroke-dash: 4}
+clean -> sur {style.stroke-dash: 4}
+clean -> loop {style.stroke-dash: 4}
 
 # ---------------------------------------------------------------- 1. calibration
 cal_in: "SCAN_GEOMETRY_INPUTS" {class: input}

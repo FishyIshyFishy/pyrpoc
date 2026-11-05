@@ -13,6 +13,14 @@ AGENT: do not write here
 
 ## Agent written stuff
 
+### Run stuff
+A run still has two doors into it, though both pass through `RunContext`:
+- what it starts with: `ctx.inputs`, its devices and its earlier reads, frozen at the start of each part;
+- what reaches it while it runs: the inbox (`engine/acquisition/inbox.py`), which carries requests and edits to inputs and devices.
+  
+They could be one: the context has an inbox, and a run's starting values are simply the first things in it, taken at the start, with later ones taken at their moments. Nothing gains from doing this now; it is worth doing when either door next needs changing.
+
+### Core fixes remaining
 Core members that may still be what one consumer needed, not what the thing is:
 
 - `Field.label` and `Field.tooltip` (`core/program_input.py`): the tooltip is screen text in core. The label also names a value in error messages ("Visit: must be <= 10"), so it is more defensible. Changing either touches every input and device setting.
