@@ -5,8 +5,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from pyrpoc.core.program_input import ParameterError
-
 
 @dataclass
 class SaveTarget:
@@ -34,10 +32,10 @@ class SaveTarget:
 
     @property
     def root(self) -> Path:
-        """The base path every file of the run hangs its suffix off."""
+        """The base path every file of the run hangs its suffix off, for a target with a
+        folder."""
         folder = self.folder
+        # Narrows for the type checker: a run saves only once its readiness check found one.
         if folder is None:
-            raise ParameterError("A folder to save into is required when saving is enabled")
-        if not self.filename:
-            raise ParameterError("Name is required when saving is enabled")
+            raise ValueError("a save target with no folder has no root")
         return folder / self.filename

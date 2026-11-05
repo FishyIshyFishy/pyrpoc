@@ -11,7 +11,6 @@ from pyrpoc.engine.data_library.format import (
     LiveRead,
     OutputRecord,
     RecordingRecord,
-    RunRecord,
     free_root,
     meta_path_for,
     pyrpoc_version,
@@ -28,33 +27,21 @@ def save_location(root: Path) -> tuple[Path, Path]:
 
 
 class RecordingSaver:
-    """Writes ``recording``'s metadata file, at its location, as runs join and end."""
+    """Writes ``recording``'s metadata file, at its location, as its run goes."""
 
     def __init__(self, recording: Recording, meta_path: Path):
         self.recording = recording
         self.meta_path = meta_path
-        self.runs: list[RunRecord] = []
         self.live_reads: list[LiveRead] = []
-        # Runs write from their own threads, and runs in a series overlap the GUI thread.
+        # A run writes from its own thread, and a note edit from the GUI thread.
         self.lock = threading.Lock()
         # The note as the file last held it, so the Experiment's notes are rebuilt only when
         # it changes.
         self.written_note = ""
 
-    def prepare(self) -> None:
-        """Create the folder the recording is saved in."""
+    def begin(self) -> None:
+        """Create the folder, and put the recording on disk before its data."""
         self.meta_path.parent.mkdir(parents=True, exist_ok=True)
-
-    def add_run(self, run_id: int, started_at: str) -> None:
-        """Record a run joining, and put the recording on disk before its data."""
-        self.runs.append(RunRecord(run_id=run_id, started_at=started_at, ended_at=None, error=None))
-        self.write_metadata(ended_at=None, last_error=None)
-
-    def end_run(self, run_id: int, error: Exception | None) -> None:
-        run = next(run for run in self.runs if run.run_id == run_id)
-        run.ended_at = utc_now()
-        run.error = str(error) if error is not None else None
-        # A series can run for hours; the file should list every run so far.
         self.write_metadata(ended_at=None, last_error=None)
 
     def log_live(self, read: LiveRead) -> None:
@@ -85,7 +72,6 @@ class RecordingSaver:
             started_at=recording.started_at,
             ended_at=ended_at,
             last_error=last_error,
-            runs=list(self.runs),
             parameters=recording.parameters,
             devices=recording.devices,
             outputs={

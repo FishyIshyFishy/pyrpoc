@@ -24,33 +24,18 @@ class ArmAndRun(Runner):
 
     def attach(self, ctx: RunnerContext) -> None:
         def on_change(checked: bool) -> None:
-            if not checked:
-                ctx.status("ready")
-                return
-            # Refused while anything would stop the run starting, since the pick is what
-            # starts it.
-            missing = ctx.blockers()
-            if missing:
-                ctx.status("needs " + ", ".join(missing))
-                toggle.set(False)
-                return
-            ctx.status("waiting for a pick on a display")
+            ctx.status("waiting for a pick on a display" if checked else "ready")
 
         def on_input_changed(key: str) -> None:
             if key != PICK.key or not toggle.checked:
                 return
             toggle.set(False)
-            # Checked again, since what the run needs can go while it is armed.
-            missing = ctx.blockers()
-            if missing:
-                ctx.status("needs " + ", ".join(missing))
-                return
             try:
                 self.apply(ctx.inputs.get(PICK.key), ctx.inputs)
             except ParameterError as exc:
                 ctx.status(str(exc))
                 return
-            ctx.execute()
+            ctx.execute(repeat=False)
 
         def on_run_started() -> None:
             # A run started some other way disarms, so a later click does not start another.

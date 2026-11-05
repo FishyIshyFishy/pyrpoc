@@ -17,7 +17,7 @@ from pyrpoc.core.recording import Recording
 from .grouping import program_display_name
 
 FORMAT = "pyrpoc-recording"
-FORMAT_VERSION = 7
+FORMAT_VERSION = 8
 META_SUFFIX = "_meta.json"
 # Every note in an Experiment, in one file a person can read without the app.
 NOTES_FILE = "notes.txt"
@@ -31,19 +31,10 @@ class RecordingError(Exception):
     """A recording on disk that cannot be read. The message names the file."""
 
 
-@dataclass
-class RunRecord:
-    run_id: int
-    started_at: str
-    ended_at: str | None
-    error: str | None
-
-
 @dataclass(frozen=True)
 class LiveRead:
-    """A run reading a live input whose value changed since it last read it."""
+    """The run reading a live input whose value changed since it last read it."""
 
-    run_id: int
     read_at: str
     key: str
     # As the input's rules encode it.
@@ -66,7 +57,6 @@ class RecordingRecord:
     started_at: str
     ended_at: str | None
     last_error: str | None
-    runs: list[RunRecord]
     parameters: dict[str, Any]
     devices: dict[str, Any]
     outputs: dict[str, OutputRecord]
@@ -156,15 +146,6 @@ def decode_record(raw: dict[str, Any]) -> RecordingRecord:
         started_at=str(raw["started_at"]),
         ended_at=optional_str(raw["ended_at"]),
         last_error=optional_str(raw["last_error"]),
-        runs=[
-            RunRecord(
-                run_id=int(run["run_id"]),
-                started_at=str(run["started_at"]),
-                ended_at=optional_str(run["ended_at"]),
-                error=optional_str(run["error"]),
-            )
-            for run in raw["runs"]
-        ],
         parameters=dict(raw["parameters"]),
         devices=dict(raw["devices"]),
         outputs={
@@ -178,7 +159,6 @@ def decode_record(raw: dict[str, Any]) -> RecordingRecord:
         inputs={str(key): str(name) for key, name in raw["inputs"].items()},
         live_reads=[
             LiveRead(
-                run_id=int(read["run_id"]),
                 read_at=str(read["read_at"]),
                 key=str(read["key"]),
                 value=read["value"],

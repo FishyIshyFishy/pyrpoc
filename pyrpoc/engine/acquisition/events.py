@@ -11,14 +11,14 @@ from pathlib import Path
 
 from PyQt6.QtCore import QObject, pyqtSignal
 
-from pyrpoc.core.device import Device, MissingDevice
+from pyrpoc.core.device import Device
 from pyrpoc.core.program import Program
 from pyrpoc.core.program_input import ParameterError
 from pyrpoc.core.saving import SaveTarget
 from pyrpoc.engine.acquisition.claims import DeviceBusy
-from pyrpoc.engine.acquisition.executor import Executor, MissingEarlierRun, Run, RunCallbacks
+from pyrpoc.engine.acquisition.executor import Executor, Run, RunCallbacks
 from pyrpoc.engine.acquisition.program_inputs import ProgramInputsStore
-from pyrpoc.engine.acquisition.recording import Series
+from pyrpoc.engine.acquisition.readiness import NotReady
 from pyrpoc.engine.data_library.format import RecordingError
 from pyrpoc.engine.data_library.store import LibraryFull, LibraryStore
 
@@ -30,8 +30,8 @@ class RunEvents(QObject):
     run_status = pyqtSignal(object, str)
     run_failed = pyqtSignal(object, str)
     run_finished = pyqtSignal(object)
-    # Refused before any run existed: a missing or busy device, a bad parameter, an earlier
-    # run it reads that is missing or unreadable, or a full library.
+    # Refused before any run existed: something it needs is missing, a device is busy, a
+    # parameter is bad, an earlier recording it reads is unreadable, or the library is full.
     start_refused = pyqtSignal(str)
 
     def __init__(self, library: LibraryStore, parent: QObject):
@@ -54,7 +54,7 @@ class RunEvents(QObject):
         save: SaveTarget,
         note: str,
         earlier: Mapping[str, Path],
-        series: Series | None,
+        repeat: bool,
         claim: Callable[[Run], None],
     ) -> Run | None:
         """Start ``program`` and return its run, or report through ``start_refused`` why it
@@ -70,21 +70,11 @@ class RunEvents(QObject):
                 save=save,
                 note=note,
                 earlier=earlier,
-                series=series,
+                repeat=repeat,
             )
-        except (
-            MissingDevice,
-            DeviceBusy,
-            ParameterError,
-            MissingEarlierRun,
-            RecordingError,
-            LibraryFull,
-        ) as exc:
+        except (NotReady, DeviceBusy, ParameterError, RecordingError, LibraryFull) as exc:
             self.start_refused.emit(str(exc))
             return None
         claim(run)
         self.run_started.emit(run)
         return run
-
-    def end_series(self, series: Series) -> None:
-        self.executor.end_series(series)

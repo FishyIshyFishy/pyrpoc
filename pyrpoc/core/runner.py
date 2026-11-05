@@ -93,8 +93,11 @@ class RunnerContext(ABC):
     through one context goes away when its program is deselected."""
 
     @abstractmethod
-    def execute(self) -> None:
-        """Start a run of the program. Failures are reported, not raised."""
+    def execute(self, repeat: bool) -> None:
+        """Start a run of the program, which opens one recording. With ``repeat``, the run does
+        the program's work again and again into that recording until it is stopped or wound
+        down; it also winds down by itself once anything it was started with changes, so
+        edits reach a new recording. Failures are reported, not raised."""
 
     @abstractmethod
     def on_run_started(self, callback: Callable[[], None]) -> None:
@@ -102,20 +105,14 @@ class RunnerContext(ABC):
         ``execute`` returns."""
 
     @abstractmethod
-    def open_series(self) -> None:
-        """From now until ``close_series``, each run this context starts adds
-        to the previous run's library entries and files, unless something the
-        data depends on (parameters, devices, where it saves) changed."""
-
-    @abstractmethod
-    def close_series(self) -> None:
-        """End the series: its entries stay open, and its files are finalized once its last
-        run has ended."""
+    def wind_down(self) -> None:
+        """Let each run this context started finish the work it is doing, then end."""
 
     @abstractmethod
     def on_run_ended(self, callback: Callable[[bool], None]) -> None:
         """Call ``callback(completed)`` as each run this context started ends;
-        ``completed`` is False for a run that was stopped or failed."""
+        ``completed`` is False for a run that was stopped or failed, and True for one that
+        finished or was wound down."""
 
     @property
     @abstractmethod
@@ -131,10 +128,6 @@ class RunnerContext(ABC):
 
     @abstractmethod
     def status(self, text: str) -> None: ...
-
-    @abstractmethod
-    def blockers(self) -> list[str]:
-        """What has to be supplied before a run can start; empty when ready."""
 
 
 @dataclass(frozen=True)

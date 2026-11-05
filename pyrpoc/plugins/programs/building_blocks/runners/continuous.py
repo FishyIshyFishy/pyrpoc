@@ -9,45 +9,37 @@ from pyrpoc.core.runner import Runner, RunnerContext, Toggle
 
 @dataclass(frozen=True)
 class Continuous(Runner):
-    """Start a new run each time one completes, until a run is stopped, fails, or is
-    refused."""
-
-    # The toggle stays down for as long as it keeps going, and the runs form one series, so they
-    # add to one library entry per output.
+    """One run that repeats the program's work into one recording until the toggle goes up, a
+    run is stopped or fails, or one is refused. An edit to what it runs with ends that run, and
+    the next starts a new recording."""
 
     def attach(self, ctx: RunnerContext) -> None:
         started = False
 
-        def start() -> None:
+        def begin() -> None:
             nonlocal started
             started = False
-            ctx.execute()
+            ctx.execute(repeat=True)
             # execute reports a refusal itself; all that is left is to let go.
             if not started:
-                finish()
-
-        def finish() -> None:
-            toggle.set(False)
-            ctx.close_series()
+                toggle.set(False)
 
         def on_change(checked: bool) -> None:
             if checked:
-                ctx.open_series()
-                start()
+                begin()
             else:
-                ctx.close_series()
+                ctx.wind_down()
 
         def on_run_started() -> None:
             nonlocal started
             started = True
 
         def on_run_ended(completed: bool) -> None:
-            if not toggle.checked:
-                return
-            if completed:
-                start()
+            # A run that ended while the toggle is still down was wound down by an edit.
+            if toggle.checked and completed:
+                begin()
             else:
-                finish()
+                toggle.set(False)
 
         toggle = Toggle("Continuous", on_change, icon="continuous", tooltip="Run until stopped")
         ctx.on_run_started(on_run_started)

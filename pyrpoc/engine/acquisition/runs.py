@@ -9,16 +9,14 @@ from PyQt6.QtCore import QObject, pyqtSignal
 
 from pyrpoc.core.program import program_registry
 from pyrpoc.core.saving import SaveTarget
-from pyrpoc.engine.data_library.grouping import program_display_name
 from pyrpoc.engine.data_library.model import LibraryModel
 from pyrpoc.engine.device_inventory.inventory import DeviceInventory
 
-from . import claims
+from . import readiness
 from .earlier import EarlierChoices, read_program_keys
 from .events import RunEvents
 from .executor import Run
 from .program_inputs import ProgramInputsStore
-from .recording import Series
 
 
 class Runs(QObject):
@@ -56,7 +54,7 @@ class Runs(QObject):
         self.save_changed.connect(self.readiness_changed.emit)
         self.earlier_changed.connect(self.readiness_changed.emit)
 
-    def start(self, program_key: str, series: Series | None, claim: Callable[[Run], None]) -> None:
+    def start(self, program_key: str, repeat: bool, claim: Callable[[Run], None]) -> None:
         """Start ``program_key`` with what the workbench holds right now, or report
         why not through ``events.start_refused``. A run that starts takes the note."""
         program = program_registry.get(program_key)()
@@ -68,7 +66,7 @@ class Runs(QObject):
             self.save,
             self.note,
             self.chosen_earlier(program_key),
-            series,
+            repeat,
             claim,
         )
         # Cleared so one note is never copied onto runs it was not written for.
@@ -77,23 +75,12 @@ class Runs(QObject):
 
     def blockers(self, program_key: str) -> list[str]:
         """What has to be supplied before ``program_key`` can run."""
-        required = list(program_registry.get(program_key).devices)
-        missing = [cls.display_name for cls in claims.missing(required, self.inventory.devices)]
-        if self.save.enabled and self.save.folder is None:
-            missing.append("a folder to save into")
-        if self.save.enabled and not self.save.filename:
-            missing.append("a name to save under")
-        for each in program_registry.get(program_key).reads:
-            if self.earlier.chosen(each.program_key) is None:
-                missing.append(self.missing_earlier(each.program_key))
-        return missing
-
-    def missing_earlier(self, program_key: str) -> str:
-        """How a blocker names an earlier run with nothing to read."""
-        name = program_display_name(program_key)
-        if self.save.folder is None:
-            return f"a folder with {name} saved in it"
-        return f"{name} saved in this folder"
+        return readiness.missing(
+            program_registry.get(program_key),
+            self.inventory.devices,
+            self.save,
+            self.chosen_earlier(program_key),
+        )
 
     def chosen_earlier(self, program_key: str) -> dict[str, Path]:
         """The recording each earlier run ``program_key`` reads would be read from now."""
@@ -150,8 +137,8 @@ class Runs(QObject):
         self.live_runs.discard(run)
         self.publish_in_use()
         # Only a saved run of a program others read can change what they read.
-        saved = run.recording.saver is not None
-        if saved and run.recording.recording.program_key in read_program_keys():
+        saved = run.saver is not None
+        if saved and run.recording.program_key in read_program_keys():
             self.refresh_earlier()
 
     def publish_in_use(self) -> None:

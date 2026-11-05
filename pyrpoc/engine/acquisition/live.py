@@ -24,11 +24,9 @@ class LiveFeed:
         self,
         inputs: ProgramInputsStore,
         live: Sequence[ProgramInput[Any]],
-        run_id: int,
         on_read: Callable[[LiveRead], None] | None,
     ):
         self.inputs = inputs
-        self.run_id = run_id
         self.on_read = on_read
         self.rules = {each.key: each.rule for each in live}
         self.lock = threading.Lock()
@@ -55,7 +53,7 @@ class LiveFeed:
             self.seen[key] = encoded
             # None for a run that is not saved: there is no recording to log into.
             if self.on_read is not None:
-                self.on_read(LiveRead(self.run_id, utc_now(), key, encoded))
+                self.on_read(LiveRead(utc_now(), key, encoded))
         return value
 
     def close(self) -> None:
