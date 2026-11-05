@@ -16,7 +16,7 @@ from pyrpoc.app.session.autosave import Autosave
 from pyrpoc.app.session.file import SessionFile, default_session_path
 from pyrpoc.app.theme.manager import ThemeController
 from pyrpoc.app.window import MainWindow
-from pyrpoc.core.device import Device
+from pyrpoc.engine.device_inventory.inventory import DeviceInventory
 
 log = logging.getLogger("pyrpoc")
 
@@ -82,12 +82,13 @@ def build(
     return app, window, autosave
 
 
-def warn_unconnected(window: QWidget, failed: list[Device]) -> None:
-    """Say which saved devices could not connect at launch."""
+def connect_saved_devices(window: QWidget, inventory: DeviceInventory) -> None:
+    """Connect the devices that keep a session, saying which could not."""
+    failed = inventory.open_sessions()
     # They stay in the inventory, so connecting later is one click in the Devices panel.
     if not failed:
         return
-    lines = "\n".join(f"{device.name}: {device.last_error}" for device in failed)
+    lines = "\n".join(f"{inventory.name(device)}: {inventory.fault(device)}" for device in failed)
     QMessageBox.warning(
         window, "Devices Not Connected", f"These devices could not connect:\n\n{lines}"
     )
@@ -132,7 +133,7 @@ def main() -> int:
     fit_to_available_screen(window, 1400, 850)
     window.show()
     autosave.restore()
-    warn_unconnected(window, app.inventory.open_sessions())
+    connect_saved_devices(window, app.inventory)
     fit_to_available_screen(window)
     return qt_app.exec()
 

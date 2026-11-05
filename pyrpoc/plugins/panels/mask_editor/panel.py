@@ -31,13 +31,13 @@ from PyQt6.QtWidgets import (
 )
 
 from pyrpoc.core.library import Library
-from pyrpoc.core.panels import DataPanel, data_panel_registry
 from pyrpoc.core.program_input import ProgramInputs
-from pyrpoc.core.program_output import ProgramOutput
+from pyrpoc.core.requests import Requests
 from pyrpoc.plugins.panels.mask_editor.range_slider import RangeSlider
 from pyrpoc.plugins.panels.mask_editor.transforms import normalize_channels
 from pyrpoc.plugins.program_io.inputs import MASKS, Mask
-from pyrpoc.plugins.program_io.outputs import Image
+from pyrpoc.plugins.program_io.outputs import ImageOutput
+from pyrpoc.utils.widgets.data_panel import DataPanel, data_panel_registry
 
 from .canvas import MaskImageView, MaskRoi, Threshold
 from .dialog import RoiThresholdDialog
@@ -78,7 +78,7 @@ def write_mask(path: str, mask: np.ndarray) -> Path:
 
 
 @data_panel_registry.register("mask_editor")
-class MaskEditorPanel(DataPanel[Image]):
+class MaskEditorPanel(DataPanel[ImageOutput]):
     """Draw thresholded polygon ROIs over an acquired image, one set per mask. Every edit
     rewrites the mask being drawn in the drawn masks, which programs read."""
 
@@ -86,10 +86,10 @@ class MaskEditorPanel(DataPanel[Image]):
     group = "Mask editors"
     order = 30
     misc = True
-    renders = Image
+    renders = ImageOutput
 
-    def __init__(self, library: Library, inputs: ProgramInputs):
-        super().__init__(library, inputs)
+    def __init__(self, library: Library, inputs: ProgramInputs, requests: Requests):
+        super().__init__(library, inputs, requests)
         # The ROIs of each mask, by id, and the mask being drawn on: "" until one is chosen.
         self.drafts: dict[str, list[MaskRoi]] = {}
         self.current = ""
@@ -324,12 +324,13 @@ class MaskEditorPanel(DataPanel[Image]):
             control.blockSignals(False)
         self.write_thresholds(*self.default_thresholds())
 
-    def show_value(self, program_output: ProgramOutput[Image], value: Image) -> None:
-        """Show a new image, keeping the ROIs if it has the same shape and dropping them if
-        not."""
+    def draw(self, program_output: ImageOutput) -> None:
+        """Show its newest image, keeping the ROIs if it has the same shape and dropping them
+        if not."""
         # So the editor stays usable during a live run and across runs.
-        del program_output
-        scaled = normalize_channels(value.array) * 255.0
+        if not len(program_output):
+            return
+        scaled = normalize_channels(program_output[-1]) * 255.0
         if self._data.shape == scaled.shape:
             self.apply_new_data(scaled)
             self.update_view_image()

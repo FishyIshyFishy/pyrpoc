@@ -18,9 +18,10 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from pyrpoc.core.program_input import Editor, Field, FieldValues, ParameterError, declare
+from pyrpoc.core.program_input import Field, ParameterError, declare
 from pyrpoc.plugins.program_io.inputs.mask import Mask
 from pyrpoc.plugins.program_io.inputs.masks import MASKS, thumbnail
+from pyrpoc.utils.widgets.editors import Editor, FieldValues, editor_for
 from pyrpoc.utils.widgets.empty_state import EmptyState
 from pyrpoc.utils.widgets.flow_grid import FlowGrid
 
@@ -221,17 +222,19 @@ class MaskLinesField(Field):
     def encode(self, value: tuple[MaskLine, ...]) -> Any:
         return [line.to_dict() for line in value]
 
-    def editor(self, parent: Any, values: FieldValues) -> Editor:
-        table = MaskLinesTable(values, parent)
-        return Editor(
-            table,
-            get=table.value,
-            set=table.set_value,
-            connect=lambda cb: table.changed.connect(cb),
-            summary=table.summary,
-            spec=self,
-            wide=True,
-        )
+
+@editor_for(MaskLinesField)
+def mask_lines_editor(spec: MaskLinesField, parent: QWidget, values: FieldValues) -> Editor:
+    table = MaskLinesTable(values, parent)
+    return Editor(
+        table,
+        get=table.value,
+        set=table.set_value,
+        connect=lambda cb: table.changed.connect(cb),
+        summary=table.summary,
+        spec=spec,
+        wide=True,
+    )
 
 
 MASK_LINES = declare(

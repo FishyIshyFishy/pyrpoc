@@ -1,29 +1,24 @@
-"""The ``Library`` protocol: access to the open program outputs."""
+"""The ``Library`` protocol: the open recordings."""
 
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Protocol, TypeVar
+from typing import Protocol
 
-from pyrpoc.core.program_output import Data
-
-from .program_output import ProgramOutput
-
-D = TypeVar("D", bound=Data)
+from .recording import Recording
 
 
 class Library(Protocol):
-    """The open program outputs: add one, look one up, list them, and subscribe to
-    changes."""
+    """The open recordings: add one, close one, list them, and subscribe to changes."""
 
-    def add(self, program_output: ProgramOutput[D]) -> ProgramOutput[D]: ...
+    def add(self, recording: Recording) -> None: ...
 
-    def by_id(self, output_id: str, kind: type[D]) -> ProgramOutput[D] | None:
-        """The open program output with this id, if it holds ``kind``."""
+    def close(self, recording: Recording) -> None:
+        """Drop it from memory; files already saved stay on disk."""
         ...
 
-    def matching(self, kind: type[D]) -> list[ProgramOutput[D]]:
-        """Program outputs of this kind, newest first."""
+    def recordings(self) -> list[Recording]:
+        """Every open recording, oldest first."""
         ...
 
     def subscribe(self, callback: Callable[[], None]) -> None: ...

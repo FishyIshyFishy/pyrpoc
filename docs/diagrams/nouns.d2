@@ -1,0 +1,34 @@
+# Board 2 of 2: the nouns. Left: one run. Middle: what is made of what. Right: where it lives.
+vars: {d2-config: {layout-engine: elk}}
+direction: right
+
+classes: {
+  data: {style: {fill: "#f3ecfa"; stroke: "#7e57a8"; border-radius: 6}}
+  run: {style: {fill: "#e6f5e9"; stroke: "#3c8d4f"; stroke-width: 3; border-radius: 6}}
+  coll: {style: {fill: "#fff3d6"; stroke: "#c79200"; stroke-width: 3; border-radius: 6}}
+  disk: {shape: cylinder; style: {fill: "#eeeeee"; stroke: "#777777"}}
+}
+
+run: "Run\nexecuting one recording:\nSingle once, Continuous\nagain and again until stopped" {class: run}
+
+folder: "Experiment = a folder" {
+  style: {fill: "#fffaf0"; stroke: "#c79200"}
+
+  recording: "Recording\nwhat made it: program, inputs,\ndevices, earlier recordings read\nits note, its location" {
+    style: {fill: "#faf6fd"; stroke: "#7e57a8"}
+
+    intensity: "ImageOutput\n'intensity'" {class: data}
+    histogram: "HistogramOutput\n'histogram'" {class: data}
+  }
+}
+
+run -> folder.recording: "opens one, fills it" {style.stroke: "#d9730d"}
+
+library: "Library\nthe open recordings" {class: coll}
+files: "its own files\n(each output writes and\nreads back its own;\nthe engine writes _meta.json)" {class: disk}
+
+folder.recording -> library: "while open"
+folder.recording.intensity -> files: "if saving is on" {style.stroke-dash: 4}
+
+requests: "Requests\ncommands panels post" {class: coll}
+requests -> run: "each taken once,\nlogged in its recording" {style.stroke-dash: 4}

@@ -6,13 +6,12 @@
 from __future__ import annotations
 
 from pyrpoc.core.program import Program, RunContext, program_registry
-from pyrpoc.core.program_input import InputSection
 from pyrpoc.plugins.devices import AndorCCD
 from pyrpoc.plugins.program_io.inputs import CCD_EXPOSURE_S, CCD_FRAMES_TO_AVERAGE
-from pyrpoc.plugins.program_io.outputs import Spectrum
+from pyrpoc.plugins.program_io.outputs import SpectrumOutput
 from pyrpoc.plugins.programs.building_blocks.functions.ccd_read import spectrum_readout
 
-from ..building_blocks.functions.ccd_read import publish_spectrum
+from ..building_blocks.functions.ccd_read import take_spectrum
 from ..building_blocks.runners import Continuous, Single
 
 
@@ -22,12 +21,16 @@ class Raman(Program):
     group = "Raman"
     order = 10
     devices = [AndorCCD]
-    sections = [
-        InputSection("CCD Readout", (CCD_EXPOSURE_S, CCD_FRAMES_TO_AVERAGE)),
-    ]
-    emits = {"spectrum": Spectrum}
+    inputs = [CCD_EXPOSURE_S, CCD_FRAMES_TO_AVERAGE]
+    cards = {
+        "CCD Readout": (
+            CCD_EXPOSURE_S,
+            CCD_FRAMES_TO_AVERAGE,
+        )
+    }
+    emits = {"spectrum": SpectrumOutput}
     runners = [Single(), Continuous()]
 
     def run(self, ctx: RunContext) -> None:
         readout = spectrum_readout(ctx.inputs)
-        publish_spectrum(ctx, ctx.devices[AndorCCD], readout, "spectrum")
+        take_spectrum(ctx, ctx.devices[AndorCCD], readout, "spectrum")

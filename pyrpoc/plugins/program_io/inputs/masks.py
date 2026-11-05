@@ -64,8 +64,6 @@ class MasksField(Field):
 MASKS = declare(
     "masks",
     # Shown by the lines input, which draws each mask beside its line.
-    MasksField(
-        "Masks", "The masks drawn in a Mask Editor, which is where they are edited", shown=False
-    ),
+    MasksField("Masks", "The masks drawn in a Mask Editor, which is where they are edited"),
     (),
 )

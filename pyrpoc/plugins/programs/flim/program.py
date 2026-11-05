@@ -9,7 +9,6 @@ from __future__ import annotations
 import numpy as np
 
 from pyrpoc.core.program import Program, RunContext, program_registry
-from pyrpoc.core.program_input import InputSection
 from pyrpoc.plugins.devices import DAQ, FlimMeasurement, Galvo, TimeTagger
 from pyrpoc.plugins.program_io.inputs import (
     FRAME_SETTLE_S,
@@ -27,7 +26,7 @@ from pyrpoc.plugins.program_io.inputs import (
     TriggerLines,
     rate_hz,
 )
-from pyrpoc.plugins.program_io.outputs import DecayHistogram, Image
+from pyrpoc.plugins.program_io.outputs import HistogramOutput, ImageOutput
 
 from ..building_blocks.functions.run_loops import count_off
 from ..building_blocks.runners import Continuous, Single
@@ -53,9 +52,9 @@ def acquire_frame(ctx: RunContext, flim: FlimMeasurement) -> None:
     )
     ctx.sleep(histogram.frame_settle_s)
     cube = read_histograms(flim, histogram.histogram_bins, scan)
-    ctx.publish("histogram", DecayHistogram(cube))
+    ctx.output("histogram", HistogramOutput).add(cube, ())
     # Photon counts summed over the decay: the intensity image.
-    ctx.publish("intensity", Image(cube.sum(axis=2)[np.newaxis], ["intensity"]))
+    ctx.output("intensity", ImageOutput).add(cube.sum(axis=2)[np.newaxis], ["intensity"])
 
 
 @program_registry.register("flim")
@@ -64,30 +63,41 @@ class FLIM(Program):
     group = "FLIM"
     order = 40
     devices = [Galvo, DAQ, TimeTagger]
-    sections = [
-        InputSection("Scan", SCAN_GEOMETRY_INPUTS),
-        InputSection("Frames", (NUM_FRAMES,)),
-        InputSection("DAQ", (SAMPLE_RATE_MHZ,)),
-        InputSection("Triggers", (FRAME_TRIGGER_PFI, PIXEL_CLOCK_CTR, PIXEL_CLOCK_PFI)),
-        InputSection(
-            "Histogram",
-            (LASER_FREQUENCY_MHZ, HISTOGRAM_BINS, HISTOGRAM_BINWIDTH_PS, FRAME_SETTLE_S),
-        ),
+    inputs = [
+        *SCAN_GEOMETRY_INPUTS,
+        NUM_FRAMES,
+        SAMPLE_RATE_MHZ,
+        FRAME_TRIGGER_PFI,
+        PIXEL_CLOCK_CTR,
+        PIXEL_CLOCK_PFI,
+        LASER_FREQUENCY_MHZ,
+        HISTOGRAM_BINS,
+        HISTOGRAM_BINWIDTH_PS,
+        FRAME_SETTLE_S,
     ]
-    emits = {"intensity": Image, "histogram": DecayHistogram}
+    cards = {
+        "Scan": SCAN_GEOMETRY_INPUTS,
+        "Frames": (NUM_FRAMES,),
+        "DAQ": (SAMPLE_RATE_MHZ,),
+        "Triggers": (
+            FRAME_TRIGGER_PFI,
+            PIXEL_CLOCK_CTR,
+            PIXEL_CLOCK_PFI,
+        ),
+        "Histogram": (
+            LASER_FREQUENCY_MHZ,
+            HISTOGRAM_BINS,
+            HISTOGRAM_BINWIDTH_PS,
+            FRAME_SETTLE_S,
+        ),
+    }
+    emits = {"intensity": ImageOutput, "histogram": HistogramOutput}
     runners = [Single(), Continuous()]
 
     def run(self, ctx: RunContext) -> None:
         scan = ScanGeometry.from_inputs(ctx.inputs)
         histogram = HistogramSettings.from_inputs(ctx.inputs)
         tagger = ctx.devices[TimeTagger]
-        ctx.describe(
-            "histogram",
-            laser_period_ps=histogram.laser_period_ps,
-            binwidth_ps=histogram.histogram_binwidth_ps,
-            n_bins=histogram.histogram_bins,
-        )
-
         ctx.status("starting the time tagger")
         tagger.create_tagger()
         tagger.configure_for_flim()

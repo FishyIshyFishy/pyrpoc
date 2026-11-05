@@ -1,9 +1,7 @@
-"""Averaged spectra off the Andor CCD, published from inside a run. A series
+"""Averaged spectra off the Andor CCD, added to a spectrum output from inside a run. A series
 configures the camera once and then reads it frame after frame."""
 
 from __future__ import annotations
-
-from dataclasses import asdict
 
 import numpy as np
 
@@ -12,7 +10,7 @@ from pyrpoc.core.program_input import ProgramInputValues
 from pyrpoc.plugins.devices import AndorCCD, SpectrumReadout
 from pyrpoc.plugins.devices.andor_ccd.device import AcceptedTimings, Amplifier, ReadMode, clipped
 from pyrpoc.plugins.program_io.inputs import CCD_EXPOSURE_S, CCD_FRAMES_TO_AVERAGE
-from pyrpoc.plugins.program_io.outputs import Spectrum
+from pyrpoc.plugins.program_io.outputs import SpectrumOutput
 
 # The rest of the readout is fixed at what a Raman spectrum wants: every row
 # binned, read slowly through the conventional amplifier for the least noise.
@@ -41,14 +39,14 @@ def spectrum_readout(values: ProgramInputValues) -> SpectrumReadout:
 def configure_spectrum(
     ctx: RunContext, ccd: AndorCCD, readout: SpectrumReadout, output: str
 ) -> AcceptedTimings:
-    """Program the camera for ``readout`` and record what it accepted on ``output``."""
+    """Program the camera for ``readout`` and record the exposure it accepted on ``output``."""
     timings = ccd.configure(readout)
-    ctx.describe(output, camera=ccd.metadata(), readout=asdict(readout), accepted=asdict(timings))
+    ctx.output(output, SpectrumOutput).set_exposure(timings.exposure_s)
     return timings
 
 
 def read_spectrum(ctx: RunContext, ccd: AndorCCD, readout: SpectrumReadout, output: str) -> None:
-    """Take one spectrum as configured and publish it to ``output`` as counts per frame."""
+    """Take one spectrum as configured and add it to ``output`` as counts per frame."""
     # The camera sums its accumulations, so the mean is the sum over their number; clipping is
     # judged on the sum, where the ADC ceiling is.
     try:
@@ -57,13 +55,13 @@ def read_spectrum(ctx: RunContext, ccd: AndorCCD, readout: SpectrumReadout, outp
         ccd.abort()
         raise
     averaged = counts.astype(np.float32) / readout.accumulations
-    ctx.publish(output, Spectrum(averaged[None, :], ["ccd"]))
+    ctx.output(output, SpectrumOutput).add(averaged[None, :], ["ccd"])
     if clipped(counts, readout.accumulations):
         ctx.status("spectrum saturated")
 
 
-def publish_spectrum(ctx: RunContext, ccd: AndorCCD, readout: SpectrumReadout, output: str) -> None:
-    """Configure the camera, take one spectrum and publish it to ``output``."""
+def take_spectrum(ctx: RunContext, ccd: AndorCCD, readout: SpectrumReadout, output: str) -> None:
+    """Configure the camera, take one spectrum and add it to ``output``."""
     timings = configure_spectrum(ctx, ccd, readout, output)
     ctx.status(f"reading {readout.accumulations} x {timings.exposure_s:g} s")
     read_spectrum(ctx, ccd, readout, output)

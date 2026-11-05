@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from pyrpoc.plugins.program_io.outputs import Mosaic
+from pyrpoc.plugins.program_io.outputs import MosaicOutput
 
 
 @dataclass(frozen=True)
@@ -23,7 +23,7 @@ class MosaicLayout:
     tiles: tuple[GridTile, ...]
 
 
-def layout_of(mosaic: Mosaic) -> MosaicLayout:
+def layout_of(mosaic: MosaicOutput) -> MosaicLayout:
     return MosaicLayout(
         tuple(GridTile(index, tile.row, tile.col) for index, tile in enumerate(mosaic.tiles))
     )

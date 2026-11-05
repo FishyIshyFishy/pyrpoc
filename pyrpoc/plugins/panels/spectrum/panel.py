@@ -11,22 +11,22 @@ import pyqtgraph as pg
 from PyQt6.QtWidgets import QCheckBox, QVBoxLayout
 
 from pyrpoc.core.library import Library
-from pyrpoc.core.panels import DataPanel, data_panel_registry
 from pyrpoc.core.program_input import ProgramInputs
-from pyrpoc.core.program_output import ProgramOutput
-from pyrpoc.plugins.program_io.outputs import Spectrum
+from pyrpoc.core.requests import Requests
+from pyrpoc.plugins.program_io.outputs import SpectrumOutput
 from pyrpoc.utils.widgets.colors import color_for_index
+from pyrpoc.utils.widgets.data_panel import DataPanel, data_panel_registry
 
 
 @data_panel_registry.register("spectrum")
-class SpectrumPanel(DataPanel[Spectrum]):
+class SpectrumPanel(DataPanel[SpectrumOutput]):
     display_name = "Spectrum"
     group = "Spectral"
     order = 10
-    renders = Spectrum
+    renders = SpectrumOutput
 
-    def __init__(self, library: Library, inputs: ProgramInputs):
-        super().__init__(library, inputs)
+    def __init__(self, library: Library, inputs: ProgramInputs, requests: Requests):
+        super().__init__(library, inputs, requests)
         self._curves: list[pg.PlotDataItem] = []
         self._legend_labels: list[str] = []
 
@@ -60,10 +60,12 @@ class SpectrumPanel(DataPanel[Spectrum]):
         if y_changed:
             self._autoscale_box.setChecked(False)
 
-    def show_value(self, program_output: ProgramOutput[Spectrum], value: Spectrum) -> None:
-        del program_output
-        arr = value.array
-        self.sync_curves(arr.shape[0], list(value.channels))
+    def draw(self, program_output: SpectrumOutput) -> None:
+        """Plot its newest spectrum."""
+        if not len(program_output):
+            return
+        arr = program_output[-1]
+        self.sync_curves(arr.shape[0], list(program_output.channels))
         # TODO: an in-widget calibration (pixel -> nm, or Raman shift from an
         # excitation wavelength), kept with the widget or saved on its own, not
         # in the program output.

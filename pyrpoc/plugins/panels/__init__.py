@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from pyrpoc.core.panels import data_panel_registry
+from pyrpoc.utils.widgets.data_panel import data_panel_registry
 
 from .image.panel import ImagePanel
 from .mask_editor.panel import MaskEditorPanel

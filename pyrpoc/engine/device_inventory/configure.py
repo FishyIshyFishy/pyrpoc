@@ -20,7 +20,7 @@ class ConfigureDialog(QDialog):
         super().__init__(parent)
         # Shown modeless, so nothing else holds it once it is closed.
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
-        self.setWindowTitle(f"Configure {device.name}")
+        self.setWindowTitle(f"Configure {inventory.name(device)}")
         layout = QVBoxLayout(self)
         form = ParamForm(
             [config_form_section(device.config_cls)],

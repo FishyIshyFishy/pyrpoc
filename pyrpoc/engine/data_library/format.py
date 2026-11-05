@@ -6,17 +6,15 @@ from __future__ import annotations
 import importlib.metadata
 import json
 import os
-import re
-from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
-from pyrpoc.core.program_output import Data, Origin, ProgramOutput, Provenance, data_kind_registry
-from pyrpoc.core.saving import writer_registry
+from pyrpoc.core.program_output import ProgramOutput, program_output_registry
+from pyrpoc.core.recording import EarlierRead, Recording
 
 FORMAT = "pyrpoc-recording"
-FORMAT_VERSION = 3
+FORMAT_VERSION = 8
 META_SUFFIX = "_meta.json"
 
 
@@ -24,23 +22,33 @@ class RecordingError(Exception):
     """A recording on disk that cannot be read. The message names the file."""
 
 
-@dataclass
-class RunRecord:
-    run_id: int
-    started_at: str
-    ended_at: str | None
-    error: str | None
+@dataclass(frozen=True)
+class LiveRead:
+    """The run reading a live input whose value changed since it last read it."""
+
+    read_at: str
+    key: str
+    # As the input's rules encode it.
+    value: Any
+
+
+@dataclass(frozen=True)
+class TakenRequest:
+    """The run taking a request a panel posted to it."""
+
+    posted_at: str
+    taken_at: str
+    key: str
+    # As the request's rules encode it.
+    value: Any
 
 
 @dataclass
 class OutputRecord:
-    kind: str
-    # Values published; the files hold every one.
-    published: int
-    # File names beside the metadata file, keyed as the writer keyed them.
+    # The output's ``type_key`` in ``program_output_registry``.
+    type: str
+    # File names beside the metadata file, keyed as the output keyed them.
     files: dict[str, str]
-    metadata: dict[str, Any]
-    notes: str
 
 
 @dataclass
@@ -51,10 +59,17 @@ class RecordingRecord:
     started_at: str
     ended_at: str | None
     last_error: str | None
-    runs: list[RunRecord]
     parameters: dict[str, Any]
     devices: dict[str, Any]
     outputs: dict[str, OutputRecord]
+    # What the user wrote about the run, before or after it.
+    notes: str
+    # What it read of earlier recordings, by the name its program reads each under.
+    inputs: dict[str, EarlierRead]
+    # Each change to a live input a run read, in the order read.
+    live_reads: list[LiveRead]
+    # Each request a run took, in the order taken.
+    requests: list[TakenRequest]
 
 
 def pyrpoc_version() -> str:
@@ -63,6 +78,11 @@ def pyrpoc_version() -> str:
 
 def meta_path_for(root: Path) -> Path:
     return root.with_name(f"{root.name}{META_SUFFIX}")
+
+
+def recordings_in(folder: Path) -> list[Path]:
+    """The metadata file of every recording in ``folder``, by name."""
+    return sorted(folder.glob(f"*{META_SUFFIX}"))
 
 
 def free_root(root: Path) -> Path:
@@ -80,10 +100,14 @@ def write_record(meta_path: Path, record: RecordingRecord) -> None:
 
 
 def write_json(path: Path, payload: dict[str, Any]) -> None:
+    write_text(path, json.dumps(payload, indent=2, default=str))
+
+
+def write_text(path: Path, text: str) -> None:
     """Replace ``path`` whole."""
     # So a crash mid-write never leaves half a file.
     partial = path.with_name(f"{path.name}.partial")
-    partial.write_text(json.dumps(payload, indent=2, default=str), encoding="utf-8")
+    partial.write_text(text, encoding="utf-8")
     os.replace(partial, path)
 
 
@@ -96,10 +120,10 @@ def read_json(meta_path: Path) -> dict[str, Any]:
     if not isinstance(raw, dict) or raw.get("format") != FORMAT:
         raise RecordingError(f"{meta_path} is not a pyrpoc recording")
     version = raw.get("format_version")
-    if not isinstance(version, int) or version not in DECODERS:
+    if version != FORMAT_VERSION:
         raise RecordingError(
             f"{meta_path} is recording format {version!r}; this version of pyrpoc reads "
-            f"formats {sorted(DECODERS)}"
+            f"format {FORMAT_VERSION}"
         )
     return raw
 
@@ -107,7 +131,7 @@ def read_json(meta_path: Path) -> dict[str, Any]:
 def read_record(meta_path: Path) -> RecordingRecord:
     raw = read_json(meta_path)
     try:
-        return DECODERS[raw["format_version"]](raw)
+        return decode_record(raw)
     except (KeyError, TypeError, ValueError, AttributeError) as exc:
         raise RecordingError(f"{meta_path} is malformed: {exc!r}") from exc
 
@@ -116,94 +140,8 @@ def optional_str(value: Any) -> str | None:
     return None if value is None else str(value)
 
 
-# Each program input key that named its section, as ``<section>.<field>``, and the key that
-# replaced it. Keys that named the same value in two sections now share one.
-SECTIONED_INPUT_KEYS = {
-    "camera.exposure_ms": "camera_exposure_ms",
-    "camera.gain_pct": "camera_gain_pct",
-    "camera.binned": "camera_binned",
-    "ccd_readout.exposure_s": "ccd_exposure_s",
-    "ccd_readout.frames_to_average": "ccd_frames_to_average",
-    "daq.sample_rate_hz": "sample_rate_hz",
-    "focus_search.search_range_um": "focus_search_range_um",
-    "focus_search.initial_step_um": "focus_initial_step_um",
-    "focus_search.final_step_um": "focus_final_step_um",
-    "frame_count.num_frames": "num_frames",
-    "histogram.laser_frequency_mhz": "laser_frequency_mhz",
-    "histogram.histogram_bins": "histogram_bins",
-    "histogram.histogram_binwidth_ps": "histogram_binwidth_ps",
-    "histogram.frame_settle_s": "frame_settle_s",
-    "modulation.lines": "mask_lines",
-    "mosaic.x_tiles": "x_tiles",
-    "mosaic.y_tiles": "y_tiles",
-    "mosaic.spacing_um": "tile_spacing_um",
-    "point.target": "galvo_target",
-    "roi.center_fraction": "center_region_fraction",
-    "scan.x_pixels": "x_pixels",
-    "scan.y_pixels": "y_pixels",
-    "scan.extra_left": "extra_left",
-    "scan.extra_right": "extra_right",
-    "scan.fast_axis_offset": "fast_axis_offset",
-    "scan.fast_axis_amplitude": "fast_axis_amplitude",
-    "scan.slow_axis_offset": "slow_axis_offset",
-    "scan.slow_axis_amplitude": "slow_axis_amplitude",
-    "scan.dwell_time_us": "dwell_time_us",
-    "split.t0_samples": "t0_samples",
-    "split.t1_samples": "t1_samples",
-    "trigger.frame_trigger_pfi": "frame_trigger_pfi",
-    "trigger.pixel_clock_ctr": "pixel_clock_ctr",
-    "trigger.pixel_clock_pfi": "pixel_clock_pfi",
-    "frame.x_pixels": "x_pixels",
-    "frame.y_pixels": "y_pixels",
-    "frame.channels": "simulated_channels",
-    "pacing.frame_interval_ms": "frame_interval_ms",
-    "signal.pattern": "signal_pattern",
-    "signal.signal_level": "signal_level",
-    "signal.noise_level": "noise_level",
-    "signal.drift_pixels_per_frame": "drift_pixels_per_frame",
-    "signal.mask_gain": "mask_gain",
-    "specimen.um_per_pixel": "um_per_pixel",
-    "specimen.noise_level": "noise_level",
-}
-
-
-def legacy_input_key(path: str) -> str:
-    """The sectioned program input key that replaced ``<Block>.<field>``, as in
-    ``"ScanGroup.dwell_time_us"`` to ``"scan.dwell_time_us"``."""
-    block, _, field = path.partition(".")
-    prefix = re.sub(r"(?<!^)(?=[A-Z])", "_", block.removesuffix("Group")).lower()
-    return f"{prefix}.{field}"
-
-
-def unsectioned_input_key(key: str) -> str:
-    """The program input key that replaced the sectioned ``key``, or ``key`` if none did."""
-    return SECTIONED_INPUT_KEYS.get(key, key)
-
-
-def decode_v1(raw: dict[str, Any]) -> RecordingRecord:
-    """Format 1, whose parameters are one object per block."""
-    parameters = {
-        unsectioned_input_key(legacy_input_key(f"{block}.{field}")): value
-        for block, values in raw["parameters"].items()
-        for field, value in values.items()
-    }
-    return decode_record(raw, parameters)
-
-
-def decode_v2(raw: dict[str, Any]) -> RecordingRecord:
-    """Format 2, whose parameters are keyed by sectioned program input keys."""
-    parameters = {unsectioned_input_key(key): value for key, value in raw["parameters"].items()}
-    return decode_record(raw, parameters)
-
-
-def decode_v3(raw: dict[str, Any]) -> RecordingRecord:
-    """Format 3, whose parameters are keyed by program input."""
-    return decode_record(raw, dict(raw["parameters"]))
-
-
-def decode_record(raw: dict[str, Any], parameters: dict[str, Any]) -> RecordingRecord:
-    """A recording record from every field but the parameters, which differ between
-    formats."""
+def decode_record(raw: dict[str, Any]) -> RecordingRecord:
+    """The recording a metadata file's JSON describes."""
     # Unknown fields are ignored, so a format may add some.
     return RecordingRecord(
         pyrpoc_version=str(raw["pyrpoc_version"]),
@@ -212,94 +150,73 @@ def decode_record(raw: dict[str, Any], parameters: dict[str, Any]) -> RecordingR
         started_at=str(raw["started_at"]),
         ended_at=optional_str(raw["ended_at"]),
         last_error=optional_str(raw["last_error"]),
-        runs=[
-            RunRecord(
-                run_id=int(run["run_id"]),
-                started_at=str(run["started_at"]),
-                ended_at=optional_str(run["ended_at"]),
-                error=optional_str(run["error"]),
-            )
-            for run in raw["runs"]
-        ],
-        parameters=parameters,
+        parameters=dict(raw["parameters"]),
         devices=dict(raw["devices"]),
         outputs={
             str(output): OutputRecord(
-                kind=str(entry["kind"]),
-                published=int(entry["published"]),
+                type=str(entry["type"]),
                 files={str(key): str(name) for key, name in entry["files"].items()},
-                metadata=dict(entry["metadata"]),
-                notes=str(entry["notes"]),
             )
             for output, entry in raw["outputs"].items()
         },
+        notes=str(raw["notes"]),
+        inputs={
+            str(name): EarlierRead(str(read["recording"]), str(read["output"]))
+            for name, read in raw["inputs"].items()
+        },
+        live_reads=[
+            LiveRead(
+                read_at=str(read["read_at"]),
+                key=str(read["key"]),
+                value=read["value"],
+            )
+            for read in raw["live_reads"]
+        ],
+        requests=[
+            TakenRequest(
+                posted_at=str(taken["posted_at"]),
+                taken_at=str(taken["taken_at"]),
+                key=str(taken["key"]),
+                value=taken["value"],
+            )
+            for taken in raw["requests"]
+        ],
     )
 
 
-# Keyed by ``format_version``. Entries are added, never removed.
-DECODERS: dict[int, Callable[[dict[str, Any]], RecordingRecord]] = {
-    1: decode_v1,
-    2: decode_v2,
-    3: decode_v3,
-}
-
-
-def load_recording(meta_path: Path) -> list[ProgramOutput[Any]]:
-    """Every output of the recording at ``meta_path``, each holding the last
-    value it was published."""
+def load_recording(meta_path: Path) -> Recording:
+    """The recording at ``meta_path``, each output holding all it was given."""
     record = read_record(meta_path)
-    return [
-        load_output(meta_path, record, output, entry) for output, entry in record.outputs.items()
-    ]
+    recording = Recording(
+        program_key=record.program_key,
+        name=record.name,
+        started_at=record.started_at,
+        parameters=record.parameters,
+        devices=record.devices,
+        reads=record.inputs,
+        location=meta_path,
+        note=record.notes,
+        finished=True,
+    )
+    recording.outputs = {
+        output: load_output(recording, meta_path, output, entry)
+        for output, entry in record.outputs.items()
+    }
+    return recording
 
 
 def load_output(
-    meta_path: Path, record: RecordingRecord, output: str, entry: OutputRecord
-) -> ProgramOutput[Any]:
-    if entry.kind not in data_kind_registry.keys():
-        raise RecordingError(f"{meta_path}: output {output!r} is of unknown kind {entry.kind!r}")
-    kind = data_kind_registry.get(entry.kind)
-    program_output = ProgramOutput(
-        name=output,
-        kind=kind,
-        provenance=Provenance(
-            program_key=record.program_key,
-            started_at=record.started_at,
-            name=record.name,
-            parameters=record.parameters,
-            devices=record.devices,
-            run_id=record.runs[0].run_id if record.runs else 0,
-        ),
-        origin=Origin.LOADED,
-        writer=None,
-    )
-    program_output.metadata = dict(entry.metadata)
-    program_output.notes = entry.notes
-    program_output.meta_path = meta_path
-    program_output.value = read_value(meta_path, output, kind, entry)
-    program_output.published = entry.published
-    return program_output
-
-
-def read_value(meta_path: Path, output: str, kind: type[Data], entry: OutputRecord) -> Data | None:
+    recording: Recording, meta_path: Path, output: str, entry: OutputRecord
+) -> ProgramOutput:
+    if entry.type not in program_output_registry.keys():
+        raise RecordingError(f"{meta_path}: output {output!r} is of unknown type {entry.type!r}")
     files = {key: meta_path.parent / name for key, name in entry.files.items()}
     missing = [path.name for path in files.values() if not path.is_file()]
     if missing:
         raise RecordingError(f"{meta_path}: output {output!r} is missing {', '.join(missing)}")
-    if not files:
-        return None
     try:
-        return writer_registry.get(entry.kind).read(kind, files)
+        return program_output_registry.get(entry.type).load(
+            name=output, recording=recording, files=files
+        )
     except (OSError, ValueError, KeyError) as exc:
         raise RecordingError(f"{meta_path}: cannot read output {output!r}: {exc}") from exc
-
-
-def write_notes(meta_path: Path, output: str, notes: str) -> None:
-    """Set one output's notes in a finished recording's metadata file."""
-    # Edited as raw JSON, so fields this version does not know survive.
-    raw = read_json(meta_path)
-    outputs = raw.get("outputs")
-    if not isinstance(outputs, dict) or not isinstance(outputs.get(output), dict):
-        raise RecordingError(f"{meta_path} has no output {output!r}")
-    outputs[output]["notes"] = notes
-    write_json(meta_path, raw)

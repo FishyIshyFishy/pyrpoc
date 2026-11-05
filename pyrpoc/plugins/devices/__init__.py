@@ -6,7 +6,7 @@ controls, its panel. Importing this package registers them all."""
 from __future__ import annotations
 
 from pyrpoc.core.device import Device, device_registry
-from pyrpoc.core.panels import device_panel_registry
+from pyrpoc.utils.widgets.device_panel import device_panel_registry
 
 from .andor_ccd.device import AndorCCD, SpectrumReadout
 from .andor_ccd.panel import AndorCcdPanel

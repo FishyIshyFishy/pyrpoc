@@ -6,7 +6,7 @@ from __future__ import annotations
 from collections.abc import Iterator
 
 from pyrpoc.core.program import RunContext
-from pyrpoc.plugins.program_io.outputs import Image, Mosaic, MosaicTile
+from pyrpoc.plugins.program_io.outputs import MosaicTile
 
 
 def count_off(ctx: RunContext, count: int, noun: str) -> Iterator[int]:
@@ -24,8 +24,3 @@ def walk(ctx: RunContext, tiles: tuple[MosaicTile, ...]) -> Iterator[tuple[int, 
         ctx.check_cancel()
         ctx.status(f"tile {index + 1}/{len(tiles)} (row {tile.row + 1}, col {tile.col + 1})")
         yield index, tile
-
-
-def grow(mosaic: Mosaic, image: Image) -> Mosaic:
-    """``mosaic`` with ``image`` taken at its next tile."""
-    return Mosaic(mosaic.tiles, (*mosaic.images, image))

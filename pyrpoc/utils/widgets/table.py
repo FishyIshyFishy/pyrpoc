@@ -1,4 +1,4 @@
-"""A read-only, skimmable list table, and typed access to table headers."""
+"""A read-only, skimmable list table, and typed access to table and tree headers."""
 
 from __future__ import annotations
 
@@ -9,6 +9,7 @@ from PyQt6.QtWidgets import (
     QTableView,
     QTableWidget,
     QTableWidgetItem,
+    QTreeView,
     QWidget,
 )
 
@@ -26,6 +27,13 @@ def vertical_header(table: QTableView) -> QHeaderView:
     header = table.verticalHeader()
     if header is None:
         raise RuntimeError("table has no vertical header")
+    return header
+
+
+def tree_header(tree: QTreeView) -> QHeaderView:
+    header = tree.header()
+    if header is None:
+        raise RuntimeError("tree has no header")
     return header
 
 

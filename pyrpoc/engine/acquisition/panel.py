@@ -2,35 +2,37 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from html import escape
 from typing import Any
 
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import QSize, Qt
 from PyQt6.QtWidgets import (
     QCheckBox,
     QFileDialog,
     QFrame,
     QHBoxLayout,
     QLabel,
-    QLineEdit,
     QMessageBox,
     QPushButton,
     QScrollArea,
     QSizePolicy,
-    QStyle,
+    QToolButton,
     QVBoxLayout,
+    QWidget,
 )
 
 from pyrpoc.core.panels import Panel
 from pyrpoc.core.program import program_registry
 from pyrpoc.core.registry import grouped
-from pyrpoc.core.runner import Control
+from pyrpoc.utils.widgets.control_views import ControlView, build_control_view
 from pyrpoc.utils.widgets.grouped_combo import GroupedComboBox
 from pyrpoc.utils.widgets.icons import asset_icon
 from pyrpoc.utils.widgets.param_form import ParamForm, input_form_section
+from pyrpoc.utils.widgets.path_field import PathField
 
+from .earlier_card import EarlierCard
 from .host import RunnerHost
+from .note import NoteDialog
 from .program_inputs import ProgramInputsStore
 from .runs import Runs
 
@@ -52,6 +54,11 @@ def status_dot(text: str) -> str:
     return _DOT_READY
 
 
+def short_name(name: str) -> str:
+    """``name`` cut to fit a narrow panel."""
+    return name if len(name) <= 16 else name[:15] + "…"
+
+
 class AcquisitionPanel(Panel):
     """Shows one program at a time: its runners' controls, its inputs, and where
     its runs save. Which program it shows is its own screen state."""
@@ -65,8 +72,9 @@ class AcquisitionPanel(Panel):
         self.host = RunnerHost(runs, inputs, self)
         self.selected_program: str | None = None
         self.form: ParamForm | None = None
+        self.earlier_card: EarlierCard | None = None
         # Each rendered control, its button, and the watcher keeping them in line.
-        self.control_buttons: list[tuple[Control, QPushButton, Callable[[], None]]] = []
+        self.control_views: list[ControlView] = []
 
         root = QVBoxLayout(self)
         root.setContentsMargins(8, 8, 8, 8)
@@ -90,6 +98,7 @@ class AcquisitionPanel(Panel):
         self.render_controls()
         self.set_running_ui(False)
         self.on_save_changed()
+        self.on_note_changed()
         self.select_program(program_registry.keys()[0])
 
     def build_program_row(self) -> QHBoxLayout:
@@ -116,32 +125,35 @@ class AcquisitionPanel(Panel):
         return row
 
     def build_save_row(self) -> QHBoxLayout:
-        """Whether and where to save, on its own row so a narrow panel does not squeeze the
-        name field."""
+        """Whether to save, where and under what name, and the next run's note."""
         row = QHBoxLayout()
         self.save_check = QCheckBox("Save", self)
-        self.name_edit = QLineEdit(self)
-        self.name_edit.setPlaceholderText("Name")
-        self.name_edit.setToolTip(
+        self.save_check.setToolTip("Save each run into the chosen folder.")
+        self.path_field = PathField(self)
+        self.path_field.name_edit.setPlaceholderText("name")
+        self.path_field.name_edit.setToolTip(
             "What this acquisition is called. Used as the filename when saving, "
             "and as its name in the data panel either way."
         )
-        self.dir_btn = QPushButton(self)
-        style = self.style()
-        if style is not None:
-            self.dir_btn.setIcon(style.standardIcon(QStyle.StandardPixmap.SP_DirOpenIcon))
+        # Small and quiet: a note is written now and then, not every run.
+        self.note_btn = QToolButton(self)
+        self.note_btn.setAutoRaise(True)
+        self.note_btn.setIconSize(QSize(20, 20))
+        # Shown pressed in while a note waits for the next run.
+        self.note_btn.setCheckable(True)
         row.addWidget(self.save_check)
-        self.name_edit.setMinimumWidth(80)
-        row.addWidget(self.name_edit, 1)
-        row.addWidget(self.dir_btn)
+        row.addWidget(self.path_field, 1)
+        row.addWidget(self.note_btn)
         return row
 
     def connect_signals(self) -> None:
         self.program_combo.currentIndexChanged.connect(self.on_program_chosen)
         self.stop_btn.clicked.connect(self.host.stop)
         self.save_check.toggled.connect(lambda checked: self.runs.set_save(enabled=checked))
-        self.name_edit.textChanged.connect(lambda text: self.runs.set_save(name=text))
-        self.dir_btn.clicked.connect(self.choose_directory)
+        self.path_field.name_edited.connect(lambda text: self.runs.set_save(name=text))
+        self.path_field.folder_clicked.connect(self.choose_directory)
+        self.note_btn.clicked.connect(self.edit_note)
+        self.runs.note_changed.connect(self.on_note_changed)
 
         self.runs.inventory.changed.connect(self.refresh_readiness)
         self.runs.save_changed.connect(self.on_save_changed)
@@ -169,16 +181,36 @@ class AcquisitionPanel(Panel):
             self.program_combo.blockSignals(True)
             self.program_combo.setCurrentIndex(index)
             self.program_combo.blockSignals(False)
+        self.scroll_area.setWidget(self.build_inputs(key))
+        self.refresh_readiness()
+        self.state_changed.emit()
+
+    def build_inputs(self, key: str) -> QWidget:
+        """The card for what ``key`` reads of earlier recordings, if any, above its program
+        inputs."""
+        program = program_registry.get(key)
+        if self.earlier_card is not None:
+            self.earlier_card.detach()
+        page = QWidget(self)
+        column = QVBoxLayout(page)
+        column.setContentsMargins(0, 0, 0, 0)
+        column.setSpacing(8)
+        self.earlier_card = None
+        if program.reads:
+            # The folder may have changed outside the app since it was last looked at.
+            self.runs.refresh_earlier()
+            self.earlier_card = EarlierCard(self.runs, program.reads, page)
+            column.addWidget(self.earlier_card)
+        cards = program.cards or {"Inputs": program.inputs}
         self.form = ParamForm(
-            [input_form_section(each) for each in program_registry.get(key).sections],
+            [input_form_section(label, inputs) for label, inputs in cards.items()],
             self.inputs,
-            self,
+            page,
             cards=True,
         )
         self.form.invalid.connect(self.show_status)
-        self.scroll_area.setWidget(self.form)
-        self.refresh_readiness()
-        self.state_changed.emit()
+        column.addWidget(self.form, 1)
+        return page
 
     def on_input_changed(self, key: str) -> None:
         """Show a value set elsewhere, such as a mask drawn in a Mask Editor."""
@@ -212,82 +244,64 @@ class AcquisitionPanel(Panel):
 
     def render_controls(self) -> None:
         """Draw the shown program's controls, replacing whatever was there."""
-        # ``clicked`` rather than ``toggled``, so a runner moving its own toggle is shown without
-        # being mistaken for the user.
-        for control, button, watcher in self.control_buttons:
-            control.unwatch(watcher)
-            self.controls_strip.removeWidget(button)
-            button.deleteLater()
-        self.control_buttons = []
-
-        for control in self.host.controls:
-            button = QPushButton(self)
-            if control.icon is not None:
-                button.setIcon(asset_icon(control.icon))
-            else:
-                button.setText(control.label)
-            button.setToolTip(control.tooltip or control.label)
-            button.setCheckable(control.checkable)
-            button.setChecked(control.checked)
-            button.clicked.connect(control.activate)
-            watcher = self.make_watcher(control, button)
-            control.watch(watcher)
-            self.controls_strip.addWidget(button)
-            self.control_buttons.append((control, button, watcher))
+        for view in self.control_views:
+            view.close()
+            self.controls_strip.removeWidget(view.widget)
+            view.widget.deleteLater()
+        self.control_views = [build_control_view(control, self) for control in self.host.controls]
+        for view in self.control_views:
+            self.controls_strip.addWidget(view.widget)
         self.apply_enabled()
 
-    def make_watcher(self, control: Control, button: QPushButton) -> Callable[[], None]:
-        """Keep ``button`` in line with ``control`` when its runner changes it."""
-
-        def watcher() -> None:
-            if button.isChecked() != control.checked:
-                button.setChecked(control.checked)
-            self.apply_enabled()
-
-        return watcher
-
     def apply_enabled(self) -> None:
-        """Off while something is missing or a run is in progress, and off
-        whenever the control's runner says so."""
+        """Off while something is missing or a run is in progress."""
         missing = self.blockers()
         ready = not missing and not self.host.running
-        for control, button, _ in self.control_buttons:
-            button.setEnabled(ready and control.enabled)
-            # A dimmed button says why on hover, so the way forward is one mouse-over away.
+        for view in self.control_views:
+            view.widget.setEnabled(ready)
+            # A dimmed control says why on hover, so the way forward is one mouse-over away.
             reason = f"\nNeeds {', '.join(missing)}" if missing else ""
-            button.setToolTip((control.tooltip or control.label) + reason)
+            view.widget.setToolTip(view.tooltip + reason)
 
     def choose_directory(self) -> None:
-        start = str(self.runs.save.folder)
+        folder = self.runs.save.folder
+        start = str(folder) if folder is not None else ""
         chosen = QFileDialog.getExistingDirectory(self, "Save acquisitions to", start)
         if chosen:
             self.runs.set_save(directory=chosen)
 
     def on_save_changed(self) -> None:
         """Bring the save widgets in line with the save target."""
-        # For when a restored session moved it. Unchanged values are skipped so typing in the name
-        # field keeps its cursor.
+        # For when a restored session moved it.
         save = self.runs.save
-        if self.name_edit.text() != save.name:
-            self.name_edit.setText(save.name)
+        self.path_field.set_name(save.name)
         if self.save_check.isChecked() != save.enabled:
             self.save_check.setChecked(save.enabled)
-        if not save.enabled:
-            tooltip = f"Choose where acquisitions are saved. Currently {save.folder}"
-        elif not save.filename:
-            tooltip = "Name is required when saving is enabled"
+        folder = save.folder
+        if folder is None:
+            tooltip = "Choose the folder acquisitions are saved to."
         else:
-            tooltip = f"Saving to {save.root}_*"
-        self.dir_btn.setToolTip(tooltip)
-        self.dir_btn.setText(self.folder_name())
+            tooltip = f"{folder}\nClick to choose another folder."
+        name = None if folder is None else short_name(folder.name or str(folder))
+        # Dimmed while saving is off: the name then only names the run.
+        self.path_field.set_folder(name, tooltip, in_use=save.enabled)
         self.refresh_readiness()
 
-    def folder_name(self) -> str:
-        """The destination folder's name, readable without hovering: no folder
-        chosen means the working directory, which is easy to not expect."""
-        folder = self.runs.save.folder
-        name = folder.name or str(folder)
-        return name if len(name) <= 16 else name[:15] + "…"
+    def edit_note(self) -> None:
+        dialog = NoteDialog(self.runs.note, self)
+        if dialog.exec():
+            self.runs.set_note(dialog.text.strip())
+        # The click toggled the button; whether it shows pressed is the note's to say.
+        self.on_note_changed()
+
+    def on_note_changed(self) -> None:
+        """Show whether a note waits for the next run, and what it says on hover."""
+        note = self.runs.note
+        self.note_btn.setIcon(asset_icon("note_written" if note else "note"))
+        self.note_btn.setChecked(bool(note))
+        self.note_btn.setToolTip(
+            f"Note for the next run:\n{note}" if note else "Add a note for the next run"
+        )
 
     def on_run_started(self) -> None:
         self.show_status("acquiring")

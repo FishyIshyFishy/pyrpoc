@@ -8,7 +8,6 @@ from pyrpoc.core.program import (
     RunContext,
     program_registry,
 )
-from pyrpoc.core.program_input import InputSection
 from pyrpoc.plugins.devices import DAQ, Galvo, PriorStage
 from pyrpoc.plugins.program_io.inputs import (
     MASK_LINES,
@@ -20,10 +19,10 @@ from pyrpoc.plugins.program_io.inputs import (
     Y_TILES,
     MosaicGrid,
 )
-from pyrpoc.plugins.program_io.outputs import Image, Mosaic, MosaicTile
+from pyrpoc.plugins.program_io.outputs import MosaicOutput, MosaicTile
 
 from ..building_blocks.functions.galvo_raster import Raster
-from ..building_blocks.functions.run_loops import grow, walk
+from ..building_blocks.functions.run_loops import walk
 from ..building_blocks.runners import Single
 
 
@@ -34,14 +33,13 @@ def move_stage(ctx: RunContext, stage: PriorStage, x_um: float, y_um: float) -> 
 
 
 def image_tiles(ctx: RunContext, stage: PriorStage, tiles: tuple[MosaicTile, ...]) -> None:
-    """Image every tile, publishing the mosaic so far after each one."""
-    # So the panel fills in live.
+    """Image every tile, adding each image to the mosaic as it is taken."""
     raster = Raster.for_run(ctx)
-    mosaic = Mosaic(tiles, ())
+    mosaic = ctx.output("mosaic", MosaicOutput)
+    mosaic.plan(tiles)
     for _, tile in walk(ctx, tiles):
         move_stage(ctx, stage, tile.x_um, tile.y_um)
-        mosaic = grow(mosaic, Image(raster.frame(), raster.channel_labels))
-        ctx.publish("mosaic", mosaic)
+        mosaic.add(raster.frame(), raster.channel_labels)
 
 
 @program_registry.register("mosaic")
@@ -50,13 +48,27 @@ class StageMosaic(Program):
     group = "Confocal Fluorescence"
     order = 12
     devices = [Galvo, DAQ, PriorStage]
-    sections = [
-        InputSection("Scan", SCAN_GEOMETRY_INPUTS),
-        InputSection("DAQ", (SAMPLE_RATE_MHZ,)),
-        InputSection("Modulation", (MASKS, MASK_LINES)),
-        InputSection("Mosaic", (X_TILES, Y_TILES, TILE_SPACING_UM)),
+    inputs = [
+        *SCAN_GEOMETRY_INPUTS,
+        SAMPLE_RATE_MHZ,
+        MASKS,
+        MASK_LINES,
+        X_TILES,
+        Y_TILES,
+        TILE_SPACING_UM,
     ]
-    emits = {"mosaic": Mosaic}
+    # MASKS has no row: masks are drawn and edited in a Mask Editor.
+    cards = {
+        "Scan": SCAN_GEOMETRY_INPUTS,
+        "DAQ": (SAMPLE_RATE_MHZ,),
+        "Modulation": (MASK_LINES,),
+        "Mosaic": (
+            X_TILES,
+            Y_TILES,
+            TILE_SPACING_UM,
+        ),
+    }
+    emits = {"mosaic": MosaicOutput}
     # Once only: a mosaic is one pass over the grid, never repeated or looped.
     runners = [Single()]
 

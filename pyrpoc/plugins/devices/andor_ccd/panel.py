@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING
 from PyQt6.QtCore import QTimer
 from PyQt6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
 
-from pyrpoc.core.panels import DevicePanel, device_panel_registry
+from pyrpoc.utils.widgets.device_panel import DeviceLink, DevicePanel, device_panel_registry
 from pyrpoc.utils.widgets.param_form import ConfigValues, ParamForm, config_form_section
 
 from .sdk import AndorError
@@ -26,8 +26,8 @@ POLL_MS = 1000
 
 @device_panel_registry.register("andor_ccd")
 class AndorCcdPanel(DevicePanel):
-    def __init__(self, device: AndorCCD, on_change: Callable[[], None]) -> None:
-        super().__init__(device, on_change)
+    def __init__(self, device: AndorCCD, link: DeviceLink) -> None:
+        super().__init__(device, link)
         self.device = device
         # What the controls last showed, so a sync only restarts the cooling
         # poll when the connection actually changed.
@@ -45,7 +45,7 @@ class AndorCcdPanel(DevicePanel):
             self,
             cards=False,
         )
-        form.changed.connect(on_change)
+        form.changed.connect(link.changed)
         layout.addWidget(form)
         layout.addLayout(self.build_connection_row())
         self.camera_label = QLabel(self)
@@ -96,7 +96,7 @@ class AndorCcdPanel(DevicePanel):
     def show_session_status(self) -> None:
         session = self.device.session
         if session is None:
-            self.status_label.setText(self.device.last_error or "Not connected")
+            self.status_label.setText(self.link.fault() or "Not connected")
             self.camera_label.setText("")
             return
         info = session.info
@@ -124,9 +124,9 @@ class AndorCcdPanel(DevicePanel):
             self.attempt(self.device.close_session)
         else:
             # Shown here too, since a failed connect leaves nothing for sync to change.
-            self.device.try_open_session()
+            self.link.connect()
             self.show_session_status()
-        self.on_change()
+        self.link.changed()
 
     def sync(self) -> None:
         if self.device.session_open == self.connected:

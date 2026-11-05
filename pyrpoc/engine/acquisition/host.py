@@ -11,7 +11,6 @@ from pyrpoc.core.program import Program
 from pyrpoc.core.program_input import ProgramInputs
 from pyrpoc.core.runner import Control, RunnerContext
 from pyrpoc.engine.acquisition.executor import Run
-from pyrpoc.engine.acquisition.recording import Series
 from pyrpoc.engine.acquisition.runs import Runs
 
 
@@ -29,28 +28,33 @@ class RunnerSession(RunnerContext):
         self.input_watchers: list[Callable[[str], None]] = []
         self.runs: list[Run] = []
         self.failed: set[Run] = set()
-        self.series: Series | None = None
+        # The inputs whose edit ends a repeating run, so the next one records the new value;
+        # a live input reaches the running one instead.
+        live = {each.key for each in program.live}
+        self.restarting_keys = {each.key for each in program.inputs} - live
         self.closed = False
 
     @property
     def running(self) -> bool:
         return any(run.running for run in self.runs)
 
-    def execute(self) -> None:
+    def execute(self, repeat: bool) -> None:
         if not self.closed:
-            self.host.start(self)
+            self.host.start(self, repeat)
 
     def on_run_started(self, callback: Callable[[], None]) -> None:
         self.started.append(callback)
 
-    def open_series(self) -> None:
-        if not self.closed:
-            self.series = Series()
+    def wind_down(self) -> None:
+        for run in self.runs:
+            run.wind_down()
 
-    def close_series(self) -> None:
-        series, self.series = self.series, None
-        if series is not None:
-            self.host.runs.events.end_series(series)
+    def setup_changed(self) -> None:
+        """Something its repeating runs started with changed: end them after their current
+        work, so their runners start new ones, and so new recordings, with it."""
+        for run in self.runs:
+            if run.repeat:
+                run.wind_down()
 
     def on_run_ended(self, callback: Callable[[bool], None]) -> None:
         self.ended.append(callback)
@@ -64,9 +68,12 @@ class RunnerSession(RunnerContext):
 
     def input_changed(self, key: str) -> None:
         """Tell this context's runners that the program input ``key`` changed."""
-        if not self.closed:
-            for callback in list(self.input_watchers):
-                callback(key)
+        if self.closed:
+            return
+        if key in self.restarting_keys:
+            self.setup_changed()
+        for callback in list(self.input_watchers):
+            callback(key)
 
     def add_control(self, control: Control) -> None:
         if self.closed:
@@ -76,9 +83,6 @@ class RunnerSession(RunnerContext):
 
     def status(self, text: str) -> None:
         self.host.status.emit(text)
-
-    def blockers(self) -> list[str]:
-        return self.host.runs.blockers(self.key)
 
     def claim(self, run: Run) -> None:
         """Record a run this slot started, then tell its runners."""
@@ -111,6 +115,9 @@ class RunnerHost(QObject):
         runs.events.run_failed.connect(self.note_failure)
         runs.events.run_finished.connect(self.forget)
         inputs.subscribe(self.on_input_changed)
+        # Where a run saves and the devices' configuration are recorded too.
+        runs.save_changed.connect(self.on_setup_changed)
+        runs.inventory.edited.connect(self.on_setup_changed)
 
     @property
     def controls(self) -> list[Control]:
@@ -138,12 +145,11 @@ class RunnerHost(QObject):
         # Nothing else can reach these runs to stop them once the slot is gone.
         for run in slot.runs:
             run.stop()
-        slot.close_series()
         self.controls_changed.emit()
 
-    def start(self, slot: RunnerSession) -> None:
+    def start(self, slot: RunnerSession, repeat: bool) -> None:
         """Start ``slot``'s program with what the workbench holds right now."""
-        self.runs.start(slot.key, slot.series, slot.claim)
+        self.runs.start(slot.key, repeat, slot.claim)
 
     def stop(self) -> None:
         """Stop every run the selected program's runners started."""
@@ -165,3 +171,7 @@ class RunnerHost(QObject):
     def on_input_changed(self, key: str) -> None:
         if self.slot is not None:
             self.slot.input_changed(key)
+
+    def on_setup_changed(self) -> None:
+        if self.slot is not None:
+            self.slot.setup_changed()

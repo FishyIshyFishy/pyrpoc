@@ -18,10 +18,10 @@ from PyQt6.QtWidgets import (
 )
 
 from pyrpoc.core.library import Library
-from pyrpoc.core.panels import DataPanel, data_panel_registry
 from pyrpoc.core.program_input import ProgramInputs
-from pyrpoc.core.program_output import ProgramOutput
-from pyrpoc.plugins.program_io.outputs import Mosaic
+from pyrpoc.core.requests import Requests
+from pyrpoc.plugins.program_io.outputs import MosaicOutput
+from pyrpoc.utils.widgets.data_panel import DataPanel, data_panel_registry
 
 from .channels import ChannelStrip
 from .layout import layout_of
@@ -30,14 +30,14 @@ from .stack_view import StackView
 
 
 @data_panel_registry.register("mosaic")
-class MosaicPanel(DataPanel[Mosaic]):
+class MosaicPanel(DataPanel[MosaicOutput]):
     display_name = "Mosaic"
     group = "2D Image Views"
     order = 22
-    renders = Mosaic
+    renders = MosaicOutput
 
-    def __init__(self, library: Library, inputs: ProgramInputs):
-        super().__init__(library, inputs)
+    def __init__(self, library: Library, inputs: ProgramInputs, requests: Requests):
+        super().__init__(library, inputs, requests)
         pg.setConfigOptions(imageAxisOrder="row-major")
         self.labels: list[str] = []
         self.wants_mosaic = False
@@ -78,25 +78,24 @@ class MosaicPanel(DataPanel[Mosaic]):
         bar.addStretch(1)
         return bar
 
-    def show_value(self, program_output: ProgramOutput[Mosaic], value: Mosaic) -> None:
-        del program_output
-        if not value.images:
+    def draw(self, program_output: MosaicOutput) -> None:
+        if not len(program_output):
             self.clear()
             return
-        self.labels = list(value.images[0].channels)
+        self.labels = list(program_output.channels)
         self.redraw()
 
     def redraw(self) -> None:
         """Draw the mosaic in whichever view is chosen; the hidden one waits."""
-        program_output, mosaic = self.shown_output, self.shown_value
-        if program_output is None or mosaic is None or not mosaic.images:
+        mosaic = self.shown_output
+        if mosaic is None or not len(mosaic):
             return
-        frames = [image.array for image in mosaic.images]
+        frames = [mosaic[index] for index in range(len(mosaic))]
         layout = layout_of(mosaic)
         if self.wants_mosaic:
             self.mosaic_button.setChecked(True)
             self.views.setCurrentWidget(self.mosaic)
-            self.show_planes(self.mosaic.stitch(program_output.id, frames, layout))
+            self.show_planes(self.mosaic.stitch(mosaic, frames, layout))
         else:
             self.stack_button.setChecked(True)
             self.views.setCurrentWidget(self.stack)
