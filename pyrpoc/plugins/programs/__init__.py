@@ -13,20 +13,20 @@ from .confocal.program import Confocal
 from .flim.program import FLIM
 from .galvo_calibration.program import GalvoCalibrationProgram
 from .galvo_pinpoint.program import GalvoPinpoint
-from .mosaic.program import StageMosaic
 from .pinpoint_raman.program import PinpointRaman
 from .raman.program import Raman
 from .roi_spectral_series.program import RoiSpectralSeries
 from .split_confocal.program import SplitConfocal
+from .survey.program import Survey
 
 __all__ = [
     "program_registry",
     "Confocal",
     "SplitConfocal",
+    "Survey",
     "FLIM",
     "GalvoCalibrationProgram",
     "GalvoPinpoint",
-    "StageMosaic",
     "Autofocus",
     "PinpointRaman",
     "Raman",

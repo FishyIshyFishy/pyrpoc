@@ -7,10 +7,11 @@ from pathlib import Path
 
 from pyrpoc.core.program_output import ProgramOutput
 from pyrpoc.core.saving import Writer, writer_registry
-from pyrpoc.plugins.program_io.outputs.records import GalvoCalibration, Record
+from pyrpoc.plugins.program_io.outputs.records import GalvoCalibration, Record, SurveyResult
 
 
 @writer_registry.register(GalvoCalibration.name)
+@writer_registry.register(SurveyResult.name)
 class JsonWriter(Writer[Record]):
     """``<root>_<output>.json``, holding the latest value."""
 

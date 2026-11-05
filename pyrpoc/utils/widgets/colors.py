@@ -1,4 +1,4 @@
-"""The channel colour palette shared by the overlay, mosaic and spectrum panels."""
+"""The channel colour palette shared by the overlay, mosaic, autonomy and spectrum panels."""
 
 from __future__ import annotations
 

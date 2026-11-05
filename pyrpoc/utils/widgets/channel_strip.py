@@ -1,4 +1,4 @@
-"""Every channel overlaid in its own colour, with a LUT per channel."""
+"""``ChannelStrip``: every channel overlaid in its own colour, with a LUT per channel."""
 
 # Each channel is one column: a swatch and its name as a show/hide box, an autoscale box, and a
 # vertical histogram filling the rest of the height. The columns share the strip's width equally,
@@ -14,8 +14,8 @@ import pyqtgraph as pg
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import QCheckBox, QHBoxLayout, QLabel, QScrollArea, QVBoxLayout, QWidget
 
-from pyrpoc.utils.widgets.colors import color_for_index, color_map_from_rgb
-from pyrpoc.utils.widgets.levels import autoscale_levels, mono_levels
+from .colors import color_for_index, color_map_from_rgb
+from .levels import autoscale_levels, mono_levels
 
 # Columns the strip makes room for before scrolling the rest sideways.
 COLUMNS_WITHOUT_SCROLLING = 4

@@ -1,32 +1,25 @@
-"""A mosaic, as a stack of its images or stitched into one, with every
-channel overlaid in its own colour."""
+"""Any mosaic: its tiles placed on the dish as they arrive, then its stitched overview, with
+every channel overlaid in its own colour and the axes in dish µm."""
 
 from __future__ import annotations
 
 from typing import Any
 
-import numpy as np
 import pyqtgraph as pg
-from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import (
-    QButtonGroup,
-    QHBoxLayout,
-    QPushButton,
-    QSplitter,
-    QStackedWidget,
-    QVBoxLayout,
-)
+from PyQt6.QtCore import QPointF, QRectF, Qt
+from PyQt6.QtWidgets import QCheckBox, QHBoxLayout, QLabel, QSplitter, QVBoxLayout
 
 from pyrpoc.core.library import Library
 from pyrpoc.core.panels import DataPanel, data_panel_registry
 from pyrpoc.core.program_input import ProgramInputs
 from pyrpoc.core.program_output import ProgramOutput
 from pyrpoc.plugins.program_io.outputs import Mosaic
+from pyrpoc.plugins.program_io.outputs.mosaic_view import Picture, overview_picture, placed_tiles
+from pyrpoc.utils.widgets.channel_strip import ChannelStrip
+from pyrpoc.utils.widgets.colour_image import ColourImage
 
-from .channels import ChannelStrip
-from .layout import layout_of
-from .mosaic_view import MosaicView
-from .stack_view import StackView
+# The longest side the picture is drawn at; a large survey is shrunk to this.
+DISPLAY_PX = 2048
 
 
 @data_panel_registry.register("mosaic")
@@ -39,106 +32,96 @@ class MosaicPanel(DataPanel[Mosaic]):
     def __init__(self, library: Library, inputs: ProgramInputs):
         super().__init__(library, inputs)
         pg.setConfigOptions(imageAxisOrder="row-major")
-        self.labels: list[str] = []
-        self.wants_mosaic = False
+        self.picture: Picture | None = None
+        # What the picture was made from, so a repeat notification draws nothing new.
+        self.drawn: tuple[str, int, bool, bool] | None = None
 
         root = QVBoxLayout(self.body)
         root.setContentsMargins(0, 0, 0, 0)
-        root.addLayout(self.build_modes())
         splitter = QSplitter(Qt.Orientation.Horizontal, self.body)
         splitter.setChildrenCollapsible(False)
-        self.views = QStackedWidget(splitter)
-        self.stack = StackView(self.views)
-        self.mosaic = MosaicView(self.views)
-        self.views.addWidget(self.stack)
-        self.views.addWidget(self.mosaic)
+        self.image = ColourImage(splitter)
         self.channels = ChannelStrip(splitter)
-        splitter.addWidget(self.views)
+        splitter.addWidget(self.image)
         splitter.addWidget(self.channels)
         splitter.setStretchFactor(0, 1)
         splitter.setSizes([800, 300])
         root.addWidget(splitter, 1)
+        root.addLayout(self.build_footer())
 
-        self.stack.moved.connect(self.show_stack_frame)
-        self.mosaic.fallback_changed.connect(self.redraw)
         self.channels.changed.connect(self.recolour)
+        scene = self.image.sceneObj
+        if scene is None:
+            raise RuntimeError("a new PlotWidget has no scene")
+        scene.sigMouseMoved.connect(self.on_mouse_moved)
         self.connect_source()
 
-    def build_modes(self) -> QHBoxLayout:
-        bar = QHBoxLayout()
-        self.stack_button = QPushButton("Stack", self.body)
-        self.mosaic_button = QPushButton("Mosaic", self.body)
-        self.modes = QButtonGroup(self.body)
-        for button in (self.stack_button, self.mosaic_button):
-            button.setCheckable(True)
-            self.modes.addButton(button)
-            bar.addWidget(button)
-        self.stack_button.setChecked(True)
-        self.modes.buttonClicked.connect(self.on_mode_clicked)
-        bar.addStretch(1)
-        return bar
+    def build_footer(self) -> QHBoxLayout:
+        row = QHBoxLayout()
+        self.status = QLabel("", self.body)
+        row.addWidget(self.status, 1)
+        self.position = QLabel("", self.body)
+        row.addWidget(self.position)
+        # Rarely wanted, so it is only offered once there is an overview to switch from.
+        self.raw_tiles = QCheckBox("Raw tiles", self.body)
+        self.raw_tiles.setToolTip("Show the tiles where the stage put them, not stitched")
+        self.raw_tiles.setVisible(False)
+        self.raw_tiles.toggled.connect(lambda _on: self.redraw())
+        row.addWidget(self.raw_tiles)
+        return row
 
     def show_value(self, program_output: ProgramOutput[Mosaic], value: Mosaic) -> None:
-        del program_output
-        if not value.images:
+        if not value.tiles:
             self.clear()
             return
-        self.labels = list(value.images[0].channels)
-        self.redraw()
-
-    def redraw(self) -> None:
-        """Draw the mosaic in whichever view is chosen; the hidden one waits."""
-        program_output, mosaic = self.shown_output, self.shown_value
-        if program_output is None or mosaic is None or not mosaic.images:
+        stitched = value.overview is not None
+        raw = self.raw_tiles.isChecked() or not stitched
+        key = (program_output.id, len(value.tiles), stitched, raw)
+        self.raw_tiles.setVisible(stitched)
+        self.status.setText(value.summary())
+        if key == self.drawn:
             return
-        frames = [image.array for image in mosaic.images]
-        layout = layout_of(mosaic)
-        if self.wants_mosaic:
-            self.mosaic_button.setChecked(True)
-            self.views.setCurrentWidget(self.mosaic)
-            self.show_planes(self.mosaic.stitch(program_output.id, frames, layout))
-        else:
-            self.stack_button.setChecked(True)
-            self.views.setCurrentWidget(self.stack)
-            self.stack.take_frames(frames, layout)
-            self.show_stack_frame()
-
-    def show_stack_frame(self) -> None:
-        self.show_planes(self.stack.current_frame())
-
-    def show_planes(self, image: np.ndarray) -> None:
-        """Hand a ``(C, H, W)`` image to the channel strip, then draw it in colour."""
-        self.channels.set_planes(list(image), self.labels)
+        self.drawn = key
+        self.picture = (
+            placed_tiles(value, DISPLAY_PX) if raw else overview_picture(value, DISPLAY_PX)
+        )
+        self.channels.set_planes(list(self.picture.planes), list(value.channels))
         self.recolour()
 
-    def recolour(self) -> None:
-        """Redraw the shown image with the channels' current levels and visibility."""
-        if not self.channels.planes:
-            return
-        view = self.mosaic if self.views.currentWidget() is self.mosaic else self.stack
-        view.image.show_rgb(self.channels.rgb())
+    def redraw(self) -> None:
+        """Draw the shown mosaic again, as the raw-tiles choice now says."""
+        if self.shown_output is not None and self.shown_value is not None:
+            self.show_value(self.shown_output, self.shown_value)
 
-    def on_mode_clicked(self, button: object) -> None:
-        self.wants_mosaic = button is self.mosaic_button
-        self.redraw()
+    def recolour(self) -> None:
+        picture = self.picture
+        if picture is None or not self.channels.planes:
+            return
+        rect = QRectF(picture.left_um, picture.top_um, picture.width_um, picture.height_um)
+        self.image.show_rgb(self.channels.rgb(), rect)
+
+    def on_mouse_moved(self, scene_position: QPointF) -> None:
+        """Name the dish position under the mouse."""
+        picture = self.picture
+        if picture is None:
+            return
+        pixel = self.image.item.mapFromScene(scene_position)
+        _, height, width = picture.planes.shape
+        x = picture.left_um + pixel.x() * picture.width_um / width
+        y = picture.top_um + pixel.y() * picture.height_um / height
+        self.position.setText(f"x {x:.1f} µm · y {y:.1f} µm")
 
     def clear(self) -> None:
+        self.picture, self.drawn = None, None
         self.channels.clear_planes()
-        self.stack.clear()
-        self.mosaic.clear()
+        self.image.clear_image()
+        self.status.setText("")
+        self.position.setText("")
 
     def export_persistence_state(self) -> dict[str, Any]:
-        return {
-            "mode": "mosaic" if self.wants_mosaic else "stack",
-            "fallback_overlap": self.mosaic.fallback.value(),
-            "channels": self.channels.export_state(),
-        }
+        return {"channels": self.channels.export_state()}
 
     def import_persistence_state(self, state: dict[str, Any]) -> None:
         """Take saved settings from session JSON; a malformed entry keeps its default."""
-        self.wants_mosaic = state.get("mode") == "mosaic"
-        overlap = state.get("fallback_overlap")
-        if isinstance(overlap, (int, float)):
-            self.mosaic.fallback.setValue(float(overlap))
         self.channels.import_state(state.get("channels"))
         self.redraw()

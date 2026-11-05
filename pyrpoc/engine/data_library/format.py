@@ -17,7 +17,7 @@ from pyrpoc.core.saving import writer_registry
 from .grouping import program_display_name
 
 FORMAT = "pyrpoc-recording"
-FORMAT_VERSION = 7
+FORMAT_VERSION = 8
 META_SUFFIX = "_meta.json"
 # Every note in an Experiment, in one file a person can read without the app.
 NOTES_FILE = "notes.txt"

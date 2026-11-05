@@ -53,13 +53,13 @@ def bright_regions(plane: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     return labels, stats
 
 
-def clear_feature(plane: np.ndarray, within: Box) -> Box | None:
-    """The clearest bright region whose centre lies in ``within`` and which does not touch the
-    plane's edge, or None if none stands ``CLEAR_SCORE`` noise widths above the background."""
+def clear_features(plane: np.ndarray, within: Box) -> list[Box]:
+    """The bright regions whose centre lies in ``within``, which do not touch the plane's edge
+    and stand ``CLEAR_SCORE`` noise widths above the background, clearest first."""
     floor = floor_of(plane)
     labels, stats = bright_regions(plane)
     height, width = plane.shape
-    best: tuple[float, Box] | None = None
+    found: list[tuple[float, Box]] = []
     for index in range(1, len(stats)):
         left, top, w, h, area = (int(value) for value in stats[index])
         box = Box(top, left, top + h, left + w)
@@ -69,6 +69,12 @@ def clear_feature(plane: np.ndarray, within: Box) -> Box | None:
         if area < MINIMUM_AREA_PX or touches or not inside:
             continue
         score = floor.score(float(plane[labels == index].mean()))
-        if score >= CLEAR_SCORE and (best is None or score > best[0]):
-            best = (score, box)
-    return None if best is None else best[1]
+        if score >= CLEAR_SCORE:
+            found.append((score, box))
+    return [box for _score, box in sorted(found, key=lambda item: -item[0])]
+
+
+def clear_feature(plane: np.ndarray, within: Box) -> Box | None:
+    """The clearest of ``clear_features``, or None if there is none."""
+    features = clear_features(plane, within)
+    return features[0] if features else None

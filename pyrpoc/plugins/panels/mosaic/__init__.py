@@ -1,5 +1,3 @@
-"""The Mosaic panel: a tiled acquisition as a stack or a stitched mosaic."""
-
-# Stitching is free of Qt, so it can be tested without a screen.
+"""The Mosaic panel: tiles placed on the dish as they arrive, and the stitched overview."""
 
 from __future__ import annotations
