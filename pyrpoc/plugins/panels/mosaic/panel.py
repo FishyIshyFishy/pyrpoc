@@ -94,7 +94,7 @@ class MosaicPanel(DataPanel[MosaicOutput]):
         if self.wants_mosaic:
             self.mosaic_button.setChecked(True)
             self.views.setCurrentWidget(self.mosaic)
-            self.show_planes(self.mosaic.stitch(mosaic.id, frames, layout))
+            self.show_planes(self.mosaic.stitch(mosaic, frames, layout))
         else:
             self.stack_button.setChecked(True)
             self.views.setCurrentWidget(self.stack)

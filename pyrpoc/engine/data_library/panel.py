@@ -1,4 +1,4 @@
-"""The Data Library panel: every open program output, under its recording and Experiment."""
+"""The Data Library panel: every open recording and its outputs, under its Experiment."""
 
 # Size is shown against the library's limit because a program output keeps every frame, so a long
 # continuous run is what can exhaust a machine.
@@ -29,16 +29,17 @@ from PyQt6.QtWidgets import (
 
 from pyrpoc.core.panels import Panel
 from pyrpoc.core.program_output import ProgramOutput
+from pyrpoc.core.recording import Recording
 from pyrpoc.utils.widgets.empty_state import EmptyState
 from pyrpoc.utils.widgets.table import tree_header, viewport_of
 
 from .details import DetailsDialog
 from .grouping import (
     ExperimentNode,
-    RecordingNode,
     SortBy,
     build_tree,
-    experiment_of,
+    program_display_name,
+    recording_title,
     sort_tree,
 )
 from .model import LibraryModel
@@ -52,7 +53,7 @@ NODE_ROLE = Qt.ItemDataRole.UserRole
 # 1024-based, to match the number a task manager shows.
 UNITS = ("B", "KB", "MB", "GB", "TB")
 
-Node = ExperimentNode | RecordingNode | ProgramOutput
+Node = ExperimentNode | Recording | ProgramOutput
 
 
 def format_size(nbytes: int) -> str:
@@ -74,16 +75,10 @@ def taken(iso: str) -> str:
     return datetime.fromisoformat(iso).astimezone().strftime("%Y-%m-%d %H:%M")
 
 
-def outputs_of(node: Node) -> list[ProgramOutput]:
-    if isinstance(node, ExperimentNode):
-        return [each for recording in node.recordings for each in recording.outputs]
-    if isinstance(node, RecordingNode):
-        return list(node.outputs)
-    return [node]
-
-
 def total_bytes(node: Node) -> int:
-    return sum(each.nbytes for each in outputs_of(node))
+    if isinstance(node, ExperimentNode):
+        return sum(recording.nbytes for recording in node.recordings)
+    return node.nbytes
 
 
 class DataLibraryPanel(Panel):
@@ -97,7 +92,7 @@ class DataLibraryPanel(Panel):
         # What each row shows, so a click maps back to it.
         # Each row holds its index in here.
         self.nodes: list[Node] = []
-        self.output_items: dict[str, QTreeWidgetItem] = {}
+        self.output_items: dict[ProgramOutput, QTreeWidgetItem] = {}
         # Rows the user folded or unfolded away from the default, by key, kept across rebuilds.
         # Experiments start open and recordings folded, like folders of files.
         self.toggled: set[str] = set()
@@ -171,7 +166,7 @@ class DataLibraryPanel(Panel):
         row.addWidget(open_btn)
         self.close_btn = QPushButton("Close", self)
         self.close_btn.setToolTip(
-            "Drop the selection from memory: an output, a recording or a whole folder. "
+            "Drop the selection from memory: its recording, or a whole folder. "
             "Files already saved stay on disk."
         )
         self.close_btn.clicked.connect(self.close_selected)
@@ -186,7 +181,9 @@ class DataLibraryPanel(Panel):
         self.nodes.clear()
         self.output_items.clear()
         experiments = sort_tree(
-            build_tree(self.library.all(), self.library.folders), self.sort_by, self.descending
+            build_tree(self.library.recordings(), self.library.folders),
+            self.sort_by,
+            self.descending,
         )
         for experiment in experiments:
             self.add_experiment(experiment)
@@ -228,21 +225,26 @@ class DataLibraryPanel(Panel):
         self.set_size(item, total_bytes(experiment))
         item.setExpanded(experiment.key not in self.toggled)
 
-    def add_recording(self, parent: QTreeWidgetItem, recording: RecordingNode) -> None:
+    def add_recording(self, parent: QTreeWidgetItem, recording: Recording) -> None:
         item = QTreeWidgetItem(
-            parent, [recording.name, recording.program, taken(recording.started_at)]
+            parent,
+            [
+                recording_title(recording),
+                program_display_name(recording.program_key),
+                taken(recording.started_at),
+            ],
         )
-        where = str(recording.meta_path) if recording.meta_path is not None else "Not saved"
-        note = self.library.note_of(recording.outputs[0])
+        where = str(recording.location) if recording.location is not None else "Not saved"
+        note = recording.note
         item.setToolTip(NAME, f"{where}\n\n{note}" if note else where)
         self.attach(item, recording)
-        for program_output in recording.outputs:
+        for program_output in recording.outputs.values():
             child = QTreeWidgetItem(item, [program_output.name, program_output.type_key])
             self.attach(child, program_output)
-            self.output_items[program_output.id] = child
+            self.output_items[program_output] = child
             self.set_size(child, program_output.nbytes)
         self.set_size(item, total_bytes(recording))
-        item.setExpanded(recording.key in self.toggled)
+        item.setExpanded(node_key(recording) in self.toggled)
 
     def attach(self, item: QTreeWidgetItem, node: Node) -> None:
         item.setData(NAME, NODE_ROLE, len(self.nodes))
@@ -272,10 +274,10 @@ class DataLibraryPanel(Panel):
         node = self.node_of(item)
         if node is None or isinstance(node, ProgramOutput):
             return
-        if folded != isinstance(node, RecordingNode):
-            self.toggled.add(node.key)
+        if folded != isinstance(node, Recording):
+            self.toggled.add(node_key(node))
         else:
-            self.toggled.discard(node.key)
+            self.toggled.discard(node_key(node))
 
     def on_header_clicked(self, column: int) -> None:
         """Sort by name or by date; a second click on the same column reverses it."""
@@ -294,7 +296,7 @@ class DataLibraryPanel(Panel):
     def on_output_changed(self, program_output: ProgramOutput) -> None:
         """Update one row's size and the total, not the whole tree: a running acquisition
         appends several times a second, and a rebuild would flicker."""
-        item = self.output_items.get(program_output.id)
+        item = self.output_items.get(program_output)
         if item is None:
             return
         self.set_size(item, program_output.nbytes)
@@ -329,11 +331,16 @@ class DataLibraryPanel(Panel):
             self.close_node(node)
 
     def close_node(self, node: Node) -> None:
-        if isinstance(node, ExperimentNode) and node.folder is not None:
-            self.library.close_experiment(node.folder)
+        """Close what a row shows: a folder, every unsaved recording, or one recording, which
+        closes with all its outputs."""
+        if isinstance(node, ExperimentNode):
+            if node.folder is not None:
+                self.library.close_experiment(node.folder)
+                return
+            for recording in node.recordings:
+                self.library.close(recording)
             return
-        for program_output in outputs_of(node):
-            self.library.close(program_output)
+        self.library.close(node if isinstance(node, Recording) else node.recording)
 
     def show_row_menu(self, position: QPoint) -> None:
         item = self.tree.itemAt(position)
@@ -357,13 +364,8 @@ class DataLibraryPanel(Panel):
         node = self.node_of(item)
         if node is None or isinstance(node, ExperimentNode):
             return
-        program_output = node if isinstance(node, ProgramOutput) else node.outputs[0]
-        dialog = DetailsDialog(
-            program_output,
-            self.library.note_of(program_output),
-            lambda note: self.library.set_note(program_output, note),
-            self,
-        )
+        recording = node if isinstance(node, Recording) else node.recording
+        dialog = DetailsDialog(recording, lambda note: self.library.set_note(recording, note), self)
         if dialog.exec():
             # The note shows in the recording's tooltip.
             self.rebuild()
@@ -402,18 +404,19 @@ class DataLibraryPanel(Panel):
 
 
 def node_key(node: Node) -> str:
-    return node.id if isinstance(node, ProgramOutput) else node.key
+    """What names a row across rebuilds: its folder, or the open object itself."""
+    # An open recording or output is the same object for as long as it is open.
+    return node.key if isinstance(node, ExperimentNode) else str(id(node))
 
 
 def folder_of(node: Node) -> Path | None:
     """The Experiment folder a row's files sit in, if they are on disk."""
     if isinstance(node, ExperimentNode):
         return node.folder
-    meta_path = node.meta_path
-    return None if meta_path is None else experiment_of(meta_path)
+    return node.folder if isinstance(node, Recording) else node.recording.folder
 
 
 def close_label(node: Node) -> str:
     if isinstance(node, ExperimentNode):
         return "Close all unsaved" if node.folder is None else "Close folder"
-    return "Close recording" if isinstance(node, RecordingNode) else "Close output"
+    return "Close recording"

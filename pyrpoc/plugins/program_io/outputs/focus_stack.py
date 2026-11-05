@@ -7,7 +7,8 @@ import json
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
-from pyrpoc.core.program_output import Origin, Provenance, program_output_registry
+from pyrpoc.core.program_output import program_output_registry
+from pyrpoc.core.recording import Recording
 
 from .building_blocks.tiff import read_pages
 from .image import ImageOutput
@@ -40,8 +41,8 @@ class FocusStackOutput(ImageOutput):
     ``<root>_<name>_search.json`` after every step, so a search cut short still says where it
     went."""
 
-    def __init__(self, *, name: str, provenance: Provenance, origin: Origin, root: Path | None):
-        super().__init__(name=name, provenance=provenance, origin=origin, root=root)
+    def __init__(self, *, name: str, recording: Recording, root: Path | None):
+        super().__init__(name=name, recording=recording, root=root)
         self.steps: list[FocusStep] = []
         self.result: FocusResult | None = None
 
@@ -69,8 +70,8 @@ class FocusStackOutput(ImageOutput):
         self.paths[SEARCH_KEY] = path
 
     @classmethod
-    def load(cls, *, name: str, provenance: Provenance, files: dict[str, Path]) -> FocusStackOutput:
-        output = cls(name=name, provenance=provenance, origin=Origin.LOADED, root=None)
+    def load(cls, *, name: str, recording: Recording, files: dict[str, Path]) -> FocusStackOutput:
+        output = cls(name=name, recording=recording, root=None)
         channels = {key: path for key, path in files.items() if key != SEARCH_KEY}
         if channels:
             output.fill(read_pages(channels), list(channels))

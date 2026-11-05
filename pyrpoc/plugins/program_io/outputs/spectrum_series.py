@@ -7,7 +7,8 @@ from typing import Any
 
 import numpy as np
 
-from pyrpoc.core.program_output import Origin, Provenance, program_output_registry
+from pyrpoc.core.program_output import program_output_registry
+from pyrpoc.core.recording import Recording
 
 from .spectrum import SpectrumOutput
 
@@ -17,8 +18,8 @@ class SpectrumSeriesOutput(SpectrumOutput):
     """A ``SpectrumOutput`` whose spectrum ``i`` was read from ``times_s[i][0]`` to
     ``times_s[i][1]`` seconds after the series began."""
 
-    def __init__(self, *, name: str, provenance: Provenance, origin: Origin, root: Path | None):
-        super().__init__(name=name, provenance=provenance, origin=origin, root=root)
+    def __init__(self, *, name: str, recording: Recording, root: Path | None):
+        super().__init__(name=name, recording=recording, root=root)
         self.times_s: list[tuple[float, float]] = []
 
     def mark_time(self, start_s: float, end_s: float) -> None:

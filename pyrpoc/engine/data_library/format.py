@@ -11,7 +11,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from pyrpoc.core.program_output import ProgramOutput, Provenance, program_output_registry
+from pyrpoc.core.program_output import ProgramOutput, program_output_registry
+from pyrpoc.core.recording import Recording
 
 from .grouping import program_display_name
 
@@ -187,18 +188,29 @@ def decode_record(raw: dict[str, Any]) -> RecordingRecord:
     )
 
 
-def load_recording(meta_path: Path) -> tuple[list[ProgramOutput], str]:
-    """Every output of the recording at ``meta_path``, holding all it was given, and the
-    recording's note."""
+def load_recording(meta_path: Path) -> Recording:
+    """The recording at ``meta_path``, each output holding all it was given."""
     record = read_record(meta_path)
-    outputs = [
-        load_output(meta_path, record, output, entry) for output, entry in record.outputs.items()
-    ]
-    return outputs, record.notes
+    recording = Recording(
+        program_key=record.program_key,
+        name=record.name,
+        started_at=record.started_at,
+        parameters=record.parameters,
+        devices=record.devices,
+        reads=record.inputs,
+        location=meta_path,
+        note=record.notes,
+        finished=True,
+    )
+    recording.outputs = {
+        output: load_output(recording, meta_path, output, entry)
+        for output, entry in record.outputs.items()
+    }
+    return recording
 
 
 def load_output(
-    meta_path: Path, record: RecordingRecord, output: str, entry: OutputRecord
+    recording: Recording, meta_path: Path, output: str, entry: OutputRecord
 ) -> ProgramOutput:
     if entry.type not in program_output_registry.keys():
         raise RecordingError(f"{meta_path}: output {output!r} is of unknown type {entry.type!r}")
@@ -206,22 +218,12 @@ def load_output(
     missing = [path.name for path in files.values() if not path.is_file()]
     if missing:
         raise RecordingError(f"{meta_path}: output {output!r} is missing {', '.join(missing)}")
-    provenance = Provenance(
-        program_key=record.program_key,
-        started_at=record.started_at,
-        name=record.name,
-        parameters=record.parameters,
-        devices=record.devices,
-        run_id=record.runs[0].run_id if record.runs else 0,
-    )
     try:
-        program_output = program_output_registry.get(entry.type).load(
-            name=output, provenance=provenance, files=files
+        return program_output_registry.get(entry.type).load(
+            name=output, recording=recording, files=files
         )
     except (OSError, ValueError, KeyError) as exc:
         raise RecordingError(f"{meta_path}: cannot read output {output!r}: {exc}") from exc
-    program_output.meta_path = meta_path
-    return program_output
 
 
 def write_notes(meta_path: Path, notes: str) -> None:

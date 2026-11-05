@@ -1,31 +1,24 @@
-"""The ``Library`` protocol: access to the open program outputs."""
+"""The ``Library`` protocol: the open recordings."""
 
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Protocol, TypeVar
+from typing import Protocol
 
-from .program_output import ProgramOutput
-
-OutputT = TypeVar("OutputT", bound=ProgramOutput)
+from .recording import Recording
 
 
 class Library(Protocol):
-    """The open program outputs: add one, look one up, list them, name the group each is
-    listed under, and subscribe to changes."""
+    """The open recordings: add one, close one, list them, and subscribe to changes."""
 
-    def add(self, program_output: OutputT) -> OutputT: ...
+    def add(self, recording: Recording) -> None: ...
 
-    def by_id(self, output_id: str, output_type: type[OutputT]) -> OutputT | None:
-        """The open program output with this id, if it is an ``output_type``."""
+    def close(self, recording: Recording) -> None:
+        """Drop it from memory; files already saved stay on disk."""
         ...
 
-    def matching(self, output_type: type[OutputT]) -> list[OutputT]:
-        """Program outputs of this type, newest first."""
-        ...
-
-    def group_label(self, program_output: ProgramOutput) -> str:
-        """The name of the group ``program_output`` is listed under."""
+    def recordings(self) -> list[Recording]:
+        """Every open recording, oldest first."""
         ...
 
     def subscribe(self, callback: Callable[[], None]) -> None: ...

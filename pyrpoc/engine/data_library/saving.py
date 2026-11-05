@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import threading
 from pathlib import Path
-from typing import Any
 
-from pyrpoc.core.program_output import ProgramOutput, utc_now
+from pyrpoc.core.program_output import ProgramOutput
+from pyrpoc.core.recording import Recording, utc_now
 from pyrpoc.engine.data_library.format import (
     LiveRead,
     OutputRecord,
@@ -18,53 +18,32 @@ from pyrpoc.engine.data_library.format import (
     write_folder_notes,
     write_record,
 )
-from pyrpoc.engine.data_library.grouping import experiment_of, recording_key_of
-from pyrpoc.engine.data_library.notes import Notes
+
+
+def save_location(root: Path) -> tuple[Path, Path]:
+    """The first free numbered stem of ``root``, which every file of a recording hangs its
+    suffix off, and the metadata file there."""
+    free = free_root(root)
+    return free, meta_path_for(free)
 
 
 class RecordingSaver:
-    """One recording's metadata file, at the first free numbered stem of ``root``, where its
-    outputs write their files too."""
+    """Writes ``recording``'s metadata file, at its location, as runs join and end."""
 
-    def __init__(
-        self,
-        *,
-        root: Path,
-        program_key: str,
-        name: str,
-        parameters: dict[str, Any],
-        devices: dict[str, Any],
-        started_at: str,
-        inputs: dict[str, str],
-        notes: Notes,
-    ):
-        self.root = free_root(root)
-        self.meta_path = meta_path_for(self.root)
-        self.program_key = program_key
-        self.name = name
-        self.parameters = dict(parameters)
-        self.devices = dict(devices)
-        self.started_at = started_at
-        self.inputs = dict(inputs)
-        self.outputs: dict[str, ProgramOutput] = {}
+    def __init__(self, recording: Recording, meta_path: Path):
+        self.recording = recording
+        self.meta_path = meta_path
         self.runs: list[RunRecord] = []
         self.live_reads: list[LiveRead] = []
         # Runs write from their own threads, and runs in a series overlap the GUI thread.
         self.lock = threading.Lock()
-        self.notes = notes
         # The note as the file last held it, so the Experiment's notes are rebuilt only when
         # it changes.
         self.written_note = ""
 
     def prepare(self) -> None:
         """Create the folder the recording is saved in."""
-        self.root.parent.mkdir(parents=True, exist_ok=True)
-
-    def begin(self, outputs: dict[str, ProgramOutput]) -> None:
-        """Take the program outputs the writers feed, which the metadata describes."""
-        self.outputs = outputs
-        for program_output in outputs.values():
-            program_output.meta_path = self.meta_path
+        self.meta_path.parent.mkdir(parents=True, exist_ok=True)
 
     def add_run(self, run_id: int, started_at: str) -> None:
         """Record a run joining, and put the recording on disk before its data."""
@@ -90,33 +69,31 @@ class RecordingSaver:
 
     def write_metadata(self, *, ended_at: str | None, last_error: str | None) -> None:
         with self.lock:
-            note = self.note()
+            # Read each time: the note may be edited while the recording runs.
+            note = self.recording.note
             write_record(self.meta_path, self.record(ended_at, last_error, note))
             if note != self.written_note:
-                write_folder_notes(experiment_of(self.meta_path))
+                write_folder_notes(self.meta_path.parent)
                 self.written_note = note
 
-    def note(self) -> str:
-        """The recording's note now: it may be edited while the recording runs."""
-        return self.notes.get(recording_key_of(self.meta_path))
-
     def record(self, ended_at: str | None, last_error: str | None, note: str) -> RecordingRecord:
+        recording = self.recording
         return RecordingRecord(
             pyrpoc_version=pyrpoc_version(),
-            program_key=self.program_key,
-            name=self.name,
-            started_at=self.started_at,
+            program_key=recording.program_key,
+            name=recording.name,
+            started_at=recording.started_at,
             ended_at=ended_at,
             last_error=last_error,
             runs=list(self.runs),
-            parameters=self.parameters,
-            devices=self.devices,
+            parameters=recording.parameters,
+            devices=recording.devices,
             outputs={
-                output: output_record(program_output)
-                for output, program_output in self.outputs.items()
+                name: output_record(program_output)
+                for name, program_output in recording.outputs.items()
             },
             notes=note,
-            inputs=self.inputs,
+            inputs=recording.reads,
             live_reads=list(self.live_reads),
         )
 

@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from datetime import datetime
+from pathlib import Path
 from typing import Any, ClassVar, Generic, TypeVar
 
 from PyQt6.QtCore import Qt, pyqtSignal
@@ -48,9 +50,30 @@ class Panel(QWidget):
         del state
 
 
+def outputs_of_type(library: Library, output_type: type[OutputT]) -> list[OutputT]:
+    """Every open output that is an ``output_type``, its daughter types included, newest
+    recording first."""
+    # isinstance picks one type out of every open output, and narrows them to it.
+    return [
+        output
+        for recording in reversed(library.recordings())
+        for output in recording.outputs.values()
+        if isinstance(output, output_type)
+    ]
+
+
+def source_text(program_output: ProgramOutput) -> str:
+    """One line naming an output: when its recording started, what it was called, and its
+    name."""
+    recording = program_output.recording
+    # No date: a session lasts a day, so a date would repeat on every row.
+    started = datetime.fromisoformat(recording.started_at).astimezone().strftime("%H:%M:%S")
+    return " · ".join((started, recording.name or recording.program_key, program_output.name))
+
+
 class SourcePicker(QWidget, Generic[OutputT]):
-    """A dropdown naming one open program output of type ``renders``, under the group the
-    library lists it in. "Latest" follows the newest one."""
+    """A dropdown naming one open program output of type ``renders``, under the folder its
+    recording is saved in. "Latest" follows the newest one."""
 
     # The chosen program output may have changed; the panel re-reads ``current()``.
     changed = pyqtSignal()
@@ -59,7 +82,8 @@ class SourcePicker(QWidget, Generic[OutputT]):
         super().__init__(parent)
         self.renders = renders
         self.library = library
-        self._follow_latest = True
+        # What each row of the dropdown names: None for "Latest" and for headings.
+        self.choices: list[OutputT | None] = []
 
         # Public so a panel can add its own small controls beside the picker.
         self.row = QHBoxLayout(self)
@@ -75,36 +99,43 @@ class SourcePicker(QWidget, Generic[OutputT]):
         self.refresh_sources()
 
     def refresh_sources(self) -> None:
-        """Rebuild the picker, keeping the current choice where possible."""
-        current = self.combo.currentData()
+        """Rebuild the picker, keeping the current choice while it is open."""
+        current = self.chosen()
         self.combo.blockSignals(True)
         self.combo.clear()
-        self.combo.addItem("Latest", None)
-        for heading, outputs in self.groups().items():
-            self.add_heading(heading)
+        self.choices = []
+        self.add_row(QStandardItem("Latest"), None)
+        for folder, outputs in self.groups().items():
+            self.add_heading(folder)
             for program_output in outputs:
-                self.combo.addItem(program_output.label, program_output.id)
-        if not self._follow_latest:
-            self.combo.setCurrentIndex(max(self.combo.findData(current), 0))
+                self.add_row(QStandardItem(source_text(program_output)), program_output)
+        if current is not None:
+            index = next((i for i, each in enumerate(self.choices) if each is current), 0)
+            self.combo.setCurrentIndex(index)
         self.combo.blockSignals(False)
         self.changed.emit()
 
-    def groups(self) -> dict[str, list[OutputT]]:
-        """The matching outputs by group, the group with the newest output first."""
-        groups: dict[str, list[OutputT]] = {}
-        for program_output in self.library.matching(self.renders):
-            groups.setdefault(self.library.group_label(program_output), []).append(program_output)
+    def groups(self) -> dict[Path | None, list[OutputT]]:
+        """The matching outputs by folder, None for unsaved, the newest first."""
+        groups: dict[Path | None, list[OutputT]] = {}
+        for program_output in outputs_of_type(self.library, self.renders):
+            groups.setdefault(program_output.recording.folder, []).append(program_output)
         return groups
 
-    def add_heading(self, heading: str) -> None:
-        """A bold row naming a group, which cannot be chosen."""
-        item = QStandardItem(heading)
+    def add_row(self, item: QStandardItem, choice: OutputT | None) -> None:
+        self.entries.appendRow(item)
+        self.choices.append(choice)
+
+    def add_heading(self, folder: Path | None) -> None:
+        """A bold row naming a folder, which cannot be chosen."""
+        item = QStandardItem("Unsaved" if folder is None else folder.name)
+        item.setToolTip("Not saved" if folder is None else str(folder))
         # Enabled but not selectable, so the theme does not dim it past reading.
         item.setFlags(Qt.ItemFlag.ItemIsEnabled)
         font = self.combo.font()
         font.setBold(True)
         item.setFont(font)
-        self.entries.appendRow(item)
+        self.add_row(item, None)
 
     def on_chosen(self, index: int) -> None:
         item = self.entries.item(index)
@@ -112,15 +143,19 @@ class SourcePicker(QWidget, Generic[OutputT]):
             # Reached by the keyboard or wheel: a heading is always followed by an entry.
             self.combo.setCurrentIndex(index + 1)
             return
-        self._follow_latest = self.combo.currentData() is None
         self.changed.emit()
 
+    def chosen(self) -> OutputT | None:
+        """The output picked by hand, or None when following the latest."""
+        index = self.combo.currentIndex()
+        return self.choices[index] if 0 <= index < len(self.choices) else None
+
     def current(self) -> OutputT | None:
-        chosen = self.combo.currentData()
-        if chosen is None:
-            candidates = self.library.matching(self.renders)
-            return candidates[0] if candidates else None
-        return self.library.by_id(chosen, self.renders)
+        chosen = self.chosen()
+        if chosen is not None:
+            return chosen
+        candidates = outputs_of_type(self.library, self.renders)
+        return candidates[0] if candidates else None
 
 
 class DataPanel(Panel, Generic[OutputT]):

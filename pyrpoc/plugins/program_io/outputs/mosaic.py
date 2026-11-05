@@ -9,7 +9,8 @@ from pathlib import Path
 
 import numpy as np
 
-from pyrpoc.core.program_output import Origin, Provenance, program_output_registry
+from pyrpoc.core.program_output import program_output_registry
+from pyrpoc.core.recording import Recording
 
 from .building_blocks.tiff import read_pages
 from .image import ImageOutput
@@ -34,8 +35,8 @@ class MosaicOutput(ImageOutput):
     ``i`` was taken at ``tiles[i]``. The grid is saved as ``<root>_<name>_tiles.json``, before
     the first image, so a mosaic cut short still says where its images belong."""
 
-    def __init__(self, *, name: str, provenance: Provenance, origin: Origin, root: Path | None):
-        super().__init__(name=name, provenance=provenance, origin=origin, root=root)
+    def __init__(self, *, name: str, recording: Recording, root: Path | None):
+        super().__init__(name=name, recording=recording, root=root)
         self.tiles: tuple[MosaicTile, ...] = ()
 
     def plan(self, tiles: tuple[MosaicTile, ...]) -> None:
@@ -56,8 +57,8 @@ class MosaicOutput(ImageOutput):
         super().add(array, channels)
 
     @classmethod
-    def load(cls, *, name: str, provenance: Provenance, files: dict[str, Path]) -> MosaicOutput:
-        output = cls(name=name, provenance=provenance, origin=Origin.LOADED, root=None)
+    def load(cls, *, name: str, recording: Recording, files: dict[str, Path]) -> MosaicOutput:
+        output = cls(name=name, recording=recording, root=None)
         raw = json.loads(files[TILES_KEY].read_text(encoding="utf-8"))
         output.tiles = tuple(
             MosaicTile(int(t["row"]), int(t["col"]), float(t["x_um"]), float(t["y_um"]))

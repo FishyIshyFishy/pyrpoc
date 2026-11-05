@@ -6,6 +6,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from pyrpoc.core.panels import source_text
 from pyrpoc.core.program_input import Field, ParameterError, declare
 from pyrpoc.plugins.program_io.outputs.image import ImageOutput
 
@@ -15,7 +16,6 @@ class PixelPick:
     """The pixel clicked, ``x`` along the fast axis and ``y`` along the slow, and the image
     it was clicked on: its id, its label and the inputs it was acquired with."""
 
-    source_id: str
     source_label: str
     parameters: dict[str, Any]
     x: int
@@ -24,11 +24,10 @@ class PixelPick:
     @classmethod
     def on(cls, output: ImageOutput, x: int, y: int) -> PixelPick:
         """A pick of pixel ``(x, y)`` of ``output``."""
-        return cls(output.id, output.label, dict(output.provenance.parameters), x, y)
+        return cls(source_text(output), dict(output.recording.parameters), x, y)
 
     def to_dict(self) -> dict[str, Any]:
         return {
-            "source_id": self.source_id,
             "source_label": self.source_label,
             "parameters": self.parameters,
             "x": self.x,
@@ -42,7 +41,6 @@ class PixelPick:
             raise ParameterError("a pick must be an object with a source, parameters and a pixel")
         try:
             return cls(
-                str(raw["source_id"]),
                 str(raw["source_label"]),
                 raw["parameters"],
                 int(raw["x"]),

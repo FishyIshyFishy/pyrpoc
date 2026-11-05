@@ -151,7 +151,7 @@ class Runs(QObject):
         self.publish_in_use()
         # Only a saved run of a program others read can change what they read.
         saved = run.recording.saver is not None
-        if saved and run.provenance.program_key in read_program_keys():
+        if saved and run.recording.recording.program_key in read_program_keys():
             self.refresh_earlier()
 
     def publish_in_use(self) -> None:

@@ -11,7 +11,7 @@ from collections.abc import Callable, Sequence
 from typing import Any
 
 from pyrpoc.core.program_input import ProgramInput
-from pyrpoc.core.program_output import utc_now
+from pyrpoc.core.recording import utc_now
 from pyrpoc.engine.data_library.format import LiveRead
 
 from .program_inputs import ProgramInputsStore

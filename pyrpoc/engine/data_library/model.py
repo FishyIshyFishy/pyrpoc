@@ -1,15 +1,14 @@
-"""``LibraryModel``: the open program outputs as the screen sees them, the commands on
-them, and their new values relayed to the GUI thread."""
+"""``LibraryModel``: the open recordings as the screen sees them, the commands on them, and
+their outputs' changes relayed to the GUI thread."""
 
 from __future__ import annotations
 
 from collections.abc import Callable
 from pathlib import Path
-from typing import TypeVar
 
 from PyQt6.QtCore import QObject, QTimer, pyqtSignal
 
-from pyrpoc.core.program_output import ProgramOutput
+from pyrpoc.core.recording import Recording
 
 from .format import (
     RecordingError,
@@ -18,10 +17,7 @@ from .format import (
     write_folder_notes,
     write_notes,
 )
-from .grouping import experiment_of, recording_key, recording_key_of
 from .store import LibraryFull, LibraryStore
-
-OutputT = TypeVar("OutputT", bound=ProgramOutput)
 
 
 class LibraryModel(QObject):
@@ -50,25 +46,17 @@ class LibraryModel(QObject):
         store.subscribe(self.schedule_purge)
 
     def relay_new_outputs(self) -> None:
-        """Follow every open program output."""
+        """Follow every output of every open recording."""
         # Subscribing twice is a no-op, so this need not know which one was just added.
-        for program_output in self.store.all():
-            program_output.subscribe(self.output_changed.emit)
+        for recording in self.store.recordings():
+            for program_output in recording.outputs.values():
+                program_output.subscribe(self.output_changed.emit)
 
-    def add(self, program_output: OutputT) -> OutputT:
-        return self.store.add(program_output)
+    def add(self, recording: Recording) -> None:
+        self.store.add(recording)
 
-    def by_id(self, output_id: str, output_type: type[OutputT]) -> OutputT | None:
-        return self.store.by_id(output_id, output_type)
-
-    def matching(self, output_type: type[OutputT]) -> list[OutputT]:
-        return self.store.matching(output_type)
-
-    def all(self) -> list[ProgramOutput]:
-        return self.store.all()
-
-    def group_label(self, program_output: ProgramOutput) -> str:
-        return self.store.group_label(program_output)
+    def recordings(self) -> list[Recording]:
+        return self.store.recordings()
 
     def subscribe(self, callback: Callable[[], None]) -> None:
         self.store.subscribe(callback)
@@ -127,47 +115,38 @@ class LibraryModel(QObject):
             self.load_failed.emit("\n\n".join(problems))
 
     def load_recording(self, meta_path: Path) -> None:
-        """Add the recording's outputs, unless it is already open."""
-        if any(each.meta_path == meta_path for each in self.store.all()):
+        """Open the recording, unless it is already open."""
+        if any(each.location == meta_path for each in self.store.recordings()):
             return
         self.store.check_room()
-        outputs, note = load_recording(meta_path)
-        self.store.notes.set(recording_key_of(meta_path), note)
-        for program_output in outputs:
-            self.store.add(program_output)
+        self.store.add(load_recording(meta_path))
 
-    def note_of(self, program_output: ProgramOutput) -> str:
-        """The note of the run ``program_output`` came from."""
-        return self.store.notes.get(recording_key(program_output))
-
-    def set_note(self, program_output: ProgramOutput, note: str) -> str | None:
-        """Set the note of the run ``program_output`` came from, and write it into its
-        recording and its Experiment's notes if the recording is finished on disk; returns
-        why the files could not be updated, or None."""
+    def set_note(self, recording: Recording, note: str) -> str | None:
+        """Set the recording's note, and write it into its file and its Experiment's notes if
+        it is finished on disk; returns why the files could not be updated, or None."""
         # A recording still going writes the note itself the next time it updates its metadata.
         # The note is kept in memory either way.
-        self.store.notes.set(recording_key(program_output), note)
-        meta_path = program_output.meta_path
-        if meta_path is None or not program_output.finished:
+        recording.note = note
+        if recording.location is None or not recording.finished:
             return None
         try:
-            write_notes(meta_path, note)
-            write_folder_notes(experiment_of(meta_path))
+            write_notes(recording.location, note)
+            write_folder_notes(recording.location.parent)
         except (RecordingError, OSError) as exc:
             return str(exc)
         return None
 
-    def close(self, program_output: ProgramOutput) -> None:
-        """Drop ``program_output`` from memory. Files already saved stay on disk."""
-        program_output.unsubscribe(self.output_changed.emit)
-        self.store.remove(program_output)
+    def close(self, recording: Recording) -> None:
+        """Drop ``recording`` from memory. Files already saved stay on disk."""
+        for program_output in recording.outputs.values():
+            program_output.unsubscribe(self.output_changed.emit)
+        self.store.close(recording)
 
     def close_experiment(self, folder: Path) -> None:
-        """Drop every output saved in ``folder`` and stop showing it."""
-        for program_output in self.store.all():
-            meta_path = program_output.meta_path
-            if meta_path is not None and experiment_of(meta_path) == folder:
-                self.close(program_output)
+        """Drop every recording saved in ``folder`` and stop showing it."""
+        for recording in self.store.recordings():
+            if recording.folder == folder:
+                self.close(recording)
         if folder in self.folders:
             self.folders.remove(folder)
         self.store.notify()

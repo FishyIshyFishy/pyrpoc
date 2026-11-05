@@ -9,7 +9,8 @@ from typing import ClassVar
 
 import numpy as np
 
-from pyrpoc.core.program_output import Origin, ProgramOutput, Provenance
+from pyrpoc.core.program_output import ProgramOutput
+from pyrpoc.core.recording import Recording
 
 
 class ArrayStack(ProgramOutput):
@@ -18,8 +19,8 @@ class ArrayStack(ProgramOutput):
 
     axes: ClassVar[tuple[str, ...]] = ()
 
-    def __init__(self, *, name: str, provenance: Provenance, origin: Origin, root: Path | None):
-        super().__init__(name=name, provenance=provenance, origin=origin, root=root)
+    def __init__(self, *, name: str, recording: Recording, root: Path | None):
+        super().__init__(name=name, recording=recording, root=root)
         self.arrays: list[np.ndarray] = []
         self.channels: tuple[str, ...] = ()
 

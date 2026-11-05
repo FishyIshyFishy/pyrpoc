@@ -7,7 +7,7 @@ from typing import Any, TypeVar
 
 import numpy as np
 
-from pyrpoc.core.program_output import Origin, Provenance
+from pyrpoc.core.recording import Recording
 
 from .array_stack import ArrayStack
 
@@ -39,8 +39,8 @@ class NpzStack(ArrayStack):
         del archive
 
     @classmethod
-    def load(cls: type[S], *, name: str, provenance: Provenance, files: dict[str, Path]) -> S:
-        output = cls(name=name, provenance=provenance, origin=Origin.LOADED, root=None)
+    def load(cls: type[S], *, name: str, recording: Recording, files: dict[str, Path]) -> S:
+        output = cls(name=name, recording=recording, root=None)
         if files:
             (path,) = files.values()
             with np.load(str(path)) as archive:
