@@ -78,7 +78,7 @@ class RecordingSaver:
             parameters=recording.parameters,
             devices=recording.devices,
             outputs={
-                name: output_record(program_output)
+                name: output_record(program_output, self.meta_path.parent)
                 for name, program_output in recording.outputs.items()
             },
             # Read each time: the note may be edited while the recording runs.
@@ -89,7 +89,11 @@ class RecordingSaver:
         )
 
 
-def output_record(program_output: ProgramOutput) -> OutputRecord:
+def output_record(program_output: ProgramOutput, folder: Path) -> OutputRecord:
+    """Its type and files, each named from ``folder``, so an output may keep files in folders
+    of its own."""
     with program_output.lock:
-        files = {key: path.name for key, path in program_output.paths.items()}
+        files = {
+            key: path.relative_to(folder).as_posix() for key, path in program_output.paths.items()
+        }
     return OutputRecord(type=program_output.type_key, files=files)

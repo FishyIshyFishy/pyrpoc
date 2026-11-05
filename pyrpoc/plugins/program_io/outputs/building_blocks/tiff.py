@@ -1,4 +1,5 @@
-"""Channel-per-file TIFFs: one appended float32 page per array added."""
+"""TIFFs of float32 pages: a file per channel with one page per array, or one file with a page
+per channel of each array."""
 
 from __future__ import annotations
 
@@ -35,3 +36,19 @@ def read_pages(files: dict[str, Path]) -> list[np.ndarray]:
     if len(counts) != 1:
         raise ValueError(f"channel files hold different page counts: {sorted(counts)}")
     return [np.stack(planes) for planes in zip(*per_channel, strict=True)]
+
+
+def append_planes(path: Path, array: np.ndarray) -> None:
+    """Every channel of a ``(C, H, W)`` array as its own page, in order, onto one file."""
+    with tifffile.TiffWriter(str(path), append=True) as writer:
+        for plane in array:
+            writer.write(plane)
+
+
+def read_planes(path: Path, channels: int) -> list[np.ndarray]:
+    """A file of ``append_planes`` pages as its ``(C, H, W)`` arrays, oldest first."""
+    with tifffile.TiffFile(str(path)) as tif:
+        pages = [page.asarray() for page in tif.pages]
+    if len(pages) % channels:
+        raise ValueError(f"{path.name} holds {len(pages)} pages, not whole frames of {channels}")
+    return [np.stack(pages[start : start + channels]) for start in range(0, len(pages), channels)]
