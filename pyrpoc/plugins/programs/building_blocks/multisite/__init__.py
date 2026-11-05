@@ -4,6 +4,7 @@ regions of it over time. Programs import only what this module exports."""
 from __future__ import annotations
 
 from .bindings.calibration import CALIBRATION_EMITS, run_calibration
+from .bindings.clean_folder import CleanFolder
 from .bindings.loop import LOOP_EMITS, LOOP_FOCUS_INPUTS, LOOP_READS, STEERING, run_loop
 from .bindings.monitor import MONITOR_INPUTS, MONITOR_LIVE, TREATMENT_INPUTS, monitor_routine
 from .bindings.rig import RigMicroscope
@@ -31,6 +32,7 @@ __all__ = [
     "SURVEY_READS",
     "TILE_INPUTS",
     "TREATMENT_INPUTS",
+    "CleanFolder",
     "DigitalLine",
     "Microscope",
     "RigMicroscope",
