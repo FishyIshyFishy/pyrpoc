@@ -11,11 +11,10 @@ from .autofocus.program import Autofocus
 from .brightfield.program import Brightfield
 from .confocal.program import Confocal
 from .flim.program import FLIM
-from .galvo_pinpoint.program import GalvoPinpoint
+from .galvo_pair_imaging.program import GalvoPairImaging
+from .galvo_pair_pinpoint.program import GalvoPairPinpoint
 from .mosaic.program import StageMosaic
-from .pinpoint_raman.program import PinpointRaman
 from .raman.program import Raman
-from .roi_spectral_series.program import RoiSpectralSeries
 from .split_confocal.program import SplitConfocal
 
 __all__ = [
@@ -23,11 +22,10 @@ __all__ = [
     "Confocal",
     "SplitConfocal",
     "FLIM",
-    "GalvoPinpoint",
+    "GalvoPairImaging",
+    "GalvoPairPinpoint",
     "StageMosaic",
     "Autofocus",
-    "PinpointRaman",
     "Raman",
-    "RoiSpectralSeries",
     "Brightfield",
 ]

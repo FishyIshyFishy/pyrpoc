@@ -16,7 +16,7 @@ from pyrpoc.plugins.program_io.inputs import (
     rate_hz,
 )
 
-from .daq_tasks import acquire
+from .daq_tasks import acquire, galvo_channels
 from .mask_ttl import mask_ttl
 
 
@@ -38,14 +38,29 @@ def raster_waveform(scan: ScanGeometry, samples_per_pixel: int) -> np.ndarray:
 
 
 @dataclass(frozen=True)
+class Drive:
+    """One galvo a scan moves, and the volts added to the scan's on each axis to point it at
+    the same spot."""
+
+    galvo: Galvo
+    fast_offset_v: float
+    slow_offset_v: float
+
+    def rows(self, waveform: np.ndarray) -> np.ndarray:
+        """The scan's ``(fast, slow)`` ``waveform`` for this galvo."""
+        return waveform + np.array([[self.fast_offset_v], [self.slow_offset_v]])
+
+
+@dataclass(frozen=True)
 class Raster:
-    """One run's scan: its waveform, mask TTL and channels."""
+    """One run's scan: its waveform, one ``(fast, slow)`` pair of rows per galvo it drives,
+    its mask TTL and channels."""
 
     # The waveform and mask TTL are the same every frame, so they are built once, before the
     # first.
 
     daq: DAQ
-    galvo: Galvo
+    ao_channels: list[int]
     scan: ScanGeometry
     sample_rate_hz: float
     samples_per_pixel: int
@@ -54,6 +69,12 @@ class Raster:
 
     @classmethod
     def for_run(cls, ctx: RunContext) -> Raster:
+        """The scan on the program's one galvo."""
+        return cls.driving(ctx, [Drive(ctx.devices[Galvo], 0.0, 0.0)])
+
+    @classmethod
+    def driving(cls, ctx: RunContext, drives: list[Drive]) -> Raster:
+        """The scan on every galvo of ``drives``, all on one clock."""
         scan = ScanGeometry.from_inputs(ctx.inputs)
         sample_rate_hz = rate_hz(ctx.inputs)
         daq = ctx.devices[DAQ]
@@ -62,7 +83,15 @@ class Raster:
         lines = lines_for(masks, ctx.inputs[MASK_LINES])
         ttl = mask_ttl(masks, lines, scan, samples_per_pixel, daq.config.device_name)
         waveform = raster_waveform(scan, samples_per_pixel)
-        return cls(daq, ctx.devices[Galvo], scan, sample_rate_hz, samples_per_pixel, waveform, ttl)
+        return cls(
+            daq,
+            [channel for drive in drives for channel in galvo_channels(drive.galvo)],
+            scan,
+            sample_rate_hz,
+            samples_per_pixel,
+            np.vstack([drive.rows(waveform) for drive in drives]),
+            ttl,
+        )
 
     @property
     def channel_labels(self) -> list[str]:
@@ -71,7 +100,7 @@ class Raster:
     def samples(self) -> np.ndarray:
         """One scan as ``(C, H, W, S)``: every displayed pixel's raw samples,
         with the overscan columns dropped."""
-        raw = acquire(self.daq, self.galvo, self.waveform, self.ttl, self.sample_rate_hz)
+        raw = acquire(self.daq, self.ao_channels, self.waveform, self.ttl, self.sample_rate_hz)
         scan = self.scan
         cube = raw.astype(np.float32).reshape(
             len(raw), scan.y_pixels, scan.total_x, self.samples_per_pixel

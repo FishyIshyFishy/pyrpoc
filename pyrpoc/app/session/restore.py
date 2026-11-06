@@ -45,6 +45,7 @@ def capture_working(app: Application) -> WorkingState:
     return WorkingState(
         devices=devices,
         program_inputs=app.inputs.to_dict(),
+        device_choices=app.runs.device_choices.to_dict(),
         save=SaveState(name=save.name, directory=save.directory, enabled=save.enabled),
         library=LibraryState(auto_purge=app.library.auto_purge),
     )
@@ -83,6 +84,7 @@ def restore_devices(state: WorkingState, app: Application) -> list[Device]:
 def export_device(inventory: DeviceInventory, device: Device) -> dict[str, Any]:
     return {
         "config": encode_config(device.config),
+        "label": inventory.status[device].label,
         "last_test_ok": inventory.status[device].last_test_ok,
     }
 
@@ -92,6 +94,8 @@ def import_device(inventory: DeviceInventory, device: Device, raw: dict[str, Any
     config = raw.get("config")
     if isinstance(config, dict):
         device.config = decode_config(device.config_cls, config)
+    label = raw.get("label")
+    inventory.status[device].label = label if isinstance(label, str) else ""
     value = raw.get("last_test_ok")
     inventory.status[device].last_test_ok = value if isinstance(value, bool) else None
 
@@ -120,6 +124,7 @@ def apply(state: SessionState, app: Application, window: MainWindow) -> None:
     # Before the panels, since a panel's saved target names a slot of an input's value.
     app.inputs.clear()
     app.inputs.load_dict(working.program_inputs)
+    app.runs.device_choices.load_dict(working.device_choices)
     restore_panels(screen, app, window)
     for device in reopen:
         window.device_docks.open(device)

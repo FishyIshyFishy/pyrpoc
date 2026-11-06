@@ -6,6 +6,7 @@ from collections.abc import Callable
 
 from PyQt6.QtCore import QObject, pyqtSignal
 
+from pyrpoc.core.device import Device
 from pyrpoc.core.program import program_registry
 from pyrpoc.engine.acquisition.save_target import SaveTarget
 from pyrpoc.engine.data_library.earlier import EarlierOutput
@@ -13,6 +14,7 @@ from pyrpoc.engine.data_library.model import LibraryModel
 from pyrpoc.engine.device_inventory.inventory import DeviceInventory
 
 from . import readiness
+from .device_choices import DeviceChoices
 from .earlier import EarlierChoices, any_reads
 from .events import RunEvents
 from .executor import Run
@@ -28,6 +30,8 @@ class Runs(QObject):
     note_changed = pyqtSignal()
     # The earlier outputs programs can read changed, or which one is picked.
     earlier_changed = pyqtSignal()
+    # Which device is chosen for a name changed.
+    devices_chosen = pyqtSignal()
     # What a program needs may have arrived or gone: a device, or a name to save under.
     readiness_changed = pyqtSignal()
     # Something worth remembering changed: the save target, or a run started.
@@ -49,6 +53,7 @@ class Runs(QObject):
         # The note for the next run. Run metadata, not a program input: no program reads it.
         self.note = ""
         self.earlier = EarlierChoices()
+        self.device_choices = DeviceChoices()
         self.events = RunEvents(library.store, requests, self)
         self.live_runs: set[Run] = set()
         self.events.run_started.connect(self.on_run_started)
@@ -56,6 +61,7 @@ class Runs(QObject):
         inventory.changed.connect(self.readiness_changed.emit)
         self.save_changed.connect(self.readiness_changed.emit)
         self.earlier_changed.connect(self.readiness_changed.emit)
+        self.devices_chosen.connect(self.readiness_changed.emit)
 
     def start(self, program_key: str, repeat: bool, claim: Callable[[Run], None]) -> None:
         """Start ``program_key`` with what the workbench holds right now, or report
@@ -66,6 +72,7 @@ class Runs(QObject):
             program_key,
             self.inputs,
             self.inventory.devices,
+            self.chosen_devices(program_key),
             self.save,
             self.note,
             self.chosen_earlier(program_key),
@@ -81,9 +88,21 @@ class Runs(QObject):
         return readiness.missing(
             program_registry.get(program_key),
             self.inventory.devices,
+            self.chosen_devices(program_key),
             self.save,
             self.chosen_earlier(program_key),
         )
+
+    def chosen_devices(self, program_key: str) -> dict[str, Device]:
+        """The device each name ``program_key`` chooses would be now."""
+        chooses = program_registry.get(program_key).chooses
+        return self.device_choices.chosen(chooses, self.inventory.devices)
+
+    def choose_device(self, name: str, device: Device) -> None:
+        """Use ``device`` wherever a device is chosen under ``name``."""
+        self.device_choices.pick(name, device)
+        self.devices_chosen.emit()
+        self.edited.emit()
 
     def chosen_earlier(self, program_key: str) -> dict[str, EarlierOutput]:
         """The earlier output each name ``program_key`` reads would be read from now."""
@@ -147,6 +166,4 @@ class Runs(QObject):
 
     def publish_in_use(self) -> None:
         """Tell the inventory every device a live run holds, backing devices included."""
-        self.inventory.set_in_use(
-            {device for run in self.live_runs for device in run.devices.values()}
-        )
+        self.inventory.set_in_use({device for run in self.live_runs for device in run.bound.held()})

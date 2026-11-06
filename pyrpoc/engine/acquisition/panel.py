@@ -30,6 +30,7 @@ from pyrpoc.utils.widgets.icons import asset_icon
 from pyrpoc.utils.widgets.param_form import ParamForm, input_form_section
 from pyrpoc.utils.widgets.path_field import PathField
 
+from .device_card import DeviceCard
 from .earlier_card import EarlierCard
 from .host import RunnerHost
 from .note import NoteDialog
@@ -73,6 +74,7 @@ class AcquisitionPanel(Panel):
         self.selected_program: str | None = None
         self.form: ParamForm | None = None
         self.earlier_card: EarlierCard | None = None
+        self.device_card: DeviceCard | None = None
         # Each rendered control, its button, and the watcher keeping them in line.
         self.control_views: list[ControlView] = []
 
@@ -156,6 +158,7 @@ class AcquisitionPanel(Panel):
         self.runs.note_changed.connect(self.on_note_changed)
 
         self.runs.inventory.changed.connect(self.refresh_readiness)
+        self.runs.devices_chosen.connect(self.refresh_readiness)
         self.runs.save_changed.connect(self.on_save_changed)
         self.inputs.subscribe(self.on_input_changed)
         self.host.controls_changed.connect(self.render_controls)
@@ -186,16 +189,22 @@ class AcquisitionPanel(Panel):
         self.state_changed.emit()
 
     def build_inputs(self, key: str) -> QWidget:
-        """The card for what ``key`` reads of earlier recordings, if any, above its program
-        inputs."""
+        """The cards for the devices ``key`` chooses and what it reads of earlier recordings, if
+        any, above its program inputs."""
         program = program_registry.get(key)
         if self.earlier_card is not None:
             self.earlier_card.detach()
+        if self.device_card is not None:
+            self.device_card.detach()
         page = QWidget(self)
         column = QVBoxLayout(page)
         column.setContentsMargins(0, 0, 0, 0)
         column.setSpacing(8)
         self.earlier_card = None
+        self.device_card = None
+        if program.chooses:
+            self.device_card = DeviceCard(self.runs, key, program.chooses, page)
+            column.addWidget(self.device_card)
         if program.reads:
             # The folder may have changed outside the app since it was last looked at.
             self.runs.refresh_earlier()

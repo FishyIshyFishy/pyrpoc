@@ -48,6 +48,11 @@ runs save is choosing the Experiment. With no folder set, nothing is saved. A
 note written before a run is saved with its recording. It is not a program
 input: no program reads it.
 
+A program that needs one of several devices of a kind, such as which of two
+galvos to scan with, **chooses** it: it names the device and its kind, and the
+user picks which one from the devices the microscope has. A run claims the
+chosen device, and its recording says which device each name was.
+
 A program can read the outputs of an earlier recording in the same folder. It
 names the type of output it needs, not the program that made it, so programs
 never depend on each other.
@@ -82,8 +87,8 @@ of the app meet.
 | Piece | What it is |
 |---|---|
 | **Device** | A piece of hardware the microscope has: its identity, its settings (a `DeviceConfig`, whose fields each carry a `Field`) and maybe a connection. |
-| **Program** | One kind of experiment: the devices it needs, the program inputs it reads, the outputs it fills, the earlier outputs it reads, the requests it accepts, and the runners that can start it. Its `run` does the work. |
-| **RunContext** | What a running program is handed: its input values, the current value of its live inputs, its requests, the earlier outputs it reads, its devices, its outputs, status and cancel. |
+| **Program** | One kind of experiment: the devices it needs, the devices it lets the user choose, the program inputs it reads, the outputs it fills, the earlier outputs it reads, the requests it accepts, and the runners that can start it. Its `run` does the work. |
+| **RunContext** | What a running program is handed: its input values, the current value of its live inputs, its requests, the earlier outputs it reads, its devices and the devices chosen for it, its outputs, status and cancel. |
 | **Runner** | A way to start a program, such as once, continuously, or armed until a pixel is picked. The program declares it. It may offer the user a `Control` through its `RunnerContext`. Core says only that a control exists: what it is, such as a button or a toggle, is its type, and the panel showing the program draws each by its type. A runner may watch program inputs. |
 
 A run is not a piece of core: it is the engine executing one recording.

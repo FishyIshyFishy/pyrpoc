@@ -83,8 +83,8 @@ class FocusRun:
 @program_registry.register("autofocus")
 class Autofocus(Program):
     display_name = "Autofocus"
-    group = "Confocal Fluorescence"
-    order = 13
+    group = "Developmental"
+    order = 200
     devices = [Galvo, DAQ, PriorStage]
     inputs = [
         *SCAN_GEOMETRY_INPUTS,

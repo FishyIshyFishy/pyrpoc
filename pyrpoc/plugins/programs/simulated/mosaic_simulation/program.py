@@ -46,7 +46,7 @@ def tile_frame(
 class MosaicSimulation(Program):
     display_name = "Mosaic"
     group = "Simulations"
-    order = 21
+    order = 910
     devices = []
     inputs = [
         X_PIXELS,

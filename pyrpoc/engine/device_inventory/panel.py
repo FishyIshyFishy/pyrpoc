@@ -11,6 +11,7 @@ from PyQt6.QtWidgets import (
     QComboBox,
     QHBoxLayout,
     QHeaderView,
+    QInputDialog,
     QMenu,
     QPushButton,
     QVBoxLayout,
@@ -132,9 +133,20 @@ class DevicesPanel(Panel):
                 menu.addAction("Connect", lambda: inventory.connect_device(device))
         elif device.owns_connection:
             add_action(menu, "Test Connection", lambda: inventory.test_device(device), idle)
+        menu.addAction("Rename…", lambda: self.rename(device))
         menu.addSeparator()
         add_action(menu, "Remove", lambda: inventory.remove(device), idle)
         return menu
+
+    def rename(self, device: Device) -> None:
+        label, accepted = QInputDialog.getText(
+            self,
+            "Rename device",
+            f"Name for this {device.display_name} (blank for the default):",
+            text=self.inventory.status[device].label,
+        )
+        if accepted:
+            self.inventory.rename(device, label)
 
     def configure(self, device: Device) -> None:
         ConfigureDialog(device, self.inventory, self).show()
