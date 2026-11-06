@@ -39,6 +39,7 @@ from pyrpoc.utils.widgets.source_picker import outputs_of_type
 
 from .activity import Activity
 from .canvas import UnitCanvas
+from .feedback import Feedback
 from .guidance import LoopStage, PanelState, duration, guidance, loop_stage
 from .loop_watch import LoopWatch
 from .picture import backdrop
@@ -47,6 +48,8 @@ from .units_table import UnitsTable
 
 # A loop logs many events a second; the panel redraws at most this often.
 REDRAW_MS = 250
+# How long the outcome of a change stays on the status line.
+NOTICE_MS = 6000
 
 
 def loop_of(library: Library, survey: SurveyOutput) -> LoopLogOutput | None:
@@ -84,6 +87,9 @@ class AutonomyPanel(DataPanel[SurveyOutput]):
         self.loop: LoopLogOutput | None = None
         self.loop_view: LoopView | None = None
         self.activity = Activity()
+        self.feedback = Feedback()
+        # What became of the last change sent, shown instead of the guidance while it is news.
+        self.notice: str | None = None
 
         root = QVBoxLayout(self.body)
         root.setContentsMargins(0, 0, 0, 0)
@@ -96,6 +102,10 @@ class AutonomyPanel(DataPanel[SurveyOutput]):
         self.redraw_soon.setSingleShot(True)
         self.redraw_soon.setInterval(REDRAW_MS)
         self.redraw_soon.timeout.connect(self.follow_loop)
+        self.notice_ends = QTimer(self)
+        self.notice_ends.setSingleShot(True)
+        self.notice_ends.setInterval(NOTICE_MS)
+        self.notice_ends.timeout.connect(self.end_notice)
         self.connect_signals()
         self.connect_source()
 
@@ -189,7 +199,7 @@ class AutonomyPanel(DataPanel[SurveyOutput]):
                 self.loop.unsubscribe(self.on_loop_changed)
             if loop is not None:
                 loop.subscribe(self.on_loop_changed)
-            self.loop, self.activity = loop, Activity()
+            self.loop, self.activity, self.feedback = loop, Activity(), Feedback()
         if survey is not None:
             self.show_backdrop(survey)
         self.loop_view = None if loop is None else loop.view()
@@ -202,6 +212,9 @@ class AutonomyPanel(DataPanel[SurveyOutput]):
         """How long the loop has run, and what it did since last shown."""
         new = loop.events_after(self.activity.taken)
         self.activity.take(new)
+        outcome = self.feedback.take(new)
+        if outcome is not None:
+            self.tell(outcome)
         if new or self.loop_watch.activity.count() == 0:
             self.loop_watch.show_activity(list(self.activity.lines))
         heading = {
@@ -238,7 +251,7 @@ class AutonomyPanel(DataPanel[SurveyOutput]):
         self.delete_button.setEnabled(self.editable and chosen is not None)
         paused = chosen is not None and chosen.state is UnitState.PAUSED
         self.loop_watch.set_site(None if chosen is None else chosen.number, paused, self.running)
-        self.status.setText(guidance(self.panel_state(len(units))))
+        self.status.setText(self.notice or guidance(self.panel_state(len(units))))
 
     def panel_state(self, sites: int) -> PanelState:
         survey = self.shown_output
@@ -259,21 +272,37 @@ class AutonomyPanel(DataPanel[SurveyOutput]):
     def chosen_unit(self) -> ShownUnit | None:
         return next((unit for unit in self.units() if unit.key == self.chosen), None)
 
-    def command(self, command: UnitCommand) -> None:
-        """Send ``command`` to the running loop."""
+    def command(self, command: UnitCommand, number: int | None) -> None:
+        """Send ``command``, for site ``number``, to the running loop, and say so."""
         if not self.requests.post(UNIT_COMMAND, command):
-            self.status.setText("No loop is running, so nothing was changed")
+            self.tell("No loop is running, so nothing was changed.")
+            return
+        # Kept until the loop says what became of it, which may take a scan's time.
+        self.notice = self.feedback.ask(command, number)
+        self.notice_ends.stop()
+        self.show_units()
+
+    def tell(self, text: str) -> None:
+        """Show ``text`` on the status line for a while."""
+        self.notice = text
+        self.notice_ends.start()
+        self.show_units()
+
+    def end_notice(self) -> None:
+        self.notice = None
+        self.show_units()
 
     def ask_visit_next(self) -> None:
-        if self.chosen is not None:
-            self.command(RunUnitNow(self.chosen))
+        unit = self.chosen_unit()
+        if unit is not None:
+            self.command(RunUnitNow(unit.key), unit.number)
 
     def toggle_pause(self) -> None:
         unit = self.chosen_unit()
         if unit is None:
             return
         paused = unit.state is UnitState.PAUSED
-        self.command(ResumeUnit(unit.key) if paused else PauseUnit(unit.key))
+        self.command(ResumeUnit(unit.key) if paused else PauseUnit(unit.key), unit.number)
 
     def on_draw_toggled(self, on: bool) -> None:
         if on:
@@ -286,7 +315,7 @@ class AutonomyPanel(DataPanel[SurveyOutput]):
         unit = Unit.new(outline, "")
         self.chosen = unit.key
         if self.running:
-            self.command(AddUnit(unit))
+            self.command(AddUnit(unit), None)
         else:
             self.inputs.set(UNITS.key, (*self.inputs.get(UNITS.key), unit))
 
@@ -299,21 +328,22 @@ class AutonomyPanel(DataPanel[SurveyOutput]):
     def change(self, key: str, edit: Callable[[Unit], Unit]) -> None:
         """Give the unit with ``key`` its edited outline or group."""
         if self.running:
-            unit = next(each for each in self.units() if each.key == key).unit
-            self.command(EditUnit(edit(unit)))
+            shown = next(each for each in self.units() if each.key == key)
+            self.command(EditUnit(edit(shown.unit)), shown.number)
             return
         units: tuple[Unit, ...] = self.inputs.get(UNITS.key)
         self.inputs.set(UNITS.key, tuple(edit(u) if u.key == key else u for u in units))
 
     def delete_chosen(self) -> None:
-        chosen, self.chosen = self.chosen, None
-        if chosen is None:
+        unit = self.chosen_unit()
+        if unit is None:
             return
+        self.chosen = None
         if self.running:
-            self.command(RemoveUnit(chosen))
+            self.command(RemoveUnit(unit.key), unit.number)
             return
         units: tuple[Unit, ...] = self.inputs.get(UNITS.key)
-        self.inputs.set(UNITS.key, tuple(unit for unit in units if unit.key != chosen))
+        self.inputs.set(UNITS.key, tuple(each for each in units if each.key != unit.key))
 
     def keyPressEvent(self, event: QKeyEvent | None) -> None:
         if event is not None and event.key() == Qt.Key.Key_Escape and self.draw_button.isChecked():
