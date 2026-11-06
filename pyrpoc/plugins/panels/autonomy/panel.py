@@ -65,8 +65,8 @@ def loop_of(library: Library, survey: SurveyOutput) -> LoopLogOutput | None:
 
 @data_panel_registry.register("autonomy")
 class AutonomyPanel(DataPanel[SurveyOutput]):
-    display_name = "Autonomy"
-    group = "Autonomous"
+    display_name = "Sites"
+    group = "Multisite"
     order = 40
     renders = SurveyOutput
 
@@ -98,13 +98,13 @@ class AutonomyPanel(DataPanel[SurveyOutput]):
 
     def build_tools(self) -> QHBoxLayout:
         row = QHBoxLayout()
-        self.draw_button = QPushButton("Draw unit", self.body)
+        self.draw_button = QPushButton("Draw site", self.body)
         self.draw_button.setCheckable(True)
         self.draw_button.setToolTip(
             "Click each corner; double-click, or click the first corner, to close it"
         )
         row.addWidget(self.draw_button)
-        self.delete_button = QPushButton("Delete", self.body)
+        self.delete_button = QPushButton("Remove", self.body)
         row.addWidget(self.delete_button)
         row.addStretch(1)
         return row
@@ -216,7 +216,7 @@ class AutonomyPanel(DataPanel[SurveyOutput]):
         self.delete_button.setEnabled(self.editable and chosen is not None)
         paused = chosen is not None and chosen.state is UnitState.PAUSED
         self.loop_watch.set_unit(chosen is not None, paused, self.running)
-        self.status.setText(f"{len(units)} units")
+        self.status.setText(f"{len(units)} sites")
 
     def choose(self, key: str | None) -> None:
         if key != self.chosen:
@@ -229,7 +229,7 @@ class AutonomyPanel(DataPanel[SurveyOutput]):
     def command(self, command: UnitCommand) -> None:
         """Send ``command`` to the running loop."""
         if not self.requests.post(UNIT_COMMAND, command):
-            self.status.setText("No running loop takes unit commands")
+            self.status.setText("No loop is running, so nothing was changed")
 
     def ask_run_now(self) -> None:
         if self.chosen is not None:

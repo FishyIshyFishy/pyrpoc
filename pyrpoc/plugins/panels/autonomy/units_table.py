@@ -5,11 +5,20 @@ from __future__ import annotations
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import QAbstractItemView, QHeaderView, QTableWidget, QTableWidgetItem, QWidget
 
+from pyrpoc.plugins.program_io.outputs import UnitState
 from pyrpoc.utils.widgets.table import horizontal_header, vertical_header
 
 from .shown import ShownUnit
 
-HEADINGS = ("Unit", "Group", "State", "Next")
+HEADINGS = ("Site", "Group", "Status", "Next visit")
+# What each state is called on screen.
+STATE_WORDS = {
+    UnitState.WAITING: "Waiting",
+    UnitState.PAUSED: "Paused",
+    UnitState.LOST: "Lost track",
+    UnitState.DONE: "Finished",
+    UnitState.REMOVED: "Removed",
+}
 
 
 def next_text(unit: ShownUnit, elapsed_s: float) -> str:
@@ -52,7 +61,7 @@ class UnitsTable(QTableWidget):
                 group = self.fixed(unit.group)
             self.setItem(row, 0, self.fixed(str(unit.number)))
             self.setItem(row, 1, group)
-            self.setItem(row, 2, self.fixed("" if unit.state is None else unit.state.value))
+            self.setItem(row, 2, self.fixed("" if unit.state is None else STATE_WORDS[unit.state]))
             self.setItem(row, 3, self.fixed(next_text(unit, elapsed_s)))
         self.clearSelection()
         if chosen in self.keys:

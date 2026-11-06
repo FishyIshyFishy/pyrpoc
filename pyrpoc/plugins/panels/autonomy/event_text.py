@@ -32,35 +32,35 @@ def event_text(event: LoopEvent, started_s: float) -> str:
 def what_happened(event: LoopEvent) -> str:
     match event:
         case LoopStarted():
-            return f"loop started: {', '.join(event.routines)}"
+            return "loop started"
         case LoopResumed():
             return "loop carried on"
         case UnitJoined():
-            return f"unit {event.unit} added"
+            return f"site {event.unit} added"
         case UnitEdited():
-            return f"unit {event.unit} edited"
+            return f"site {event.unit} changed"
         case UnitLeft():
-            return f"unit {event.unit} removed"
+            return f"site {event.unit} removed"
         case UnitPaused():
-            return f"unit {event.unit} paused"
+            return f"site {event.unit} paused"
         case UnitResumed():
-            return f"unit {event.unit} resumed"
+            return f"site {event.unit} resumed"
         case RunNowAsked():
-            return f"unit {event.unit} asked to run now"
+            return f"site {event.unit} to be visited next"
         case CommandRefused():
-            return f"{event.command} refused: {event.reason}"
+            return f"could not {event.command} a site: {event.reason}"
         case StepDue():
-            return f"unit {event.unit} {event.routine} due"
+            return f"site {event.unit} due"
         case UnitScanned():
-            found = "found" if event.found else "lost"
-            return f"unit {event.unit} scanned, {found}"
+            found = "found" if event.found else "lost track"
+            return f"site {event.unit} scanned, {found}"
         case Measured():
-            return f"unit {event.unit} {event.name} measured"
+            return f"site {event.unit} {event.name} measured"
         case FocusChecked():
-            return f"unit {event.unit} focus at {event.z_um:.1f} µm"
+            return f"site {event.unit} focus at {event.z_um:.1f} µm"
         case RoutineEnded():
-            return f"unit {event.unit} {event.routine} done"
+            return f"site {event.unit} {event.routine} finished"
         case RoutineFailed():
-            return f"unit {event.unit} {event.routine} failed: {event.message}"
+            return f"site {event.unit} {event.routine} failed: {event.message}"
         case LoopFinished():
             return "loop finished"

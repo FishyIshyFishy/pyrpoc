@@ -32,6 +32,12 @@ def measurements(view: LoopView) -> list[tuple[str, str]]:
     return list(seen)
 
 
+def measurement_labels(series: list[tuple[str, str]]) -> list[str]:
+    """Each measurement by its name, with its routine only where two routines share a name."""
+    names = [name for _routine, name in series]
+    return [name if names.count(name) == 1 else f"{name} ({routine})" for routine, name in series]
+
+
 def group_means(curves: list[Points], channel: int) -> tuple[np.ndarray, np.ndarray]:
     """A group's mean curve: points binned in time one period wide, each unit averaged
     within a bin, then the units averaged, at the bin's mean time in minutes."""
@@ -65,8 +71,8 @@ def set_items(combo: QComboBox, labels: list[str]) -> None:
 
 @data_panel_registry.register("curves")
 class CurvesPanel(DataPanel[LoopLogOutput]):
-    display_name = "Curves"
-    group = "Autonomous"
+    display_name = "Site Curves"
+    group = "Multisite"
     order = 41
     renders = LoopLogOutput
 
@@ -97,7 +103,7 @@ class CurvesPanel(DataPanel[LoopLogOutput]):
     def draw(self, program_output: LoopLogOutput) -> None:
         self.view = program_output.view()
         self.series = measurements(self.view)
-        set_items(self.measurement, [f"{routine}: {name}" for routine, name in self.series])
+        set_items(self.measurement, measurement_labels(self.series))
         set_items(self.channel, list(self.view.channels))
         self.redraw()
 
@@ -124,7 +130,7 @@ class CurvesPanel(DataPanel[LoopLogOutput]):
             minutes = [t / 60.0 for t, _v in points]
             self.plot.plot(minutes, [v[channel] for _t, v in points], pen=faint)
         times, means = group_means(curves, channel)
-        label = f"{group or 'ungrouped'} ({len(curves)})"
+        label = f"{group or 'no group'} ({len(curves)})"
         self.plot.plot(times, means, pen=pg.mkPen(colour, width=2.5), name=label)
 
     def clear(self) -> None:

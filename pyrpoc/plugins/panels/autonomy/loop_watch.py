@@ -24,8 +24,8 @@ class LoopWatch(QWidget):
         self.heading = QLabel("", self)
         layout.addWidget(self.heading)
         buttons = QHBoxLayout()
-        self.run_button = QPushButton("Run now", self)
-        self.run_button.setToolTip("Scan the chosen unit next, ahead of everything due")
+        self.run_button = QPushButton("Visit next", self)
+        self.run_button.setToolTip("Visit the chosen site next, ahead of the others")
         self.run_button.clicked.connect(self.run_now.emit)
         self.pause_button = QPushButton("Pause", self)
         self.pause_button.clicked.connect(self.pause.emit)
@@ -35,18 +35,18 @@ class LoopWatch(QWidget):
         layout.addWidget(QLabel("Queue, overdue first", self))
         self.queue = QListWidget(self)
         layout.addWidget(self.queue, 1)
-        layout.addWidget(QLabel("Recent", self))
+        layout.addWidget(QLabel("Activity", self))
         self.events = QListWidget(self)
         layout.addWidget(self.events, 1)
 
     def show_view(self, view: LoopView, running: bool) -> None:
         verb = "running" if running else "finished"
-        self.heading.setText(f"Loop {verb}, {view.elapsed_s / 60.0:.1f} min")
+        self.heading.setText(f"Loop {verb} for {view.elapsed_s / 60.0:.0f} min")
         self.queue.clear()
         for entry in view.queue:
             wait = entry.due_s - view.elapsed_s
             when = f"{-wait:.0f} s overdue" if wait < 0 else f"in {wait:.0f} s"
-            self.queue.addItem(f"unit {entry.unit} · {entry.routine} · {when}")
+            self.queue.addItem(f"site {entry.unit} · {when}")
         self.events.clear()
         self.events.addItems([event_text(event, view.started_s) for event in view.recent])
 
