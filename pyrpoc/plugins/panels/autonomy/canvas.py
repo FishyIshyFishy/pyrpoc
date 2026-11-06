@@ -15,9 +15,10 @@ import pyqtgraph as pg
 from PyQt6.QtCore import QPointF, QRectF, Qt, pyqtSignal
 from PyQt6.QtWidgets import QWidget
 
-from pyrpoc.plugins.program_io.inputs import Unit
 from pyrpoc.utils.widgets.colors import color_for_index
 from pyrpoc.utils.widgets.colour_image import ColourImage
+
+from .shown import ShownUnit
 
 # A click this close to the first corner, in screen pixels, closes the outline.
 CLOSE_PX = 10
@@ -33,14 +34,15 @@ class UnitCanvas(ColourImage):
     itself."""
 
     drawn = pyqtSignal(object)  # the new outline, a tuple of (x, y) in µm
-    reshaped = pyqtSignal(int, object)  # a unit's id and its new outline
-    selected = pyqtSignal(object)  # a unit's id, or None
+    reshaped = pyqtSignal(str, object)  # a unit's key and its new outline
+    selected = pyqtSignal(object)  # a unit's key, or None
 
     def __init__(self, parent: QWidget):
         super().__init__(parent)
-        self.units: tuple[Unit, ...] = ()
-        self.chosen: int | None = None
-        self.rois: dict[int, pg.PolyLineROI] = {}
+        self.units: tuple[ShownUnit, ...] = ()
+        self.chosen: str | None = None
+        self.editable = False
+        self.rois: dict[str, pg.PolyLineROI] = {}
         self.labels: list[pg.TextItem] = []
         self.drawing = False
         self.corners: list[tuple[float, float]] = []
@@ -48,7 +50,6 @@ class UnitCanvas(ColourImage):
             pen=pg.mkPen((255, 220, 0), width=2), symbol="o", symbolSize=5
         )
         self.addItem(self.sketch)
-        self.tracked: list[pg.PlotDataItem] = []
         scene = self.sceneObj
         if scene is None:
             raise RuntimeError("a new PlotWidget has no scene")
@@ -58,11 +59,11 @@ class UnitCanvas(ColourImage):
         self.show_rgb(rgb)
         self.place(rect)
 
-    def show_units(self, units: tuple[Unit, ...], chosen: int | None) -> None:
+    def show_units(self, units: tuple[ShownUnit, ...], chosen: str | None, editable: bool) -> None:
         """Draw ``units``, rebuilding only when they changed, so a drag in progress is kept."""
-        if units == self.units and chosen == self.chosen:
+        if (units, chosen, editable) == (self.units, self.chosen, self.editable):
             return
-        self.units, self.chosen = units, chosen
+        self.units, self.chosen, self.editable = units, chosen, editable
         for roi in self.rois.values():
             self.removeItem(roi)
         for label in self.labels:
@@ -70,28 +71,29 @@ class UnitCanvas(ColourImage):
         self.rois, self.labels = {}, []
         groups = sorted({unit.group for unit in units if unit.group})
         for unit in units:
-            self.add_unit(unit, group_colour(unit.group, groups), unit.id == chosen)
+            self.add_unit(unit, group_colour(unit.group, groups), unit.key == chosen)
 
-    def add_unit(self, unit: Unit, colour: tuple[int, int, int], chosen: bool) -> None:
+    def add_unit(self, unit: ShownUnit, colour: tuple[int, int, int], chosen: bool) -> None:
         pen = pg.mkPen(colour, width=3 if chosen else 1.5)
-        roi = pg.PolyLineROI(list(unit.outline), closed=True, pen=pen, movable=chosen)
+        grabbable = chosen and self.editable
+        roi = pg.PolyLineROI(list(unit.outline), closed=True, pen=pen, movable=grabbable)
         # Corners can be dragged only on the chosen unit, so a stray drag never reshapes another.
         for handle in roi.getHandles():
-            handle.setVisible(chosen)
-        roi.sigRegionChangeFinished.connect(lambda r, uid=unit.id: self.on_reshaped(uid, r))
+            handle.setVisible(grabbable)
+        roi.sigRegionChangeFinished.connect(lambda r, key=unit.key: self.on_reshaped(key, r))
         self.addItem(roi)
-        self.rois[unit.id] = roi
-        label = pg.TextItem(str(unit.id), color=colour, anchor=(0.5, 0.5))
-        label.setPos(*unit.centre)
+        self.rois[unit.key] = roi
+        label = pg.TextItem(str(unit.number), color=colour, anchor=(0.5, 0.5))
+        label.setPos(*unit.unit.centre)
         self.addItem(label)
         self.labels.append(label)
 
-    def on_reshaped(self, unit_id: int, roi: pg.PolyLineROI) -> None:
+    def on_reshaped(self, key: str, roi: pg.PolyLineROI) -> None:
         outline = tuple(
             (float(point.x()), float(point.y()))
             for point in (roi.mapToParent(handle.pos()) for handle in roi.getHandles())
         )
-        self.reshaped.emit(unit_id, outline)
+        self.reshaped.emit(key, outline)
 
     def view_point(self, scene_position: QPointF) -> tuple[float, float]:
         point = self.getViewBox().mapSceneToView(scene_position)
@@ -106,26 +108,13 @@ class UnitCanvas(ColourImage):
         else:
             self.selected.emit(self.unit_at(point))
 
-    def unit_at(self, point: tuple[float, float]) -> int | None:
-        """The id of the unit whose outline holds ``point``, the last drawn first."""
+    def unit_at(self, point: tuple[float, float]) -> str | None:
+        """The key of the unit whose outline holds ``point``, the last drawn first."""
         for unit in reversed(self.units):
             contour = np.asarray(unit.outline, dtype=np.float32)
             if cv2.pointPolygonTest(contour, point, False) >= 0:
-                return unit.id
+                return unit.key
         return None
-
-    def show_tracked(self, outlines: list[tuple[tuple[float, float], ...]]) -> None:
-        """Where a running loop has tracked each unit to, dashed over the drawn outlines."""
-        for item in self.tracked:
-            self.removeItem(item)
-        pen = pg.mkPen((255, 220, 0), width=1.5, style=Qt.PenStyle.DashLine)
-        self.tracked = []
-        for outline in outlines:
-            xs = [x for x, _y in outline] + [outline[0][0]]
-            ys = [y for _x, y in outline] + [outline[0][1]]
-            item = pg.PlotDataItem(xs, ys, pen=pen)
-            self.addItem(item)
-            self.tracked.append(item)
 
     def start_drawing(self) -> None:
         self.drawing = True

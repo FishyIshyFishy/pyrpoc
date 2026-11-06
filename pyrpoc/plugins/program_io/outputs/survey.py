@@ -120,6 +120,11 @@ class SurveyOutput(MosaicOutput):
             raise ValueError(f"{self.name} was not finished, so it found nothing to start from")
         return self.finding
 
+    def has_overview(self) -> bool:
+        """Whether the survey has finished and so holds its overview."""
+        with self.lock:
+            return self.overview_planes is not None
+
     def overview(self) -> tuple[np.ndarray, Placement]:
         """The overview and where it lies, which a finished survey always holds."""
         with self.lock:

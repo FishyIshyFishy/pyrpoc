@@ -8,6 +8,8 @@ from PyQt6.QtWidgets import QHBoxLayout, QLabel, QListWidget, QPushButton, QVBox
 
 from pyrpoc.plugins.program_io.outputs import LoopView
 
+from .event_text import event_text
+
 
 class LoopWatch(QWidget):
     """Shows a loop's queue and events, and asks for a unit to run now or to pause."""
@@ -46,10 +48,10 @@ class LoopWatch(QWidget):
             when = f"{-wait:.0f} s overdue" if wait < 0 else f"in {wait:.0f} s"
             self.queue.addItem(f"unit {entry.unit} · {entry.routine} · {when}")
         self.events.clear()
-        self.events.addItems(list(view.recent))
+        self.events.addItems([event_text(event, view.started_s) for event in view.recent])
 
-    def set_unit(self, chosen: bool, paused: bool, running: bool, run_now_taken: bool) -> None:
+    def set_unit(self, chosen: bool, paused: bool, running: bool) -> None:
         """Enable the buttons for a chosen unit of a running loop."""
-        self.run_button.setEnabled(running and chosen and not paused and run_now_taken)
+        self.run_button.setEnabled(running and chosen and not paused)
         self.pause_button.setEnabled(running and chosen)
         self.pause_button.setText("Resume" if paused else "Pause")
