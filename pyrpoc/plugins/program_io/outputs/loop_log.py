@@ -38,6 +38,11 @@ class LoopLogOutput(ProgramOutput):
                 self.paths = {self.name: path}
         self.changed()
 
+    def events_after(self, count: int) -> list[LoopEvent]:
+        """The events logged after the first ``count``."""
+        with self.lock:
+            return self.events[count:]
+
     def view(self) -> LoopView:
         """What the log says the loop is doing as of its latest event."""
         with self.lock:

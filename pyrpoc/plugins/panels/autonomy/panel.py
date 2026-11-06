@@ -37,6 +37,7 @@ from pyrpoc.plugins.program_io.requests import (
 from pyrpoc.utils.widgets.data_panel import DataPanel, data_panel_registry
 from pyrpoc.utils.widgets.source_picker import outputs_of_type
 
+from .activity import Activity
 from .canvas import UnitCanvas
 from .loop_watch import LoopWatch
 from .picture import backdrop
@@ -81,6 +82,7 @@ class AutonomyPanel(DataPanel[SurveyOutput]):
         self.backdrop_of: SurveyOutput | None = None
         self.loop: LoopLogOutput | None = None
         self.loop_view: LoopView | None = None
+        self.activity = Activity()
 
         root = QVBoxLayout(self.body)
         root.setContentsMargins(0, 0, 0, 0)
@@ -136,7 +138,7 @@ class AutonomyPanel(DataPanel[SurveyOutput]):
         self.canvas.selected.connect(self.choose)
         self.table.chosen.connect(self.choose)
         self.table.regrouped.connect(self.on_regrouped)
-        self.loop_watch.run_now.connect(self.ask_run_now)
+        self.loop_watch.visit_next.connect(self.ask_visit_next)
         self.loop_watch.pause.connect(self.toggle_pause)
         self.outside_changed.connect(self.redraw_soon.start)
         self.inputs.subscribe(self.on_input_changed)
@@ -186,14 +188,24 @@ class AutonomyPanel(DataPanel[SurveyOutput]):
                 self.loop.unsubscribe(self.on_loop_changed)
             if loop is not None:
                 loop.subscribe(self.on_loop_changed)
-            self.loop = loop
+            self.loop, self.activity = loop, Activity()
         if survey is not None:
             self.show_backdrop(survey)
         self.loop_view = None if loop is None else loop.view()
-        self.loop_watch.setVisible(self.loop_view is not None)
-        if self.loop_view is not None:
-            self.loop_watch.show_view(self.loop_view, self.running)
+        self.loop_watch.setVisible(loop is not None)
+        if loop is not None:
+            self.show_loop(loop)
         self.show_units()
+
+    def show_loop(self, loop: LoopLogOutput) -> None:
+        """How long the loop has run, and what it did since last shown."""
+        new = loop.events_after(self.activity.taken)
+        self.activity.take(new)
+        if new or self.loop_watch.activity.count() == 0:
+            self.loop_watch.show_activity(list(self.activity.lines))
+        minutes = 0.0 if self.loop_view is None else self.loop_view.elapsed_s / 60.0
+        verb = "running for" if self.running else "finished after"
+        self.loop_watch.show_heading(f"Loop {verb} {minutes:.0f} min")
 
     def on_loop_changed(self, _output: ProgramOutput) -> None:
         # On the run's thread: hand over to the GUI thread.
@@ -215,7 +227,7 @@ class AutonomyPanel(DataPanel[SurveyOutput]):
             self.draw_button.setChecked(False)
         self.delete_button.setEnabled(self.editable and chosen is not None)
         paused = chosen is not None and chosen.state is UnitState.PAUSED
-        self.loop_watch.set_unit(chosen is not None, paused, self.running)
+        self.loop_watch.set_site(None if chosen is None else chosen.number, paused, self.running)
         self.status.setText(f"{len(units)} sites")
 
     def choose(self, key: str | None) -> None:
@@ -231,7 +243,7 @@ class AutonomyPanel(DataPanel[SurveyOutput]):
         if not self.requests.post(UNIT_COMMAND, command):
             self.status.setText("No loop is running, so nothing was changed")
 
-    def ask_run_now(self) -> None:
+    def ask_visit_next(self) -> None:
         if self.chosen is not None:
             self.command(RunUnitNow(self.chosen))
 

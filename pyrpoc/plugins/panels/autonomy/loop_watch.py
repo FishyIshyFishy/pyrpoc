@@ -1,20 +1,17 @@
-"""``LoopWatch``: what a running loop is doing beside the units, its queue and its latest
-events, and the buttons that steer one unit."""
+"""``LoopWatch``: what a loop on the shown survey is doing, its latest activity, and the buttons
+that steer the chosen site."""
 
 from __future__ import annotations
 
 from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtWidgets import QHBoxLayout, QLabel, QListWidget, QPushButton, QVBoxLayout, QWidget
 
-from pyrpoc.plugins.program_io.outputs import LoopView
-
-from .event_text import event_text
-
 
 class LoopWatch(QWidget):
-    """Shows a loop's queue and events, and asks for a unit to run now or to pause."""
+    """Shows how long a loop has run and what it did, and asks for the chosen site to be
+    visited next or paused."""
 
-    run_now = pyqtSignal()
+    visit_next = pyqtSignal()
     pause = pyqtSignal()
 
     def __init__(self, parent: QWidget):
@@ -22,36 +19,41 @@ class LoopWatch(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         self.heading = QLabel("", self)
+        self.heading.setWordWrap(True)
         layout.addWidget(self.heading)
-        buttons = QHBoxLayout()
-        self.run_button = QPushButton("Visit next", self)
-        self.run_button.setToolTip("Visit the chosen site next, ahead of the others")
-        self.run_button.clicked.connect(self.run_now.emit)
-        self.pause_button = QPushButton("Pause", self)
+        self.hint = QLabel(
+            "Click a site on the map or in the list to pause it or visit it next.", self
+        )
+        self.hint.setWordWrap(True)
+        layout.addWidget(self.hint)
+        self.buttons = QWidget(self)
+        row = QHBoxLayout(self.buttons)
+        row.setContentsMargins(0, 0, 0, 0)
+        self.pause_button = QPushButton("Pause", self.buttons)
+        self.pause_button.setToolTip("Skip this site until it is resumed")
         self.pause_button.clicked.connect(self.pause.emit)
-        buttons.addWidget(self.run_button)
-        buttons.addWidget(self.pause_button)
-        layout.addLayout(buttons)
-        layout.addWidget(QLabel("Queue, overdue first", self))
-        self.queue = QListWidget(self)
-        layout.addWidget(self.queue, 1)
+        self.visit_button = QPushButton("Visit next", self.buttons)
+        self.visit_button.setToolTip("Visit this site next, ahead of the others")
+        self.visit_button.clicked.connect(self.visit_next.emit)
+        row.addWidget(self.pause_button)
+        row.addWidget(self.visit_button)
+        layout.addWidget(self.buttons)
         layout.addWidget(QLabel("Activity", self))
-        self.events = QListWidget(self)
-        layout.addWidget(self.events, 1)
+        self.activity = QListWidget(self)
+        layout.addWidget(self.activity, 1)
 
-    def show_view(self, view: LoopView, running: bool) -> None:
-        verb = "running" if running else "finished"
-        self.heading.setText(f"Loop {verb} for {view.elapsed_s / 60.0:.0f} min")
-        self.queue.clear()
-        for entry in view.queue:
-            wait = entry.due_s - view.elapsed_s
-            when = f"{-wait:.0f} s overdue" if wait < 0 else f"in {wait:.0f} s"
-            self.queue.addItem(f"site {entry.unit} · {when}")
-        self.events.clear()
-        self.events.addItems([event_text(event, view.started_s) for event in view.recent])
+    def show_heading(self, text: str) -> None:
+        self.heading.setText(text)
 
-    def set_unit(self, chosen: bool, paused: bool, running: bool) -> None:
-        """Enable the buttons for a chosen unit of a running loop."""
-        self.run_button.setEnabled(running and chosen and not paused)
-        self.pause_button.setEnabled(running and chosen)
-        self.pause_button.setText("Resume" if paused else "Pause")
+    def show_activity(self, lines: list[str]) -> None:
+        self.activity.clear()
+        self.activity.addItems(lines)
+
+    def set_site(self, number: int | None, paused: bool, running: bool) -> None:
+        """Offer the buttons for the chosen site while the loop runs, or say how to choose one."""
+        self.hint.setVisible(running and number is None)
+        self.buttons.setVisible(running and number is not None)
+        if number is not None:
+            self.pause_button.setText(f"Resume site {number}" if paused else f"Pause site {number}")
+            self.visit_button.setText(f"Visit site {number} next")
+            self.visit_button.setEnabled(not paused)
