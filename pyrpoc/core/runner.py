@@ -23,8 +23,8 @@ class RunnerContext(ABC):
     def execute(self, repeat: bool) -> None:
         """Start a run of the program, which opens one recording. With ``repeat``, the run does
         the program's work again and again into that recording until it is stopped or wound
-        down; an edit to its settings starts a new part of the recording at the next pass.
-        Failures are reported, not raised."""
+        down; it also winds down by itself once anything it was started with changes, so
+        edits reach a new recording. Failures are reported, not raised."""
 
     @abstractmethod
     def on_run_started(self, callback: Callable[[], None]) -> None:

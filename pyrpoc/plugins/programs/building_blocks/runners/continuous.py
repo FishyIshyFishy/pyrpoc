@@ -10,9 +10,9 @@ from pyrpoc.utils.controls import Toggle
 
 @dataclass(frozen=True)
 class Continuous(Runner):
-    """One run that repeats the program's work into one recording until the toggle goes up, or
-    the run is stopped, fails or is refused. An edit to what it runs with starts a new part of
-    that recording at its next pass."""
+    """One run that repeats the program's work into one recording until the toggle goes up, a
+    run is stopped or fails, or one is refused. An edit to what it runs with ends that run, and
+    the next starts a new recording."""
 
     def attach(self, ctx: RunnerContext) -> None:
         started = False
@@ -35,8 +35,12 @@ class Continuous(Runner):
             nonlocal started
             started = True
 
-        def on_run_ended(_completed: bool) -> None:
-            toggle.set(False)
+        def on_run_ended(completed: bool) -> None:
+            # A run that ended while the toggle is still down was wound down by an edit.
+            if toggle.checked and completed:
+                begin()
+            else:
+                toggle.set(False)
 
         toggle = Toggle("Continuous", on_change, icon="continuous", tooltip="Run until stopped")
         ctx.on_run_started(on_run_started)

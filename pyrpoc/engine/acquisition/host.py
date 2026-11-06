@@ -28,6 +28,10 @@ class RunnerSession(RunnerContext):
         self.input_watchers: list[Callable[[str], None]] = []
         self.runs: list[Run] = []
         self.failed: set[Run] = set()
+        # The inputs whose edit ends a repeating run, so the next one records the new value;
+        # a live input reaches the running one instead.
+        live = {each.key for each in program.live}
+        self.restarting_keys = {each.key for each in program.inputs} - live
         self.closed = False
 
     @property
@@ -45,6 +49,13 @@ class RunnerSession(RunnerContext):
         for run in self.runs:
             run.wind_down()
 
+    def setup_changed(self) -> None:
+        """Something its repeating runs started with changed: end them after their current
+        work, so their runners start new ones, and so new recordings, with it."""
+        for run in self.runs:
+            if run.repeat:
+                run.wind_down()
+
     def on_run_ended(self, callback: Callable[[bool], None]) -> None:
         self.ended.append(callback)
 
@@ -59,6 +70,8 @@ class RunnerSession(RunnerContext):
         """Tell this context's runners that the program input ``key`` changed."""
         if self.closed:
             return
+        if key in self.restarting_keys:
+            self.setup_changed()
         for callback in list(self.input_watchers):
             callback(key)
 
@@ -102,6 +115,9 @@ class RunnerHost(QObject):
         runs.events.run_failed.connect(self.note_failure)
         runs.events.run_finished.connect(self.forget)
         inputs.subscribe(self.on_input_changed)
+        # Where a run saves and the devices' configuration are recorded too.
+        runs.save_changed.connect(self.on_setup_changed)
+        runs.inventory.edited.connect(self.on_setup_changed)
 
     @property
     def controls(self) -> list[Control]:
@@ -155,3 +171,7 @@ class RunnerHost(QObject):
     def on_input_changed(self, key: str) -> None:
         if self.slot is not None:
             self.slot.input_changed(key)
+
+    def on_setup_changed(self) -> None:
+        if self.slot is not None:
+            self.slot.setup_changed()

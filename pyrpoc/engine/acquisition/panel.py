@@ -75,9 +75,6 @@ class AcquisitionPanel(Panel):
         self.earlier_card: EarlierCard | None = None
         # Each rendered control, its button, and the watcher keeping them in line.
         self.control_views: list[ControlView] = []
-        # How the last run ended, so its ending can say so: Stop pressed, or the error it raised.
-        self.stop_pressed = False
-        self.last_error: str | None = None
 
         root = QVBoxLayout(self)
         root.setContentsMargins(8, 8, 8, 8)
@@ -120,8 +117,8 @@ class AcquisitionPanel(Panel):
         self.controls_strip = QHBoxLayout()
         self.controls_strip.setContentsMargins(0, 0, 0, 0)
         row.addLayout(self.controls_strip)
-        self.stop_btn = QPushButton("Stop", self)
-        self.stop_btn.setToolTip("Stop the running acquisition")
+        self.stop_btn = QPushButton(self)
+        self.stop_btn.setToolTip("Stop")
         self.stop_btn.setIcon(asset_icon("stop"))
         row.addWidget(self.stop_btn)
         row.addStretch(1)
@@ -151,7 +148,7 @@ class AcquisitionPanel(Panel):
 
     def connect_signals(self) -> None:
         self.program_combo.currentIndexChanged.connect(self.on_program_chosen)
-        self.stop_btn.clicked.connect(self.stop)
+        self.stop_btn.clicked.connect(self.host.stop)
         self.save_check.toggled.connect(lambda checked: self.runs.set_save(enabled=checked))
         self.path_field.name_edited.connect(lambda text: self.runs.set_save(name=text))
         self.path_field.folder_clicked.connect(self.choose_directory)
@@ -306,12 +303,7 @@ class AcquisitionPanel(Panel):
             f"Note for the next run:\n{note}" if note else "Add a note for the next run"
         )
 
-    def stop(self) -> None:
-        self.stop_pressed = True
-        self.host.stop()
-
     def on_run_started(self) -> None:
-        self.stop_pressed, self.last_error = False, None
         self.show_status("acquiring")
         self.set_running_ui(True)
 
@@ -321,18 +313,9 @@ class AcquisitionPanel(Panel):
         # A runner may already have started the next run from this same finish.
         if not running:
             self.refresh_readiness(announce=False)
-            self.show_ending()
-
-    def show_ending(self) -> None:
-        """Say how the run ended. After an error, what the next run needs comes first, since
-        the error was already shown in its own box."""
-        if self.last_error is None:
-            self.show_status("stopped" if self.stop_pressed else "finished")
-        elif not self.blockers():
-            self.show_status(f"error - {self.last_error}")
+            self.show_status("stopped")
 
     def on_run_failed(self, message: str) -> None:
-        self.last_error = message
         self.show_status(f"error - {message}")
         self.set_running_ui(self.host.running)
         QMessageBox.critical(self, "Acquisition Error", message)
@@ -340,10 +323,6 @@ class AcquisitionPanel(Panel):
     def set_running_ui(self, running: bool) -> None:
         self.apply_enabled()
         self.stop_btn.setEnabled(running)
-        # A recording cannot move partway through, so where runs save is fixed while one goes.
-        save_fixed = bool(self.runs.live_runs)
-        self.save_check.setEnabled(not save_fixed)
-        self.path_field.setEnabled(not save_fixed)
 
     def export_persistence_state(self) -> dict[str, Any]:
         return {"program": self.selected_program}

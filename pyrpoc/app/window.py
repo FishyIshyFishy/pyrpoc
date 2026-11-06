@@ -141,8 +141,6 @@ class MainWindow(QWidget):
             self.dock_by_key[spec.key] = dock
             if first is None:
                 first = dock
-        # Every job starts here; the tab added last would otherwise be the one shown.
-        self.dock_by_key[DockKey.ACQUISITION].setAsCurrentTab()
 
     def add_dock(
         self,
@@ -236,7 +234,7 @@ class MainWindow(QWidget):
         dock = qtads.CDockWidget(self.panel_title(panel))
         dock.setObjectName(self.panel_object_name(panel))
         dock.setWidget(panel)
-        self.dock_beside_displays(dock)
+        self.dock_manager.addDockWidgetFloating(dock)
         self.panel_docks[panel] = dock
 
         action = QAction(self.panel_title(panel), self)
@@ -245,21 +243,6 @@ class MainWindow(QWidget):
         action.toggled.connect(lambda checked, p=panel: self.on_panel_toggled(p, checked))
         self.panel_actions[panel] = action
         dock.closed.connect(lambda *_args, p=panel: self.discard_panel(p))
-
-    def dock_beside_displays(self, dock: qtads.CDockWidget) -> None:
-        """Add ``dock`` as a tab beside the added panels still in the window, or to the right
-        of the fixed panels when there are none."""
-        # Inside the window rather than floating: a loose window covers the panels it is opened
-        # to sit beside. It can still be dragged out.
-        docked = [each for each in self.panel_docks.values() if not each.isFloating()]
-        area = docked[-1].dockAreaWidget() if docked else None
-        if area is None:
-            added = self.dock_manager.addDockWidget(qtads.DockWidgetArea.RightDockWidgetArea, dock)
-            # Displays are what a user looks at, so they get a little more than half the width.
-            width = self.dock_manager.width()
-            self.dock_manager.setSplitterSizes(added, [width * 9 // 20, width * 11 // 20])
-        else:
-            self.dock_manager.addDockWidgetTabToArea(dock, area)
 
     def remove_panel_dock(self, panel: DataPanel) -> None:
         dock = self.panel_docks.pop(panel)

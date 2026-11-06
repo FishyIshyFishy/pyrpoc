@@ -7,7 +7,6 @@ import threading
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from typing import Any, Protocol, TypeVar
 
-from pyrpoc.core.check import Check
 from pyrpoc.core.device import Device
 from pyrpoc.core.program_input import ProgramInput, ProgramInputValues
 from pyrpoc.core.program_output import ProgramOutput
@@ -86,9 +85,6 @@ class Program:
     # The ways this program can be started, in the order their controls are drawn.
     runners: list[Runner] = []
 
-    # Conditions of its own for starting, judged with the rest of what a run needs.
-    checks: list[Check] = []
-
     def __init_subclass__(cls, **kwargs: Any) -> None:
         super().__init_subclass__(**kwargs)
         # A card showing an input the program does not read would edit a value no run gets.
@@ -102,15 +98,17 @@ class Program:
         raise NotImplementedError
 
 
-class RunInbox(Protocol):
-    """What has been posted to one run and not yet taken, safe to take from the run's thread:
-    the changes to its live inputs, and the requests posted to it."""
+class LiveValues(Protocol):
+    """The current values of one run's live inputs, safe to read from the run's thread."""
 
-    def live_keys(self) -> frozenset[str]: ...
+    def keys(self) -> frozenset[str]: ...
 
-    def current(self, key: str) -> Any:
-        """A live input's value now, taking a change posted since it was last asked for."""
-        ...
+    def current(self, key: str) -> Any: ...
+
+
+class PostedRequests(Protocol):
+    """The requests posted to one run and not yet taken, safe to take from the run's
+    thread."""
 
     def accepts(self) -> frozenset[Request[Any]]: ...
 
@@ -120,16 +118,16 @@ class RunInbox(Protocol):
 
 
 class RunContext:
-    """What a running program is handed for one part of its recording: its input values as
-    they were when the part began, its inbox, which gives the current values of its live inputs
-    and the requests posted to it, the earlier outputs it reads, its devices, the part's
-    outputs, status and cancel."""
+    """What a running program is handed: its input values as they were when it started, the
+    current values of its live inputs, the requests posted to it, the earlier outputs it reads,
+    its devices, its outputs, status and cancel."""
 
     def __init__(
         self,
         *,
         inputs: ProgramInputValues,
-        inbox: RunInbox,
+        live: LiveValues,
+        requests: PostedRequests,
         earlier: Mapping[str, ProgramOutput],
         devices: Mapping[type[Device], Device],
         outputs: dict[str, ProgramOutput],
@@ -137,7 +135,8 @@ class RunContext:
         on_status: Callable[[str], None],
     ):
         self.inputs = inputs
-        self._inbox = inbox
+        self._live = live
+        self._requests = requests
         self._earlier = dict(earlier)
         self.devices = DeviceMap(devices)
         self.outputs = outputs
@@ -147,22 +146,22 @@ class RunContext:
     def current(self, program_input: ProgramInput[T]) -> T:
         """The value of a live input now, which may have changed since the run started."""
         # Read between a program's own steps, so a value never changes under it mid-step.
-        if program_input.key not in self._inbox.live_keys():
+        if program_input.key not in self._live.keys():
             raise KeyError(
                 f"{program_input.key!r} is not declared in live; this program declares "
-                f"{sorted(self._inbox.live_keys())}"
+                f"{sorted(self._live.keys())}"
             )
-        return self._inbox.current(program_input.key)
+        return self._live.current(program_input.key)
 
     def requests(self, request: Request[T]) -> list[T]:
         """The values posted with ``request`` since the run last asked, oldest first; each is
         given once."""
-        if request not in self._inbox.accepts():
+        if request not in self._requests.accepts():
             raise KeyError(
                 f"{request.key!r} is not declared in requests; this program declares "
-                f"{sorted(each.key for each in self._inbox.accepts())}"
+                f"{sorted(each.key for each in self._requests.accepts())}"
             )
-        return self._inbox.take(request)
+        return self._requests.take(request)
 
     def earlier(self, name: str, output_type: type[OutputT]) -> OutputT:
         """The earlier output chosen for ``name``, which ``reads`` declares as

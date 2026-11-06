@@ -66,11 +66,12 @@ def build_control_view(control: Control, parent: QWidget) -> ControlView:
 
 
 def push_button(label: str, icon: str | None, parent: QWidget) -> QPushButton:
-    """A button showing ``label``, after ``icon`` if it has one."""
-    # The words too, not the icon alone: these are the main actions of the panel showing them.
-    button = QPushButton(label, parent)
+    """A button showing ``icon``, or ``label`` when it has none."""
+    button = QPushButton(parent)
     if icon is not None:
         button.setIcon(asset_icon(icon))
+    else:
+        button.setText(label)
     return button
 
 

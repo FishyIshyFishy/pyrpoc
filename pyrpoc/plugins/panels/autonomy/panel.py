@@ -1,133 +1,83 @@
 """Units drawn over a survey's overview: draw, move, reshape, group and delete them, and while
-a loop runs on them, watch and steer it."""
+a loop runs on them, watch and steer it. Units are the ``UNITS`` program input, kept in
+``units.json`` in the survey's folder."""
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from dataclasses import replace
+from pathlib import Path
 
 import pyqtgraph as pg
-from PyQt6.QtCore import Qt, QTimer, pyqtSignal
+from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QKeyEvent
-from PyQt6.QtWidgets import (
-    QHBoxLayout,
-    QLabel,
-    QMessageBox,
-    QPushButton,
-    QSplitter,
-    QVBoxLayout,
-    QWidget,
-)
+from PyQt6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QSplitter, QVBoxLayout, QWidget
 
 from pyrpoc.core.library import Library
-from pyrpoc.core.program_input import ProgramInputs
-from pyrpoc.core.program_output import ProgramOutput
+from pyrpoc.core.program_input import ParameterError, ProgramInputs
 from pyrpoc.core.requests import Requests
-from pyrpoc.plugins.program_io.inputs import UNITS
+from pyrpoc.plugins.program_io.inputs import PAUSED_UNITS, UNITS, Unit
 from pyrpoc.plugins.program_io.outputs import (
     LoopLogOutput,
     LoopView,
-    Outline,
+    PlacedImageOutput,
     SurveyOutput,
-    Unit,
-    UnitState,
 )
-from pyrpoc.plugins.program_io.requests import (
-    UNIT_COMMAND,
-    AddUnit,
-    EditUnit,
-    PauseUnit,
-    RemoveUnit,
-    ResumeUnit,
-    RunUnitNow,
-    UnitCommand,
-)
+from pyrpoc.plugins.program_io.requests import RUN_NOW
 from pyrpoc.utils.widgets.data_panel import DataPanel, data_panel_registry
-from pyrpoc.utils.widgets.source_picker import outputs_of_type
 
-from .activity import Activity
 from .canvas import UnitCanvas
-from .feedback import Feedback
-from .guidance import LoopStage, PanelState, duration, guidance, loop_stage
 from .loop_watch import LoopWatch
 from .picture import backdrop
-from .shown import ShownUnit, drawn, in_loop
+from .units_file import read_units, write_units
 from .units_table import UnitsTable
 
-# A loop logs many events a second; the panel redraws at most this often.
-REDRAW_MS = 250
-# How long the outcome of a change stays on the status line.
-NOTICE_MS = 6000
-
-
-def loop_of(library: Library, survey: SurveyOutput) -> LoopLogOutput | None:
-    """The log of the newest open loop that read ``survey``."""
-    location = survey.recording.location
-    if location is None:
-        return None
-    return next(
-        (
-            log
-            for log in outputs_of_type(library, LoopLogOutput)
-            if log.recording.folder == location.parent
-            and any(read.recording == location.name for read in log.recording.reads.values())
-        ),
-        None,
-    )
+# How often the newest loop's log is looked at again: the loop is not this panel's output, so
+# nothing tells the panel when it changes.
+WATCH_MS = 500
 
 
 @data_panel_registry.register("autonomy")
 class AutonomyPanel(DataPanel[SurveyOutput]):
-    display_name = "Sites"
-    group = "Multisite"
+    display_name = "Autonomy"
+    group = "Autonomous"
     order = 40
     renders = SurveyOutput
-
-    # The library or the followed loop changed, on whatever thread changed it.
-    outside_changed = pyqtSignal()
 
     def __init__(self, library: Library, inputs: ProgramInputs, requests: Requests):
         super().__init__(library, inputs, requests)
         pg.setConfigOptions(imageAxisOrder="row-major")
-        self.chosen: str | None = None
+        self.folder: Path | None = None
+        self.chosen: int | None = None
         # What is drawn, so a redraw with nothing new does no work.
-        self.backdrop_of: SurveyOutput | None = None
+        self.backdrop_of: tuple[PlacedImageOutput, int] | None = None
+        self.watched: tuple[LoopLogOutput, int, bool] | None = None
         self.loop: LoopLogOutput | None = None
         self.loop_view: LoopView | None = None
-        self.activity = Activity()
-        self.feedback = Feedback()
-        # What became of the last change sent, shown instead of the guidance while it is news.
-        self.notice: str | None = None
 
         root = QVBoxLayout(self.body)
         root.setContentsMargins(0, 0, 0, 0)
         root.addLayout(self.build_tools())
-        # Under the tools rather than at the foot: it says what to do next, so it is read first,
-        # and a short panel that scrolls never hides it.
+        root.addWidget(self.build_splitter(), 1)
         self.status = QLabel("", self.body)
         self.status.setWordWrap(True)
         root.addWidget(self.status)
-        root.addWidget(self.build_splitter(), 1)
-        self.redraw_soon = QTimer(self)
-        self.redraw_soon.setSingleShot(True)
-        self.redraw_soon.setInterval(REDRAW_MS)
-        self.redraw_soon.timeout.connect(self.follow_loop)
-        self.notice_ends = QTimer(self)
-        self.notice_ends.setSingleShot(True)
-        self.notice_ends.setInterval(NOTICE_MS)
-        self.notice_ends.timeout.connect(self.end_notice)
         self.connect_signals()
+        self.watch = QTimer(self)
+        self.watch.setInterval(WATCH_MS)
+        self.watch.timeout.connect(self.follow_loop)
+        self.watch.start()
         self.connect_source()
+        self.show_units()
 
     def build_tools(self) -> QHBoxLayout:
         row = QHBoxLayout()
-        self.draw_button = QPushButton("Draw site", self.body)
+        self.draw_button = QPushButton("Draw unit", self.body)
         self.draw_button.setCheckable(True)
         self.draw_button.setToolTip(
             "Click each corner; double-click, or click the first corner, to close it"
         )
         row.addWidget(self.draw_button)
-        self.delete_button = QPushButton("Remove", self.body)
+        self.delete_button = QPushButton("Delete", self.body)
         row.addWidget(self.delete_button)
         row.addStretch(1)
         return row
@@ -159,217 +109,151 @@ class AutonomyPanel(DataPanel[SurveyOutput]):
         self.canvas.selected.connect(self.choose)
         self.table.chosen.connect(self.choose)
         self.table.regrouped.connect(self.on_regrouped)
-        self.loop_watch.visit_next.connect(self.ask_visit_next)
+        self.loop_watch.run_now.connect(self.ask_run_now)
         self.loop_watch.pause.connect(self.toggle_pause)
-        self.outside_changed.connect(self.redraw_soon.start)
         self.inputs.subscribe(self.on_input_changed)
-        self.library.subscribe(self.on_collection_changed)
-        # A run ending changes only what is accepted, so this is where the panel learns that its
-        # loop stopped.
-        self.requests.subscribe(self.on_collection_changed)
+        self.requests.subscribe(self.show_units)
 
     @property
-    def running(self) -> bool:
-        """Whether a loop is running on this survey, so changes go to it as commands."""
-        return self.loop is not None and not self.loop.recording.finished
-
-    @property
-    def editable(self) -> bool:
-        """Units can be changed before any loop, or while one runs; once one has stopped, they
-        are its record."""
-        return self.loop is None or self.running
-
-    def units(self) -> tuple[ShownUnit, ...]:
-        if self.loop_view is not None:
-            return in_loop(self.loop_view.units)
-        return drawn(self.inputs.get(UNITS.key))
+    def units(self) -> tuple[Unit, ...]:
+        return self.inputs.get(UNITS.key)
 
     def draw(self, program_output: SurveyOutput) -> None:
         self.show_backdrop(program_output)
-        self.follow_loop()
+        folder = program_output.recording.folder
+        # Only on a new folder, so a redraw never undoes units changed since.
+        if folder != self.folder:
+            self.folder = folder
+            self.load_units()
 
     def show_backdrop(self, survey: SurveyOutput) -> None:
         """The survey's overview, once it has stitched one."""
-        if self.backdrop_of is survey or not survey.has_overview():
+        overviews = [
+            output
+            for output in survey.recording.outputs.values()
+            if isinstance(output, PlacedImageOutput)
+        ]
+        if not overviews or not len(overviews[0]):
             return
-        self.backdrop_of = survey
-        rgb, rect = backdrop(*survey.overview())
+        overview = overviews[0]
+        if self.backdrop_of == (overview, len(overview)):
+            return
+        self.backdrop_of = (overview, len(overview))
+        rgb, rect = backdrop(*overview.latest())
         self.canvas.show_backdrop(rgb, rect)
 
+    def load_units(self) -> None:
+        """Take the units kept in the survey's folder."""
+        if self.folder is None:
+            self.status.setText("This survey is not saved, so units drawn on it will not be kept")
+            return
+        try:
+            units = read_units(self.folder)
+        except (OSError, ValueError, KeyError, ParameterError) as exc:
+            self.status.setText(f"Could not read the units in this folder: {exc}")
+            return
+        self.inputs.set(UNITS.key, units)
+
+    def set_units(self, units: tuple[Unit, ...]) -> None:
+        """Make ``units`` the program input, and keep them in the survey's folder."""
+        self.inputs.set(UNITS.key, units)
+        if self.folder is not None:
+            write_units(self.folder, units)
+
     def on_input_changed(self, key: str) -> None:
-        if key == UNITS.key:
+        if key in (UNITS.key, PAUSED_UNITS.key):
             self.show_units()
-
-    def follow_loop(self) -> None:
-        """Follow the loop on the shown survey, if there is one, and show what it is doing."""
-        survey = self.shown_output
-        loop = None if survey is None else loop_of(self.library, survey)
-        if loop is not self.loop:
-            if self.loop is not None:
-                self.loop.unsubscribe(self.on_loop_changed)
-            if loop is not None:
-                loop.subscribe(self.on_loop_changed)
-            self.loop, self.activity, self.feedback = loop, Activity(), Feedback()
-        if survey is not None:
-            self.show_backdrop(survey)
-        self.loop_view = None if loop is None else loop.view()
-        self.loop_watch.setVisible(loop is not None)
-        if loop is not None:
-            self.show_loop(loop)
-        self.show_units()
-
-    def show_loop(self, loop: LoopLogOutput) -> None:
-        """How long the loop has run, and what it did since last shown."""
-        new = loop.events_after(self.activity.taken)
-        self.activity.take(new)
-        outcome = self.feedback.take(new)
-        if outcome is not None:
-            self.tell(outcome)
-        if new or self.loop_watch.activity.count() == 0:
-            self.loop_watch.show_activity(list(self.activity.lines))
-        heading = {
-            LoopStage.RUNNING: "Loop running, {} so far",
-            LoopStage.STOPPED_EARLY: "Loop stopped early, {} in",
-        }.get(self.stage(), "Loop finished, {} in all")
-        self.loop_watch.show_heading(heading.format(duration(self.minutes())))
-
-    def stage(self) -> LoopStage:
-        return loop_stage(self.loop_view, self.running)
-
-    def minutes(self) -> float:
-        return 0.0 if self.loop_view is None else self.loop_view.elapsed_s / 60.0
-
-    def on_loop_changed(self, _output: ProgramOutput) -> None:
-        # On the run's thread: hand over to the GUI thread.
-        self.outside_changed.emit()
-
-    def on_collection_changed(self) -> None:
-        # A part begins on the run's thread, so this too may not be the GUI thread.
-        self.outside_changed.emit()
 
     def show_units(self) -> None:
-        units = self.units()
-        chosen = next((unit for unit in units if unit.key == self.chosen), None)
-        self.chosen = None if chosen is None else chosen.key
-        # Next visits mean nothing once the loop is not running.
-        elapsed = None if self.loop_view is None or not self.running else self.loop_view.elapsed_s
-        self.canvas.show_units(units, self.chosen, self.editable)
-        self.table.show_units(units, self.chosen, self.editable, elapsed)
-        self.draw_button.setEnabled(self.editable)
-        if not self.editable:
-            self.draw_button.setChecked(False)
-        self.delete_button.setEnabled(self.editable and chosen is not None)
-        paused = chosen is not None and chosen.state is UnitState.PAUSED
-        self.loop_watch.set_site(None if chosen is None else chosen.number, paused, self.running)
-        self.status.setText(self.notice or guidance(self.panel_state(len(units))))
+        units = self.units
+        if self.chosen not in {unit.id for unit in units}:
+            self.chosen = None
+        view = self.loop_view
+        states = {} if view is None else {unit.id: unit for unit in view.units}
+        self.canvas.show_units(units, self.chosen)
+        self.table.show_units(units, self.chosen, states, 0.0 if view is None else view.elapsed_s)
+        self.delete_button.setEnabled(self.chosen is not None)
+        running = self.loop is not None and not self.loop.recording.finished
+        paused = self.chosen in self.inputs.get(PAUSED_UNITS.key)
+        accepted = RUN_NOW in self.requests.accepted()
+        self.loop_watch.set_unit(self.chosen is not None, paused, running, accepted)
+        if self.folder is not None:
+            self.status.setText(f"{len(units)} units, kept in this survey's folder")
 
-    def panel_state(self, sites: int) -> PanelState:
-        survey = self.shown_output
-        return PanelState(
-            has_survey=survey is not None,
-            has_map=survey is not None and survey.has_overview(),
-            drawing=self.draw_button.isChecked(),
-            sites=sites,
-            stage=self.stage(),
-            minutes=self.minutes(),
-        )
+    def follow_loop(self) -> None:
+        """Show what the newest loop is doing, while there is one."""
+        loops = [
+            output
+            for recording in self.library.recordings()
+            for output in recording.outputs.values()
+            if isinstance(output, LoopLogOutput)
+        ]
+        self.loop = loops[-1] if loops else None
+        if self.shown_output is not None:
+            self.show_backdrop(self.shown_output)
+        if self.loop is None:
+            self.forget_loop()
+            return
+        seen = (self.loop, len(self.loop.events), self.loop.recording.finished)
+        if seen == self.watched:
+            return
+        self.watched = seen
+        view = self.loop_view = self.loop.view()
+        self.loop_watch.setVisible(True)
+        self.loop_watch.show_view(view, not self.loop.recording.finished)
+        self.canvas.show_tracked([unit.outline for unit in view.units if unit.state != "done"])
+        self.show_units()
 
-    def choose(self, key: str | None) -> None:
-        if key != self.chosen:
-            self.chosen = key
+    def forget_loop(self) -> None:
+        if self.watched is None:
+            return
+        self.watched = self.loop_view = None
+        self.loop_watch.setVisible(False)
+        self.canvas.show_tracked([])
+        self.show_units()
+
+    def choose(self, unit_id: int | None) -> None:
+        if unit_id != self.chosen:
+            self.chosen = unit_id
             self.show_units()
 
-    def chosen_unit(self) -> ShownUnit | None:
-        return next((unit for unit in self.units() if unit.key == self.chosen), None)
-
-    def command(self, command: UnitCommand, number: int | None) -> None:
-        """Send ``command``, for site ``number``, to the running loop, and say so."""
-        if not self.requests.post(UNIT_COMMAND, command):
-            self.tell("No loop is running, so nothing was changed.")
-            return
-        # Kept until the loop says what became of it, which may take a scan's time.
-        self.notice = self.feedback.ask(command, number)
-        self.notice_ends.stop()
-        self.show_units()
-
-    def tell(self, text: str) -> None:
-        """Show ``text`` on the status line for a while."""
-        self.notice = text
-        self.notice_ends.start()
-        self.show_units()
-
-    def end_notice(self) -> None:
-        self.notice = None
-        self.show_units()
-
-    def ask_visit_next(self) -> None:
-        unit = self.chosen_unit()
-        if unit is not None:
-            self.command(RunUnitNow(unit.key), unit.number)
+    def ask_run_now(self) -> None:
+        if self.chosen is not None and not self.requests.post(RUN_NOW, self.chosen):
+            self.status.setText("No running loop takes Run now")
 
     def toggle_pause(self) -> None:
-        unit = self.chosen_unit()
-        if unit is None:
+        if self.chosen is None:
             return
-        paused = unit.state is UnitState.PAUSED
-        self.command(ResumeUnit(unit.key) if paused else PauseUnit(unit.key), unit.number)
+        paused: tuple[int, ...] = self.inputs.get(PAUSED_UNITS.key)
+        if self.chosen in paused:
+            self.inputs.set(PAUSED_UNITS.key, tuple(u for u in paused if u != self.chosen))
+        else:
+            self.inputs.set(PAUSED_UNITS.key, (*paused, self.chosen))
 
     def on_draw_toggled(self, on: bool) -> None:
         if on:
             self.canvas.start_drawing()
         else:
             self.canvas.stop_drawing()
-        self.show_units()
 
-    def on_drawn(self, outline: Outline) -> None:
-        unit = Unit.new(outline, "")
-        self.chosen = unit.key
-        if self.running:
-            self.command(AddUnit(unit), None)
-        else:
-            self.inputs.set(UNITS.key, (*self.inputs.get(UNITS.key), unit))
+    def on_drawn(self, outline: tuple[tuple[float, float], ...]) -> None:
+        units = self.units
+        new = Unit(max((unit.id for unit in units), default=0) + 1, outline, "")
+        self.chosen = new.id
+        self.set_units((*units, new))
 
-    def on_reshaped(self, key: str, outline: Outline) -> None:
-        self.change(key, lambda unit: replace(unit, outline=outline))
+    def on_reshaped(self, unit_id: int, outline: tuple[tuple[float, float], ...]) -> None:
+        self.set_units(
+            tuple(replace(u, outline=outline) if u.id == unit_id else u for u in self.units)
+        )
 
-    def on_regrouped(self, key: str, group: str) -> None:
-        self.change(key, lambda unit: replace(unit, group=group))
-
-    def change(self, key: str, edit: Callable[[Unit], Unit]) -> None:
-        """Give the unit with ``key`` its edited outline or group."""
-        if self.running:
-            shown = next(each for each in self.units() if each.key == key)
-            self.command(EditUnit(edit(shown.unit)), shown.number)
-            return
-        units: tuple[Unit, ...] = self.inputs.get(UNITS.key)
-        self.inputs.set(UNITS.key, tuple(edit(u) if u.key == key else u for u in units))
+    def on_regrouped(self, unit_id: int, group: str) -> None:
+        self.set_units(tuple(replace(u, group=group) if u.id == unit_id else u for u in self.units))
 
     def delete_chosen(self) -> None:
-        unit = self.chosen_unit()
-        if unit is None:
-            return
-        if self.running and not self.confirm_removal(unit.number):
-            return
+        chosen = self.chosen
         self.chosen = None
-        if self.running:
-            self.command(RemoveUnit(unit.key), unit.number)
-            return
-        units: tuple[Unit, ...] = self.inputs.get(UNITS.key)
-        self.inputs.set(UNITS.key, tuple(each for each in units if each.key != unit.key))
-
-    def confirm_removal(self, number: int) -> bool:
-        """Ask before a running loop stops visiting a site, which can't be undone."""
-        box = QMessageBox(QMessageBox.Icon.Question, f"Remove site {number}?", "", parent=self)
-        box.setText(f"The loop will stop visiting site {number}. The images it took are kept.")
-        box.setInformativeText(
-            "A removed site can't be brought back: drawing it again makes a new site with a new "
-            "number."
-        )
-        remove = box.addButton(f"Remove site {number}", QMessageBox.ButtonRole.DestructiveRole)
-        keep = box.addButton("Keep it", QMessageBox.ButtonRole.RejectRole)
-        box.setDefaultButton(keep)
-        box.exec()
-        return box.clickedButton() is remove
+        self.set_units(tuple(unit for unit in self.units if unit.id != chosen))
 
     def keyPressEvent(self, event: QKeyEvent | None) -> None:
         if event is not None and event.key() == Qt.Key.Key_Escape and self.draw_button.isChecked():
@@ -383,13 +267,9 @@ class AutonomyPanel(DataPanel[SurveyOutput]):
     def clear(self) -> None:
         self.backdrop_of = None
         self.canvas.clear_image()
-        self.follow_loop()
 
     def detach(self) -> None:
-        self.redraw_soon.stop()
-        if self.loop is not None:
-            self.loop.unsubscribe(self.on_loop_changed)
+        self.watch.stop()
         self.inputs.unsubscribe(self.on_input_changed)
-        self.library.unsubscribe(self.on_collection_changed)
-        self.requests.unsubscribe(self.on_collection_changed)
+        self.requests.unsubscribe(self.show_units)
         super().detach()

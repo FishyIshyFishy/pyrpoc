@@ -24,9 +24,7 @@ class PixelPick:
     @classmethod
     def on(cls, output: ImageOutput, x: int, y: int) -> PixelPick:
         """A pick of pixel ``(x, y)`` of ``output``."""
-        return cls(
-            source_text(output), dict(output.recording.part_of(output.name).parameters), x, y
-        )
+        return cls(source_text(output), dict(output.recording.parameters), x, y)
 
     def to_dict(self) -> dict[str, Any]:
         return {
