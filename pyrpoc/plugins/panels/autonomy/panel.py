@@ -102,10 +102,12 @@ class AutonomyPanel(DataPanel[SurveyOutput]):
         root = QVBoxLayout(self.body)
         root.setContentsMargins(0, 0, 0, 0)
         root.addLayout(self.build_tools())
-        root.addWidget(self.build_splitter(), 1)
+        # Under the tools rather than at the foot: it says what to do next, so it is read first,
+        # and a short panel that scrolls never hides it.
         self.status = QLabel("", self.body)
         self.status.setWordWrap(True)
         root.addWidget(self.status)
+        root.addWidget(self.build_splitter(), 1)
         self.redraw_soon = QTimer(self)
         self.redraw_soon.setSingleShot(True)
         self.redraw_soon.setInterval(REDRAW_MS)

@@ -254,7 +254,10 @@ class MainWindow(QWidget):
         docked = [each for each in self.panel_docks.values() if not each.isFloating()]
         area = docked[-1].dockAreaWidget() if docked else None
         if area is None:
-            self.dock_manager.addDockWidget(qtads.DockWidgetArea.RightDockWidgetArea, dock)
+            added = self.dock_manager.addDockWidget(qtads.DockWidgetArea.RightDockWidgetArea, dock)
+            # Displays are what a user looks at, so they get a little more than half the width.
+            width = self.dock_manager.width()
+            self.dock_manager.setSplitterSizes(added, [width * 9 // 20, width * 11 // 20])
         else:
             self.dock_manager.addDockWidgetTabToArea(dock, area)
 
