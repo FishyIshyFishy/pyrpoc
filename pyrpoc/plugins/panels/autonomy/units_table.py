@@ -22,8 +22,9 @@ STATE_WORDS = {
 
 
 def next_text(unit: ShownUnit, elapsed_s: float | None) -> str:
-    """When a unit is next due, as time from now; nothing while no loop is running."""
-    if unit.next_due_s is None or elapsed_s is None:
+    """When a unit is next due, as time from now; nothing while no loop is running or while it
+    is paused, since a paused unit is not visited however overdue it is."""
+    if unit.next_due_s is None or elapsed_s is None or unit.state is UnitState.PAUSED:
         return ""
     wait = unit.next_due_s - elapsed_s
     return "now" if wait <= 0 else f"in {wait:.0f} s"
