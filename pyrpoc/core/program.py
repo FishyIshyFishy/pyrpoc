@@ -102,6 +102,7 @@ class Program:
         raise NotImplementedError
 
 
+# note to self: python protocols are useful just for type checkers
 class RunInbox(Protocol):
     """What has been posted to one run and not yet taken, safe to take from the run's thread:
     the changes to its live inputs, and the requests posted to it."""
