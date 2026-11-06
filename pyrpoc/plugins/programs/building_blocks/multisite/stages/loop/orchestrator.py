@@ -24,9 +24,9 @@ from pyrpoc.plugins.program_io.outputs import (
     UnitResumed,
 )
 
+from ...interfaces.cancellation import Cancellation
 from ...interfaces.field import FieldOfView
 from ...interfaces.microscope import Microscope
-from ...interfaces.progress import Progress
 from .focus_keeper import FocusKeeper
 from .queue import Queue, Thread
 from .resume import Resumption
@@ -64,13 +64,13 @@ class Orchestrator:
 
     def __init__(
         self,
-        progress: Progress,
+        cancellation: Cancellation,
         scope: Microscope,
         setup: LoopSetup,
         sink: LoopSink,
         steering: Steering,
     ):
-        self.progress = progress
+        self.cancellation = cancellation
         self.scope = scope
         self.setup = setup
         self.sink = sink
@@ -145,7 +145,7 @@ class Orchestrator:
         """Run every routine to its end, taking the units wanted between steps, or until
         stopped."""
         while self.queue.active():
-            self.progress.check_cancel()
+            self.cancellation.check_cancel()
             self.take_units()
             runnable = self.queue.runnable()
             if not runnable:

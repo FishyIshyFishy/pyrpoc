@@ -27,8 +27,8 @@ multisite: "multisite (programs/building_blocks/multisite): no panel sees inside
   orch: "Orchestrator\nthreads: one per (unit, routine)\nearliest due first; between steps,\ncompares the units wanted with\nthose last taken; refusals logged" {class: inner}
   roster: "Roster\nkey -> UnitRecord\nnumbers never given twice" {class: inner}
   routines: "routine, e.g. monitor\nstart(unit, RoutineHistory)\nyields Scan / Wait / Record" {class: inner}
-  scanner: "UnitScanner\nfocus, scan, find the unit\n(a new outline: learn its\nlook from the next scan)" {class: inner}
-  sink: "LoopOutputs\nevery event to the log\nand to the scratch" {class: inner}
+  scanner: "UnitScanner\nlogs moving, focusing, scanning\nas each begins; then\nfocus, scan, find the unit\n(a new outline: learn its\nlook from the next scan)" {class: inner}
+  sink: "LoopOutputs\nevery event to the log,\nthe scratch and the status" {class: inner}
 
   begin -> orch
   steering -> orch: "tuple[Unit]"
@@ -36,7 +36,7 @@ multisite: "multisite (programs/building_blocks/multisite): no panel sees inside
   orch -> routines: "next step"
   orch -> scanner: "Scan"
   orch -> sink: "LoopEvent"
-  scanner -> sink: "frame,\nUnitScanned"
+  scanner -> sink: "LoopActivity,\nframe, UnitScanned"
   roster -> sink: "UnitRecords"
 }
 
@@ -62,6 +62,10 @@ folder.scratch -> multisite.begin: "carry on" {style.stroke-dash: 4}
 
 clean: "CleanFolder(carries_on=True)\nallows the runs the\nscratch names" {class: check}
 folder.scratch -> clean {style.stroke-dash: 4}
+
+starting: "StartingUnits\nwith a scratch here, no units\nmay be drawn, so carrying on\nnever ignores units drawn" {class: check}
+folder.scratch -> starting {style.stroke-dash: 4}
+units -> starting {style.stroke-dash: 4}
 
 multisite.roster -- identity {style: {stroke: "#bbbbbb"; stroke-dash: 3}}
 folder.scratch -- collapse {style: {stroke: "#bbbbbb"; stroke-dash: 3}}

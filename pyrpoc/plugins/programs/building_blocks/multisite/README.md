@@ -9,31 +9,53 @@ Units can be drawn by a person or found by software; the stages don't care which
 
 Programs import only this package's root (`__init__.py`). Everything below it is internal.
 
+## Programs
+A multisite program subclasses one of three bases in `bindings/programs.py`:
+
+| Base | Reads | Fills | Is checked for | The program gives |
+|---|---|---|---|---|
+| `CalibrationProgram` | | `calibration`, `view`, `log` | `CleanFolder` | `microscope` |
+| `SurveyProgram` | `calibration` | `survey`, `log` | `CleanFolder`, `CalibrationMeasured` | `microscope`, `overscan` |
+| `LoopProgram` | `survey`, `calibration` | `log`, `units`, `frames` | all four checks below | `microscope`, `overscan`, `routines` |
+
+Each base also declares the inputs its stage reads, with their cards, and `run`s its stage. A program adds its devices, its own inputs (extending the base's `inputs`, `cards` and, for a loop, `live`), and where it is listed. Two programs of a kind therefore always read, fill and refuse the same things, so a panel can rely on what every multisite program publishes.
+
 ## Layers
 Each layer imports only the layers below it. `uv run lint-imports` enforces this.
 
 | Layer | What it is | Knows about |
 |---|---|---|
-| `bindings/` | Each stage bound to a pyrpoc run: its program inputs, what it reads and emits, adapters from outputs to sinks, and the one `run_*` a program calls. Also `RigMicroscope`. | everything below, plus `RunContext`, devices and ProgramOutputs |
+| `bindings/` | Each stage bound to a pyrpoc run: its program inputs, what it reads and emits, adapters from outputs to sinks, its `run_*`, and the program base that calls it. Also `RigMicroscope`. | everything below, plus `RunContext`, devices and ProgramOutputs |
 | `routines/` | What a loop does to one unit, such as `monitor` | the routine contract in `stages/loop/routine.py` |
 | `stages/` | `calibration/`, `survey/` and `loop/`, which never import each other | `interfaces/`, `analysis/`, `building_blocks/focus`, and value types from `program_io` |
-| `interfaces/` | What a stage is given: `Microscope`, `DigitalLine`, `FieldOfView`, `Overview`, `Progress` | value types from `program_io` |
+| `interfaces/` | What a stage is given: `Microscope`, `DigitalLine`, `FieldOfView`, `Overview`, `Cancellation` | value types from `program_io` |
 | `analysis/` | Maths on arrays: noise, features, shifts, content, stitching, motion, plane fits | numpy and OpenCV only |
 
 ## How a stage works
 A stage is given:
 - a `Microscope`;
-- a `Progress` (a `RunContext` already satisfies it);
+- a `Cancellation` (a `RunContext` already satisfies it);
 - frozen settings;
 - a sink protocol to write into.
 
 | Stage | Writes through | Also given |
 |---|---|---|
-| Calibration | (nothing: it returns a `GalvoCalibration`) | a `show(frame)` callback |
+| Calibration | `CalibrationSink` (and it returns a `GalvoCalibration`) | |
 | Survey | `SurveySink` | |
 | Loop | `LoopSink` | a `Steering` protocol and a `SurveyMap` |
 
 A stage never sees a run, a device or a ProgramOutput. It can be driven by fakes, and the outputs can change without touching the stage.
+
+## What a stage says while it works
+Every stage logs typed events through its sink as it works, and each binding writes them to the run's `log` output. Each event's `text()` also goes to the run's status line. The three logs are daughters of `LogOutput`, so a panel that shows a `LogOutput` shows any of them.
+
+| Stage | Log | Saying what it is doing now |
+|---|---|---|
+| Calibration | `CalibrationLogOutput` | `FeatureFound`, `AxisMeasuring`, a `StageMoved` per move, then `AxisMeasured` |
+| Survey | `SurveyLogOutput` | `TileVisiting`, `TileFocusing` and `TileTaken` per tile; `MotionRevisiting`, `MotionMeasured`, `Stitching`, `SurveyEnded` |
+| Loop | `LoopLogOutput` | `MovingToUnit`, `FocusingAtUnit` and `ScanningUnit` before each scan, ended by its `UnitScanned` |
+
+A loop is doing the latest `LoopActivity` until the `UnitScanned` after it; with none since, it is waiting for the next step due. `LoopLogOutput.view().doing` works this out.
 
 ## Before a stage starts
 Each program declares the checks its stage needs, so a start that cannot work is refused before its recording opens:
@@ -62,6 +84,6 @@ If a loop is stopped or cut short, the scratch stays. Starting the loop again in
 A loop carried on starts from the scratch, not from `UNITS`, which `StartingUnits` makes sure is empty. A routine carries on from its `RoutineHistory`, and each unit is taken to be where it was last found, its look learnt again from the next scan.
 
 ## Adding to it
-- **A routine:** one file in `routines/` that yields `Scan`, `Wait` and `Record` steps for one unit, starting from its `RoutineHistory` (empty unless the loop is carried on). Add its binding in `bindings/` for the program inputs it reads, and a program that hands it to `run_loop`.
+- **A routine:** one file in `routines/` that yields `Scan`, `Wait` and `Record` steps for one unit, starting from its `RoutineHistory` (empty unless the loop is carried on). Add its binding in `bindings/` for the program inputs it reads, and a `LoopProgram` whose `routines` returns it.
 - **An instrument:** a class with the `Microscope` methods. The simulated one lives with the simulated programs, so this package never knows about the simulation.
-- **A stage:** a new folder in `stages/` with its own sink protocol. Add a binding and export its `run_*` here.
+- **A stage:** a new folder in `stages/` with its own sink protocol and its events in `program_io/outputs`, logged through the sink. Add a binding, a program base that runs it, and export the base here.

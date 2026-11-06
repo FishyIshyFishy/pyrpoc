@@ -67,9 +67,10 @@ class RunSteering:
 
 class LoopOutputs:
     """A run's ``log``, ``units`` and ``frames`` outputs, and the loop's scratch, as the loop's
-    sink. Each event goes to both the log and the scratch."""
+    sink. Each event goes to both the log and the scratch, and is the run's status."""
 
     def __init__(self, ctx: RunContext, scratch: Scratch):
+        self.ctx = ctx
         self.events = ctx.output("log", LoopLogOutput)
         self.units = ctx.output("units", UnitsOutput)
         self.frames = ctx.output("frames", UnitFramesOutput)
@@ -78,6 +79,7 @@ class LoopOutputs:
     def log(self, event: LoopEvent) -> None:
         self.scratch.append(event)
         self.events.log(event)
+        self.ctx.status(event.text())
 
     def keep_units(self, records: tuple[UnitRecord, ...]) -> None:
         self.units.keep(records)
@@ -130,7 +132,6 @@ def begin(ctx: RunContext, orchestrator: Orchestrator, outputs: LoopOutputs) -> 
     # The log of the run that finishes the loop tells all of it, from its first event.
     outputs.events.log_all(earlier)
     orchestrator.resume(resumption(earlier))
-    ctx.status("Carried on the loop cut short in this folder")
 
 
 def note_recording(outputs: LoopOutputs) -> None:

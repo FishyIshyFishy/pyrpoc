@@ -22,7 +22,9 @@ key: |md
   - purple: ProgramOutput
   - bold yellow box: the Library,
     which holds every output
-  - red: panel (dashed: #67)
+  - red: panel (dashed: planned)
+  - blue: a check, refusing a start
+    before its recording opens
 
   A step reads earlier outputs by type,
   from its folder.
@@ -32,25 +34,34 @@ clean: "CleanFolder, on every step\nthe folder holds only what the\nstep reads (
 clean -> cal {style.stroke-dash: 4}
 clean -> sur {style.stroke-dash: 4}
 clean -> loop {style.stroke-dash: 4}
+measured: "CalibrationMeasured\nthe calibration read\nran to its end" {class: check}
+measured -> sur {style.stroke-dash: 4}
+measured -> loop {style.stroke-dash: 4}
+finished: "SurveyFinished\nthe survey read\nran to its end" {class: check}
+finished -> loop {style.stroke-dash: 4}
+starting: "StartingUnits\nfresh: units drawn, each\nfitting in one field;\ncarried on: none drawn" {class: check}
+starting -> loop {style.stroke-dash: 4}
 
 # ---------------------------------------------------------------- 1. calibration
 cal_in: "SCAN_GEOMETRY_INPUTS" {class: input}
-cal: "1. Galvo Calibration" {class: prog}
+cal: "1. Galvo Calibration\n(any CalibrationProgram)" {class: prog}
 cal_in -> cal
 cal -> library.calibration
 cal -> library.view
+cal -> library.cal_log
 
 # ---------------------------------------------------------------- 2. survey
 sur_in: "SURVEY_WIDTH/HEIGHT_UM\nFIELD_UM, FIELD_PIXELS\nTILE_OVERLAP, focus search" {class: input}
-sur: "2. Survey\nreads 'calibration'" {class: prog}
+sur: "2. Survey (any SurveyProgram)\nreads 'calibration'" {class: prog}
 sur_in -> sur
 sur -> library.survey
+sur -> library.survey_log
 
 # ---------------------------------------------------------------- 3. loop
 units: "UNITS: tuple[Unit]\nthe units it runs on, live\nUnit = key + outline + group\n+ paused + run_now_asked" {class: live}
 loop_in: "TREAT, TREATED_GROUP\nFOCUS_CHECK_S, ..." {class: input}
 monitor_live: "PERIOD_S, DURATION_MIN" {class: live}
-loop: "3. Longitudinal Monitor\n(any loop: routines on units)\nreads 'survey' -> SurveyMap,\n'calibration' -> FieldOfView" {class: prog}
+loop: "3. Longitudinal Monitor\n(any LoopProgram: routines on units)\nreads 'survey' -> SurveyMap,\n'calibration' -> FieldOfView" {class: prog}
 units -> loop: "at start, and between steps"
 loop_in -> loop
 monitor_live -> loop
@@ -65,8 +76,10 @@ library: "Library: the open recordings and all their outputs" {
   class: library
   calibration: "'calibration'\nGalvoCalibrationOutput\n.measured() -> GalvoCalibration\n(µm per volt, x and y)" {class: out}
   view: "'view' ImageOutput\nevery frame it looked at" {class: out}
+  cal_log: "'log' CalibrationLogOutput\n(a LogOutput)\nevery move it made" {class: out}
   survey: "'survey'\nSurveyOutput (a MosaicOutput)\n.found() -> SurveyFinding\n  (FocusPlane, MotionRate)\n.overview() -> (planes, Placement)" {class: out}
-  log: "'log' LoopLogOutput\nevery LoopEvent\n.view() -> LoopView" {class: out}
+  survey_log: "'log' SurveyLogOutput\n(a LogOutput)\neach tile visited, focused, taken" {class: out}
+  log: "'log' LoopLogOutput (a LogOutput)\nevery LoopEvent, with moving,\nfocusing and scanning as begun\n.view() -> LoopView (.doing)" {class: out}
   unit_records: "'units' UnitsOutput\nevery UnitRecord\n(number, Unit, joined, left)" {class: out}
   frames: "'frames' UnitFramesOutput\neach frame tagged FrameTag\n(unit number, routine, position)" {class: out}
 }
@@ -75,15 +88,17 @@ library: "Library: the open recordings and all their outputs" {
 image: "Image panel\nrenders ImageOutput" {class: panel}
 mosaic: "Mosaic panel\nrenders MosaicOutput" {class: panel}
 data_library: "Data Library panel\nlists every recording" {class: panel}
-autonomy: "Autonomy (#67)\nrenders SurveyOutput;\ndraws Unit.new() over the overview" {class: panel_new}
-curves: "Curves (#67)\nrenders LoopLogOutput" {class: panel_new}
+multisite_panel: "Multisite panel (planned)\nreads the logs, 'survey',\n'units' and 'frames';\nsets UNITS" {class: panel_new}
 library.view -> image
 library.frames -> image: "an ImageOutput too"
 library.survey -> mosaic: "a MosaicOutput"
-library.survey -> autonomy: ".overview()"
-library.log -> autonomy: ".view(): units as tracked"
-library.log -> curves: ".view(): UnitView.series"
+library.survey -> multisite_panel: ".overview()"
+library.cal_log -> multisite_panel
+library.survey_log -> multisite_panel
+library.log -> multisite_panel: "events, .view().doing"
+library.unit_records -> multisite_panel
+library.frames -> multisite_panel
 library -> data_library
 
-# What the Autonomy panel sends back: the units, before and while a loop runs.
-units -- autonomy: "units drawn and edited" {source-arrowhead.shape: triangle; style.stroke: "#b04a4a"}
+# What the multisite panel will send back: the units, before and while a loop runs.
+units -- multisite_panel: "units drawn and edited" {source-arrowhead.shape: triangle; style.stroke: "#b04a4a"; style.stroke-dash: 4}

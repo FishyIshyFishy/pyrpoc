@@ -9,16 +9,28 @@ from dataclasses import dataclass
 import numpy as np
 
 from pyrpoc.plugins.program_io.inputs import FocusSearch
-from pyrpoc.plugins.program_io.outputs import MosaicTile, MotionRate, SurveyFinding, SurveyTile
+from pyrpoc.plugins.program_io.outputs import (
+    MosaicTile,
+    MotionMeasured,
+    MotionRate,
+    MotionRevisiting,
+    Stitching,
+    SurveyEnded,
+    SurveyFinding,
+    SurveyTile,
+    TileFocusing,
+    TileTaken,
+    TileVisiting,
+)
 
 from ....focus.climb import climb
 from ....focus.tenengrad import tenengrad
 from ...analysis.content import content_channels, content_region
 from ...analysis.motion import feature_speeds
 from ...analysis.noise import MAD_TO_SIGMA, strongest_channel
+from ...interfaces.cancellation import Cancellation
 from ...interfaces.field import FieldOfView
 from ...interfaces.microscope import Microscope
-from ...interfaces.progress import Progress
 from .focus_surface import FocusSurface
 from .grid import Tile, snake
 from .layout import stitch
@@ -65,9 +77,13 @@ class Surveying:
     """One survey in progress."""
 
     def __init__(
-        self, progress: Progress, scope: Microscope, settings: SurveySettings, sink: SurveySink
+        self,
+        cancellation: Cancellation,
+        scope: Microscope,
+        settings: SurveySettings,
+        sink: SurveySink,
     ):
-        self.progress = progress
+        self.cancellation = cancellation
         self.scope = scope
         self.settings = settings
         self.sink = sink
@@ -97,13 +113,14 @@ class Surveying:
 
     def take(self, tile: Tile) -> Taken:
         """Image one tile, focusing first if it holds anything."""
+        self.sink.log(TileVisiting(self.scope.now(), tile.index, len(self.tiles)))
         self.scope.move_xy(tile.x_um, tile.y_um)
         z = self.surface.predict(tile.x_um, tile.y_um)
         self.scope.move_z(z)
         frame = self.frame()
         channels = content_channels(frame)
         if channels:
-            self.progress.status(f"tile {tile.index + 1}/{len(self.tiles)}: focusing")
+            self.sink.log(TileFocusing(self.scope.now(), tile.index, len(self.tiles)))
             z = self.focus(z, frame, channels)
             self.surface.add(tile.x_um, tile.y_um, z)
             self.scope.move_z(z)
@@ -112,19 +129,21 @@ class Surveying:
 
     def walk(self) -> None:
         for tile in self.tiles:
-            self.progress.check_cancel()
-            self.progress.status(f"tile {tile.index + 1}/{len(self.tiles)}")
+            self.cancellation.check_cancel()
             taken = self.take(tile)
             self.taken.append(taken)
-            how = SurveyTile(taken.z_um, taken.time_s, bool(taken.channels))
+            content = bool(taken.channels)
+            how = SurveyTile(taken.z_um, taken.time_s, content)
             self.sink.add_tile(taken.frame, self.scope.channel_labels, how)
+            done = TileTaken(taken.time_s, tile.index, len(self.tiles), taken.z_um, content)
+            self.sink.log(done)
 
     def revisit(self) -> MotionRate | None:
         """Find the features of the earliest tiles with content again, now."""
         speeds: list[float] = []
         early = [taken for taken in self.taken if taken.channels][:REVISITS]
-        for number, taken in enumerate(early, start=1):
-            self.progress.status(f"measuring motion {number}/{len(early)}")
+        for number, taken in enumerate(early):
+            self.sink.log(MotionRevisiting(self.scope.now(), number, len(early)))
             self.scope.move_xy(taken.tile.x_um, taken.tile.y_um)
             self.scope.move_z(taken.z_um)
             now = self.frame()
@@ -133,12 +152,15 @@ class Surveying:
             speeds += feature_speeds(
                 taken.frame[channel], now[channel], minutes, self.field.um_per_px
             )
-        return motion_rate(speeds)
+        motion = motion_rate(speeds)
+        rate = None if motion is None else motion.um_per_min
+        self.sink.log(MotionMeasured(self.scope.now(), rate, len(speeds)))
+        return motion
 
     def finish(self, motion: MotionRate | None) -> None:
         """Place the tiles into the overview, hand it and what was found to the sink, and go
         back to the start."""
-        self.progress.status("stitching")
+        self.sink.log(Stitching(self.scope.now()))
         corners = [self.field.corner_um(t.tile.x_um, t.tile.y_um) for t in self.taken]
         frames = [taken.frame for taken in self.taken]
         times = [taken.time_s for taken in self.taken]
@@ -147,13 +169,14 @@ class Surveying:
         self.sink.finish(SurveyFinding(self.surface.plane, motion, tuple(placed)), overview)
         self.scope.move_xy(*self.start)
         self.scope.move_z(self.surface.predict(*self.start))
+        self.sink.log(SurveyEnded(self.scope.now()))
 
 
 def survey(
-    progress: Progress, scope: Microscope, settings: SurveySettings, sink: SurveySink
+    cancellation: Cancellation, scope: Microscope, settings: SurveySettings, sink: SurveySink
 ) -> None:
     """Walk the region, measure motion, place the tiles, and fill ``sink``."""
-    surveying = Surveying(progress, scope, settings, sink)
+    surveying = Surveying(cancellation, scope, settings, sink)
     try:
         surveying.walk()
         surveying.finish(surveying.revisit())

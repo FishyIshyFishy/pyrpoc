@@ -6,21 +6,27 @@ again in each new frame, and the fit of image shift against stage move gives µm
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Literal
 
 import numpy as np
 
 from pyrpoc.plugins.program_io.inputs import ScanGeometry
-from pyrpoc.plugins.program_io.outputs import CalibrationPoint, GalvoCalibration
+from pyrpoc.plugins.program_io.outputs import (
+    AxisMeasured,
+    AxisMeasuring,
+    CalibrationPoint,
+    FeatureFound,
+    GalvoCalibration,
+    StageMoved,
+)
 
 from ...analysis.features import Box, clear_feature
 from ...analysis.noise import strongest_channel
 from ...analysis.shifts import locate_near
 from ...interfaces.microscope import Microscope
-from ...interfaces.progress import Progress
 from .fit import CalibrationError, fit
+from .sink import CalibrationSink
 
 Axis = Literal["x", "y"]
 
@@ -61,7 +67,7 @@ class Calibrating:
 
     scope: Microscope
     scan: ScanGeometry
-    show: Callable[[np.ndarray], None]
+    sink: CalibrationSink
     channel: int
     template: np.ndarray
     origin: tuple[float, float]
@@ -70,7 +76,7 @@ class Calibrating:
 
     def take(self) -> np.ndarray:
         frame = self.scope.scan(self.scan, ())
-        self.show(frame)
+        self.sink.show(frame)
         return frame
 
     def feature_at(self, expected: tuple[float, float], radius: float) -> tuple[float, float]:
@@ -98,12 +104,16 @@ class Calibrating:
         after = self.feature_at(before, radius)
         return ((moved[index] - before[index]) - (after[index] - moved[index])) / 2.0
 
+    def log_move(self, axis: Axis, move_um: float, shift_px: float, rough: bool) -> None:
+        self.sink.log(StageMoved(self.scope.now(), axis, move_um, shift_px, rough))
+
     def rough_scale(self, axis: Axis) -> float:
         """Pixels of shift per µm of move, from moves that grow until the shift is clear."""
         move, shift = FIRST_MOVE_UM, 0.0
         for _ in range(MAX_TRIES):
             # Unknown at first; after that, the last shift grown with the move.
             shift = self.shift_px(axis, move, shift * GROWTH)
+            self.log_move(axis, move, shift, True)
             if abs(shift) >= ROUGH_SHIFT_PX:
                 return shift / move
             move *= GROWTH
@@ -113,16 +123,17 @@ class Calibrating:
 
 
 def measure_axis(
-    session: Calibrating, axis: Axis, room: float, status: Callable[[str], None]
+    session: Calibrating, axis: Axis, room: float
 ) -> tuple[float, float, list[CalibrationPoint]]:
     """One axis's µm per volt, its residual, and the points it was fitted to."""
+    session.sink.log(AxisMeasuring(session.scope.now(), axis))
     rough = session.rough_scale(axis)
     moves, shifts = [], []
     for fraction in MOVE_FRACTIONS:
         for sign in (1.0, -1.0):
             move = sign * fraction * room / abs(rough)
             shift = session.shift_px(axis, move, rough * move)
-            status(f"{axis}: moved {move:+.2f} µm, image shifted {shift:+.2f} px")
+            session.log_move(axis, move, shift, False)
             moves.append(move)
             shifts.append(shift)
     slope, residual = fit(np.asarray(moves), np.asarray(shifts))
@@ -130,15 +141,16 @@ def measure_axis(
     # The stage carrying the sample one way moves its image the other.
     um_per_volt = -1.0 / (slope * per_px)
     points = [CalibrationPoint(axis, m, s * per_px) for m, s in zip(moves, shifts, strict=True)]
+    session.sink.log(AxisMeasured(session.scope.now(), axis, um_per_volt, residual))
     return um_per_volt, residual, points
 
 
 def start_calibrating(
-    scope: Microscope, scan: ScanGeometry, show: Callable[[np.ndarray], None]
+    scope: Microscope, scan: ScanGeometry, sink: CalibrationSink
 ) -> tuple[Calibrating, Box]:
     """Find the feature to follow in a first frame."""
     frame = scope.scan(scan, ())
-    show(frame)
+    sink.show(frame)
     channel = strongest_channel(frame)
     plane = frame[channel]
     height, width = plane.shape
@@ -154,18 +166,17 @@ def start_calibrating(
     template = region.crop(plane)
     origin = scope.xy()
     corner = (float(region.left), float(region.top))
-    return Calibrating(scope, scan, show, channel, template, origin, corner), feature
+    sink.log(FeatureFound(scope.now(), scope.channel_labels[channel]))
+    return Calibrating(scope, scan, sink, channel, template, origin, corner), feature
 
 
-def calibrate(
-    scope: Microscope, progress: Progress, scan: ScanGeometry, show: Callable[[np.ndarray], None]
-) -> GalvoCalibration:
-    """Measure both axes with ``scan``, handing every frame taken to ``show``."""
-    session, feature = start_calibrating(scope, scan, show)
+def calibrate(scope: Microscope, scan: ScanGeometry, sink: CalibrationSink) -> GalvoCalibration:
+    """Measure both axes with ``scan``, showing every frame taken in ``sink``."""
+    session, feature = start_calibrating(scope, scan, sink)
     shape = (scan.y_pixels, scan.x_pixels)
     try:
-        x = measure_axis(session, "x", room_px(feature, shape, "x"), progress.status)
-        y = measure_axis(session, "y", room_px(feature, shape, "y"), progress.status)
+        x = measure_axis(session, "x", room_px(feature, shape, "x"))
+        y = measure_axis(session, "y", room_px(feature, shape, "y"))
     except BaseException:
         scope.stop()
         raise

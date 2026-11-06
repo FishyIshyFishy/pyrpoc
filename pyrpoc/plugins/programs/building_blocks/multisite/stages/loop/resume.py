@@ -8,14 +8,17 @@ from dataclasses import dataclass, field, replace
 
 from pyrpoc.plugins.program_io.outputs import (
     FocusChecked,
+    FocusingAtUnit,
     LoopEvent,
     LoopFinished,
     LoopResumed,
     LoopStarted,
     Measured,
+    MovingToUnit,
     RoutineEnded,
     RoutineFailed,
     RunNowAsked,
+    ScanningUnit,
     StepDue,
     Unit,
     UnitEdited,
@@ -109,7 +112,15 @@ def take(state: Resumption, event: LoopEvent) -> None:
             state.threads[(event.unit, event.routine)].ended = True
         case FocusChecked():
             state.focus_offset_um, state.focus_checked_s = event.offset_um, event.time_s
-        case LoopStarted() | LoopResumed() | UnitRefused() | LoopFinished():
+        case (
+            LoopStarted()
+            | LoopResumed()
+            | UnitRefused()
+            | MovingToUnit()
+            | FocusingAtUnit()
+            | ScanningUnit()
+            | LoopFinished()
+        ):
             pass
 
 

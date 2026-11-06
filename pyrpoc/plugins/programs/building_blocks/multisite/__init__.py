@@ -3,52 +3,22 @@ regions of it over time. Programs import only what this module exports."""
 
 from __future__ import annotations
 
-from .bindings.calibration import CALIBRATION_EMITS, run_calibration
-from .bindings.clean_folder import CleanFolder
-from .bindings.finished_reads import CalibrationMeasured, SurveyFinished
-from .bindings.loop import (
-    LOOP_EMITS,
-    LOOP_FOCUS_INPUTS,
-    LOOP_READS,
-    LOOP_UNITS,
-    run_loop,
-)
 from .bindings.monitor import MONITOR_INPUTS, MONITOR_LIVE, TREATMENT_INPUTS, monitor_routine
+from .bindings.programs import CalibrationProgram, LoopProgram, SurveyProgram
 from .bindings.rig import RigMicroscope
-from .bindings.starting_units import StartingUnits
-from .bindings.survey import (
-    REGION_INPUTS,
-    SURVEY_EMITS,
-    SURVEY_FOCUS_INPUTS,
-    SURVEY_READS,
-    TILE_INPUTS,
-    run_survey,
-)
 from .interfaces.microscope import DigitalLine, Microscope
+from .stages.loop.routine import RoutineSpec
 
 __all__ = [
-    "CALIBRATION_EMITS",
-    "LOOP_EMITS",
-    "LOOP_FOCUS_INPUTS",
-    "LOOP_READS",
-    "LOOP_UNITS",
     "MONITOR_INPUTS",
     "MONITOR_LIVE",
-    "REGION_INPUTS",
-    "SURVEY_EMITS",
-    "SURVEY_FOCUS_INPUTS",
-    "SURVEY_READS",
-    "TILE_INPUTS",
     "TREATMENT_INPUTS",
-    "CalibrationMeasured",
-    "CleanFolder",
+    "CalibrationProgram",
     "DigitalLine",
+    "LoopProgram",
     "Microscope",
     "RigMicroscope",
-    "StartingUnits",
-    "SurveyFinished",
+    "RoutineSpec",
+    "SurveyProgram",
     "monitor_routine",
-    "run_calibration",
-    "run_loop",
-    "run_survey",
 ]

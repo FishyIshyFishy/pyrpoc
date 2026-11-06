@@ -8,6 +8,7 @@ classes: {
   val: {style: {fill: "#f3ecfa"; stroke: "#7e57a8"; border-radius: 6}}
   view: {style: {fill: "#fde8e8"; stroke: "#b04a4a"; border-radius: 6}}
   disk: {shape: cylinder; style: {fill: "#eeeeee"; stroke: "#777777"}}
+  check: {shape: hexagon; style: {fill: "#e8f0fb"; stroke: "#3b6db3"}}
 }
 
 settings: "ProgramInputs\nthe user's settings" {class: coll}
@@ -16,6 +17,8 @@ earlier: "Earlier outputs\nonly if the program\ndeclares `reads`" {class: val}
 
 inbox: "Inbox, one per run\neverything posted to it,\neach taken at its moment\nand logged" {class: inbox}
 
+preflight: "Preflight, before anything opens\nits devices are in the inventory,\na save target if saving, every\nread found, then the program's\nchecks, which see its input\nvalues and the reads" {class: check}
+
 run: "Run\nprogram.run(ctx)\nctx is its only door" {class: prog}
 
 recording: "Recording\nits parts, each with the\nsettings it ran with,\nand their ProgramOutputs" {class: val}
@@ -23,9 +26,10 @@ library: "Library\nthe open recordings" {class: coll}
 files: "files on disk\n(if saving is on)" {class: disk}
 panels: "Panels\nshow outputs,\nset settings" {class: view}
 
-settings -> run: "values at start"
-devices -> run
-earlier -> run
+settings -> preflight
+devices -> preflight
+earlier -> preflight
+preflight -> run: "nothing missing:\nvalues at start,\ndevices, reads"
 
 settings -> inbox: "edits"
 devices -> inbox: "edits"

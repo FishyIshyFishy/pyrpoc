@@ -8,7 +8,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from pyrpoc.plugins.program_io.outputs import LoopEvent, event_from_dict, event_to_dict
+from pyrpoc.plugins.program_io.outputs import LOOP_EVENTS, LoopEvent, event_from_dict, event_to_dict
 
 SCRATCH_FILE = "loop_scratch.jsonl"
 
@@ -28,7 +28,7 @@ class Scratch:
         return [line["recording"] for line in self.lines() if "recording" in line]
 
     def events(self) -> list[LoopEvent]:
-        return [event_from_dict(line) for line in self.lines() if "event" in line]
+        return [event_from_dict(line, LOOP_EVENTS) for line in self.lines() if "event" in line]
 
     def lines(self) -> list[dict[str, Any]]:
         """Each line as written. A loop cut off mid-line leaves its last line partial, so that
