@@ -5,7 +5,14 @@ from __future__ import annotations
 
 import numpy as np
 
-from pyrpoc.plugins.program_io.outputs import FocusChecked, FrameTag, UnitScanned
+from pyrpoc.plugins.program_io.outputs import (
+    FocusChecked,
+    FocusingAtUnit,
+    FrameTag,
+    MovingToUnit,
+    ScanningUnit,
+    UnitScanned,
+)
 
 from ....focus.tenengrad import tenengrad
 from ...analysis.content import content_channels, content_region
@@ -44,9 +51,11 @@ class UnitScanner:
         routine its image."""
         due = thread.due_s
         x, y = track.centre
+        self.sink.log(MovingToUnit(self.scope.now(), thread.unit, thread.routine, x, y))
         self.scope.move_xy(x, y)
         self.keep_focus(thread, x, y)
         z = self.focus.z_at(x, y)
+        self.sink.log(ScanningUnit(self.scope.now(), thread.unit, thread.routine))
         self.scope.move_z(z)
         frame = self.field.on_dish(self.scope.scan(self.scan_geometry, step.lines))
         now = self.scope.now()
@@ -81,6 +90,7 @@ class UnitScanner:
         now = self.scope.now()
         if not self.focus.due(now):
             return
+        self.sink.log(FocusingAtUnit(now, thread.unit, thread.routine))
         self.scope.move_z(self.focus.z_at(x_um, y_um))
         frame = self.field.on_dish(self.scope.scan(self.scan_geometry, ()))
         channels = content_channels(frame)

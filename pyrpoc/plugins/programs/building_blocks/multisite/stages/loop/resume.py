@@ -7,16 +7,18 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field, replace
 
 from pyrpoc.plugins.program_io.outputs import (
-    CommandRefused,
     FocusChecked,
+    FocusingAtUnit,
     LoopEvent,
     LoopFinished,
     LoopResumed,
     LoopStarted,
     Measured,
+    MovingToUnit,
     RoutineEnded,
     RoutineFailed,
     RunNowAsked,
+    ScanningUnit,
     StepDue,
     Unit,
     UnitEdited,
@@ -24,6 +26,7 @@ from pyrpoc.plugins.program_io.outputs import (
     UnitLeft,
     UnitPaused,
     UnitRecord,
+    UnitRefused,
     UnitResumed,
     UnitScanned,
 )
@@ -79,19 +82,24 @@ def resumption(events: Iterable[LoopEvent]) -> Resumption:
 def take(state: Resumption, event: LoopEvent) -> None:
     match event:
         case UnitJoined():
-            unit = Unit(event.key, event.outline, event.group)
-            state.records[event.unit] = UnitRecord(event.unit, unit, event.time_s, None, False)
+            unit = Unit(event.key, event.outline, event.group, False, 0)
+            state.records[event.unit] = UnitRecord(event.unit, unit, event.time_s, None)
             state.placed[event.unit] = None
         case UnitEdited():
             record = state.records[event.unit]
-            unit = Unit(record.unit.key, event.outline, event.group)
+            unit = replace(record.unit, outline=event.outline, group=event.group)
             state.records[event.unit] = replace(record, unit=unit)
             state.placed[event.unit] = Placed(*unit.centre, event.time_s)
         case UnitLeft():
             state.records[event.unit] = replace(state.records[event.unit], left_s=event.time_s)
         case UnitPaused() | UnitResumed():
-            paused = isinstance(event, UnitPaused)
-            state.records[event.unit] = replace(state.records[event.unit], paused=paused)
+            record = state.records[event.unit]
+            unit = replace(record.unit, paused=isinstance(event, UnitPaused))
+            state.records[event.unit] = replace(record, unit=unit)
+        case RunNowAsked():
+            record = state.records[event.unit]
+            unit = replace(record.unit, run_now_asked=event.asked)
+            state.records[event.unit] = replace(record, unit=unit)
         case StepDue():
             progress = state.threads.setdefault((event.unit, event.routine), ThreadProgress(0.0))
             progress.due_s = event.due_s
@@ -104,7 +112,15 @@ def take(state: Resumption, event: LoopEvent) -> None:
             state.threads[(event.unit, event.routine)].ended = True
         case FocusChecked():
             state.focus_offset_um, state.focus_checked_s = event.offset_um, event.time_s
-        case LoopStarted() | LoopResumed() | RunNowAsked() | CommandRefused() | LoopFinished():
+        case (
+            LoopStarted()
+            | LoopResumed()
+            | UnitRefused()
+            | MovingToUnit()
+            | FocusingAtUnit()
+            | ScanningUnit()
+            | LoopFinished()
+        ):
             pass
 
 

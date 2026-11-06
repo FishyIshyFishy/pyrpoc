@@ -155,7 +155,7 @@ class AcquisitionPanel(Panel):
         self.note_btn.clicked.connect(self.edit_note)
         self.runs.note_changed.connect(self.on_note_changed)
 
-        self.runs.inventory.changed.connect(self.refresh_readiness)
+        self.runs.readiness_changed.connect(self.refresh_readiness)
         self.runs.save_changed.connect(self.on_save_changed)
         self.inputs.subscribe(self.on_input_changed)
         self.host.controls_changed.connect(self.render_controls)
@@ -232,6 +232,9 @@ class AcquisitionPanel(Panel):
         # overwritten with "ready".
         missing = self.blockers()
         self.apply_enabled()
+        if self.host.running:
+            # The status is the run's own while it goes; edits made meanwhile must not replace it.
+            return
         if missing:
             self.show_status("needs " + ", ".join(missing))
         elif announce and not self.host.running:
@@ -285,7 +288,6 @@ class AcquisitionPanel(Panel):
         name = None if folder is None else short_name(folder.name or str(folder))
         # Dimmed while saving is off: the name then only names the run.
         self.path_field.set_folder(name, tooltip, in_use=save.enabled)
-        self.refresh_readiness()
 
     def edit_note(self) -> None:
         dialog = NoteDialog(self.runs.note, self)

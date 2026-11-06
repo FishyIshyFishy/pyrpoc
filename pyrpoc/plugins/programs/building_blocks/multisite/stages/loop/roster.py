@@ -27,7 +27,7 @@ class Roster:
         return record if record is not None and record.left_s is None else None
 
     def join(self, unit: Unit, now_s: float) -> UnitRecord:
-        record = UnitRecord(len(self.by_key) + 1, unit, now_s, None, False)
+        record = UnitRecord(len(self.by_key) + 1, unit, now_s, None)
         self.by_key[unit.key] = record
         return record
 

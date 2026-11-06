@@ -4,25 +4,29 @@ from them."""
 from __future__ import annotations
 
 from collections import deque
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from enum import Enum
 
 from .loop_events import (
-    CommandRefused,
     FocusChecked,
+    FocusingAtUnit,
+    LoopActivity,
     LoopEvent,
     LoopFinished,
     LoopResumed,
     LoopStarted,
     Measured,
+    MovingToUnit,
     RoutineEnded,
     RoutineFailed,
     RunNowAsked,
+    ScanningUnit,
     StepDue,
     UnitEdited,
     UnitJoined,
     UnitLeft,
     UnitPaused,
+    UnitRefused,
     UnitResumed,
     UnitScanned,
 )
@@ -79,7 +83,8 @@ class QueueEntry:
 class LoopView:
     """A loop as of its latest event: when it started on the instrument's clock and how long it
     has run, its channels and routines, every unit, the queue with those asked to run now
-    first and then the soonest, and its latest events, newest first."""
+    first and then the soonest, what it is doing now (None between scans), and its latest
+    events, newest first."""
 
     started_s: float
     elapsed_s: float
@@ -87,6 +92,7 @@ class LoopView:
     routines: tuple[str, ...]
     units: tuple[UnitView, ...]
     queue: tuple[QueueEntry, ...]
+    doing: LoopActivity | None
     recent: tuple[LoopEvent, ...]
 
 
@@ -125,6 +131,7 @@ class LoopFold:
         self.channels: tuple[str, ...] = ()
         self.routines: tuple[str, ...] = ()
         self.units: dict[int, UnitFold] = {}
+        self.doing: LoopActivity | None = None
         self.recent: deque[LoopEvent] = deque(maxlen=RECENT)
 
     def take(self, event: LoopEvent) -> None:
@@ -135,11 +142,11 @@ class LoopFold:
                 self.started_s, self.channels = event.time_s, event.channels
                 self.routines = event.routines
             case UnitJoined():
-                unit = Unit(event.key, event.outline, event.group)
+                unit = Unit(event.key, event.outline, event.group, False, 0)
                 self.units[event.unit] = UnitFold(unit, unit.centre)
             case UnitEdited():
                 fold = self.units[event.unit]
-                fold.unit = Unit(fold.unit.key, event.outline, event.group)
+                fold.unit = replace(fold.unit, outline=event.outline, group=event.group)
                 fold.tracked, fold.lost = fold.unit.centre, False
             case UnitLeft():
                 self.units[event.unit].left = True
@@ -150,14 +157,20 @@ class LoopFold:
                 self.units[event.unit].urgent |= set(self.units[event.unit].due)
             case StepDue():
                 self.units[event.unit].due[event.routine] = event.due_s
+            case MovingToUnit() | FocusingAtUnit() | ScanningUnit():
+                self.doing = event
             case UnitScanned():
+                self.doing = None
                 self.take_scan(self.units[event.unit], event)
             case Measured():
                 points = self.units[event.unit].series.setdefault((event.routine, event.name), [])
                 points.append((event.time_s - self.started_s, event.values))
             case RoutineEnded() | RoutineFailed():
                 self.units[event.unit].due.pop(event.routine, None)
-            case LoopResumed() | FocusChecked() | CommandRefused() | LoopFinished():
+            case LoopResumed() | LoopFinished():
+                # A loop carried on, or ended, is between scans whatever it was doing.
+                self.doing = None
+            case FocusChecked() | UnitRefused():
                 pass
 
     def take_scan(self, fold: UnitFold, event: UnitScanned) -> None:
@@ -172,6 +185,7 @@ class LoopFold:
             self.routines,
             tuple(self.unit_view(number, fold) for number, fold in self.units.items()),
             self.queue(),
+            self.doing,
             tuple(reversed(self.recent)),
         )
 

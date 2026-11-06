@@ -1,14 +1,11 @@
-"""The orchestrator: runs every unit's routines, the earliest due step first, takes the commands
-that change its units between steps, and logs everything it does."""
+"""The orchestrator: runs every unit's routines, the earliest due step first, takes the units
+wanted between steps, and logs everything it does."""
 
 from __future__ import annotations
 
-from collections.abc import Sequence
 from dataclasses import dataclass, replace
 
-from pyrpoc.core.program_input import ParameterError
 from pyrpoc.plugins.program_io.outputs import (
-    CommandRefused,
     LoopFinished,
     LoopResumed,
     LoopStarted,
@@ -23,22 +20,13 @@ from pyrpoc.plugins.program_io.outputs import (
     UnitLeft,
     UnitPaused,
     UnitRecord,
+    UnitRefused,
     UnitResumed,
 )
-from pyrpoc.plugins.program_io.requests import (
-    AddUnit,
-    EditUnit,
-    PauseUnit,
-    RemoveUnit,
-    ResumeUnit,
-    RunUnitNow,
-    UnitCommand,
-    command_key,
-)
 
+from ...interfaces.cancellation import Cancellation
 from ...interfaces.field import FieldOfView
 from ...interfaces.microscope import Microscope
-from ...interfaces.progress import Progress
 from .focus_keeper import FocusKeeper
 from .queue import Queue, Thread
 from .resume import Resumption
@@ -66,17 +54,9 @@ class LoopSetup:
     routines: tuple[RoutineSpec, ...]
 
 
-def fits(unit: Unit, field: FieldOfView) -> bool:
-    """Whether ``unit``, with its margin, fits in one field."""
-    return max(window_px(unit, field.um_per_px)) <= field.pixels
-
-
-def check_units(units: Sequence[Unit], field: FieldOfView) -> None:
-    """Refuse starting units the loop cannot run: none at all, or one larger than a field."""
-    if not units:
-        raise ParameterError("needs at least one unit drawn over the survey")
-    if not all(fits(unit, field) for unit in units):
-        raise ParameterError("a unit is larger than one field of view")
+def fits(unit: Unit, um_per_px: float, pixels: int) -> bool:
+    """Whether ``unit``, with its margin, fits in one field ``pixels`` a side at ``um_per_px``."""
+    return max(window_px(unit, um_per_px)) <= pixels
 
 
 class Orchestrator:
@@ -84,13 +64,13 @@ class Orchestrator:
 
     def __init__(
         self,
-        progress: Progress,
+        cancellation: Cancellation,
         scope: Microscope,
         setup: LoopSetup,
         sink: LoopSink,
         steering: Steering,
     ):
-        self.progress = progress
+        self.cancellation = cancellation
         self.scope = scope
         self.setup = setup
         self.sink = sink
@@ -101,9 +81,12 @@ class Orchestrator:
         self.queue = Queue()
         self.roster = Roster(())
         self.tracks: dict[int, Track] = {}
+        # The units last taken from the steering, which the next ones are compared with.
+        self.taken: tuple[Unit, ...] = ()
 
-    def start(self, units: Sequence[Unit]) -> None:
+    def start(self, units: tuple[Unit, ...]) -> None:
         """Start afresh on ``units``."""
+        self.taken = units
         names = tuple(spec.name for spec in self.setup.routines)
         now = self.scope.now()
         self.sink.log(LoopStarted(now, tuple(self.scope.channel_labels), names))
@@ -138,7 +121,7 @@ class Orchestrator:
                 continue
             steps = spec.start(record.unit, progress.history())
             thread = Thread(record.number, spec.name, steps, progress.due_s)
-            thread.paused = record.paused
+            thread.paused = record.unit.paused
             self.queue.add(thread)
             self.scanner.frames[thread.key] = progress.frames
 
@@ -155,12 +138,15 @@ class Orchestrator:
         for spec in self.setup.routines:
             self.queue.add(Thread(number, spec.name, spec.start(unit, NO_HISTORY), now_s))
             self.sink.log(StepDue(now_s, number, spec.name, now_s))
+        if unit.paused:
+            self.pause(number, True)
 
     def run(self) -> None:
-        """Run every routine to its end, taking commands between steps, or until stopped."""
+        """Run every routine to its end, taking the units wanted between steps, or until
+        stopped."""
         while self.queue.active():
-            self.progress.check_cancel()
-            self.take_commands()
+            self.cancellation.check_cancel()
+            self.take_units()
             runnable = self.queue.runnable()
             if not runnable:
                 self.scope.wait(IDLE_S)
@@ -172,65 +158,77 @@ class Orchestrator:
             self.advance(thread)
         self.sink.log(LoopFinished(self.scope.now()))
 
-    def take_commands(self) -> None:
-        """Carry out the commands given since the last step, and keep the units if any
-        changed."""
-        changed = [self.take(command) for command in self.steering.commands()]
+    def take_units(self) -> None:
+        """Bring the loop to the units wanted now, and keep the units if any changed."""
+        wanted = self.steering.units()
+        if wanted == self.taken:
+            return
+        before = {unit.key: unit for unit in self.taken}
+        self.taken = wanted
+        keys = {unit.key for unit in wanted}
+        # Only a unit wanted before and not now leaves, so a set that never named a unit, such
+        # as the empty one a carried-on loop starts with, takes none away.
+        changed = [self.remove(key) for key in before.keys() - keys]
+        changed += [self.change(unit) for unit in wanted if before.get(unit.key) != unit]
         if any(changed):
             self.sink.keep_units(self.roster.records())
 
-    def take(self, command: UnitCommand) -> bool:
-        """Carry out ``command``, returning whether it changed the units."""
-        match command:
-            case AddUnit(unit):
-                return self.add(command, unit)
-            case EditUnit(unit):
-                return self.edit(command, unit)
-            case RemoveUnit():
-                return self.remove(command)
-            case PauseUnit() | ResumeUnit():
-                return self.pause(command, isinstance(command, PauseUnit))
-            case RunUnitNow():
-                self.run_now(command)
-                return False
+    def fits(self, unit: Unit) -> bool:
+        field = self.setup.field
+        return fits(unit, field.um_per_px, field.pixels)
 
-    def refuse(self, command: UnitCommand, reason: str) -> None:
-        self.sink.log(CommandRefused(self.scope.now(), command.word, command_key(command), reason))
+    def refuse(self, key: str, reason: str) -> None:
+        self.sink.log(UnitRefused(self.scope.now(), key, reason))
 
-    def present(self, command: UnitCommand) -> UnitRecord | None:
-        """The unit ``command`` names, or None, refusing it, when the loop does not have it."""
-        record = self.roster.present(command_key(command))
-        if record is None:
-            self.refuse(command, "the loop has no such unit")
-        return record
-
-    def add(self, command: AddUnit, unit: Unit) -> bool:
+    def change(self, unit: Unit) -> bool:
+        """Join ``unit``, or bring the unit with its key to it, returning whether the units
+        changed."""
+        record = self.roster.present(unit.key)
+        if record is not None:
+            return self.edit(record, unit)
         if self.roster.has(unit.key):
-            self.refuse(command, "a unit with this key already joined")
+            self.refuse(unit.key, "it was removed, and a unit drawn again is a new unit")
             return False
-        if not fits(unit, self.setup.field):
-            self.refuse(command, "larger than one field of view")
+        if not self.fits(unit):
+            self.refuse(unit.key, "larger than one field of view")
             return False
         self.join(unit, self.scope.now())
         return True
 
-    def edit(self, command: EditUnit, unit: Unit) -> bool:
-        record = self.present(command)
-        if record is None:
+    def edit(self, record: UnitRecord, unit: Unit) -> bool:
+        """Bring ``record``'s unit to ``unit``: its outline and group, whether it is paused, and
+        whether it is asked to run now."""
+        old = record.unit
+        drawn = self.redraw(record, unit)
+        new = replace(drawn, paused=unit.paused, run_now_asked=unit.run_now_asked)
+        if new == old:
             return False
-        if not fits(unit, self.setup.field):
-            self.refuse(command, "larger than one field of view")
-            return False
-        now = self.scope.now()
-        if unit.outline != record.unit.outline:
-            # A new outline says where the unit is now, so tracking starts again from there.
-            self.tracks[record.number] = placed_track(unit, now)
-        self.roster.update(replace(record, unit=unit))
-        self.sink.log(UnitEdited(now, record.number, unit.group, unit.outline))
+        self.roster.update(replace(record, unit=new))
+        if new.paused != old.paused:
+            self.pause(record.number, new.paused)
+        if new.run_now_asked > old.run_now_asked:
+            self.run_now(record.number, new.run_now_asked)
         return True
 
-    def remove(self, command: RemoveUnit) -> bool:
-        record = self.present(command)
+    def redraw(self, record: UnitRecord, unit: Unit) -> Unit:
+        """``record``'s unit with ``unit``'s outline and group when they changed and fit, and as
+        it was otherwise."""
+        old = record.unit
+        if (unit.outline, unit.group) == (old.outline, old.group):
+            return old
+        if not self.fits(unit):
+            self.refuse(unit.key, "larger than one field of view")
+            return old
+        now = self.scope.now()
+        if unit.outline != old.outline:
+            # A new outline says where the unit is now, so tracking starts again from there.
+            self.tracks[record.number] = placed_track(unit, now)
+        self.sink.log(UnitEdited(now, record.number, unit.group, unit.outline))
+        return replace(old, outline=unit.outline, group=unit.group)
+
+    def remove(self, key: str) -> bool:
+        """Stop running anything on the unit with ``key``, returning whether it was running."""
+        record = self.roster.present(key)
         if record is None:
             return False
         for thread in self.queue.of_unit(record.number):
@@ -240,28 +238,18 @@ class Orchestrator:
         self.sink.log(UnitLeft(now, record.number))
         return True
 
-    def pause(self, command: PauseUnit | ResumeUnit, paused: bool) -> bool:
-        record = self.present(command)
-        if record is None or record.paused == paused:
-            return False
-        for thread in self.queue.of_unit(record.number):
+    def pause(self, number: int, paused: bool) -> None:
+        for thread in self.queue.of_unit(number):
             thread.paused = paused
-        self.roster.update(replace(record, paused=paused))
         event = UnitPaused if paused else UnitResumed
-        self.sink.log(event(self.scope.now(), record.number))
-        return True
+        self.sink.log(event(self.scope.now(), number))
 
-    def run_now(self, command: RunUnitNow) -> None:
-        record = self.present(command)
-        if record is None:
-            return
-        threads = self.queue.of_unit(record.number)
-        if not threads:
-            self.refuse(command, "its routines have all ended")
-            return
-        for thread in threads:
+    def run_now(self, number: int, asked: int) -> None:
+        """Put the unit's routines ahead of everything due; a paused one goes first once
+        resumed."""
+        for thread in self.queue.of_unit(number):
             thread.urgent = True
-        self.sink.log(RunNowAsked(self.scope.now(), record.number))
+        self.sink.log(RunNowAsked(self.scope.now(), number, asked))
 
     def next_step(self, thread: Thread) -> Step | None:
         """The thread's next step, or None when its routine has ended or failed."""

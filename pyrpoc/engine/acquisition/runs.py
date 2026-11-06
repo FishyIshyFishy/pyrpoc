@@ -17,7 +17,6 @@ from .earlier import EarlierChoices, any_reads
 from .events import RunEvents
 from .executor import Run
 from .program_inputs import ProgramInputsStore
-from .requests import RequestsStore
 
 
 class Runs(QObject):
@@ -28,7 +27,8 @@ class Runs(QObject):
     note_changed = pyqtSignal()
     # The earlier outputs programs can read changed, or which one is picked.
     earlier_changed = pyqtSignal()
-    # What a program needs may have arrived or gone: a device, or a name to save under.
+    # What a program needs may have arrived or gone: a device, a name to save under, an earlier
+    # output, or a program input value its checks judge.
     readiness_changed = pyqtSignal()
     # Something worth remembering changed: the save target, or a run started.
     edited = pyqtSignal()
@@ -38,18 +38,16 @@ class Runs(QObject):
         inventory: DeviceInventory,
         library: LibraryModel,
         inputs: ProgramInputsStore,
-        requests: RequestsStore,
         parent: QObject,
     ):
         super().__init__(parent)
         self.inventory = inventory
         self.inputs = inputs
-        self.requests = requests
         self.save = SaveTarget()
         # The note for the next run. Run metadata, not a program input: no program reads it.
         self.note = ""
-        self.earlier = EarlierChoices()
-        self.events = RunEvents(library.store, requests, self)
+        self.earlier = EarlierChoices(library.store)
+        self.events = RunEvents(library.store, self)
         self.live_runs: set[Run] = set()
         self.events.run_started.connect(self.on_run_started)
         self.events.run_finished.connect(self.on_run_finished)
@@ -57,6 +55,7 @@ class Runs(QObject):
         inventory.edited.connect(self.post_device_edits)
         self.save_changed.connect(self.readiness_changed.emit)
         self.earlier_changed.connect(self.readiness_changed.emit)
+        inputs.subscribe(lambda _key: self.readiness_changed.emit())
 
     def start(self, program_key: str, repeat: bool, claim: Callable[[Run], None]) -> None:
         """Start ``program_key`` with what the workbench holds right now, or report
@@ -70,6 +69,7 @@ class Runs(QObject):
             self.save,
             self.note,
             self.chosen_earlier(program_key),
+            self.earlier.load,
             repeat,
             claim,
         )
@@ -79,12 +79,14 @@ class Runs(QObject):
 
     def blockers(self, program_key: str) -> list[str]:
         """What has to be supplied before ``program_key`` can run."""
-        return readiness.missing(
-            program_registry.get(program_key),
-            self.inventory.devices,
-            self.save,
+        program = program_registry.get(program_key)
+        start = readiness.StartingRun(
+            self.save.folder,
+            self.inputs.values_for(program.inputs),
             self.chosen_earlier(program_key),
+            self.earlier.load,
         )
+        return readiness.missing(program, self.inventory.devices, self.save, start)
 
     def chosen_earlier(self, program_key: str) -> dict[str, EarlierOutput]:
         """The earlier output each name ``program_key`` reads would be read from now."""
@@ -139,10 +141,8 @@ class Runs(QObject):
         self.edited.emit()
 
     def on_run_finished(self, run: Run) -> None:
-        # Here, on the thread program inputs are set and requests posted on, so neither lands
-        # mid-close.
+        # Here, on the thread program inputs are set on, so no edit lands mid-close.
         run.inbox.close()
-        self.requests.close(run.inbox)
         self.live_runs.discard(run)
         self.publish_in_use()
         # Only a saved run can change what later runs read.

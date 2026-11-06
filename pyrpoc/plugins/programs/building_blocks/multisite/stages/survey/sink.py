@@ -7,14 +7,16 @@ from typing import Protocol
 
 import numpy as np
 
-from pyrpoc.plugins.program_io.outputs import MosaicTile, SurveyFinding, SurveyTile
+from pyrpoc.plugins.program_io.outputs import MosaicTile, SurveyEvent, SurveyFinding, SurveyTile
 
 from ...interfaces.overview import Overview
 
 
 class SurveySink(Protocol):
     """Told the grid before the first tile, each tile as it is taken, and at the end the overview
-    and what the survey found."""
+    and what the survey found; and told each event as it happens."""
+
+    def log(self, event: SurveyEvent) -> None: ...
 
     def plan(self, tiles: tuple[MosaicTile, ...], um_per_px: float) -> None: ...
 

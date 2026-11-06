@@ -1,4 +1,4 @@
-"""The colour image both of the mosaic panel's views show."""
+"""``ColourImage``: an aspect-locked RGB image with y growing downward."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from PyQt6.QtWidgets import QWidget
 
 
 class ColourImage(pg.PlotWidget):
-    """An aspect-locked RGB image, already scaled to 0..1 by the channel strip."""
+    """An RGB image already scaled to 0..1."""
 
     def __init__(self, parent: QWidget):
         super().__init__(parent)

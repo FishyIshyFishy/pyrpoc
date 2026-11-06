@@ -8,7 +8,8 @@ import numpy as np
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import QHBoxLayout, QLabel, QSlider, QVBoxLayout, QWidget
 
-from .image_view import ColourImage
+from pyrpoc.utils.widgets.colour_image import ColourImage
+
 from .layout import MosaicLayout
 
 
