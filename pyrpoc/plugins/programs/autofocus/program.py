@@ -27,10 +27,10 @@ from pyrpoc.plugins.program_io.inputs import (
 )
 from pyrpoc.plugins.program_io.outputs import FocusResult, FocusStackOutput, FocusStep
 
+from ..building_blocks.focus.climb import ClimbResult, ClimbStep, climb
+from ..building_blocks.focus.tenengrad import tenengrad
 from ..building_blocks.runners import Single
-from .climb import ClimbResult, ClimbStep, climb
 from .roi_scan import RoiRaster
-from .tenengrad import tenengrad
 
 
 def move_z(stage: PriorStage, z_um: float, sleep: Callable[[float], None]) -> None:

@@ -323,6 +323,10 @@ class AcquisitionPanel(Panel):
     def set_running_ui(self, running: bool) -> None:
         self.apply_enabled()
         self.stop_btn.setEnabled(running)
+        # A recording cannot move partway through, so where runs save is fixed while one goes.
+        save_fixed = bool(self.runs.live_runs)
+        self.save_check.setEnabled(not save_fixed)
+        self.path_field.setEnabled(not save_fixed)
 
     def export_persistence_state(self) -> dict[str, Any]:
         return {"program": self.selected_program}

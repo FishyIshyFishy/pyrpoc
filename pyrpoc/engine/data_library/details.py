@@ -83,15 +83,18 @@ class DetailsDialog(QDialog):
         return form
 
     def build_tree(self, recording: Recording) -> QTreeWidget:
-        """Parameters and devices, as they were when the recording started."""
+        """Parameters and devices of each part, as they were when the part began."""
         tree = QTreeWidget(self)
         tree.setHeaderLabels(["Setting", "Value"])
-        sections = {"Parameters": recording.parameters, "Devices": recording.devices}
-        for title, values in sections.items():
-            section = QTreeWidgetItem(tree, [title, ""])
-            for key, value in values.items():
-                add_branch(section, str(key), value)
-            section.setExpanded(True)
+        for number, part in enumerate(recording.parts, start=1):
+            # One part needs no numbering: most recordings have only one.
+            heading = "" if len(recording.parts) == 1 else f"Part {number} "
+            sections = {"Parameters": part.parameters, "Devices": part.devices}
+            for title, values in sections.items():
+                section = QTreeWidgetItem(tree, [f"{heading}{title}", ""])
+                for key, value in values.items():
+                    add_branch(section, str(key), value)
+                section.setExpanded(True)
         tree.resizeColumnToContents(0)
         return tree
 
