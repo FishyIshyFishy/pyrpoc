@@ -140,7 +140,10 @@ class AutonomyPanel(DataPanel[SurveyOutput]):
         self.loop_watch.pause.connect(self.toggle_pause)
         self.outside_changed.connect(self.redraw_soon.start)
         self.inputs.subscribe(self.on_input_changed)
-        self.library.subscribe(self.on_library_changed)
+        self.library.subscribe(self.on_collection_changed)
+        # A run ending changes only what is accepted, so this is where the panel learns that its
+        # loop stopped.
+        self.requests.subscribe(self.on_collection_changed)
 
     @property
     def running(self) -> bool:
@@ -196,7 +199,7 @@ class AutonomyPanel(DataPanel[SurveyOutput]):
         # On the run's thread: hand over to the GUI thread.
         self.outside_changed.emit()
 
-    def on_library_changed(self) -> None:
+    def on_collection_changed(self) -> None:
         # A part begins on the run's thread, so this too may not be the GUI thread.
         self.outside_changed.emit()
 
@@ -297,5 +300,6 @@ class AutonomyPanel(DataPanel[SurveyOutput]):
         if self.loop is not None:
             self.loop.unsubscribe(self.on_loop_changed)
         self.inputs.unsubscribe(self.on_input_changed)
-        self.library.unsubscribe(self.on_library_changed)
+        self.library.unsubscribe(self.on_collection_changed)
+        self.requests.unsubscribe(self.on_collection_changed)
         super().detach()
