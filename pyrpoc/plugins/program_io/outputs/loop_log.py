@@ -21,6 +21,8 @@ class LoopLogOutput(ProgramOutput):
     def __init__(self, *, name: str, recording: Recording, root: Path | None):
         super().__init__(name=name, recording=recording, root=root)
         self.events: list[LoopEvent] = []
+        # Kept up to date as events arrive, so a view never replays the whole log.
+        self.fold = LoopFold()
         self.nbytes_logged = 0
 
     def log(self, event: LoopEvent) -> None:
@@ -30,6 +32,8 @@ class LoopLogOutput(ProgramOutput):
         lines = [json.dumps(event_to_dict(event)) for event in events]
         with self.lock:
             self.events.extend(events)
+            for event in events:
+                self.fold.take(event)
             self.nbytes_logged += sum(len(line) for line in lines)
             if self.root is not None:
                 path = self.root.with_name(f"{self.root.name}_{self.name}.jsonl")
@@ -46,11 +50,7 @@ class LoopLogOutput(ProgramOutput):
     def view(self) -> LoopView:
         """What the log says the loop is doing as of its latest event."""
         with self.lock:
-            events = list(self.events)
-        fold = LoopFold()
-        for event in events:
-            fold.take(event)
-        return fold.view()
+            return self.fold.view()
 
     @property
     def nbytes(self) -> int:
@@ -63,6 +63,8 @@ class LoopLogOutput(ProgramOutput):
             (path,) = files.values()
             for line in path.read_text(encoding="utf-8").splitlines():
                 if line:
-                    output.events.append(event_from_dict(json.loads(line)))
+                    event = event_from_dict(json.loads(line))
+                    output.events.append(event)
+                    output.fold.take(event)
                     output.nbytes_logged += len(line)
         return output
