@@ -38,9 +38,9 @@ def missing(
     if save.enabled and not save.filename:
         needs.append("a name to save under")
     folder = "a folder" if save.folder is None else "this folder"
-    for name, output_type in program.reads.items():
+    for name in program.reads:
         if name not in earlier:
-            needs.append(f"a {name} ({output_type.__name__}) saved in {folder}")
+            needs.append(f"a {name} saved in {folder}")
     context = StartingRun(save.folder, earlier)
     for check in program.checks:
         needs += check.blockers(context)

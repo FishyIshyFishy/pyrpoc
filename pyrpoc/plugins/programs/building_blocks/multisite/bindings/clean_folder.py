@@ -27,4 +27,5 @@ class CleanFolder(Check):
         extra = [name for name in ctx.recordings_in_folder() if name not in allowed]
         if not extra:
             return []
-        return [f"a folder holding only what it reads (move out {', '.join(extra)})"]
+        wanted = "an empty folder" if not allowed else "a folder holding only the steps it reads"
+        return [f"{wanted} (choose a new folder, or move out {', '.join(extra)})"]
