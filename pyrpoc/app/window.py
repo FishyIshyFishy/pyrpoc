@@ -141,6 +141,8 @@ class MainWindow(QWidget):
             self.dock_by_key[spec.key] = dock
             if first is None:
                 first = dock
+        # Every job starts here; the tab added last would otherwise be the one shown.
+        self.dock_by_key[DockKey.ACQUISITION].setAsCurrentTab()
 
     def add_dock(
         self,
