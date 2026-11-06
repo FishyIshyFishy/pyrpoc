@@ -236,7 +236,7 @@ class MainWindow(QWidget):
         dock = qtads.CDockWidget(self.panel_title(panel))
         dock.setObjectName(self.panel_object_name(panel))
         dock.setWidget(panel)
-        self.dock_manager.addDockWidgetFloating(dock)
+        self.dock_beside_displays(dock)
         self.panel_docks[panel] = dock
 
         action = QAction(self.panel_title(panel), self)
@@ -245,6 +245,18 @@ class MainWindow(QWidget):
         action.toggled.connect(lambda checked, p=panel: self.on_panel_toggled(p, checked))
         self.panel_actions[panel] = action
         dock.closed.connect(lambda *_args, p=panel: self.discard_panel(p))
+
+    def dock_beside_displays(self, dock: qtads.CDockWidget) -> None:
+        """Add ``dock`` as a tab beside the added panels still in the window, or to the right
+        of the fixed panels when there are none."""
+        # Inside the window rather than floating: a loose window covers the panels it is opened
+        # to sit beside. It can still be dragged out.
+        docked = [each for each in self.panel_docks.values() if not each.isFloating()]
+        area = docked[-1].dockAreaWidget() if docked else None
+        if area is None:
+            self.dock_manager.addDockWidget(qtads.DockWidgetArea.RightDockWidgetArea, dock)
+        else:
+            self.dock_manager.addDockWidgetTabToArea(dock, area)
 
     def remove_panel_dock(self, panel: DataPanel) -> None:
         dock = self.panel_docks.pop(panel)

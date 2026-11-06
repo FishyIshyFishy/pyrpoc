@@ -84,7 +84,8 @@ class DeviceDocks(QObject):
         # ADS keys save/restore by the object name at add time, so set it first.
         dock.setObjectName(dock_object_name(device))
         dock.setWidget(panel)
-        self.dock_manager.addDockWidgetFloating(dock)
+        # A tab beside the Devices panel, not a loose window over the panels.
+        self.dock_manager.addDockWidgetTab(qtads.DockWidgetArea.LeftDockWidgetArea, dock)
         dock.closed.connect(lambda *_args, d=device: self.discard(d))
         self.docks[device] = dock
         self.panels[device] = panel
