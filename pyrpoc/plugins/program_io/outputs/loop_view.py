@@ -4,11 +4,10 @@ from them."""
 from __future__ import annotations
 
 from collections import deque
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from enum import Enum
 
 from .loop_events import (
-    CommandRefused,
     FocusChecked,
     LoopEvent,
     LoopFinished,
@@ -23,6 +22,7 @@ from .loop_events import (
     UnitJoined,
     UnitLeft,
     UnitPaused,
+    UnitRefused,
     UnitResumed,
     UnitScanned,
 )
@@ -135,11 +135,11 @@ class LoopFold:
                 self.started_s, self.channels = event.time_s, event.channels
                 self.routines = event.routines
             case UnitJoined():
-                unit = Unit(event.key, event.outline, event.group)
+                unit = Unit(event.key, event.outline, event.group, False, 0)
                 self.units[event.unit] = UnitFold(unit, unit.centre)
             case UnitEdited():
                 fold = self.units[event.unit]
-                fold.unit = Unit(fold.unit.key, event.outline, event.group)
+                fold.unit = replace(fold.unit, outline=event.outline, group=event.group)
                 fold.tracked, fold.lost = fold.unit.centre, False
             case UnitLeft():
                 self.units[event.unit].left = True
@@ -157,7 +157,7 @@ class LoopFold:
                 points.append((event.time_s - self.started_s, event.values))
             case RoutineEnded() | RoutineFailed():
                 self.units[event.unit].due.pop(event.routine, None)
-            case LoopResumed() | FocusChecked() | CommandRefused() | LoopFinished():
+            case LoopResumed() | FocusChecked() | UnitRefused() | LoopFinished():
                 pass
 
     def take_scan(self, fold: UnitFold, event: UnitScanned) -> None:

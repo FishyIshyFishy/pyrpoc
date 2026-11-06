@@ -16,13 +16,18 @@ from .scratch import Scratch
 @dataclass(frozen=True)
 class StartingUnits(Check):
     """Refuses a loop with no units drawn, or with units larger than one field of the survey
-    read. A loop carried on starts from its scratch, not the units drawn, so it is never
-    refused for them."""
+    read. A loop carried on starts from its scratch instead, so it is refused if units are
+    drawn: they would not be what it starts on."""
 
     def blockers(self, ctx: CheckContext) -> list[str]:
-        if ctx.folder is not None and Scratch(ctx.folder).exists():
-            return []
         units = ctx.inputs[UNITS]
+        if ctx.folder is not None and Scratch(ctx.folder).exists():
+            if not units:
+                return []
+            return [
+                "no units drawn, to carry on the loop stopped in this folder "
+                "(or choose a new folder to start afresh)"
+            ]
         if not units:
             return ["at least one unit drawn over the survey"]
         survey = ctx.earlier("survey", SurveyOutput)

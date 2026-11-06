@@ -6,7 +6,6 @@ direction: right
 classes: {
   input: {style: {fill: "#fff3d6"; stroke: "#c79200"; border-radius: 6}}
   live: {style: {fill: "#fff3d6"; stroke: "#c79200"; stroke-width: 3; stroke-dash: 3; border-radius: 6}}
-  request: {style: {fill: "#ffe7c2"; stroke: "#d9730d"; stroke-width: 2; border-radius: 6}}
   prog: {style: {fill: "#e6f5e9"; stroke: "#3c8d4f"; stroke-width: 3; border-radius: 6}}
   check: {shape: hexagon; style: {fill: "#e8f0fb"; stroke: "#3b6db3"}}
   out: {style: {fill: "#f3ecfa"; stroke: "#7e57a8"; border-radius: 6}}
@@ -19,7 +18,6 @@ classes: {
 key: |md
   **Key**
   - yellow: ProgramInputs (dashed: *live*)
-  - orange: Request
   - green: program
   - purple: ProgramOutput
   - bold yellow box: the Library,
@@ -49,15 +47,13 @@ sur_in -> sur
 sur -> library.survey
 
 # ---------------------------------------------------------------- 3. loop
-units: "UNITS: tuple[Unit]\nthe units it starts on\nUnit = key + outline + group" {class: input}
+units: "UNITS: tuple[Unit]\nthe units it runs on, live\nUnit = key + outline + group\n+ paused + run_now_asked" {class: live}
 loop_in: "TREAT, TREATED_GROUP\nFOCUS_CHECK_S, ..." {class: input}
 monitor_live: "PERIOD_S, DURATION_MIN" {class: live}
-command: "UNIT_COMMAND\nadd, edit, remove, pause,\nresume, run now (by key)" {class: request}
 loop: "3. Longitudinal Monitor\n(any loop: routines on units)\nreads 'survey' -> SurveyMap,\n'calibration' -> FieldOfView" {class: prog}
-units -> loop: "fresh start"
+units -> loop: "at start, and between steps"
 loop_in -> loop
 monitor_live -> loop
-command -> loop: "while it runs"
 loop -> library.log
 loop -> library.unit_records
 loop -> library.frames
@@ -71,7 +67,7 @@ library: "Library: the open recordings and all their outputs" {
   view: "'view' ImageOutput\nevery frame it looked at" {class: out}
   survey: "'survey'\nSurveyOutput (a MosaicOutput)\n.found() -> SurveyFinding\n  (FocusPlane, MotionRate)\n.overview() -> (planes, Placement)" {class: out}
   log: "'log' LoopLogOutput\nevery LoopEvent\n.view() -> LoopView" {class: out}
-  unit_records: "'units' UnitsOutput\nevery UnitRecord\n(number, Unit, joined, left, paused)" {class: out}
+  unit_records: "'units' UnitsOutput\nevery UnitRecord\n(number, Unit, joined, left)" {class: out}
   frames: "'frames' UnitFramesOutput\neach frame tagged FrameTag\n(unit number, routine, position)" {class: out}
 }
 
@@ -89,6 +85,5 @@ library.log -> autonomy: ".view(): units as tracked"
 library.log -> curves: ".view(): UnitView.series"
 library -> data_library
 
-# What the Autonomy panel sends back: units to start on, and commands while a loop runs.
-units -- autonomy: "before a loop" {source-arrowhead.shape: triangle; style.stroke: "#b04a4a"}
-command -- autonomy: "while it runs" {source-arrowhead.shape: triangle; style.stroke: "#b04a4a"}
+# What the Autonomy panel sends back: the units, before and while a loop runs.
+units -- autonomy: "units drawn and edited" {source-arrowhead.shape: triangle; style.stroke: "#b04a4a"}

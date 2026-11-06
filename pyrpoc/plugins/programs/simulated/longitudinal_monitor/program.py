@@ -9,7 +9,6 @@ from ...building_blocks.multisite import (
     LOOP_EMITS,
     LOOP_FOCUS_INPUTS,
     LOOP_READS,
-    LOOP_REQUESTS,
     LOOP_UNITS,
     MONITOR_INPUTS,
     MONITOR_LIVE,
@@ -36,8 +35,7 @@ class SimulatedLongitudinalMonitor(Program):
     # The units have no row: they are drawn over the survey. The
     # dish's treatment light answers any line, so the line is not asked for.
     cards = {"Monitor": MONITOR_INPUTS, "Treatment": TREATMENT_INPUTS, "Focus": LOOP_FOCUS_INPUTS}
-    live = list(MONITOR_LIVE)
-    requests = LOOP_REQUESTS
+    live = [*LOOP_UNITS, *MONITOR_LIVE]
     emits = LOOP_EMITS
     runners = [Single()]
     # Each step of the pipeline starts in a folder holding only the steps before it, and a loop

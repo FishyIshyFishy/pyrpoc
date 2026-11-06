@@ -72,18 +72,20 @@ class UnitResumed:
 
 @dataclass(frozen=True)
 class RunNowAsked:
+    """A unit was asked to run at once, for the ``asked``-th time."""
+
     kind: ClassVar[str] = "run now"
     time_s: float
     unit: int
+    asked: int
 
 
 @dataclass(frozen=True)
-class CommandRefused:
-    """A unit command the loop could not carry out, and why."""
+class UnitRefused:
+    """A change to the units the loop could not make, to the unit with ``key``, and why."""
 
     kind: ClassVar[str] = "refused"
     time_s: float
-    command: str
     key: str
     reason: str
 
@@ -172,7 +174,7 @@ LoopEvent = (
     | UnitPaused
     | UnitResumed
     | RunNowAsked
-    | CommandRefused
+    | UnitRefused
     | StepDue
     | UnitScanned
     | Measured
@@ -192,7 +194,7 @@ EVENTS: dict[str, type[LoopEvent]] = {
         UnitPaused,
         UnitResumed,
         RunNowAsked,
-        CommandRefused,
+        UnitRefused,
         StepDue,
         UnitScanned,
         Measured,

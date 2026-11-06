@@ -30,9 +30,10 @@ class UnitsField(Field):
 
 UNITS: ProgramInput[tuple[Unit, ...]] = declare(
     "units",
-    UnitsField("Units", "The regions drawn over the survey that a loop starts on"),
+    UnitsField("Units", "The regions of the dish a loop runs on, drawn over the survey"),
     (),
-    # Thousands of outlines would be rewritten on every autosave. Once a loop has started, its
-    # units output is the record of them.
+    # Thousands of outlines would be rewritten on every autosave and every edit in a loop's
+    # metadata. A loop's units output and log are the record of them.
     restored=False,
+    recorded=False,
 )

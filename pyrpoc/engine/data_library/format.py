@@ -24,16 +24,16 @@ class RecordingError(Exception):
 
 @dataclass(frozen=True)
 class Taken:
-    """The run taking something posted to it: a request, or a change to one of its program
-    inputs or to its devices."""
+    """The run taking something posted to it: a change to one of its program inputs or to its
+    devices."""
 
     posted_at: str
     taken_at: str
-    # "request", "input" or "device".
+    # "input" or "device".
     kind: str
-    # The request's or input's key, or the device's class name.
+    # The input's key, or the device's class name.
     key: str
-    # As its rules encode it; a device's whole settings.
+    # As its rules encode it, or None for an input not recorded; a device's whole settings.
     value: Any
 
 

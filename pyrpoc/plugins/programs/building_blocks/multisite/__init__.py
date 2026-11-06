@@ -10,7 +10,6 @@ from .bindings.loop import (
     LOOP_EMITS,
     LOOP_FOCUS_INPUTS,
     LOOP_READS,
-    LOOP_REQUESTS,
     LOOP_UNITS,
     run_loop,
 )
@@ -32,7 +31,6 @@ __all__ = [
     "LOOP_EMITS",
     "LOOP_FOCUS_INPUTS",
     "LOOP_READS",
-    "LOOP_REQUESTS",
     "LOOP_UNITS",
     "MONITOR_INPUTS",
     "MONITOR_LIVE",

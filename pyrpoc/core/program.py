@@ -12,7 +12,6 @@ from pyrpoc.core.device import Device
 from pyrpoc.core.program_input import ProgramInput, ProgramInputValues
 from pyrpoc.core.program_output import ProgramOutput
 from pyrpoc.core.registry import Registry
-from pyrpoc.core.requests import Request
 
 from .runner import Runner
 
@@ -77,9 +76,6 @@ class Program:
     # started. The rest stay as they were when it started.
     live: list[ProgramInput[Any]] = []
 
-    # The requests panels may post to a run of it, which it takes when it chooses.
-    requests: list[Request[Any]] = []
-
     # Named outputs, and the type of each.
     emits: dict[str, type[ProgramOutput]] = {}
 
@@ -105,7 +101,7 @@ class Program:
 # note to self: python protocols are useful just for type checkers
 class RunInbox(Protocol):
     """What has been posted to one run and not yet taken, safe to take from the run's thread:
-    the changes to its live inputs, and the requests posted to it."""
+    the changes to its live inputs."""
 
     def live_keys(self) -> frozenset[str]: ...
 
@@ -113,18 +109,11 @@ class RunInbox(Protocol):
         """A live input's value now, taking a change posted since it was last asked for."""
         ...
 
-    def accepts(self) -> frozenset[Request[Any]]: ...
-
-    def take(self, request: Request[Any]) -> list[Any]:
-        """The values posted with ``request`` since it was last taken, oldest first."""
-        ...
-
 
 class RunContext:
     """What a running program is handed for one part of its recording: its input values as
-    they were when the part began, its inbox, which gives the current values of its live inputs
-    and the requests posted to it, the earlier outputs it reads, its devices, the part's
-    outputs, status and cancel."""
+    they were when the part began, its inbox, which gives the current values of its live inputs,
+    the earlier outputs it reads, its devices, the part's outputs, status and cancel."""
 
     def __init__(
         self,
@@ -154,16 +143,6 @@ class RunContext:
                 f"{sorted(self._inbox.live_keys())}"
             )
         return self._inbox.current(program_input.key)
-
-    def requests(self, request: Request[T]) -> list[T]:
-        """The values posted with ``request`` since the run last asked, oldest first; each is
-        given once."""
-        if request not in self._inbox.accepts():
-            raise KeyError(
-                f"{request.key!r} is not declared in requests; this program declares "
-                f"{sorted(each.key for each in self._inbox.accepts())}"
-            )
-        return self._inbox.take(request)
 
     def earlier(self, name: str, output_type: type[OutputT]) -> OutputT:
         """The earlier output chosen for ``name``, which ``reads`` declares as

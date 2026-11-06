@@ -19,7 +19,6 @@ from PyQt6.QtWidgets import (
 
 from pyrpoc.core.library import Library
 from pyrpoc.core.program_input import ProgramInputs
-from pyrpoc.core.requests import Requests
 from pyrpoc.plugins.program_io.outputs import MosaicOutput
 from pyrpoc.utils.widgets.data_panel import DataPanel, data_panel_registry
 
@@ -36,8 +35,8 @@ class MosaicPanel(DataPanel[MosaicOutput]):
     order = 22
     renders = MosaicOutput
 
-    def __init__(self, library: Library, inputs: ProgramInputs, requests: Requests):
-        super().__init__(library, inputs, requests)
+    def __init__(self, library: Library, inputs: ProgramInputs):
+        super().__init__(library, inputs)
         pg.setConfigOptions(imageAxisOrder="row-major")
         self.labels: list[str] = []
         self.wants_mosaic = False

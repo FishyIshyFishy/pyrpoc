@@ -39,11 +39,16 @@ A stage never sees a run, a device or a ProgramOutput. It can be driven by fakes
 Each program declares the checks its stage needs, so a start that cannot work is refused before its recording opens:
 - `CleanFolder`: the folder holds only the earlier steps it reads (and, for a loop, the runs of a loop it carries on).
 - `CalibrationMeasured` and `SurveyFinished`: the steps it reads ran to their end, not stopped partway.
-- `StartingUnits`: a fresh loop has units drawn, each fitting in one field of the survey.
+- `StartingUnits`: a fresh loop has units drawn, each fitting in one field of the survey; a loop carried on has none drawn, since it starts from its scratch.
 
 ## Units in a loop
 - **Identity.** A `Unit` has a key it keeps for life, made by `Unit.new` wherever the unit comes from: drawn by a person or found by software. The loop gives each unit a number as it joins (`Roster`) and never gives a number twice, so a unit deleted and drawn again is a new unit with a new number.
-- **Changes are commands.** A loop starts on the `UNITS` input. While it runs, units change only through `UNIT_COMMAND` requests: add, edit, remove, pause, resume, run now. The loop takes them between steps through `Steering`, and logs a refusal for one it cannot carry out. A new outline in an edit says where the unit is now, so tracking starts again from there.
+- **The units are a live input.** A loop starts on `UNITS` and reads it again between steps through `Steering`. Each `Unit` carries whether it is paused and how many times it was asked to run now. The loop compares the units it is given with those it took last:
+  - a unit no longer given leaves;
+  - a new one joins;
+  - a changed one takes its new outline or group, is paused or resumed, or runs ahead of everything due when its count rises.
+
+  A new outline says where the unit is now, so tracking starts again from there. A change the loop cannot make is logged as `UnitRefused`. Only a unit given before and not now leaves, so a loop carried on, which starts with no units given, loses none until a panel gives it its units back from the `units` output.
 - **What it publishes.** `UnitsOutput` holds every unit the loop has had, as a `UnitRecord`; `LoopLogOutput` holds every event, one typed class per kind; `UnitFramesOutput` holds every frame.
 
 ## The scratch
@@ -54,7 +59,7 @@ If a loop is stopped or cut short, the scratch stays. Starting the loop again in
 - `resumption()` replays the events into each unit, its routines' progress and history, and the focus offset;
 - the new run's log starts with every earlier event, so the run that finishes the loop tells all of it.
 
-The units drawn when a loop is carried on are not used: the scratch is. A routine carries on from its `RoutineHistory`, and each unit is taken to be where it was last found, its look learnt again from the next scan.
+A loop carried on starts from the scratch, not from `UNITS`, which `StartingUnits` makes sure is empty. A routine carries on from its `RoutineHistory`, and each unit is taken to be where it was last found, its look learnt again from the next scan.
 
 ## Adding to it
 - **A routine:** one file in `routines/` that yields `Scan`, `Wait` and `Record` steps for one unit, starting from its `RoutineHistory` (empty unless the loop is carried on). Add its binding in `bindings/` for the program inputs it reads, and a program that hands it to `run_loop`.

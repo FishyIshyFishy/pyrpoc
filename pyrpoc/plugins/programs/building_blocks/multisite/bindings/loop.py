@@ -1,5 +1,5 @@
-"""The loop stage bound to a run: its program inputs and requests, what it reads and fills, its
-scratch, and the call a program makes."""
+"""The loop stage bound to a run: its program inputs, what it reads and fills, its scratch, and
+the call a program makes."""
 
 from __future__ import annotations
 
@@ -12,7 +12,6 @@ import numpy as np
 from pyrpoc.core.program import RunContext
 from pyrpoc.core.program_input import ProgramInput
 from pyrpoc.core.program_output import ProgramOutput
-from pyrpoc.core.requests import Request
 from pyrpoc.plugins.program_io.inputs import (
     DWELL_TIME_US,
     FOCUS_CHECK_S,
@@ -25,11 +24,11 @@ from pyrpoc.plugins.program_io.outputs import (
     LoopEvent,
     LoopLogOutput,
     SurveyOutput,
+    Unit,
     UnitFramesOutput,
     UnitRecord,
     UnitsOutput,
 )
-from pyrpoc.plugins.program_io.requests import UNIT_COMMAND, UnitCommand
 
 from ..interfaces.field import FieldOfView
 from ..interfaces.microscope import Microscope
@@ -40,9 +39,8 @@ from ..stages.loop.routine import RoutineSpec
 from ..stages.loop.survey_map import SurveyMap, Visit
 from .scratch import Scratch
 
-# Every loop program reads the units it starts on, and takes commands that change them.
+# Every loop program reads the units, live: they are what it runs on, however they change.
 LOOP_UNITS: list[ProgramInput[Any]] = [UNITS]
-LOOP_REQUESTS: list[Request[Any]] = [UNIT_COMMAND]
 LOOP_FOCUS_INPUTS = (FOCUS_CHECK_S, FOCUS_FINAL_STEP_UM)
 # What every loop fills: its log, its units, and every frame of every unit.
 LOOP_EMITS: dict[str, type[ProgramOutput]] = {
@@ -58,13 +56,13 @@ LOOP_READS: dict[str, type[ProgramOutput]] = {
 
 
 class RunSteering:
-    """The unit commands posted to a run."""
+    """The units a run is given now."""
 
     def __init__(self, ctx: RunContext):
         self.ctx = ctx
 
-    def commands(self) -> list[UnitCommand]:
-        return self.ctx.requests(UNIT_COMMAND)
+    def units(self) -> tuple[Unit, ...]:
+        return self.ctx.current(UNITS)
 
 
 class LoopOutputs:
@@ -132,7 +130,7 @@ def begin(ctx: RunContext, orchestrator: Orchestrator, outputs: LoopOutputs) -> 
     # The log of the run that finishes the loop tells all of it, from its first event.
     outputs.events.log_all(earlier)
     orchestrator.resume(resumption(earlier))
-    ctx.status("Carried on the loop cut short in this folder; the units drawn are not used")
+    ctx.status("Carried on the loop cut short in this folder")
 
 
 def note_recording(outputs: LoopOutputs) -> None:

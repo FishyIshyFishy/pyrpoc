@@ -12,7 +12,6 @@ from PyQt6.QtWidgets import QCheckBox, QVBoxLayout
 
 from pyrpoc.core.library import Library
 from pyrpoc.core.program_input import ProgramInputs
-from pyrpoc.core.requests import Requests
 from pyrpoc.plugins.program_io.outputs import SpectrumOutput
 from pyrpoc.utils.widgets.colors import color_for_index
 from pyrpoc.utils.widgets.data_panel import DataPanel, data_panel_registry
@@ -25,8 +24,8 @@ class SpectrumPanel(DataPanel[SpectrumOutput]):
     order = 10
     renders = SpectrumOutput
 
-    def __init__(self, library: Library, inputs: ProgramInputs, requests: Requests):
-        super().__init__(library, inputs, requests)
+    def __init__(self, library: Library, inputs: ProgramInputs):
+        super().__init__(library, inputs)
         self._curves: list[pg.PlotDataItem] = []
         self._legend_labels: list[str] = []
 

@@ -21,17 +21,21 @@ Outline = tuple[tuple[float, float], ...]
 @dataclass(frozen=True)
 class Unit:
     """One region of the dish: a key it keeps for life and no other unit ever has, an outline in
-    dish µm, so it outlasts a change of resolution, and the group it belongs to, such as
-    treated or control."""
+    dish µm, so it outlasts a change of resolution, the group it belongs to, such as treated
+    or control, whether a loop is to leave it alone, and how many times it was asked to run at
+    once."""
 
     key: str
     outline: Outline
     group: str
+    paused: bool
+    # Each rise runs it ahead of everything due: a count, since a request has no clock to share.
+    run_now_asked: int
 
     @classmethod
     def new(cls, outline: Outline, group: str) -> Unit:
         """A unit never seen before, with a key of its own."""
-        return cls(uuid.uuid4().hex, outline, group)
+        return cls(uuid.uuid4().hex, outline, group, False, 0)
 
     @property
     def centre(self) -> tuple[float, float]:
@@ -69,6 +73,8 @@ class Unit:
             "key": self.key,
             "outline": [list(point) for point in self.outline],
             "group": self.group,
+            "paused": self.paused,
+            "run_now_asked": self.run_now_asked,
         }
 
     @classmethod
@@ -76,7 +82,13 @@ class Unit:
         """A unit from JSON, a boundary: anything malformed raises ``ParameterError``."""
         try:
             outline = tuple((float(x), float(y)) for x, y in raw["outline"])
-            unit = cls(str(raw["key"]), outline, str(raw["group"]))
+            unit = cls(
+                str(raw["key"]),
+                outline,
+                str(raw["group"]),
+                bool(raw["paused"]),
+                int(raw["run_now_asked"]),
+            )
         except (KeyError, TypeError, ValueError) as exc:
             raise ParameterError(f"a unit is malformed: {exc}") from exc
         if len(outline) < 3:
@@ -87,14 +99,13 @@ class Unit:
 @dataclass(frozen=True)
 class UnitRecord:
     """A unit as a loop knows it: the number the loop gave it on joining, never given to another
-    unit, the unit as last drawn or edited, when it joined and left on the instrument's clock,
-    and whether it is paused."""
+    unit, the unit as last drawn or edited, and when it joined and left on the instrument's
+    clock."""
 
     number: int
     unit: Unit
     joined_s: float
     left_s: float | None
-    paused: bool
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -102,7 +113,6 @@ class UnitRecord:
             "unit": self.unit.to_dict(),
             "joined_s": self.joined_s,
             "left_s": self.left_s,
-            "paused": self.paused,
         }
 
     @classmethod
@@ -113,7 +123,6 @@ class UnitRecord:
             Unit.from_dict(raw["unit"]),
             float(raw["joined_s"]),
             None if left is None else float(left),
-            bool(raw["paused"]),
         )
 
 

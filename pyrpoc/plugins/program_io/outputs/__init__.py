@@ -8,7 +8,6 @@ from .galvo_calibration import CalibrationPoint, GalvoCalibration, GalvoCalibrat
 from .histogram import HistogramOutput
 from .image import ImageOutput
 from .loop_events import (
-    CommandRefused,
     FocusChecked,
     LoopEvent,
     LoopFinished,
@@ -23,6 +22,7 @@ from .loop_events import (
     UnitJoined,
     UnitLeft,
     UnitPaused,
+    UnitRefused,
     UnitResumed,
     UnitScanned,
     event_from_dict,
@@ -41,7 +41,6 @@ from .units import Outline, Unit, UnitRecord, UnitsOutput
 __all__ = [
     "event_from_dict",
     "event_to_dict",
-    "CommandRefused",
     "FocusChecked",
     "LoopFinished",
     "LoopResumed",
@@ -58,6 +57,7 @@ __all__ = [
     "UnitLeft",
     "UnitPaused",
     "UnitRecord",
+    "UnitRefused",
     "UnitResumed",
     "UnitScanned",
     "UnitState",

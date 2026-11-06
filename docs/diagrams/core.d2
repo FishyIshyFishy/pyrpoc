@@ -12,7 +12,6 @@ classes: {
 
 settings: "ProgramInputs\nthe user's settings" {class: coll}
 devices: "Devices\nhardware claimed\nfor the run" {class: coll}
-requests: "Requests\ncommands panels post" {class: coll}
 earlier: "Earlier outputs\nonly if the program\ndeclares `reads`" {class: val}
 
 inbox: "Inbox, one per run\neverything posted to it,\neach taken at its moment\nand logged" {class: inbox}
@@ -22,7 +21,7 @@ run: "Run\nprogram.run(ctx)\nctx is its only door" {class: prog}
 recording: "Recording\nits parts, each with the\nsettings it ran with,\nand their ProgramOutputs" {class: val}
 library: "Library\nthe open recordings" {class: coll}
 files: "files on disk\n(if saving is on)" {class: disk}
-panels: "Panels\nshow outputs,\nset settings, post requests" {class: view}
+panels: "Panels\nshow outputs,\nset settings" {class: view}
 
 settings -> run: "values at start"
 devices -> run
@@ -30,13 +29,11 @@ earlier -> run
 
 settings -> inbox: "edits"
 devices -> inbox: "edits"
-requests -> inbox: "posted"
-inbox -> run: "a request: when asked\na live input: when read\nany other edit: between\npasses, as a new part"
+inbox -> run: "a live input: when read\nany other edit: between\npasses, as a new part"
 
 run -> recording
 recording -> library
 recording -> files: "as it fills"
 earlier -- files: "a later run reads it" {source-arrowhead.shape: triangle}
 library -> panels
-settings -- panels: "mask drawn, pixel picked" {source-arrowhead.shape: triangle; style.stroke: "#b04a4a"}
-requests -- panels: "visit this unit now" {source-arrowhead.shape: triangle; style.stroke: "#b04a4a"}
+settings -- panels: "mask drawn, pixel picked,\nunits edited as a loop runs" {source-arrowhead.shape: triangle; style.stroke: "#b04a4a"}

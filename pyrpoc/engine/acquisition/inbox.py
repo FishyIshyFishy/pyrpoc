@@ -14,7 +14,6 @@ from pyrpoc.core.device import Device, encode_config
 from pyrpoc.core.program import Program
 from pyrpoc.core.program_input import ProgramInputValues
 from pyrpoc.core.recording import utc_now
-from pyrpoc.core.requests import Request
 from pyrpoc.engine.data_library.format import Taken
 
 from .program_inputs import ProgramInputsStore
@@ -25,10 +24,9 @@ def device_state(devices: dict[type[Device], Device]) -> dict[str, Any]:
 
 
 class RunInbox:
-    """What has been posted to one run: requests, edits to its program inputs, and edits to its
-    devices. Requests are taken when the program asks for them, a live input's edit when the
-    program reads it, and every other edit between passes of a repeating run, where it begins
-    a new part of the recording."""
+    """What has been posted to one run: edits to its program inputs, and edits to its devices.
+    A live input's edit is taken when the program reads it, and every other edit between
+    passes of a repeating run, where it begins a new part of the recording."""
 
     def __init__(
         self,
@@ -43,15 +41,13 @@ class RunInbox:
         self.on_taken = on_taken
         self.rules = {each.key: each.rule for each in program.inputs}
         self.live = frozenset(each.key for each in program.live)
+        self.recorded = frozenset(each.key for each in program.inputs if each.recorded)
         self.lock = threading.Lock()
         # What the run has been given, and what was posted since, with when.
         self.values = {key: inputs.get(key) for key in self.rules}
         self.posted: dict[str, tuple[str, Any]] = {}
         self.device_settings = device_state(devices)
         self.devices_posted_at: str | None = None
-        self.requests: dict[Request[Any], list[tuple[str, Any]]] = {
-            each: [] for each in program.requests
-        }
         inputs.subscribe(self.input_set)
 
     def input_set(self, key: str) -> None:
@@ -65,24 +61,8 @@ class RunInbox:
         with self.lock:
             self.devices_posted_at = utc_now()
 
-    def give(self, request: Request[Any], value: Any) -> None:
-        """Post a request."""
-        with self.lock:
-            self.requests[request].append((utc_now(), value))
-
-    def accepts(self) -> frozenset[Request[Any]]:
-        return frozenset(self.requests)
-
     def live_keys(self) -> frozenset[str]:
         return self.live
-
-    def take(self, request: Request[Any]) -> list[Any]:
-        """The values posted with ``request`` since it was last taken, oldest first."""
-        with self.lock:
-            taken, self.requests[request] = self.requests[request], []
-        for posted_at, value in taken:
-            self.log(posted_at, "request", request.key, request.rule.encode(value))
-        return [value for _, value in taken]
 
     def current(self, key: str) -> Any:
         """A live input's value, taking an edit posted since it was last read."""
@@ -110,7 +90,8 @@ class RunInbox:
         if encoded == rule.encode(self.values[key]):
             return False
         self.values[key] = value
-        self.log(posted_at, "input", key, encoded)
+        # An unrecorded value is logged as taken, but not what it was.
+        self.log(posted_at, "input", key, encoded if key in self.recorded else None)
         return True
 
     def take_devices(self, posted_at: str) -> bool:
@@ -131,8 +112,13 @@ class RunInbox:
         return ProgramInputValues(dict(self.values))
 
     def parameters(self) -> dict[str, Any]:
-        """Every program input's value as the run has been given it, as JSON, by key."""
-        return {key: rule.encode(self.values[key]) for key, rule in self.rules.items()}
+        """Every recorded program input's value as the run has been given it, as JSON, by
+        key."""
+        return {
+            key: rule.encode(self.values[key])
+            for key, rule in self.rules.items()
+            if key in self.recorded
+        }
 
     def close(self) -> None:
         """Stop taking posts, on the thread that posts them."""

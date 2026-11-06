@@ -25,7 +25,6 @@ from pyrpoc.engine.data_library.store import LibraryStore
 from . import claims
 from .inbox import RunInbox, device_state
 from .readiness import NotReady, StartingRun, missing
-from .requests import RequestsStore
 
 
 class Run:
@@ -79,9 +78,8 @@ class RunCallbacks:
 
 
 class Executor:
-    def __init__(self, library: LibraryStore, requests: RequestsStore, callbacks: RunCallbacks):
+    def __init__(self, library: LibraryStore, callbacks: RunCallbacks):
         self.library = library
-        self.requests = requests
         self.callbacks = callbacks
         self.leases = claims.Leases()
         self._run_id = 0
@@ -122,7 +120,6 @@ class Executor:
             }
             recording, root, saver = self.open_recording(program_key, reads, save, note)
             inbox = RunInbox(program, inputs, devices, None if saver is None else saver.log_taken)
-            self.requests.open(inbox)
             run = Run(program, self._run_id, devices, recording, root, saver, read, inbox, repeat)
             self.leases.take(run.id, devices.values())
             ctx = self.begin_part(run)
