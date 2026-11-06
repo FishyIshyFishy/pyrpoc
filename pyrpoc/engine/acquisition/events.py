@@ -13,6 +13,7 @@ from PyQt6.QtCore import QObject, pyqtSignal
 from pyrpoc.core.device import Device
 from pyrpoc.core.program import Program
 from pyrpoc.core.program_input import ParameterError
+from pyrpoc.core.program_output import ProgramOutput
 from pyrpoc.engine.acquisition.claims import DeviceBusy
 from pyrpoc.engine.acquisition.executor import Executor, Run, RunCallbacks
 from pyrpoc.engine.acquisition.program_inputs import ProgramInputsStore
@@ -56,6 +57,7 @@ class RunEvents(QObject):
         save: SaveTarget,
         note: str,
         earlier: Mapping[str, EarlierOutput],
+        load: Callable[[EarlierOutput], ProgramOutput],
         repeat: bool,
         claim: Callable[[Run], None],
     ) -> Run | None:
@@ -72,6 +74,7 @@ class RunEvents(QObject):
                 save=save,
                 note=note,
                 earlier=earlier,
+                load=load,
                 repeat=repeat,
             )
         except (NotReady, DeviceBusy, ParameterError, RecordingError, LibraryFull) as exc:

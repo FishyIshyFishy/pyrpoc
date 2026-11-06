@@ -35,6 +35,12 @@ A stage is given:
 
 A stage never sees a run, a device or a ProgramOutput. It can be driven by fakes, and the outputs can change without touching the stage.
 
+## Before a stage starts
+Each program declares the checks its stage needs, so a start that cannot work is refused before its recording opens:
+- `CleanFolder`: the folder holds only the earlier steps it reads (and, for a loop, the runs of a loop it carries on).
+- `CalibrationMeasured` and `SurveyFinished`: the steps it reads ran to their end, not stopped partway.
+- `StartingUnits`: a fresh loop has units drawn, each fitting in one field of the survey.
+
 ## Units in a loop
 - **Identity.** A `Unit` has a key it keeps for life, made by `Unit.new` wherever the unit comes from: drawn by a person or found by software. The loop gives each unit a number as it joins (`Roster`) and never gives a number twice, so a unit deleted and drawn again is a new unit with a new number.
 - **Changes are commands.** A loop starts on the `UNITS` input. While it runs, units change only through `UNIT_COMMAND` requests: add, edit, remove, pause, resume, run now. The loop takes them between steps through `Steering`, and logs a refusal for one it cannot carry out. A new outline in an edit says where the unit is now, so tracking starts again from there.

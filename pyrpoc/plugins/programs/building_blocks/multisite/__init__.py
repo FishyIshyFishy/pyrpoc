@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from .bindings.calibration import CALIBRATION_EMITS, run_calibration
 from .bindings.clean_folder import CleanFolder
+from .bindings.finished_reads import CalibrationMeasured, SurveyFinished
 from .bindings.loop import (
     LOOP_EMITS,
     LOOP_FOCUS_INPUTS,
@@ -15,6 +16,7 @@ from .bindings.loop import (
 )
 from .bindings.monitor import MONITOR_INPUTS, MONITOR_LIVE, TREATMENT_INPUTS, monitor_routine
 from .bindings.rig import RigMicroscope
+from .bindings.starting_units import StartingUnits
 from .bindings.survey import (
     REGION_INPUTS,
     SURVEY_EMITS,
@@ -40,10 +42,13 @@ __all__ = [
     "SURVEY_READS",
     "TILE_INPUTS",
     "TREATMENT_INPUTS",
+    "CalibrationMeasured",
     "CleanFolder",
     "DigitalLine",
     "Microscope",
     "RigMicroscope",
+    "StartingUnits",
+    "SurveyFinished",
     "monitor_routine",
     "run_calibration",
     "run_loop",

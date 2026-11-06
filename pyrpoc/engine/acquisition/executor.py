@@ -19,13 +19,12 @@ from pyrpoc.core.recording import EarlierRead, Recording, RecordingPart, utc_now
 from pyrpoc.engine.acquisition.program_inputs import ProgramInputsStore
 from pyrpoc.engine.acquisition.save_target import SaveTarget
 from pyrpoc.engine.data_library.earlier import EarlierOutput
-from pyrpoc.engine.data_library.format import load_recording
 from pyrpoc.engine.data_library.saving import RecordingSaver, save_location
 from pyrpoc.engine.data_library.store import LibraryStore
 
 from . import claims
 from .inbox import RunInbox, device_state
-from .readiness import NotReady, missing
+from .readiness import NotReady, StartingRun, missing
 from .requests import RequestsStore
 
 
@@ -98,17 +97,19 @@ class Executor:
         save: SaveTarget,
         note: str,
         earlier: Mapping[str, EarlierOutput],
+        load: Callable[[EarlierOutput], ProgramOutput],
         repeat: bool,
     ) -> Run:
         """Start ``program`` on a worker thread of its own, filling a new recording that
-        ``note`` goes to. ``earlier`` is the output chosen for each name it reads.
-        Raises ``NotReady``, ``DeviceBusy``, ``ParameterError``, ``RecordingError`` or
-        ``LibraryFull`` before anything starts."""
-        needs = missing(type(program), inventory, save, earlier)
+        ``note`` goes to. ``earlier`` is the output chosen for each name it reads, and ``load``
+        gives its content. Raises ``NotReady``, ``DeviceBusy``, ``ParameterError``,
+        ``RecordingError`` or ``LibraryFull`` before anything starts."""
+        # Loaded outside the lock: loading files must not hold up another run starting.
+        start = StartingRun(save.folder, inputs.values_for(program.inputs), earlier, load)
+        needs = missing(type(program), inventory, save, start)
         if needs:
             raise NotReady(needs)
-        # Read outside the lock: loading files must not hold up another run starting.
-        read = load_earlier(earlier, self.library)
+        read = {name: load(each) for name, each in earlier.items()}
         with self._lock:
             devices = claims.resolve(list(program.devices), inventory)
             self.leases.check(devices.values())
@@ -256,20 +257,3 @@ def close_recording(
             errors.append(str(exc))
     recording.finished = True
     return errors
-
-
-def load_earlier(
-    chosen: Mapping[str, EarlierOutput], library: LibraryStore
-) -> dict[str, ProgramOutput]:
-    """Each chosen earlier output, the library's open copy when it holds one, else loaded."""
-    # Loaded copies stay out of the library: reading one must not take a place there.
-    open_at: dict[Path, Recording] = {
-        recording.location: recording
-        for recording in library.recordings()
-        if recording.location is not None
-    }
-    read: dict[str, ProgramOutput] = {}
-    for name, each in chosen.items():
-        recording = open_at.get(each.meta_path) or load_recording(each.meta_path)
-        read[name] = recording.outputs[each.output]
-    return read

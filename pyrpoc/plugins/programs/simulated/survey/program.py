@@ -11,6 +11,7 @@ from ...building_blocks.multisite import (
     SURVEY_FOCUS_INPUTS,
     SURVEY_READS,
     TILE_INPUTS,
+    CalibrationMeasured,
     CleanFolder,
     run_survey,
 )
@@ -29,7 +30,7 @@ class SimulatedSurvey(Program):
     emits = SURVEY_EMITS
     runners = [Single()]
     # Each step of the pipeline starts in a folder holding only the steps before it.
-    checks = [CleanFolder(carries_on=False)]
+    checks = [CleanFolder(carries_on=False), CalibrationMeasured()]
 
     def run(self, ctx: RunContext) -> None:
         # The simulated scanner has no mirrors to turn around, so no overscan.

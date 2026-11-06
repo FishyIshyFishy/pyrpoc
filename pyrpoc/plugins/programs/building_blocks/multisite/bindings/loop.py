@@ -34,7 +34,7 @@ from pyrpoc.plugins.program_io.requests import UNIT_COMMAND, UnitCommand
 from ..interfaces.field import FieldOfView
 from ..interfaces.microscope import Microscope
 from ..interfaces.overview import Overview
-from ..stages.loop.orchestrator import LoopSetup, Orchestrator, check_units
+from ..stages.loop.orchestrator import LoopSetup, Orchestrator
 from ..stages.loop.resume import resumption
 from ..stages.loop.routine import RoutineSpec
 from ..stages.loop.survey_map import SurveyMap, Visit
@@ -124,10 +124,8 @@ def begin(ctx: RunContext, orchestrator: Orchestrator, outputs: LoopOutputs) -> 
     """Carry on the loop the scratch holds, or start afresh on the units drawn."""
     scratch = outputs.scratch
     if not scratch.exists():
-        units = ctx.inputs[UNITS]
-        check_units(units, orchestrator.setup.field)
         note_recording(outputs)
-        orchestrator.start(units)
+        orchestrator.start(ctx.inputs[UNITS])
         return
     earlier = scratch.events()
     note_recording(outputs)

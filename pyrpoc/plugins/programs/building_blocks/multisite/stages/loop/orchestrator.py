@@ -6,7 +6,6 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass, replace
 
-from pyrpoc.core.program_input import ParameterError
 from pyrpoc.plugins.program_io.outputs import (
     CommandRefused,
     LoopFinished,
@@ -66,17 +65,9 @@ class LoopSetup:
     routines: tuple[RoutineSpec, ...]
 
 
-def fits(unit: Unit, field: FieldOfView) -> bool:
-    """Whether ``unit``, with its margin, fits in one field."""
-    return max(window_px(unit, field.um_per_px)) <= field.pixels
-
-
-def check_units(units: Sequence[Unit], field: FieldOfView) -> None:
-    """Refuse starting units the loop cannot run: none at all, or one larger than a field."""
-    if not units:
-        raise ParameterError("needs at least one unit drawn over the survey")
-    if not all(fits(unit, field) for unit in units):
-        raise ParameterError("a unit is larger than one field of view")
+def fits(unit: Unit, um_per_px: float, pixels: int) -> bool:
+    """Whether ``unit``, with its margin, fits in one field ``pixels`` a side at ``um_per_px``."""
+    return max(window_px(unit, um_per_px)) <= pixels
 
 
 class Orchestrator:
@@ -194,6 +185,10 @@ class Orchestrator:
                 self.run_now(command)
                 return False
 
+    def fits(self, unit: Unit) -> bool:
+        field = self.setup.field
+        return fits(unit, field.um_per_px, field.pixels)
+
     def refuse(self, command: UnitCommand, reason: str) -> None:
         self.sink.log(CommandRefused(self.scope.now(), command.word, command_key(command), reason))
 
@@ -208,7 +203,7 @@ class Orchestrator:
         if self.roster.has(unit.key):
             self.refuse(command, "a unit with this key already joined")
             return False
-        if not fits(unit, self.setup.field):
+        if not self.fits(unit):
             self.refuse(command, "larger than one field of view")
             return False
         self.join(unit, self.scope.now())
@@ -218,7 +213,7 @@ class Orchestrator:
         record = self.present(command)
         if record is None:
             return False
-        if not fits(unit, self.setup.field):
+        if not self.fits(unit):
             self.refuse(command, "larger than one field of view")
             return False
         now = self.scope.now()

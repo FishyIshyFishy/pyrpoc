@@ -6,7 +6,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Any
 
-from pyrpoc.core.program_input import Field, ParameterError, declare
+from pyrpoc.core.program_input import Field, ParameterError, ProgramInput, declare
 from pyrpoc.plugins.program_io.outputs import Unit
 
 
@@ -28,7 +28,7 @@ class UnitsField(Field):
         return [unit.to_dict() for unit in value]
 
 
-UNITS = declare(
+UNITS: ProgramInput[tuple[Unit, ...]] = declare(
     "units",
     UnitsField("Units", "The regions drawn over the survey that a loop starts on"),
     (),
