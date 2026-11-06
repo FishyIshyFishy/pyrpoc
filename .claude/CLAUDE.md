@@ -15,7 +15,7 @@ Imports go one way: `app` → `engine` → `plugins` → `utils` → `core`.
 
 ## Checks
 Before finishing a change, check the files you touched:
-`uv run ruff check --fix <files>`, `uv run ruff format <files>`, `uv run pyright <files>`, and `uv run lint-imports` if imports changed. The pre-commit hook re-runs ruff and import-linter on `git commit`, and CI (`.github/workflows/ci.yml`) runs everything on the whole project.
+`uv run ruff check --fix <files>`, `uv run ruff format <files>`, `uv run pyright <files>`, `uv run lint-imports` if imports changed, and `uv run pytest`. The pre-commit hook re-runs ruff and import-linter on `git commit`, and CI (`.github/workflows/ci.yml`) runs everything on the whole project.
 
 Never silence a check (`noqa`, `ignore_imports`, `type: ignore`, `pyright: ignore`, config changes); stop and ask instead.
 
