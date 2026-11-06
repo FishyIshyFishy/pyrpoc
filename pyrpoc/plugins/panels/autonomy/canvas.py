@@ -50,6 +50,8 @@ class UnitCanvas(ColourImage):
             pen=pg.mkPen((255, 220, 0), width=2), symbol="o", symbolSize=5
         )
         self.addItem(self.sketch)
+        self.setLabel("bottom", "µm")
+        self.setLabel("left", "µm")
         scene = self.sceneObj
         if scene is None:
             raise RuntimeError("a new PlotWidget has no scene")

@@ -38,6 +38,9 @@ class UnitsTable(QTableWidget):
     def __init__(self, parent: QWidget):
         super().__init__(0, len(HEADINGS), parent)
         self.setHorizontalHeaderLabels(HEADINGS)
+        group = self.horizontalHeaderItem(1)
+        if group is not None:
+            group.setToolTip("Double-click a site's cell to name its group, such as treated")
         vertical_header(self).setVisible(False)
         header = horizontal_header(self)
         header.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)

@@ -13,8 +13,11 @@ from pyrpoc.core.requests import Requests
 from pyrpoc.plugins.program_io.outputs import LoopLogOutput, LoopView, UnitView
 from pyrpoc.utils.widgets.colors import color_for_index
 from pyrpoc.utils.widgets.data_panel import DataPanel, data_panel_registry
+from pyrpoc.utils.widgets.empty_state import EmptyState
 
 Points = tuple[tuple[float, tuple[float, ...]], ...]
+# How opaque each site's own curve is behind its group's mean, out of 255: faint, but readable.
+SITE_ALPHA = 130
 
 
 def points_of(unit: UnitView, routine: str, name: str) -> Points:
@@ -96,8 +99,17 @@ class CurvesPanel(DataPanel[LoopLogOutput]):
         self.plot = pg.PlotWidget(self.body)
         self.plot.setMenuEnabled(False)
         self.plot.setLabel("bottom", "Time (min)")
+        # Plain values: a scale such as "(x0.001)" beside the name reads as part of it.
+        self.plot.getAxis("left").enableAutoSIPrefix(False)
         self.legend = self.plot.addLegend()
         root.addWidget(self.plot, 1)
+        self.empty = EmptyState(
+            "No measurements yet",
+            "Each group's measurements appear here once a loop has measured its sites.",
+            self.body,
+        )
+        root.addWidget(self.empty)
+        root.addStretch(0)
         self.connect_source()
 
     def draw(self, program_output: LoopLogOutput) -> None:
@@ -111,7 +123,10 @@ class CurvesPanel(DataPanel[LoopLogOutput]):
         view = self.view
         self.plot.clear()
         chosen, channel = self.measurement.currentIndex(), self.channel.currentIndex()
-        if view is None or chosen < 0 or channel < 0:
+        plotted = view is not None and chosen >= 0 and channel >= 0
+        self.plot.setVisible(plotted)
+        self.empty.setVisible(not plotted)
+        if view is None or not plotted:
             return
         routine, name = self.series[chosen]
         self.plot.setLabel("left", name)
@@ -121,11 +136,11 @@ class CurvesPanel(DataPanel[LoopLogOutput]):
             self.plot_group(group, [points for points in curves if points], channel, index)
 
     def plot_group(self, group: str, curves: list[Points], channel: int, index: int) -> None:
-        """Each unit's curve faint, and the group's mean over them."""
+        """Each site's curve faint, and the group's mean over them."""
         if not curves:
             return
         colour = color_for_index(index + 2)
-        faint = pg.mkPen((*colour, 60), width=1)
+        faint = pg.mkPen((*colour, SITE_ALPHA), width=1)
         for points in curves:
             minutes = [t / 60.0 for t, _v in points]
             self.plot.plot(minutes, [v[channel] for _t, v in points], pen=faint)
@@ -136,3 +151,5 @@ class CurvesPanel(DataPanel[LoopLogOutput]):
     def clear(self) -> None:
         self.view = None
         self.plot.clear()
+        self.plot.setVisible(False)
+        self.empty.setVisible(True)
