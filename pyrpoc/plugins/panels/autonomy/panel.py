@@ -9,7 +9,15 @@ from dataclasses import replace
 import pyqtgraph as pg
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QKeyEvent
-from PyQt6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QSplitter, QVBoxLayout, QWidget
+from PyQt6.QtWidgets import (
+    QHBoxLayout,
+    QLabel,
+    QMessageBox,
+    QPushButton,
+    QSplitter,
+    QVBoxLayout,
+    QWidget,
+)
 
 from pyrpoc.core.library import Library
 from pyrpoc.core.program_input import ProgramInputs
@@ -338,12 +346,28 @@ class AutonomyPanel(DataPanel[SurveyOutput]):
         unit = self.chosen_unit()
         if unit is None:
             return
+        if self.running and not self.confirm_removal(unit.number):
+            return
         self.chosen = None
         if self.running:
             self.command(RemoveUnit(unit.key), unit.number)
             return
         units: tuple[Unit, ...] = self.inputs.get(UNITS.key)
         self.inputs.set(UNITS.key, tuple(each for each in units if each.key != unit.key))
+
+    def confirm_removal(self, number: int) -> bool:
+        """Ask before a running loop stops visiting a site, which can't be undone."""
+        box = QMessageBox(QMessageBox.Icon.Question, f"Remove site {number}?", "", parent=self)
+        box.setText(f"The loop will stop visiting site {number}. The images it took are kept.")
+        box.setInformativeText(
+            "A removed site can't be brought back: drawing it again makes a new site with a new "
+            "number."
+        )
+        remove = box.addButton(f"Remove site {number}", QMessageBox.ButtonRole.DestructiveRole)
+        keep = box.addButton("Keep it", QMessageBox.ButtonRole.RejectRole)
+        box.setDefaultButton(keep)
+        box.exec()
+        return box.clickedButton() is remove
 
     def keyPressEvent(self, event: QKeyEvent | None) -> None:
         if event is not None and event.key() == Qt.Key.Key_Escape and self.draw_button.isChecked():
