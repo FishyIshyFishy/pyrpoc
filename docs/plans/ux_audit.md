@@ -6,7 +6,8 @@ This document has three parts:
 - **Part B, the audit:** what I found by running the app and using it.
 - **Part C, reconciling #67 with #68:** the groundwork, done before any UI change.
 
-The results after the changes are in `ux_results.md`, beside this file.
+**Status: implemented.** The results, with before/after screenshots and numbers, are in
+`ux_results.md`, beside this file.
 
 A few words used below:
 - **panel**: one of the boxes inside the app window, such as Acquisition or Data Library.
@@ -122,8 +123,9 @@ and "Measurements appear here once a loop has measured its sites" while empty.
 ## What I am deliberately not changing
 
 - **#68's design**: how sites, commands, the loop's save files and folder checks work. The plan
-  needs no architectural change. Two small additions inside #68's code (listed in Part C) keep
-  to its interfaces.
+  needs no architectural change. Three small additions inside #68's code keep to its interfaces:
+  `SurveyOutput.has_overview()`, `LoopLogOutput.events_after()`, and the loop log keeping its
+  summary up to date as it logs.
 - **The "clean folder" rule** (each multisite step wants a folder holding only the steps before
   it). It traps a user after a failed calibration, but changing it is a decision about #68's
   design, so I only make the message say what to do. See "Found but not fixed".
