@@ -21,9 +21,9 @@ STATE_WORDS = {
 }
 
 
-def next_text(unit: ShownUnit, elapsed_s: float) -> str:
-    """When a unit is next due, as time from now."""
-    if unit.next_due_s is None:
+def next_text(unit: ShownUnit, elapsed_s: float | None) -> str:
+    """When a unit is next due, as time from now; nothing while no loop is running."""
+    if unit.next_due_s is None or elapsed_s is None:
         return ""
     wait = unit.next_due_s - elapsed_s
     return "now" if wait <= 0 else f"in {wait:.0f} s"
@@ -49,7 +49,11 @@ class UnitsTable(QTableWidget):
         self.itemSelectionChanged.connect(self.on_selection_changed)
 
     def show_units(
-        self, units: tuple[ShownUnit, ...], chosen: str | None, editable: bool, elapsed_s: float
+        self,
+        units: tuple[ShownUnit, ...],
+        chosen: str | None,
+        editable: bool,
+        elapsed_s: float | None,
     ) -> None:
         """One row per unit, with what a loop running on it is doing, if one is."""
         self.blockSignals(True)

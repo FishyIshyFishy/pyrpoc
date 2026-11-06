@@ -39,6 +39,7 @@ from pyrpoc.utils.widgets.source_picker import outputs_of_type
 
 from .activity import Activity
 from .canvas import UnitCanvas
+from .guidance import LoopStage, PanelState, duration, guidance, loop_stage
 from .loop_watch import LoopWatch
 from .picture import backdrop
 from .shown import ShownUnit, drawn, in_loop
@@ -203,9 +204,17 @@ class AutonomyPanel(DataPanel[SurveyOutput]):
         self.activity.take(new)
         if new or self.loop_watch.activity.count() == 0:
             self.loop_watch.show_activity(list(self.activity.lines))
-        minutes = 0.0 if self.loop_view is None else self.loop_view.elapsed_s / 60.0
-        verb = "running for" if self.running else "finished after"
-        self.loop_watch.show_heading(f"Loop {verb} {minutes:.0f} min")
+        heading = {
+            LoopStage.RUNNING: "Loop running, {} so far",
+            LoopStage.STOPPED_EARLY: "Loop stopped early, {} in",
+        }.get(self.stage(), "Loop finished, {} in all")
+        self.loop_watch.show_heading(heading.format(duration(self.minutes())))
+
+    def stage(self) -> LoopStage:
+        return loop_stage(self.loop_view, self.running)
+
+    def minutes(self) -> float:
+        return 0.0 if self.loop_view is None else self.loop_view.elapsed_s / 60.0
 
     def on_loop_changed(self, _output: ProgramOutput) -> None:
         # On the run's thread: hand over to the GUI thread.
@@ -219,7 +228,8 @@ class AutonomyPanel(DataPanel[SurveyOutput]):
         units = self.units()
         chosen = next((unit for unit in units if unit.key == self.chosen), None)
         self.chosen = None if chosen is None else chosen.key
-        elapsed = 0.0 if self.loop_view is None else self.loop_view.elapsed_s
+        # Next visits mean nothing once the loop is not running.
+        elapsed = None if self.loop_view is None or not self.running else self.loop_view.elapsed_s
         self.canvas.show_units(units, self.chosen, self.editable)
         self.table.show_units(units, self.chosen, self.editable, elapsed)
         self.draw_button.setEnabled(self.editable)
@@ -228,7 +238,18 @@ class AutonomyPanel(DataPanel[SurveyOutput]):
         self.delete_button.setEnabled(self.editable and chosen is not None)
         paused = chosen is not None and chosen.state is UnitState.PAUSED
         self.loop_watch.set_site(None if chosen is None else chosen.number, paused, self.running)
-        self.status.setText(f"{len(units)} sites")
+        self.status.setText(guidance(self.panel_state(len(units))))
+
+    def panel_state(self, sites: int) -> PanelState:
+        survey = self.shown_output
+        return PanelState(
+            has_survey=survey is not None,
+            has_map=survey is not None and survey.has_overview(),
+            drawing=self.draw_button.isChecked(),
+            sites=sites,
+            stage=self.stage(),
+            minutes=self.minutes(),
+        )
 
     def choose(self, key: str | None) -> None:
         if key != self.chosen:
@@ -259,6 +280,7 @@ class AutonomyPanel(DataPanel[SurveyOutput]):
             self.canvas.start_drawing()
         else:
             self.canvas.stop_drawing()
+        self.show_units()
 
     def on_drawn(self, outline: Outline) -> None:
         unit = Unit.new(outline, "")
