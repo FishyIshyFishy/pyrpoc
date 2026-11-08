@@ -1,6 +1,6 @@
 # multisite panel
 
-A running loop over the whole dish. The survey's overview is the backdrop, with each unit's latest frame laid where it was taken. Hold **Tab** to bring see-through cards up over the live dish; the first card is the routine queue.
+A running loop over the whole dish. The survey's overview is the backdrop, with each unit's latest frame laid where it was taken. Hold **Tab** to bring see-through cards up over the live dish.
 
 It is not registered as a panel yet. To run it on its own, against a fake loop:
 
@@ -26,6 +26,16 @@ All keys are in `keys.py`.
 | queue | Enter, double-click | glide to the unit |
 | queue | P / R / Del | pause or resume its unit / run it next / remove its unit, after asking |
 
+## The cards
+| Card | Where | Shows |
+|---|---|---|
+| Queue | left | every open routine in the order it will run; the keyboard goes here |
+| Loop | top | what the loop is doing now, its units and routines, the longest overdue wait, scans taken and lost, and the focus offset |
+| Chosen routine | right | where the routine chosen in the queue stands, its last scan, its unit's latest frame, and each measurement it recorded, one small trace per channel; hover a trace to read it |
+| Recent | right | what the loop has just done, newest first, each marked ✓ ! ✕ or •; click one to choose its unit |
+
+Channels each get their own trace, not a shared axis, because they differ in scale. Each trace is drawn in its channel's colour on the dish, with the channel's name beside it, so colour is never the only cue. The status colours (good, warning, bad) are used only for how things went, and always come with their mark. While the overlay is up, the corner status line hides: the Loop card says the same thing. Locate puts the unit in the middle of the dish the cards leave clear.
+
 ## How the queue runs
 The queue holds routines (one routine on one unit), in the order they will run:
 - **Now**: the routine being run.
@@ -47,16 +57,16 @@ Each layer imports only those below it. `uv run lint-imports` checks this.
 |---|---|
 | `demo/` | The fake dish and loop, and the window that runs them |
 | `view.py` | `MultisiteView`: the dish with the overlay over it, fed by one `LoopFeed`. Tab is caught here |
-| `overlay/`, `canvas/` | The see-through cards (`Card` is the base, `QueueCard` the first), and the dish with its layers. They never import each other |
-| `keys.py`, `look.py`, `feed.py` | Every key, every colour, and `LoopFeed`: what the panel reads from a loop and every change it sends |
-| `state/` | No Qt: the queue order, reordering, peek, pending changes, drafts, outlines, wording |
+| `overlay/`, `canvas/` | The see-through cards (`Card` is the base) and the dish with its layers. They never import each other |
+| `keys.py`, `look.py`, `feed.py`, `render.py` | Every key, every colour, `LoopFeed` (what the panel reads from a loop and every change it sends), and channels to colour |
+| `state/` | No Qt: the queue order, reordering, peek, pending changes, drafts, outlines, the log looking back, the summary, wording |
 
-To add a card, subclass `Card`, give it an `Anchor`, and add it to the overlay in `view.py`. To add an indicator, add a layer in `canvas/layers/` and a flag in `canvas/indicators.py`.
+To add a card, subclass `Card`, give it an `Anchor`, a width or height, and a share of its edge, and add it to the overlay in `view.py`. To add an indicator, add a layer in `canvas/layers/` and a flag in `canvas/indicators.py`.
 
 ## Wiring it in
 Everything the panel needs comes through `feed.LoopFeed`. Wiring in is:
 1. **A feed built on a run's outputs.**
-   - `snapshot()`: fold the run's `LoopLogOutput` with `LoopFold`, then `state.routines.routine_statuses` and `state.snapshot.snapshot_of`. Fold again only when the log grows, not on every frame.
+   - `snapshot()`: fold the run's `LoopLogOutput` with `LoopFold`, then `state.routines.routine_statuses` and `state.snapshot.snapshot_of`, handing it the log's events. Fold again only when the log grows, not on every frame.
    - `backdrop()`: from `SurveyOutput.overview()`.
    - `frames()`: each unit's newest frame in `UnitFramesOutput`.
    - The changes it sends go to the live `UNITS` input:
@@ -71,6 +81,6 @@ Everything the panel needs comes through `feed.LoopFeed`. Wiring in is:
 - Which of the four indicators to keep.
 - Whether pause, run-now and remove should act per routine (a loop change).
 - How groups are given.
-- The selected-routine, recent-events and loop-summary cards.
+- Whether the Recent card should let a person filter by unit or by kind.
 
 A unit's largest size (`state/outline.py`) is a stand-in for the loop's own rule, which allows for a tracking margin.

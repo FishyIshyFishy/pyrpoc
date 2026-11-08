@@ -83,6 +83,7 @@ class FakeLoop:
         self.dish = dish
         self.started = time.monotonic()
         self.fold = LoopFold()
+        self.events: list[LoopEvent] = []
         self.told: tuple[LoopView, tuple[RoutineStatus, ...]] | None = None
         self.order: tuple[RoutineKey, ...] = ()
         # Changes asked for, taken between steps.
@@ -103,6 +104,7 @@ class FakeLoop:
         return time.monotonic() - self.started
 
     def log(self, event: LoopEvent) -> None:
+        self.events.append(event)
         self.fold.take(event)
         self.told = None
 
@@ -112,7 +114,7 @@ class FakeLoop:
         if self.told is None:
             self.told = (self.fold.view(), self.statuses())
         view, statuses = self.told
-        return snapshot_of(view, statuses, self.now_s(), self.order)
+        return snapshot_of(view, statuses, self.now_s(), self.order, self.events)
 
     def statuses(self) -> tuple[RoutineStatus, ...]:
         return routine_statuses(self.fold)

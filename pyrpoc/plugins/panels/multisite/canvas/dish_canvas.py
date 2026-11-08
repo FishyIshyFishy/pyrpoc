@@ -146,9 +146,9 @@ class DishCanvas(QGraphicsView):
     def select(self, unit: int | None) -> None:
         self.selected = unit
 
-    def locate(self, snapshot: Snapshot, covered_px: int) -> None:
-        """Glide the selected unit to the middle of the dish left uncovered by the ``covered_px``
-        a card takes on the left, zooming in if it would be too small to see, and ripple."""
+    def locate(self, snapshot: Snapshot, free: QRect) -> None:
+        """Glide the selected unit to the middle of ``free``, the part of the view no card
+        covers, zooming in if it would be too small to see, and ripple."""
         unit = None if self.selected is None else snapshot.unit(self.selected)
         if unit is None:
             return
@@ -158,7 +158,9 @@ class DishCanvas(QGraphicsView):
             factor = LOCATE_FIELD_PX / field_px
             self.scale(factor, factor)
         start = self.mapToScene(self.view_rect().center())
-        shift = QPointF(covered_px / 2 / self.transform().m11(), 0)
+        off = free.center() - self.view_rect().center()
+        scale = self.transform().m11()
+        shift = QPointF(off.x() / scale, off.y() / scale)
         self.glide = Travel(start, target - shift, self.now_s, GLIDE_S)
         self.ripple.start(target, self.now_s)
 

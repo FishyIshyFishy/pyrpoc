@@ -14,7 +14,7 @@ from PyQt6.QtWidgets import QGraphicsItem, QGraphicsPixmapItem, QGraphicsScene
 from pyrpoc.utils.widgets.colors import color_for_index
 
 from ..feed import Backdrop, UnitFrame
-from .render import levels_of, pixmap_of, rgb_of
+from ..render import levels_of, pixmap_of, rgb_of
 
 # How long a new frame takes to fade in over the last, in seconds.
 FADE_S = 0.4

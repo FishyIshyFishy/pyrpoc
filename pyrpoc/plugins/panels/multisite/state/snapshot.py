@@ -3,9 +3,10 @@ part of it."""
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 
-from pyrpoc.plugins.program_io.outputs import LoopActivity, LoopView, UnitView
+from pyrpoc.plugins.program_io.outputs import LoopActivity, LoopEvent, LoopView, UnitView
 
 from .routines import RoutineKey, RoutineStatus
 from .run_order import QueueRow, Section, queue_rows
@@ -14,13 +15,14 @@ from .run_order import QueueRow, Section, queue_rows
 @dataclass(frozen=True)
 class Snapshot:
     """The loop as of ``now_s`` on the instrument's clock: what its log says, its open routines,
-    and the queue they make in the person's order."""
+    the queue they make in the person's order, and every event it logged, oldest first."""
 
     view: LoopView
     statuses: tuple[RoutineStatus, ...]
     now_s: float
     order: tuple[RoutineKey, ...]
     rows: tuple[QueueRow, ...]
+    events: Sequence[LoopEvent]
 
     @property
     def doing(self) -> LoopActivity | None:
@@ -40,7 +42,9 @@ def snapshot_of(
     statuses: tuple[RoutineStatus, ...],
     now_s: float,
     order: tuple[RoutineKey, ...],
+    events: Sequence[LoopEvent],
 ) -> Snapshot:
     doing = view.doing
     running = None if doing is None else (doing.unit, doing.routine)
-    return Snapshot(view, statuses, now_s, order, queue_rows(statuses, running, now_s, order))
+    rows = queue_rows(statuses, running, now_s, order)
+    return Snapshot(view, statuses, now_s, order, rows, events)

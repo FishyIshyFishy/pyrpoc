@@ -24,11 +24,11 @@ class Anchor(Enum):
 
 class Card(QFrame):
     """A titled card ``span`` pixels across its edge: wide for a side, tall for the top or
-    bottom."""
+    bottom. Cards sharing a side split its length by ``stretch``."""
 
-    def __init__(self, parent: QWidget, title: str, anchor: Anchor, span: int):
+    def __init__(self, parent: QWidget, title: str, anchor: Anchor, span: int, stretch: int):
         super().__init__(parent)
-        self.anchor, self.span = anchor, span
+        self.anchor, self.span, self.stretch = anchor, span, stretch
         root = QVBoxLayout(self)
         root.setContentsMargins(14, 12, 14, 12)
         root.setSpacing(8)

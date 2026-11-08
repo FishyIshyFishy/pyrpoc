@@ -66,10 +66,20 @@ class Overlay(QWidget):
         for card in self.cards:
             card.show_snapshot(snapshot)
 
-    def covered_left(self) -> int:
-        """How far in from the left the cards there reach, in pixels."""
-        lefts = [c.geometry().right() for c in self.cards if c.anchor is Anchor.LEFT]
-        return max(lefts) + MARGIN if lefts else 0
+    def uncovered(self) -> QRect:
+        """The part of the dish no card covers, in this overlay's pixels."""
+        free = self.rect()
+        for card in self.cards:
+            box = card.geometry().adjusted(-MARGIN, -MARGIN, MARGIN, MARGIN)
+            if card.anchor is Anchor.LEFT:
+                free.setLeft(max(free.left(), box.right()))
+            elif card.anchor is Anchor.RIGHT:
+                free.setRight(min(free.right(), box.left()))
+            elif card.anchor is Anchor.TOP:
+                free.setTop(max(free.top(), box.bottom()))
+            else:
+                free.setBottom(min(free.bottom(), box.top()))
+        return free
 
     def arrange(self) -> None:
         """Dock each card to its edge, sharing the edge with the others there."""
@@ -93,10 +103,13 @@ class Overlay(QWidget):
     def stack(self, cards: list[Card], area: QRect) -> None:
         if not cards:
             return
-        share = (area.height() - MARGIN * (len(cards) - 1)) // len(cards)
-        for index, card in enumerate(cards):
-            top = area.top() + index * (share + MARGIN)
-            card.setGeometry(QRect(area.left(), top, area.width(), share))
+        room = area.height() - MARGIN * (len(cards) - 1)
+        weights = sum(card.stretch for card in cards)
+        top = area.top()
+        for card in cards:
+            height = room * card.stretch // weights
+            card.setGeometry(QRect(area.left(), top, area.width(), height))
+            top += height + MARGIN
 
     def resizeEvent(self, event: QResizeEvent | None) -> None:
         super().resizeEvent(event)

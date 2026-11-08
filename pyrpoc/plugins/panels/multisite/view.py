@@ -15,12 +15,17 @@ from . import keys
 from .canvas.dish_canvas import DishCanvas
 from .canvas.indicators import Indicator
 from .feed import LoopFeed
+from .overlay.events_card import EventsCard
 from .overlay.overlay import Overlay
 from .overlay.queue_card import QueueCard
+from .overlay.selected_card import SelectedCard
+from .overlay.summary_card import SummaryCard
 from .state.peek import Peek
 
 # Countdowns and the reticle move between events, so the view redraws on a clock, not on news.
 FRAME_MS = 33
+# The width of the cards down the right.
+SIDE_PX = 340
 
 
 class SummonKey(QObject):
@@ -54,8 +59,12 @@ class MultisiteView(QWidget):
         self.peek = Peek()
         self.canvas = DishCanvas(self, feed.field_um())
         self.overlay = Overlay(self)
+        # The queue comes first: it takes the keyboard when the overlay comes up.
         self.queue = QueueCard(self.overlay, feed)
-        self.overlay.add(self.queue)
+        self.chosen = SelectedCard(self.overlay, feed, SIDE_PX)
+        self.events = EventsCard(self.overlay, SIDE_PX)
+        for card in (self.queue, SummaryCard(self.overlay), self.chosen, self.events):
+            self.overlay.add(card)
         self.connect_parts()
         app = QApplication.instance()
         if app is not None:
@@ -71,6 +80,8 @@ class MultisiteView(QWidget):
         self.canvas.remove_asked.connect(self.ask_remove)
         self.queue.chosen_unit.connect(self.canvas.select)
         self.queue.locate.connect(self.locate)
+        self.queue.chosen_routine.connect(self.chosen.choose)
+        self.events.picked.connect(self.pick)
         self.overlay.dismissed.connect(self.close_overlay)
 
     def set_indicators(self, indicators: Indicator) -> None:
@@ -100,8 +111,11 @@ class MultisiteView(QWidget):
             self.overlay.show_snapshot(self.feed.snapshot())
             self.queue.choose_unit(self.canvas.selected)
             self.overlay.appear()
+            # The summary card says what the corner line says, and the line would show through.
+            self.canvas.status.hide()
         elif not self.peek.shown and self.overlay.up:
             self.overlay.vanish()
+            self.canvas.status.show()
             self.canvas.setFocus()
 
     def close_overlay(self) -> None:
@@ -113,8 +127,8 @@ class MultisiteView(QWidget):
         self.queue.choose_unit(unit)
 
     def locate(self) -> None:
-        covered = self.overlay.covered_left() if self.overlay.up else 0
-        self.canvas.locate(self.feed.snapshot(), covered)
+        free = self.overlay.uncovered() if self.overlay.up else self.rect()
+        self.canvas.locate(self.feed.snapshot(), free)
 
     def add_unit(self, unit: Unit) -> None:
         self.feed.add_unit(unit)

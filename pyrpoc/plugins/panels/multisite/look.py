@@ -7,6 +7,7 @@ from PyQt6.QtGui import QColor, QFont
 
 from pyrpoc.plugins.program_io.outputs import UnitState
 
+from .state.history import Tone
 from .state.phase import Phase
 
 PHASE = {
@@ -20,6 +21,13 @@ STATE = {
     UnitState.LOST: QColor(255, 130, 70),
     UnitState.DONE: QColor(105, 110, 120),
     UnitState.REMOVED: QColor(80, 80, 80),
+}
+# Kept for how things went, never for a channel or a phase, and always shown with its mark.
+TONE = {
+    Tone.GOOD: QColor(110, 210, 150),
+    Tone.WARNING: QColor(255, 175, 60),
+    Tone.BAD: QColor(255, 105, 105),
+    Tone.CHANGE: QColor(110, 175, 255),
 }
 PLAIN_OUTLINE = QColor(235, 238, 245)
 IDLE = QColor(170, 175, 190)

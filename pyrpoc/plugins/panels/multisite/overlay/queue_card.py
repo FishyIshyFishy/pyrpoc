@@ -46,10 +46,12 @@ def hints_for(row: QueueRow | None, rows: tuple[QueueRow, ...], routines: int) -
 class QueueCard(Card):
     # The unit whose routine is chosen, or None.
     chosen_unit = pyqtSignal(object)
+    # The routine chosen, or None.
+    chosen_routine = pyqtSignal(object)
     locate = pyqtSignal()
 
     def __init__(self, parent: QWidget, steer: Steer):
-        super().__init__(parent, "Queue", Anchor.LEFT, WIDTH)
+        super().__init__(parent, "Queue", Anchor.LEFT, WIDTH, 1)
         self.steer = steer
         self.pending = Pending()
         self.snapshot: Snapshot | None = None
@@ -116,6 +118,7 @@ class QueueCard(Card):
         if rect is not None:
             self.scroller.ensureVisible(0, int(rect.center().y()), 0, ROW_H)
         self.chosen_unit.emit(None if key is None else key[0])
+        self.chosen_routine.emit(key)
         self.refresh_hints()
 
     def choose_unit(self, unit: int | None) -> None:
@@ -150,7 +153,7 @@ class QueueCard(Card):
         self.steer.reorder(order)
         # Shown at once from the new order, so a second move builds on the first.
         view, statuses, now_s = snapshot.view, snapshot.statuses, snapshot.now_s
-        self.show_snapshot(snapshot_of(view, statuses, now_s, order))
+        self.show_snapshot(snapshot_of(view, statuses, now_s, order, snapshot.events))
 
     def ask_remove_chosen(self) -> None:
         row = self.list.chosen_row()
