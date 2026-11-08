@@ -201,6 +201,12 @@ forbidden_modules = [
 allow_indirect_imports = true
 
 [[tool.importlinter.contracts]]
+name = "Inside the multisite panel: demo > view > overlay | canvas > keys | look | feed > state"
+type = "layers"
+containers = ["pyrpoc.plugins.panels.multisite"]
+layers = ["demo", "view", "overlay | canvas", "keys | look | feed", "state"]
+
+[[tool.importlinter.contracts]]
 name = "The engine never names a plugin; it finds plugins through registries"
 type = "forbidden"
 source_modules = ["pyrpoc.engine"]
