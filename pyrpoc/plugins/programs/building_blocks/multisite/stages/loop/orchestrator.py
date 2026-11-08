@@ -152,7 +152,8 @@ class Orchestrator:
                 self.scope.wait(IDLE_S)
                 continue
             thread, now = runnable[0], self.scope.now()
-            if thread.due_s > now:
+            # One asked to run now does not wait out its due time.
+            if thread.due_s > now and not thread.urgent:
                 self.scope.wait(min(thread.due_s - now, IDLE_S))
                 continue
             self.advance(thread)
