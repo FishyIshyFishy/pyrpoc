@@ -1,5 +1,4 @@
-"""Changes sent to the loop that it has not taken up yet, since it takes them only between
-steps."""
+"""Changes sent to a loop that it has not taken yet: it takes them only between its steps."""
 
 from __future__ import annotations
 
@@ -7,59 +6,62 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import Enum
 
-from pyrpoc.plugins.program_io.outputs import LoopView, UnitState
-
-from .routines import RoutineStatus
+from pyrpoc.plugins.program_io.outputs import (
+    LoopEvent,
+    RunNowAsked,
+    UnitLeft,
+    UnitPaused,
+    UnitResumed,
+)
 
 # How long a change is shown as on its way before the panel stops waiting for it.
 GIVE_UP_S = 30.0
 
 
 class Change(Enum):
-    PAUSE = "pausing"
-    RESUME = "resuming"
-    RUN_NOW = "running next"
-    REMOVE = "removing"
+    PAUSE = "Pausing…"
+    RESUME = "Resuming…"
+    RUN_NEXT = "Moving to the front…"
+    REMOVE = "Removing…"
 
 
 @dataclass(frozen=True)
 class Sent:
     change: Change
-    sent_s: float
+    wall_s: float
 
 
-def taken_up(change: Change, state: UnitState | None, own: Sequence[RoutineStatus]) -> bool:
-    """Whether the loop shows ``change`` done, from its unit's state and open routines."""
-    if state is None or state in (UnitState.REMOVED, UnitState.DONE):
-        return True
-    match change:
-        case Change.PAUSE:
-            return state is UnitState.PAUSED
-        case Change.RESUME:
-            return state is not UnitState.PAUSED
-        case Change.RUN_NOW:
-            return any(status.urgent for status in own)
-        case Change.REMOVE:
-            return False
+# The event a loop logs when it takes each change.
+TAKEN_BY: dict[Change, type[LoopEvent]] = {
+    Change.PAUSE: UnitPaused,
+    Change.RESUME: UnitResumed,
+    Change.RUN_NEXT: RunNowAsked,
+    Change.REMOVE: UnitLeft,
+}
 
 
 class Pending:
-    """The latest change sent for each unit, until the loop shows it taken up."""
+    """The latest change sent for each unit, by its number, until the loop logs it taken."""
 
     def __init__(self) -> None:
         self.sent: dict[int, Sent] = {}
 
-    def send(self, unit: int, change: Change, now_s: float) -> None:
-        self.sent[unit] = Sent(change, now_s)
+    def send(self, unit: int, change: Change, wall_s: float) -> None:
+        self.sent[unit] = Sent(change, wall_s)
 
     def of(self, unit: int) -> Change | None:
         sent = self.sent.get(unit)
         return None if sent is None else sent.change
 
-    def settle(self, view: LoopView, statuses: tuple[RoutineStatus, ...], now_s: float) -> None:
-        """Forget each change the loop has taken up, or that has waited too long."""
-        states = {unit.number: unit.state for unit in view.units}
+    def settle(self, events: Sequence[LoopEvent], wall_s: float) -> None:
+        """Forget each change the new ``events`` show taken, and each that waited too long."""
+        for event in events:
+            if not isinstance(event, (UnitPaused, UnitResumed, RunNowAsked, UnitLeft)):
+                continue
+            sent = self.sent.get(event.unit)
+            # A unit that left has taken every change it will.
+            if sent is not None and isinstance(event, (TAKEN_BY[sent.change], UnitLeft)):
+                del self.sent[event.unit]
         for unit, sent in list(self.sent.items()):
-            own = [status for status in statuses if status.unit == unit]
-            if now_s - sent.sent_s > GIVE_UP_S or taken_up(sent.change, states.get(unit), own):
+            if wall_s - sent.wall_s > GIVE_UP_S:
                 del self.sent[unit]

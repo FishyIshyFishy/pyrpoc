@@ -41,7 +41,7 @@ from .loop_events import (
     UnitScanned,
 )
 from .loop_log import LoopLogOutput
-from .loop_view import LoopView, QueueEntry, Series, UnitState, UnitView
+from .loop_view import LoopFold, LoopView, QueueEntry, Series, UnitState, UnitView
 from .mosaic import MosaicOutput, MosaicTile
 from .samples import SamplesOutput
 from .spectrum import SpectrumOutput
@@ -113,6 +113,7 @@ __all__ = [
     "GalvoCalibrationOutput",
     "LoopEvent",
     "LoopLogOutput",
+    "LoopFold",
     "LoopView",
     "MotionRate",
     "Placement",

@@ -1,4 +1,4 @@
-"""The multisite panel: a running loop over the whole dish, with a queue overlay held up on Tab.
-Not registered as a panel yet; ``demo`` runs it standalone."""
+"""The Multisite Loop panel: a survey's dish, and the queue and units of the loop run over
+it."""
 
 from __future__ import annotations

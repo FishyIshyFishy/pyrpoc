@@ -71,12 +71,13 @@ class UnitView:
 
 @dataclass(frozen=True)
 class QueueEntry:
-    """A routine step that is due: whose, in which routine, and when, in seconds since the loop
-    started."""
+    """A routine step that is due: whose, in which routine, when, in seconds since the loop
+    started, and whether it was asked to run now."""
 
     unit: int
     routine: str
     due_s: float
+    urgent: bool
 
 
 @dataclass(frozen=True)
@@ -207,7 +208,11 @@ class LoopFold:
     def queue(self) -> tuple[QueueEntry, ...]:
         """The open, unpaused routines: those asked to run now first, then the earliest due."""
         entries = [
-            (routine not in fold.urgent, due, QueueEntry(number, routine, due - self.started_s))
+            (
+                routine not in fold.urgent,
+                due,
+                QueueEntry(number, routine, due - self.started_s, routine in fold.urgent),
+            )
             for number, fold in self.units.items()
             if not fold.paused
             for routine, due in fold.due.items()
