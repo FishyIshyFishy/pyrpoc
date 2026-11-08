@@ -1,22 +1,14 @@
 """The Multisite Loop panel: a survey's dish with the units on it, and the queue and units of the
-newest loop run over it, opened and closed with Tab. Right-click a unit to steer the loop."""
+newest loop run over it, held up over the dish on glass cards with Tab. Right-click a unit to
+steer the loop."""
 
 from __future__ import annotations
 
 import time
-from typing import Any
 
 from PyQt6.QtCore import QPoint, Qt, QTimer
 from PyQt6.QtGui import QKeySequence, QShortcut
-from PyQt6.QtWidgets import (
-    QLabel,
-    QMenu,
-    QMessageBox,
-    QPushButton,
-    QSplitter,
-    QVBoxLayout,
-    QWidget,
-)
+from PyQt6.QtWidgets import QLabel, QMenu, QMessageBox, QPushButton, QVBoxLayout, QWidget
 
 from pyrpoc.core.library import Library
 from pyrpoc.core.program_input import ProgramInputs
@@ -25,10 +17,10 @@ from pyrpoc.utils.widgets.data_panel import DataPanel, data_panel_registry
 from pyrpoc.utils.widgets.empty_state import EmptyState
 
 from .dish import DishCanvas
-from .drawer import Drawer
 from .feed import LoopFeed
 from .look import stroke_of
 from .outlines import UnitLook
+from .overlay import Overlay
 from .state.pending import Change
 from .state.standing import QueueRow, Snapshot, UnitRow, queue_rows, unit_rows, working_at
 from .state.wording import doing_text
@@ -36,8 +28,6 @@ from .unit_menu import action, unit_menu
 
 # Countdowns run between the loop's events, so the panel reads the loop on a clock.
 TICK_MS = 250
-# The drawer's width when first opened.
-DRAWER_PX = 400
 # How long a note about a drawn shape stays in place of the status line, in seconds.
 NOTICE_S = 6.0
 
@@ -63,6 +53,11 @@ class MultisitePanel(DataPanel[SurveyOutput]):
         toggle = QShortcut(QKeySequence(Qt.Key.Key_Tab), self)
         toggle.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
         toggle.activated.connect(self.queue_button.toggle)
+        # Esc closes the overlay only while it is up, so it still stops a drawing otherwise.
+        self.close_key = QShortcut(QKeySequence(Qt.Key.Key_Escape), self)
+        self.close_key.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
+        self.close_key.setEnabled(False)
+        self.close_key.activated.connect(lambda: self.queue_button.setChecked(False))
         self.clock = QTimer(self)
         self.clock.setInterval(TICK_MS)
         self.clock.timeout.connect(self.tick)
@@ -89,12 +84,7 @@ class MultisitePanel(DataPanel[SurveyOutput]):
         self.status = QLabel("", self.body)
         self.status.setWordWrap(True)
         root.addWidget(self.status)
-        splitter = QSplitter(Qt.Orientation.Horizontal, self.body)
-        splitter.setChildrenCollapsible(False)
-        self.drawer = Drawer(splitter)
-        self.drawer.hide()
-        self.queue_button.toggled.connect(self.show_drawer)
-        holder = QWidget(splitter)
+        holder = QWidget(self.body)
         self.dish_holder = holder
         self.dish_box = QVBoxLayout(holder)
         self.dish_box.setContentsMargins(0, 0, 0, 0)
@@ -102,15 +92,14 @@ class MultisitePanel(DataPanel[SurveyOutput]):
             "No dish yet", "Choose a survey above. Its dish shows once it has finished.", holder
         )
         self.dish_box.addWidget(self.placeholder)
-        splitter.addWidget(self.drawer)
-        splitter.addWidget(holder)
-        splitter.setStretchFactor(1, 1)
-        splitter.setSizes([DRAWER_PX, 2 * DRAWER_PX])
-        root.addWidget(splitter, 1)
-        for table in (self.drawer.queue, self.drawer.units):
-            table.chose.connect(self.choose)
-            table.locate.connect(self.locate)
-            table.menu_asked.connect(lambda key, at: self.show_unit_menu(key, at, False))
+        root.addWidget(holder, 1)
+        self.overlay = Overlay(holder)
+        self.overlay.dismissed.connect(lambda: self.queue_button.setChecked(False))
+        self.queue_button.toggled.connect(self.show_overlay)
+        for card in self.overlay.cards:
+            card.table.chose.connect(self.choose)
+            card.table.locate.connect(self.locate)
+            card.table.menu_asked.connect(lambda key, at: self.show_unit_menu(key, at, False))
 
     def draw(self, program_output: SurveyOutput) -> None:
         if self.feed is None or self.feed.survey is not program_output:
@@ -138,6 +127,7 @@ class MultisitePanel(DataPanel[SurveyOutput]):
         dish.drawing_changed.connect(self.draw_button.setChecked)
         self.placeholder.hide()
         self.dish_box.addWidget(dish, 1)
+        self.overlay.raise_()
         self.dish = dish
 
     def drop_dish(self) -> None:
@@ -156,8 +146,8 @@ class MultisitePanel(DataPanel[SurveyOutput]):
         self.queue = queue_rows(snapshot)
         self.units = unit_rows(snapshot, self.queue)
         self.status.setText(self.status_text(snapshot))
-        if self.drawer.isVisible():
-            self.drawer.show_loop(snapshot, self.queue, self.units, feed.pending)
+        if self.overlay.up:
+            self.show_cards(snapshot, feed)
         if self.dish is not None:
             self.show_dish(self.dish, snapshot, feed)
 
@@ -175,15 +165,27 @@ class MultisitePanel(DataPanel[SurveyOutput]):
         present = {unit.number for unit in units if unit.state is not UnitState.REMOVED}
         dish.show_units(looks, feed.frames, present, working_at(snapshot))
 
-    def show_drawer(self, shown: bool) -> None:
-        self.drawer.setVisible(shown)
-        if shown and self.snapshot is not None and self.feed is not None:
-            self.drawer.show_loop(self.snapshot, self.queue, self.units, self.feed.pending)
-            self.drawer.choose(self.chosen)
+    def show_cards(self, snapshot: Snapshot, feed: LoopFeed) -> None:
+        self.overlay.queue.show_loop(snapshot, self.queue)
+        self.overlay.units.show_loop(snapshot, self.units, feed.pending)
+
+    def show_overlay(self, shown: bool) -> None:
+        self.close_key.setEnabled(shown)
+        if not shown:
+            self.overlay.vanish()
+            if self.dish is not None:
+                self.dish.setFocus()
+            return
+        if self.snapshot is not None and self.feed is not None:
+            self.show_cards(self.snapshot, self.feed)
+        for card in self.overlay.cards:
+            card.table.choose(self.chosen)
+        self.overlay.appear()
 
     def choose(self, key: str | None) -> None:
         self.chosen = key
-        self.drawer.choose(key)
+        for card in self.overlay.cards:
+            card.table.choose(key)
         if self.dish is not None:
             self.dish.select(key)
 
@@ -238,7 +240,8 @@ class MultisitePanel(DataPanel[SurveyOutput]):
 
     def locate(self, key: str) -> None:
         if self.dish is not None:
-            self.dish.locate(key)
+            free = self.overlay.uncovered() if self.overlay.up else self.dish.view_rect()
+            self.dish.locate(key, free)
 
     def show_unit_menu(self, key: str, at: QPoint, from_dish: bool) -> None:
         row = next((row for row in self.units if row.key == key), None)
@@ -257,10 +260,3 @@ class MultisitePanel(DataPanel[SurveyOutput]):
         action(menu, "Draw a unit", True, lambda: self.draw_button.setChecked(True))
         action(menu, "Show whole dish", True, self.fit_dish)
         menu.exec(at)
-
-    def export_persistence_state(self) -> dict[str, Any]:
-        return {"queue_open": self.queue_button.isChecked()}
-
-    def import_persistence_state(self, state: dict[str, Any]) -> None:
-        """Take saved settings from session JSON; a malformed entry keeps its default."""
-        self.queue_button.setChecked(state.get("queue_open") is True)

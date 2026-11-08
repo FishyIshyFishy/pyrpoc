@@ -5,14 +5,14 @@ Shows a survey's dish and the newest loop run over it. The source picker chooses
 ## What it shows
 - **The dish**: the survey's overview, with each unit's latest frame laid where it was taken. Each unit is outlined where it was last tracked, and drawn by where it stands. A dashed box one field across marks where the loop is working, and turns solid while it scans.
 - **The status line**: what the loop is doing now and what it does next.
-- **The drawer** (Tab, or the Queue button, opens and closes it) has two lists:
-  - **Queue**: what the loop runs, top first. Row *now* is the routine running. Then come any routines asked to run next, then the rest in the order they fall due. A paused unit's routines are not queued. This is the loop's own order (`LoopView.queue`), not one the panel works out.
-  - **Units**: every unit, where it stands, and what it does next, with that routine's place in the queue.
+- **The overlay**: Tab, or the Queue button, holds two see-through glass cards up over the live dish, and Tab again puts them away. So do Esc and a click on the dish between the cards: the overlay is a glance at the loop, not a pane that stays. The cards fade in and out, and a faint veil over the dish says it is not taking input meanwhile.
+  - **Queue** (left): what the loop runs, top first. Row *now* is the routine running. Then come any routines asked to run next, then the rest in the order they fall due. A paused unit's routines are not queued. This is the loop's own order (`LoopView.queue`), not one the panel works out.
+  - **Units** (right): every unit, where it stands, and what it does next, with that routine's place in the queue.
 
-Choosing a unit in either list or on the dish chooses it in all three. Double-clicking a row shows its unit on the dish.
+Choosing a unit in either card or on the dish chooses it in all three. Double-clicking a row brings its unit to the dish between the cards.
 
 ## Steering the loop
-Right-click a unit in either list or on the dish:
+Right-click a unit in either card or on the dish:
 - **Run next**: put it at the front of the queue.
 - **Pause** / **Resume**: take it out of the queue, or put it back.
 - **Remove from loop...**: stop it for good, after asking.
@@ -31,10 +31,11 @@ Each layer imports only those below it; `uv run lint-imports` checks this.
 
 | Layer | What it is |
 |---|---|
-| `panel.py` | `MultisitePanel`: the buttons, the status line, the drawer and the dish, wired to one `LoopFeed` |
-| `dish.py`, `drawer.py`, `unit_menu.py` | The dish view; the queue and units lists; the menu a right-click on a unit opens |
+| `panel.py` | `MultisitePanel`: the buttons, the status line, the dish and the overlay, wired to one `LoopFeed` |
+| `overlay.py` | `Overlay`: the cards held up over the dish, with the fade, the veil and closing on a click between them |
+| `dish.py`, `cards.py`, `unit_menu.py` | The dish view; the queue and units glass cards; the menu a right-click on a unit opens |
 | `backdrop.py`, `outlines.py`, `lasso.py` | What the dish draws: the overview and frames, the units and the working field, a unit being drawn |
-| `feed.py`, `look.py`, `render.py` | The loop as the panel reads it and steers it; how units are drawn; channels to colour |
+| `feed.py`, `look.py`, `render.py` | The loop as the panel reads it and steers it; the colours of the dish and the glass; channels to colour |
 | `state/` | No Qt: the queue and units rows, their wording, pending changes, the clock, outlines |
 
 ## Not done yet

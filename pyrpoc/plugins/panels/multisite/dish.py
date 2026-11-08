@@ -111,8 +111,9 @@ class DishCanvas(QGraphicsView):
         if not self.fitted and self.view_rect().width() > 1:
             self.fit_dish()
 
-    def locate(self, key: str) -> None:
-        """Centre the dish on a unit, zooming in when one field would be too small to see."""
+    def locate(self, key: str, free: QRect) -> None:
+        """Bring a unit to the middle of ``free``, the part of the view nothing covers,
+        zooming in when one field would be too small to see."""
         outline = self.outlines.outline_of(key)
         if outline is None:
             return
@@ -120,7 +121,9 @@ class DishCanvas(QGraphicsView):
         if field_px < LOCATE_FIELD_PX:
             factor = LOCATE_FIELD_PX / field_px
             self.scale(factor, factor)
-        self.centerOn(QPointF(*middle(outline)))
+        off = free.center() - self.view_rect().center()
+        scale = self.transform().m11()
+        self.centerOn(QPointF(*middle(outline)) - QPointF(off.x() / scale, off.y() / scale))
 
     def view_rect(self) -> QRect:
         viewport = self.viewport()

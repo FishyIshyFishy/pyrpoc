@@ -201,12 +201,13 @@ forbidden_modules = [
 allow_indirect_imports = true
 
 [[tool.importlinter.contracts]]
-name = "Inside the multisite panel: panel > dish | drawer | unit_menu > its parts > feed > state"
+name = "Inside the multisite panel: panel > overlay > dish | cards | unit_menu > their parts > feed > state"
 type = "layers"
 containers = ["pyrpoc.plugins.panels.multisite"]
 layers = [
   "panel",
-  "dish | drawer | unit_menu",
+  "overlay",
+  "dish | cards | unit_menu",
   "backdrop | outlines | lasso",
   "feed | look | render",
   "state",

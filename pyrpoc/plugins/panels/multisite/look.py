@@ -1,6 +1,6 @@
-"""How units are drawn on the dish. The dish is a fluorescence image, dark in every theme, so
-outlines take fixed colours that read on it; the unit being worked on and new ones take the
-theme's accent."""
+"""How the dish and the overlay over it look. The dish is a fluorescence image, dark in every
+theme, so outlines and the overlay's glass take fixed colours that read on it; the unit being
+worked on, new units and the chosen row take the theme's accent."""
 
 from __future__ import annotations
 
@@ -43,3 +43,12 @@ def stroke_of(standing: Standing, accent: QColor) -> Stroke:
 
 def faded(colour: QColor, alpha: int) -> QColor:
     return QColor(colour.red(), colour.green(), colour.blue(), alpha)
+
+
+# The overlay's glass: dark and see-through whatever the theme, since it lies over the dish.
+GLASS = QColor(16, 18, 24, 150)
+GLASS_EDGE = QColor(255, 255, 255, 38)
+# Laid over the dish while the overlay is up, just enough to say the dish is not taking input.
+VEIL = QColor(0, 0, 0, 56)
+TEXT = QColor(236, 239, 246)
+TEXT_DIM = QColor(150, 157, 172)
