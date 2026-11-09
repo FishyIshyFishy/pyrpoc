@@ -76,6 +76,10 @@ class Runs(QObject):
         # Cleared so one note is never copied onto runs it was not written for.
         if run is not None and self.note:
             self.set_note("")
+        # Saved under the next free name when the one asked for was taken, and shown so.
+        if run is not None and run.saver is not None and run.recording.name != self.save.name:
+            self.save.name = run.recording.name
+            self.save_changed.emit()
 
     def blockers(self, program_key: str) -> list[str]:
         """What has to be supplied before ``program_key`` can run."""

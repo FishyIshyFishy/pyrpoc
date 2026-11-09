@@ -48,6 +48,7 @@ from .spectrum import SpectrumOutput
 from .spectrum_series import SpectrumSeriesOutput
 from .survey import FocusPlane, MotionRate, Placement, SurveyFinding, SurveyOutput, SurveyTile
 from .survey_log import (
+    FocusWidened,
     MotionMeasured,
     MotionRevisiting,
     Stitching,
@@ -81,6 +82,7 @@ __all__ = [
     "SurveyEnded",
     "SurveyEvent",
     "SurveyLogOutput",
+    "FocusWidened",
     "TileFocusing",
     "TileTaken",
     "TileVisiting",

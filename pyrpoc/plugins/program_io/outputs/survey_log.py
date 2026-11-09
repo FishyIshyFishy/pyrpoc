@@ -39,6 +39,26 @@ class TileFocusing:
 
 
 @dataclass(frozen=True)
+class FocusWidened:
+    """Focus was searched for over the whole range at a tile: because nothing was in view at
+    the predicted focus beside tiles that held content (``lost``), or because the narrow
+    search ran into its edge (``edge``)."""
+
+    kind: ClassVar[str] = "focus widened"
+    time_s: float
+    tile: int
+    tiles: int
+    reason: str
+
+    def text(self) -> str:
+        why = {
+            "lost": "nothing in view where focus was predicted",
+            "edge": "focus lay beyond the predicted range",
+        }.get(self.reason, self.reason)
+        return f"tile {self.tile + 1} of {self.tiles}: {why}, searching the whole range"
+
+
+@dataclass(frozen=True)
 class TileTaken:
     """A tile was imaged at ``z_um``, holding content or not."""
 
@@ -108,6 +128,7 @@ class SurveyEnded:
 SurveyEvent = (
     TileVisiting
     | TileFocusing
+    | FocusWidened
     | TileTaken
     | MotionRevisiting
     | MotionMeasured
@@ -119,6 +140,7 @@ SURVEY_EVENTS: dict[str, type[SurveyEvent]] = {
     for cls in (
         TileVisiting,
         TileFocusing,
+        FocusWidened,
         TileTaken,
         MotionRevisiting,
         MotionMeasured,

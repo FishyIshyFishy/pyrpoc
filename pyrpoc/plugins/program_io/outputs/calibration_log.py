@@ -14,14 +14,15 @@ from .log import LogOutput
 
 @dataclass(frozen=True)
 class FeatureFound:
-    """A clear feature was found in view, on ``channel``, to follow as the stage moves."""
+    """The view was found to hold structure on ``channel``, which frames are registered on as
+    the stage moves."""
 
     kind: ClassVar[str] = "feature"
     time_s: float
     channel: str
 
     def text(self) -> str:
-        return f"following a clear feature on {self.channel}"
+        return f"registering the view on {self.channel}"
 
 
 @dataclass(frozen=True)

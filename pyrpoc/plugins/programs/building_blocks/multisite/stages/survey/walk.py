@@ -2,6 +2,13 @@
 revisiting early tiles to measure motion, placing the tiles into an overview, and returning to
 the start."""
 
+# Focus is predicted from the plane through the tiles focused so far, and searched for only as far
+# as that plane is unsure. Two things say the prediction was wrong, and each widens the search to
+# the whole range: a search that ends at its own edge (focus lay beyond it), and a tile with
+# nothing in view beside tiles that held content (it is likelier out of focus than empty). Without
+# the second, a survey that lost focus would see only empty tiles, which are never focused, and
+# never find it again.
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -10,6 +17,7 @@ import numpy as np
 
 from pyrpoc.plugins.program_io.inputs import FocusSearch
 from pyrpoc.plugins.program_io.outputs import (
+    FocusWidened,
     MosaicTile,
     MotionMeasured,
     MotionRate,
@@ -23,7 +31,7 @@ from pyrpoc.plugins.program_io.outputs import (
     TileVisiting,
 )
 
-from ....focus.climb import climb
+from ....focus.climb import ClimbResult, climb, sweep_then_climb
 from ....focus.tenengrad import tenengrad
 from ...analysis.content import content_channels, content_region
 from ...analysis.motion import feature_speeds
@@ -100,29 +108,91 @@ class Surveying:
     def frame(self) -> np.ndarray:
         return self.field.on_dish(self.scope.scan(self.scan, ()))
 
-    def focus(self, guess: float, frame: np.ndarray, channels: tuple[int, ...]) -> float:
-        """The sharpest z near ``guess``, judged where ``frame`` shows content."""
+    def climb_from(
+        self, guess: float, frame: np.ndarray, channels: tuple[int, ...], search: FocusSearch
+    ) -> ClimbResult:
+        """The sharpest z within ``search`` of ``guess``, judged where ``frame`` shows
+        content."""
         weights = content_region(frame, channels)
 
         def measure(z_um: float) -> float:
             self.scope.move_z(z_um)
             return tenengrad(self.frame()[list(channels)], weights)
 
-        search = self.surface.search(self.settings.search)
-        return climb(measure, lambda _step: None, guess, search).best_z_um
+        # A range wider than one first step is swept before it is climbed, since the climb
+        # only finds a peak it starts within a step of.
+        wide = search.search_range_um > search.initial_step_um
+        how = sweep_then_climb if wide else climb
+        return how(measure, lambda _step: None, guess, search)
+
+    def focus(
+        self, tile: Tile, guess: float, frame: np.ndarray, channels: tuple[int, ...], wide: bool
+    ) -> tuple[float, bool]:
+        """The sharpest z near ``guess``, searched for as far as the plane is unsure at
+        ``tile`` (or over the whole range when ``wide``), and whether it is a measurement of
+        focus rather than the edge of the range."""
+        full = self.settings.search
+        search = full if wide else self.surface.search(full, tile.x_um, tile.y_um)
+        found = self.climb_from(guess, frame, channels, search)
+        if found.at_edge and search != full:
+            self.log_widened(tile, "edge")
+            found = self.climb_from(guess, frame, channels, full)
+        return found.best_z_um, not found.at_edge
+
+    def log_widened(self, tile: Tile, reason: str) -> None:
+        self.sink.log(FocusWidened(self.scope.now(), tile.index, len(self.tiles), reason))
+
+    def beside_content(self, tile: Tile) -> bool:
+        """Whether a tile already taken next to ``tile`` held content."""
+        return any(
+            taken.channels
+            and abs(taken.tile.row - tile.row) <= 1
+            and abs(taken.tile.col - tile.col) <= 1
+            for taken in self.taken
+        )
+
+    def find_content(self, guess: float) -> tuple[float, np.ndarray, tuple[int, ...]] | None:
+        """Stepping out from ``guess`` by the search's first step, either way and as far as
+        its range: the first z at which anything is in view, its frame and the channels
+        holding it; None if nowhere."""
+        full = self.settings.search
+        steps = int(full.search_range_um // full.initial_step_um)
+        for count in range(1, steps + 1):
+            for side in (1.0, -1.0):
+                z = guess + side * count * full.initial_step_um
+                self.cancellation.check_cancel()
+                self.scope.move_z(z)
+                frame = self.frame()
+                channels = content_channels(frame)
+                if channels:
+                    return z, frame, channels
+        return None
 
     def take(self, tile: Tile) -> Taken:
         """Image one tile, focusing first if it holds anything."""
         self.sink.log(TileVisiting(self.scope.now(), tile.index, len(self.tiles)))
         self.scope.move_xy(tile.x_um, tile.y_um)
-        z = self.surface.predict(tile.x_um, tile.y_um)
+        predicted = z = self.surface.predict(tile.x_um, tile.y_um)
         self.scope.move_z(z)
         frame = self.frame()
         channels = content_channels(frame)
+        wide = False
+        if not channels and self.beside_content(tile):
+            self.log_widened(tile, "lost")
+            found = self.find_content(predicted)
+            if found is not None:
+                z, frame, channels = found
+                wide = True
+            else:
+                self.scope.move_z(predicted)
+                frame = self.frame()
         if channels:
             self.sink.log(TileFocusing(self.scope.now(), tile.index, len(self.tiles)))
-            z = self.focus(z, frame, channels)
-            self.surface.add(tile.x_um, tile.y_um, z)
+            # Climbed from wherever content came into view: the prediction, or the z the
+            # search for content found it at.
+            z, measured = self.focus(tile, z, frame, channels, wide)
+            if measured:
+                self.surface.add(tile.x_um, tile.y_um, z)
             self.scope.move_z(z)
             frame = self.frame()
         return Taken(tile, frame, z, self.scope.now(), channels)

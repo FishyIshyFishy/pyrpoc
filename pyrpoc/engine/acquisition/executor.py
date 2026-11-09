@@ -133,11 +133,16 @@ class Executor:
         on."""
         root: Path | None = None
         meta_path: Path | None = None
+        name = save.filename
         if save.enabled:
-            root, meta_path = save_location(save.root)
+            # A recording still open in the library keeps its name even once its files have
+            # left the folder, so no new recording is saved under it.
+            taken = {each.location for each in self.library.recordings() if each.location}
+            root, meta_path = save_location(save.root, taken)
+            name = root.name
         recording = Recording(
             program_key=program_key,
-            name=save.filename,
+            name=name,
             started_at=utc_now(),
             parts=[],
             reads=reads,
