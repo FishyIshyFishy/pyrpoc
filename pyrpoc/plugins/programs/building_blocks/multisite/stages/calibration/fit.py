@@ -5,12 +5,14 @@
 # move went; that says nothing about the scale, and a line forced through zero would tilt to
 # absorb it.
 #
-# Whether the fit is good enough is judged by how precisely it knows the slope, which is what the
+# How good the fit is, is judged by how precisely it knows the slope, which is what the
 # calibration is for, rather than by its scatter against a share of the move: a stage that lands
 # within a fraction of a µm can fail any fixed share of a short move and still give a slope known
 # to a fraction of a percent.
 
 from __future__ import annotations
+
+from dataclasses import dataclass
 
 import numpy as np
 
@@ -18,8 +20,6 @@ from ...analysis.noise import MAD_TO_SIGMA
 
 # A point further than this many robust deviations from the fit is a mismatch, not a measure.
 OUTLIER_DEVIATIONS = 5.0
-# A slope known no better than this fraction of itself did not measure the scale.
-WORST_UNCERTAINTY = 0.01
 # Two parameters, and at least two points to spare to measure the scatter about them.
 LEAST_KEPT = 4
 
@@ -28,9 +28,19 @@ class CalibrationError(Exception):
     """The calibration could not be measured."""
 
 
-def fit(moves: np.ndarray, shifts: np.ndarray) -> tuple[float, float]:
-    """The slope of shift against move, with an offset, refitted without mismatched points,
-    and the scatter of the points kept about it in µm of move."""
+@dataclass(frozen=True)
+class Line:
+    """Shift against move: the slope, the scatter of the points kept about it in µm of move,
+    the slope's standard error as a fraction of it, and which points were kept."""
+
+    slope: float
+    scatter_um: float
+    uncertainty: float
+    kept: np.ndarray
+
+
+def fit(moves: np.ndarray, shifts: np.ndarray) -> Line:
+    """The line of shift against move, with an offset, refitted without mismatched points."""
     design = np.column_stack([moves, np.ones_like(moves)])
     # Started from medians, a mismatch can't drag the first line and hide among the errors.
     slope = float(np.median(shifts / moves))
@@ -51,9 +61,12 @@ def fit(moves: np.ndarray, shifts: np.ndarray) -> tuple[float, float]:
     scatter = float(np.sqrt(np.sum(errors**2) / (keep.sum() - 2)))
     inverse = np.linalg.inv(design[keep].T @ design[keep])
     uncertainty = scatter * float(np.sqrt(inverse[0, 0])) / abs(slope)
-    if uncertainty > WORST_UNCERTAINTY or keep.sum() < len(moves) // 2:
-        raise CalibrationError(
-            f"the measured shifts scatter too much about a line (the scale is uncertain by "
-            f"{uncertainty:.1%}): try another spot"
-        )
-    return slope, scatter / abs(slope)
+    return Line(slope, scatter / abs(slope), uncertainty, keep)
+
+
+def cross_slope(moves: np.ndarray, crosses: np.ndarray, kept: np.ndarray) -> float:
+    """The slope, with an offset, of the shifts across the axis against the moves along it,
+    over the points ``kept``."""
+    design = np.column_stack([moves, np.ones_like(moves)])[kept]
+    coefficients, *_ = np.linalg.lstsq(design, crosses[kept], rcond=None)
+    return float(coefficients[0])

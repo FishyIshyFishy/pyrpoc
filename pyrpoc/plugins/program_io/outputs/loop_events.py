@@ -211,6 +211,36 @@ class Measured:
 
 
 @dataclass(frozen=True)
+class FocusingBeside:
+    """A focus check began beside a unit, before its routine's scan: in the field centred at
+    (``x_um``, ``y_um``), which keeps clear of every unit."""
+
+    kind: ClassVar[str] = "focusing beside"
+    time_s: float
+    unit: int
+    routine: str
+    x_um: float
+    y_um: float
+
+    def text(self) -> str:
+        return f"unit {self.unit} {self.routine}: checking focus beside it"
+
+
+@dataclass(frozen=True)
+class FocusNotFound:
+    """A focus check found the sharpest z at the edge of its whole range, so focus was left
+    where it was predicted."""
+
+    kind: ClassVar[str] = "focus not found"
+    time_s: float
+    unit: int
+    routine: str
+
+    def text(self) -> str:
+        return f"unit {self.unit} {self.routine}: focus not found within the search range"
+
+
+@dataclass(frozen=True)
 class FocusChecked:
     kind: ClassVar[str] = "focus"
     time_s: float
@@ -256,7 +286,7 @@ class LoopFinished:
 
 
 # What the loop is doing now: the latest of these, until the unit's scan is logged.
-LoopActivity = MovingToUnit | FocusingAtUnit | ScanningUnit
+LoopActivity = MovingToUnit | FocusingAtUnit | FocusingBeside | ScanningUnit
 LoopEvent = (
     LoopStarted
     | LoopResumed
@@ -272,6 +302,7 @@ LoopEvent = (
     | UnitScanned
     | Measured
     | FocusChecked
+    | FocusNotFound
     | RoutineEnded
     | RoutineFailed
     | LoopFinished
@@ -291,10 +322,12 @@ LOOP_EVENTS: dict[str, type[LoopEvent]] = {
         StepDue,
         MovingToUnit,
         FocusingAtUnit,
+        FocusingBeside,
         ScanningUnit,
         UnitScanned,
         Measured,
         FocusChecked,
+        FocusNotFound,
         RoutineEnded,
         RoutineFailed,
         LoopFinished,

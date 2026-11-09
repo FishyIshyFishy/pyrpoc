@@ -13,6 +13,10 @@ and how far from it a new point may lie."""
 # the points), and a Student t quantile, so a plane fitted to few points is trusted less. Where
 # the points say nothing (too few to measure their scatter, or off the line they lie on) it is
 # infinite.
+#
+# Points taken over time while focus drifts can be fitted with the drift as one more term,
+# linear in time. A survey walks its rows in order, so time and y rise together and the drift
+# could pass for a tilt in y; only points taken again at the same place later tell them apart.
 
 from __future__ import annotations
 
@@ -107,16 +111,24 @@ def spanned_directions(xy: np.ndarray) -> np.ndarray:
     return directions[spread > SPAN_UM]
 
 
-def fit_plane(points: np.ndarray, least_spread: float) -> PlaneFit:
-    """The plane through ``points``, an ``(N, 3)`` array of (x, y, z) with N at least 1, never
-    claiming a spread below ``least_spread``."""
-    centre = points[:, :2].mean(axis=0)
-    xy = points[:, :2] - centre
-    spanned = spanned_directions(xy)
-    design = np.column_stack([np.ones(len(points)), xy @ spanned.T])
+@dataclass(frozen=True)
+class RobustFit:
+    """Least squares refitted without the points far from it: the coefficients, how many points
+    were kept, their spread about the fit, the inverse of their normal matrix, and the kept
+    points less the parameters."""
+
+    coefficients: np.ndarray
+    kept: int
+    spread: float
+    inverse: np.ndarray
+    freedom: int
+
+
+def robust_fit(design: np.ndarray, z: np.ndarray, least_spread: float) -> RobustFit:
+    """The least-squares fit of ``z`` to the columns of ``design``, refitted without the points
+    far from it, never claiming a spread below ``least_spread``."""
     parameters = design.shape[1]
-    z = points[:, 2]
-    keep = np.ones(len(points), dtype=bool)
+    keep = np.ones(len(z), dtype=bool)
     for _ in range(2):
         coefficients, *_ = np.linalg.lstsq(design[keep], z[keep], rcond=None)
         errors = z - design @ coefficients
@@ -124,24 +136,75 @@ def fit_plane(points: np.ndarray, least_spread: float) -> PlaneFit:
         keep = np.abs(errors) <= OUTLIER_DEVIATIONS * spread
         # Rejecting points needs some to spare: below that, none can be told to be wrong.
         if keep.sum() <= parameters:
-            keep = np.ones(len(points), dtype=bool)
+            keep = np.ones(len(z), dtype=bool)
     coefficients, *_ = np.linalg.lstsq(design[keep], z[keep], rcond=None)
     freedom = int(keep.sum()) - parameters
     errors = z[keep] - design[keep] @ coefficients
     # The scatter that the fit's own parameters have not already soaked up.
     scatter = math.sqrt(float(np.sum(errors**2)) / freedom) if freedom >= 1 else 0.0
-    spread = max(scatter, least_spread)
     inverse = np.linalg.pinv(design[keep].T @ design[keep])
-    tilt = spanned.T @ coefficients[1:]
-    z0 = float(coefficients[0] - tilt @ centre)
+    return RobustFit(coefficients, int(keep.sum()), max(scatter, least_spread), inverse, freedom)
+
+
+def spatial_design(xy: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """The centre of points ``xy``, the directions they spread across, and the design of a
+    plane over them: a constant, then each spanned direction about the centre."""
+    centre = xy.mean(axis=0)
+    spanned = spanned_directions(xy - centre)
+    design = np.column_stack([np.ones(len(xy)), (xy - centre) @ spanned.T])
+    return centre, spanned, design
+
+
+def plane_from(
+    fit: RobustFit, centre: np.ndarray, spanned: np.ndarray, inverse: np.ndarray
+) -> PlaneFit:
+    """The plane in stage coordinates from the leading, spatial coefficients of ``fit``, whose
+    normal matrix for them inverts to ``inverse``."""
+    tilt = spanned.T @ fit.coefficients[1 : 1 + len(spanned)]
+    z0 = float(fit.coefficients[0] - tilt @ centre)
     return PlaneFit(
         z0,
         float(tilt[0]),
         float(tilt[1]),
-        spread,
-        int(keep.sum()),
+        fit.spread,
+        fit.kept,
         (float(centre[0]), float(centre[1])),
         spanned,
         inverse,
-        freedom,
+        fit.freedom,
     )
+
+
+def fit_plane(points: np.ndarray, least_spread: float) -> PlaneFit:
+    """The plane through ``points``, an ``(N, 3)`` array of (x, y, z) with N at least 1, never
+    claiming a spread below ``least_spread``."""
+    centre, spanned, design = spatial_design(points[:, :2])
+    fit = robust_fit(design, points[:, 2], least_spread)
+    return plane_from(fit, centre, spanned, fit.inverse)
+
+
+@dataclass(frozen=True)
+class DriftingPlane:
+    """A plane fitted to points taken while focus drifted steadily: the plane as it stood at the
+    fit's reference time, and the drift's rate and its standard error, in µm per second."""
+
+    plane: PlaneFit
+    rate: float
+    rate_error: float
+
+
+def fit_drifting_plane(
+    points: np.ndarray, times_s: np.ndarray, at_s: float, least_spread: float
+) -> DriftingPlane:
+    """The plane through ``points``, an ``(N, 3)`` array of (x, y, z) taken at ``times_s``, with
+    z drifting linearly in time, as it stood at ``at_s``."""
+    centre, spanned, spatial = spatial_design(points[:, :2])
+    # In minutes, so the drift's column is of a size with the others.
+    elapsed_min = (times_s - at_s) / 60.0
+    fit = robust_fit(np.column_stack([spatial, elapsed_min]), points[:, 2], least_spread)
+    # The spatial block of the inverse is the plane's covariance at ``at_s``, its drift's
+    # uncertainty included.
+    terms = spatial.shape[1]
+    plane = plane_from(fit, centre, spanned, fit.inverse[:terms, :terms])
+    rate_error = fit.spread * math.sqrt(float(fit.inverse[-1, -1]))
+    return DriftingPlane(plane, float(fit.coefficients[-1]) / 60.0, rate_error / 60.0)

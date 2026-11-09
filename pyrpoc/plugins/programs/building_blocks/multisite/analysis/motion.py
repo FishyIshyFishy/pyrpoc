@@ -24,8 +24,10 @@ def feature_speeds(
     for feature in clear_features(before, Box(0, 0, height, width)):
         region = feature.grown(EDGE_MARGIN_PX, (height, width))
         corner = (float(region.left), float(region.top))
-        found = locate_near(region.crop(before), after, corner, radius)
+        template = region.crop(before)
+        found = locate_near(template, np.ones(template.shape, bool), after, corner, radius)
+        # Each speed is one of many summarised robustly, so a match need not be distinct.
         if found is not None:
-            moved_px = float(np.hypot(found[0] - corner[0], found[1] - corner[1]))
+            moved_px = float(np.hypot(found.x - corner[0], found.y - corner[1]))
             speeds.append(moved_px * um_per_px / minutes)
     return speeds

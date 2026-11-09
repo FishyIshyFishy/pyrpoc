@@ -9,6 +9,8 @@ from dataclasses import dataclass, field, replace
 from pyrpoc.plugins.program_io.outputs import (
     FocusChecked,
     FocusingAtUnit,
+    FocusingBeside,
+    FocusNotFound,
     LoopEvent,
     LoopFinished,
     LoopResumed,
@@ -62,13 +64,12 @@ class Placed:
 @dataclass
 class Resumption:
     """Every unit by number, each routine's progress by (unit, routine), where each unit was
-    last known to be, and the focus offset with when it was last checked."""
+    last known to be, and every focus check as (time, offset from the survey's plane)."""
 
     records: dict[int, UnitRecord] = field(default_factory=dict)
     threads: dict[tuple[int, str], ThreadProgress] = field(default_factory=dict)
     placed: dict[int, Placed | None] = field(default_factory=dict)
-    focus_offset_um: float = 0.0
-    focus_checked_s: float | None = None
+    focus_checks: list[tuple[float, float]] = field(default_factory=list)
 
 
 def resumption(events: Iterable[LoopEvent]) -> Resumption:
@@ -111,13 +112,15 @@ def take(state: Resumption, event: LoopEvent) -> None:
         case RoutineEnded() | RoutineFailed():
             state.threads[(event.unit, event.routine)].ended = True
         case FocusChecked():
-            state.focus_offset_um, state.focus_checked_s = event.offset_um, event.time_s
+            state.focus_checks.append((event.time_s, event.offset_um))
         case (
             LoopStarted()
             | LoopResumed()
             | UnitRefused()
             | MovingToUnit()
             | FocusingAtUnit()
+            | FocusingBeside()
+            | FocusNotFound()
             | ScanningUnit()
             | LoopFinished()
         ):

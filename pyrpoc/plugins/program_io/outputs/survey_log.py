@@ -104,6 +104,24 @@ class MotionMeasured:
 
 
 @dataclass(frozen=True)
+class FocusDriftMeasured:
+    """How fast focus drifted over the survey, in µm per minute, and its standard error, from
+    ``revisits`` tiles focused again at its end; None with fewer than two."""
+
+    kind: ClassVar[str] = "focus drift"
+    time_s: float
+    um_per_min: float | None
+    error_um_per_min: float | None
+    revisits: int
+
+    def text(self) -> str:
+        if self.um_per_min is None or self.error_um_per_min is None:
+            return "focus drift not measured: too few tiles were focused again"
+        drift = f"{self.um_per_min:+.3f} ± {self.error_um_per_min:.3f}"
+        return f"focus drifts {drift} µm per minute ({self.revisits} tiles focused again)"
+
+
+@dataclass(frozen=True)
 class Stitching:
     """Placing the tiles into one overview began."""
 
@@ -132,6 +150,7 @@ SurveyEvent = (
     | TileTaken
     | MotionRevisiting
     | MotionMeasured
+    | FocusDriftMeasured
     | Stitching
     | SurveyEnded
 )
@@ -144,6 +163,7 @@ SURVEY_EVENTS: dict[str, type[SurveyEvent]] = {
         TileTaken,
         MotionRevisiting,
         MotionMeasured,
+        FocusDriftMeasured,
         Stitching,
         SurveyEnded,
     )

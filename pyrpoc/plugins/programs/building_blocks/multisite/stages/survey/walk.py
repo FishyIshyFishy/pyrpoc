@@ -1,6 +1,6 @@
 """One survey: tile by tile across the region, focusing where there is content, then
-revisiting early tiles to measure motion, placing the tiles into an overview, and returning to
-the start."""
+revisiting early tiles to focus them again and measure motion, placing the tiles into an
+overview, and returning to the start."""
 
 # Focus is predicted from the plane through the tiles focused so far, and searched for only as far
 # as that plane is unsure. Two things say the prediction was wrong, and each widens the search to
@@ -8,6 +8,9 @@ the start."""
 # nothing in view beside tiles that held content (it is likelier out of focus than empty). Without
 # the second, a survey that lost focus would see only empty tiles, which are never focused, and
 # never find it again.
+#
+# The early tiles revisited at the end are focused again: the same places focused twice, minutes
+# apart, measure how fast focus drifted, which the walk alone cannot tell from a tilt in y.
 
 from __future__ import annotations
 
@@ -17,6 +20,9 @@ import numpy as np
 
 from pyrpoc.plugins.program_io.inputs import FocusSearch
 from pyrpoc.plugins.program_io.outputs import (
+    FocusDrift,
+    FocusDriftMeasured,
+    FocusPlane,
     FocusWidened,
     MosaicTile,
     MotionMeasured,
@@ -31,7 +37,7 @@ from pyrpoc.plugins.program_io.outputs import (
     TileVisiting,
 )
 
-from ....focus.climb import ClimbResult, climb, sweep_then_climb
+from ....focus.climb import ClimbResult, find_focus
 from ....focus.tenengrad import tenengrad
 from ...analysis.content import content_channels, content_region
 from ...analysis.motion import feature_speeds
@@ -119,11 +125,7 @@ class Surveying:
             self.scope.move_z(z_um)
             return tenengrad(self.frame()[list(channels)], weights)
 
-        # A range wider than one first step is swept before it is climbed, since the climb
-        # only finds a peak it starts within a step of.
-        wide = search.search_range_um > search.initial_step_um
-        how = sweep_then_climb if wide else climb
-        return how(measure, lambda _step: None, guess, search)
+        return find_focus(measure, lambda _step: None, guess, search)
 
     def focus(
         self, tile: Tile, guess: float, frame: np.ndarray, channels: tuple[int, ...], wide: bool
@@ -192,7 +194,7 @@ class Surveying:
             # search for content found it at.
             z, measured = self.focus(tile, z, frame, channels, wide)
             if measured:
-                self.surface.add(tile.x_um, tile.y_um, z)
+                self.surface.add(tile.x_um, tile.y_um, z, self.scope.now())
             self.scope.move_z(z)
             frame = self.frame()
         return Taken(tile, frame, z, self.scope.now(), channels)
@@ -208,15 +210,37 @@ class Surveying:
             done = TileTaken(taken.time_s, tile.index, len(self.tiles), taken.z_um, content)
             self.sink.log(done)
 
+    def refocus(self, taken: Taken, drift_um_per_s: float) -> tuple[np.ndarray, float | None]:
+        """Focus ``taken``'s tile again, searching from where it was focused moved on by
+        ``drift_um_per_s``; its frame there, and the drift it measured if it found focus."""
+        tile = taken.tile
+        self.scope.move_xy(tile.x_um, tile.y_um)
+        guess = taken.z_um + drift_um_per_s * (self.scope.now() - taken.time_s)
+        self.scope.move_z(guess)
+        frame = self.frame()
+        channels = content_channels(frame)
+        if not channels:
+            return frame, None
+        z, measured = self.focus(tile, guess, frame, channels, False)
+        self.scope.move_z(z)
+        if not measured:
+            return self.frame(), None
+        now = self.scope.now()
+        self.surface.add_revisit(tile.x_um, tile.y_um, z, now)
+        return self.frame(), (z - taken.z_um) / (now - taken.time_s)
+
     def revisit(self) -> MotionRate | None:
-        """Find the features of the earliest tiles with content again, now."""
+        """Focus the earliest tiles with content again, now, and find their features again."""
         speeds: list[float] = []
+        # Each tile's search starts where the drift the tiles before it measured has moved focus.
+        drifts: list[float] = []
         early = [taken for taken in self.taken if taken.channels][:REVISITS]
         for number, taken in enumerate(early):
             self.sink.log(MotionRevisiting(self.scope.now(), number, len(early)))
-            self.scope.move_xy(taken.tile.x_um, taken.tile.y_um)
-            self.scope.move_z(taken.z_um)
-            now = self.frame()
+            drift = float(np.median(drifts)) if drifts else 0.0
+            now, measured = self.refocus(taken, drift)
+            if measured is not None:
+                drifts.append(measured)
             minutes = (self.scope.now() - taken.time_s) / 60.0
             channel = taken.channels[strongest_channel(taken.frame[list(taken.channels)])]
             speeds += feature_speeds(
@@ -227,18 +251,32 @@ class Surveying:
         self.sink.log(MotionMeasured(self.scope.now(), rate, len(speeds)))
         return motion
 
+    def settle(self) -> tuple[FocusPlane, FocusDrift | None]:
+        """The focus plane as it stood when the last tile was taken, and the drift over the
+        survey, taken out of the plane where the tiles focused again measure it."""
+        plane, drifting = self.surface.settled(self.taken[-1].time_s)
+        revisits = self.surface.revisits
+        if drifting is None:
+            self.sink.log(FocusDriftMeasured(self.scope.now(), None, None, revisits))
+            return plane, None
+        drift = FocusDrift(drifting.rate * 60.0, drifting.rate_error * 60.0)
+        now = self.scope.now()
+        self.sink.log(FocusDriftMeasured(now, drift.um_per_min, drift.error_um_per_min, revisits))
+        return plane, drift
+
     def finish(self, motion: MotionRate | None) -> None:
         """Place the tiles into the overview, hand it and what was found to the sink, and go
         back to the start."""
+        plane, drift = self.settle()
         self.sink.log(Stitching(self.scope.now()))
         corners = [self.field.corner_um(t.tile.x_um, t.tile.y_um) for t in self.taken]
         frames = [taken.frame for taken in self.taken]
         times = [taken.time_s for taken in self.taken]
         rate = 0.0 if motion is None else motion.um_per_min
         overview, placed = stitch(frames, corners, times, self.tiles, self.field.um_per_px, rate)
-        self.sink.finish(SurveyFinding(self.surface.plane, motion, tuple(placed)), overview)
+        self.sink.finish(SurveyFinding(plane, drift, motion, tuple(placed)), overview)
         self.scope.move_xy(*self.start)
-        self.scope.move_z(self.surface.predict(*self.start))
+        self.scope.move_z(plane.z_at(*self.start))
         self.sink.log(SurveyEnded(self.scope.now()))
 
 
