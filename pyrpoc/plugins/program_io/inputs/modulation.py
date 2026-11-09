@@ -7,13 +7,13 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Any
 
-from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtWidgets import (
     QCheckBox,
     QFrame,
     QHBoxLayout,
     QLabel,
-    QSpinBox,
+    QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
@@ -24,12 +24,11 @@ from pyrpoc.plugins.program_io.inputs.masks import MASKS, thumbnail
 from pyrpoc.utils.widgets.editors import Editor, FieldValues, editor_for
 from pyrpoc.utils.widgets.empty_state import EmptyState
 from pyrpoc.utils.widgets.flow_grid import FlowGrid
+from pyrpoc.utils.widgets.port_line_edit import PortLineEdit
 
-# Wide enough for the prefix and two digits; a wider row gives the boxes more.
-SPIN_WIDTH = 60
-THUMBNAIL_PX = 44
+THUMBNAIL_PX = 24
 # The narrowest a mask's row is given before the rows drop to fewer columns.
-ROW_PX = 230
+ROW_PX = 170
 
 
 @dataclass(frozen=True)
@@ -91,8 +90,8 @@ def lines_for(masks: tuple[Mask, ...], lines: tuple[MaskLine, ...]) -> tuple[Mas
 
 
 class MaskRow(QFrame):
-    """One mask's modulation: a checkbox to use it, its picture and name, and the port and line
-    it drives."""
+    """One mask's modulation on one line: a checkbox to use it, its picture and name, and the
+    port and line it drives."""
 
     changed = pyqtSignal()
 
@@ -103,8 +102,8 @@ class MaskRow(QFrame):
         self.setStyleSheet("#maskRow { border: 1px solid palette(midlight); border-radius: 4px; }")
         self.setToolTip(mask.describe())
         row = QHBoxLayout(self)
-        row.setContentsMargins(6, 6, 6, 6)
-        row.setSpacing(8)
+        row.setContentsMargins(4, 2, 4, 2)
+        row.setSpacing(6)
         self.enabled = QCheckBox(self)
         self.enabled.setToolTip("Drive this line with the mask during a scan")
         self.enabled.setChecked(mask_line.enabled)
@@ -112,35 +111,18 @@ class MaskRow(QFrame):
         self.picture = QLabel(self)
         self.picture.setPixmap(thumbnail(mask, THUMBNAIL_PX))
         row.addWidget(self.picture)
-        column = QVBoxLayout()
-        column.setSpacing(4)
         self.name = QLabel(mask.label or "mask", self)
-        column.addWidget(self.name)
-        spins = QHBoxLayout()
-        spins.setSpacing(4)
-        self.port = self.spin("Port ", mask_line.port)
-        self.line = self.spin("Line ", mask_line.line)
-        spins.addWidget(self.port)
-        spins.addWidget(self.line)
-        column.addLayout(spins)
-        row.addLayout(column, 1)
+        self.name.setMinimumWidth(0)
+        self.name.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+        row.addWidget(self.name, 1)
+        self.port_line = PortLineEdit(mask_line.port, mask_line.line, self)
+        self.port_line.changed.connect(self.changed)
+        row.addWidget(self.port_line)
         self.apply_enabled(mask_line.enabled)
         self.enabled.toggled.connect(self.on_toggled)
 
-    def spin(self, prefix: str, value: int) -> QSpinBox:
-        """A compact number box: typed, scrolled or stepped with the arrow keys."""
-        spin = QSpinBox(self)
-        spin.setRange(0, 1024)
-        spin.setValue(value)
-        spin.setPrefix(prefix)
-        spin.setButtonSymbols(QSpinBox.ButtonSymbols.NoButtons)
-        spin.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        spin.setMinimumWidth(SPIN_WIDTH)
-        spin.valueChanged.connect(self.changed)
-        return spin
-
     def apply_enabled(self, enabled: bool) -> None:
-        for each in (self.picture, self.name, self.port, self.line):
+        for each in (self.picture, self.name, self.port_line):
             each.setEnabled(enabled)
 
     def on_toggled(self, checked: bool) -> None:
@@ -149,7 +131,7 @@ class MaskRow(QFrame):
 
     def value(self) -> MaskLine:
         return MaskLine(
-            self.mask_id, self.port.value(), self.line.value(), self.enabled.isChecked()
+            self.mask_id, self.port_line.port, self.port_line.line, self.enabled.isChecked()
         )
 
 
@@ -165,7 +147,7 @@ class MaskLinesTable(QWidget):
         self.rows: list[MaskRow] = []
         self.empty = EmptyState("No masks yet", "Draw one in a Mask Editor.", self)
         self.grid_host = QWidget(self)
-        self.grid = FlowGrid(self.grid_host, min_cell=ROW_PX, spacing=6)
+        self.grid = FlowGrid(self.grid_host, min_cell=ROW_PX, spacing=4)
         self.grid.setContentsMargins(0, 0, 0, 0)
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 2, 0, 2)
@@ -200,7 +182,7 @@ class MaskLinesTable(QWidget):
     def summary(self) -> str:
         masks = self.masks()
         parts = [
-            f"{mask.label or 'mask'} → port{line.port}/line{line.line}"
+            f"{mask.label or 'mask'} → p{line.port}.{line.line}"
             for mask, line in zip(masks, lines_for(masks, self.value()), strict=True)
             if line.enabled
         ]
