@@ -5,7 +5,7 @@ Imports go one way: `app` → `engine` → `plugins` → `utils` → `core`.
 - `core/`: the abstract pieces and how they fit together, flat, one idea per file. Nothing specific: no particular input, output kind or value rule. Imports nothing else from pyrpoc; Qt only in `panels.py`.
 - `utils/`: utilities used by many parts and belonging to none. `value_rules/` holds the common value rules and the shorthands that declare inputs and device settings with them; `controls.py` the common kinds of runner control; `widgets/` holds generic widgets that know no feature; `simulation/` holds the simulated dish that simulated devices acquire from; `assets/` holds icons and vendor DLLs. Imports only `core/`.
 - `plugins/{devices,program_io,programs,panels}/`: things you add more of.
-  - `program_io/inputs/` declares the program inputs programs and panels share; `program_io/requests/` the requests; `program_io/outputs/` holds the kinds of data programs publish and the writers that save them.
+  - `program_io/inputs/` declares the program inputs programs and panels share; `program_io/outputs/` holds the kinds of data programs publish and the writers that save them.
   - `programs/` and `panels/` may import `program_io/` and `devices/`, and never each other. `program_io/` and `devices/` know only `core/` and `utils/`.
   - `programs/building_blocks/multisite/` is the calibrate → survey → loop package. Programs import only its root; inside, the layers run `bindings` > `routines` > `stages` > `interfaces` > `analysis` (see its README).
 - `engine/`: the app's working parts, one folder per collection: `acquisition/` > `data_library/` | `device_inventory/`. Each holds its no-Qt logic, its Qt model and its panel. They never import a plugin.
