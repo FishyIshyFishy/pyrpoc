@@ -37,25 +37,31 @@ T = TypeVar("T")
 @dataclass(frozen=True, eq=False)
 class ProgramInput(Generic[T]):
     """The declaration of one value a program reads: its key, the rules its
-    values follow (which carry its label), its default, and whether a session restores it."""
+    values follow (which carry its label), its default, whether a session restores it, and
+    whether a recording keeps its values."""
 
     key: str
     rule: Field
     default: T
     # False for a value too large to rewrite on every autosave: each launch starts at the default.
     restored: bool
+    # False for a value the programs reading it record in outputs of their own, so a recording's
+    # metadata says only when it was taken.
+    recorded: bool
 
 
 # Every declared program input, by key.
 program_input_registry: dict[str, ProgramInput[Any]] = {}
 
 
-def declare(key: str, rule: Field, default: T, *, restored: bool = True) -> ProgramInput[T]:
+def declare(
+    key: str, rule: Field, default: T, *, restored: bool = True, recorded: bool = True
+) -> ProgramInput[T]:
     """The program input ``key``, which every program that reads it imports from here."""
     # Declared once, so a key can never mean two values: a second program imports the first's.
     if key in program_input_registry:
         raise ValueError(f"program input {key!r} is already declared")
-    program_input = ProgramInput(key, rule, default, restored)
+    program_input = ProgramInput(key, rule, default, restored, recorded)
     program_input_registry[key] = program_input
     return program_input
 

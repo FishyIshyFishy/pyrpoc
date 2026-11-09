@@ -13,11 +13,11 @@ from PyQt6.QtCore import QObject, pyqtSignal
 from pyrpoc.core.device import Device
 from pyrpoc.core.program import Program
 from pyrpoc.core.program_input import ParameterError
+from pyrpoc.core.program_output import ProgramOutput
 from pyrpoc.engine.acquisition.claims import DeviceBusy
 from pyrpoc.engine.acquisition.executor import Executor, Run, RunCallbacks
 from pyrpoc.engine.acquisition.program_inputs import ProgramInputsStore
 from pyrpoc.engine.acquisition.readiness import NotReady
-from pyrpoc.engine.acquisition.requests import RequestsStore
 from pyrpoc.engine.acquisition.save_target import SaveTarget
 from pyrpoc.engine.data_library.earlier import EarlierOutput
 from pyrpoc.engine.data_library.format import RecordingError
@@ -35,11 +35,10 @@ class RunEvents(QObject):
     # parameter is bad, an earlier recording it reads is unreadable, or the library is full.
     start_refused = pyqtSignal(str)
 
-    def __init__(self, library: LibraryStore, requests: RequestsStore, parent: QObject):
+    def __init__(self, library: LibraryStore, parent: QObject):
         super().__init__(parent)
         self.executor = Executor(
             library,
-            requests,
             RunCallbacks(
                 on_status=self.run_status.emit,
                 on_failed=self.run_failed.emit,
@@ -56,6 +55,7 @@ class RunEvents(QObject):
         save: SaveTarget,
         note: str,
         earlier: Mapping[str, EarlierOutput],
+        load: Callable[[EarlierOutput], ProgramOutput],
         repeat: bool,
         claim: Callable[[Run], None],
     ) -> Run | None:
@@ -72,6 +72,7 @@ class RunEvents(QObject):
                 save=save,
                 note=note,
                 earlier=earlier,
+                load=load,
                 repeat=repeat,
             )
         except (NotReady, DeviceBusy, ParameterError, RecordingError, LibraryFull) as exc:

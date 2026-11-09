@@ -1,5 +1,5 @@
 """``Executor``: runs programs, one ``Run`` per start, each on its own worker thread and each
-filling one recording."""
+filling one recording, in parts."""
 
 # No Qt, so runs can be driven without a QApplication. The executor owns what a program does not:
 # the recording each run fills, the save policy, and which devices each run holds. Runs may
@@ -11,29 +11,26 @@ import threading
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 
-from pyrpoc.core.device import Device, encode_config
+from pyrpoc.core.device import Device
 from pyrpoc.core.program import Cancelled, Program, RunContext
-from pyrpoc.core.program_input import ProgramInputValues
 from pyrpoc.core.program_output import ProgramOutput
-from pyrpoc.core.recording import EarlierRead, Recording, utc_now
+from pyrpoc.core.recording import EarlierRead, Recording, RecordingPart, utc_now
 from pyrpoc.engine.acquisition.program_inputs import ProgramInputsStore
 from pyrpoc.engine.acquisition.save_target import SaveTarget
 from pyrpoc.engine.data_library.earlier import EarlierOutput
-from pyrpoc.engine.data_library.format import load_recording
 from pyrpoc.engine.data_library.saving import RecordingSaver, save_location
 from pyrpoc.engine.data_library.store import LibraryStore
 
 from . import claims
-from .live import LiveFeed
-from .readiness import NotReady, missing
-from .requests import RequestInbox, RequestsStore
+from .inbox import RunInbox, device_state
+from .readiness import NotReady, StartingRun, missing
 
 
 class Run:
-    """One execution of one program: the recording it fills and its saver, its live inputs and
-    the requests posted to it, whether it repeats, and whether it is still going."""
+    """One execution of one program: the recording it fills, where its files go and its saver,
+    the earlier outputs it reads, its inbox, whether it repeats, and whether it is still
+    going."""
 
     def __init__(
         self,
@@ -41,17 +38,19 @@ class Run:
         run_id: int,
         devices: dict[type[Device], Device],
         recording: Recording,
+        root: Path | None,
         saver: RecordingSaver | None,
-        live: LiveFeed,
-        inbox: RequestInbox,
+        earlier: dict[str, ProgramOutput],
+        inbox: RunInbox,
         repeat: bool,
     ):
         self.program = program
         self.id = run_id
         self.devices = devices
         self.recording = recording
+        self.root = root
         self.saver = saver
-        self.live = live
+        self.earlier = earlier
         self.inbox = inbox
         self.repeat = repeat
         self.cancel = threading.Event()
@@ -78,14 +77,9 @@ class RunCallbacks:
     on_finished: Callable[[Run], None]
 
 
-def device_state(devices: dict[type[Device], Device]) -> dict[str, Any]:
-    return {cls.__name__: encode_config(device.config) for cls, device in devices.items()}
-
-
 class Executor:
-    def __init__(self, library: LibraryStore, requests: RequestsStore, callbacks: RunCallbacks):
+    def __init__(self, library: LibraryStore, callbacks: RunCallbacks):
         self.library = library
-        self.requests = requests
         self.callbacks = callbacks
         self.leases = claims.Leases()
         self._run_id = 0
@@ -101,102 +95,113 @@ class Executor:
         save: SaveTarget,
         note: str,
         earlier: Mapping[str, EarlierOutput],
+        load: Callable[[EarlierOutput], ProgramOutput],
         repeat: bool,
     ) -> Run:
         """Start ``program`` on a worker thread of its own, filling a new recording that
-        ``note`` goes to. ``earlier`` is the output chosen for each name it reads.
-        Raises ``NotReady``, ``DeviceBusy``, ``ParameterError``, ``RecordingError`` or
-        ``LibraryFull`` before anything starts."""
-        needs = missing(type(program), inventory, save, earlier)
+        ``note`` goes to. ``earlier`` is the output chosen for each name it reads, and ``load``
+        gives its content. Raises ``NotReady``, ``DeviceBusy``, ``ParameterError``,
+        ``RecordingError`` or ``LibraryFull`` before anything starts."""
+        # Loaded outside the lock: loading files must not hold up another run starting.
+        start = StartingRun(save.folder, inputs.values_for(program.inputs), earlier, load)
+        needs = missing(type(program), inventory, save, start)
         if needs:
             raise NotReady(needs)
-        # Read outside the lock: loading files must not hold up another run starting.
-        read = load_earlier(earlier, self.library)
+        read = {name: load(each) for name, each in earlier.items()}
         with self._lock:
             devices = claims.resolve(list(program.devices), inventory)
             self.leases.check(devices.values())
-            values = self.resolve_inputs(program, inputs)
+            inputs.validate(program.inputs)
             self.library.check_room()
             self._run_id += 1
-            recording, saver = self.open_recording(
-                program,
-                program_key=program_key,
-                # One encoding, shared by the recording and the session file.
-                parameters=inputs.encode(program.inputs),
-                devices=device_state(devices),
-                reads={
-                    name: EarlierRead(each.meta_path.name, each.output)
-                    for name, each in earlier.items()
-                },
-                save=save,
-                note=note,
-            )
-            live = LiveFeed(inputs, program.live, saver.log_live if saver is not None else None)
-            inbox = self.requests.open(
-                program.requests, saver.log_request if saver is not None else None
-            )
-            run = Run(program, self._run_id, devices, recording, saver, live, inbox, repeat)
+            reads = {
+                name: EarlierRead(each.meta_path.name, each.output)
+                for name, each in earlier.items()
+            }
+            recording, root, saver = self.open_recording(program_key, reads, save, note)
+            inbox = RunInbox(program, inputs, devices, None if saver is None else saver.log_taken)
+            run = Run(program, self._run_id, devices, recording, root, saver, read, inbox, repeat)
             self.leases.take(run.id, devices.values())
-            self.launch(run, values, read)
+            ctx = self.begin_part(run)
+            self.launch(run, ctx)
         return run
 
     def open_recording(
-        self,
-        program: Program,
-        *,
-        program_key: str,
-        parameters: dict[str, Any],
-        devices: dict[str, Any],
-        reads: dict[str, EarlierRead],
-        save: SaveTarget,
-        note: str,
-    ) -> tuple[Recording, RecordingSaver | None]:
-        """A new recording, listed in the library at once, and its saver if saving is on."""
+        self, program_key: str, reads: dict[str, EarlierRead], save: SaveTarget, note: str
+    ) -> tuple[Recording, Path | None, RecordingSaver | None]:
+        """A new recording with no parts yet, where its files go, and its saver if saving is
+        on."""
         root: Path | None = None
         meta_path: Path | None = None
+        name = save.filename
         if save.enabled:
-            root, meta_path = save_location(save.root)
+            # A recording still open in the library keeps its name even once its files have
+            # left the folder, so no new recording is saved under it.
+            taken = {each.location for each in self.library.recordings() if each.location}
+            root, meta_path = save_location(save.root, taken)
+            name = root.name
         recording = Recording(
             program_key=program_key,
-            name=save.filename,
+            name=name,
             started_at=utc_now(),
-            parameters=parameters,
-            devices=devices,
+            parts=[],
             reads=reads,
             location=meta_path,
             note=note,
             finished=False,
         )
-        recording.outputs = {
-            name: output_type(name=name, recording=recording, root=root)
-            for name, output_type in program.emits.items()
+        saver = None if meta_path is None else RecordingSaver(recording, meta_path)
+        return recording, root, saver
+
+    def begin_part(self, run: Run) -> RunContext:
+        """Add a part to the run's recording, made with the settings the run has been given
+        and holding a new output for each the program emits, and return the context its passes
+        run in. The first part's outputs take their declared names; part n's add `` n``."""
+        recording = run.recording
+        number = len(recording.parts) + 1
+        outputs = {
+            name: output_type(
+                name=name if number == 1 else f"{name} {number}",
+                recording=recording,
+                root=run.root,
+            )
+            for name, output_type in run.program.emits.items()
         }
-        saver = None
-        if meta_path is not None:
-            saver = RecordingSaver(recording, meta_path)
-            saver.begin()
-        self.library.add(recording)
-        return recording, saver
-
-    def resolve_inputs(self, program: Program, inputs: ProgramInputsStore) -> ProgramInputValues:
-        """The values of the program's inputs, checked against their rules."""
-        declared = program.inputs
-        inputs.validate(declared)
-        return inputs.values_for(declared)
-
-    def launch(
-        self, run: Run, values: ProgramInputValues, earlier: dict[str, ProgramOutput]
-    ) -> None:
-        ctx = RunContext(
-            inputs=values,
-            live=run.live,
-            requests=run.inbox,
-            earlier=earlier,
+        part = RecordingPart(
+            started_at=utc_now(),
+            parameters=run.inbox.parameters(),
+            devices=device_state(run.devices),
+            outputs=tuple(output.name for output in outputs.values()),
+        )
+        # Replaced whole, never changed in place: the GUI thread may be reading them.
+        named = {output.name: output for output in outputs.values()}
+        recording.outputs = {**recording.outputs, **named}
+        recording.parts = [*recording.parts, part]
+        self.announce(run, first=number == 1)
+        return RunContext(
+            inputs=run.inbox.given(),
+            inbox=run.inbox,
+            earlier=run.earlier,
             devices=run.devices,
-            outputs=run.recording.outputs,
+            outputs=outputs,
             cancel=run.cancel,
             on_status=lambda text: self.callbacks.on_status(run, text),
         )
+
+    def announce(self, run: Run, *, first: bool) -> None:
+        """Put the recording's new part on disk, and the recording in the library the first
+        time."""
+        if run.saver is not None:
+            if first:
+                run.saver.begin()
+            else:
+                run.saver.part_begun()
+        if first:
+            self.library.add(run.recording)
+        else:
+            self.library.notify()
+
+    def launch(self, run: Run, ctx: RunContext) -> None:
         thread = threading.Thread(
             target=self.worker,
             args=(run, ctx),
@@ -211,6 +216,9 @@ class Executor:
         try:
             run.program.run(ctx)
             while run.repeat and not run.winding_down.is_set():
+                # Edits made during a pass are taken here, between passes, never mid-pass.
+                if run.inbox.take_settings():
+                    ctx = self.begin_part(run)
                 run.program.run(ctx)
         except Cancelled:
             pass  # a clean stop, not a failure: what the Stop button does
@@ -251,20 +259,3 @@ def close_recording(
             errors.append(str(exc))
     recording.finished = True
     return errors
-
-
-def load_earlier(
-    chosen: Mapping[str, EarlierOutput], library: LibraryStore
-) -> dict[str, ProgramOutput]:
-    """Each chosen earlier output, the library's open copy when it holds one, else loaded."""
-    # Loaded copies stay out of the library: reading one must not take a place there.
-    open_at: dict[Path, Recording] = {
-        recording.location: recording
-        for recording in library.recordings()
-        if recording.location is not None
-    }
-    read: dict[str, ProgramOutput] = {}
-    for name, each in chosen.items():
-        recording = open_at.get(each.meta_path) or load_recording(each.meta_path)
-        read[name] = recording.outputs[each.output]
-    return read

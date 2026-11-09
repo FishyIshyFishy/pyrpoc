@@ -26,15 +26,19 @@ takes a snapshot of the program's input values, claims its devices so no other
 run can use them, and fills the recording's **program outputs**, such as an
 image or a spectrum. Single does the program's work once. Continuous does it
 again and again into the same recording until you stop it, so a long
-continuous run is still one recording. Editing an input while it runs ends
-that recording and starts a new one with the new values.
+continuous run is still one recording.
 
-A program may declare some inputs **live**: a run reads their current value
-whenever it chooses, between its own steps, so edits made while it runs reach
-it without starting a new recording. A program may also accept **requests**,
-such as "visit this unit now": a panel posts one and the running program takes
-it once. The recording logs every live change and request it was given, and
-when.
+Everything that changes for a running run goes to its **inbox**: edits to its
+program inputs and edits to its devices. Each is taken at its own moment:
+- a **live** input's edit when the program reads that input, between its own
+  steps;
+- every other edit between passes of a repeating run, where it begins a new
+  **part** of the recording, with new outputs of the same types (`intensity`,
+  then `intensity 2`), so each output was made with one set of settings.
+
+The recording logs everything the run took, when it was posted and when it was
+taken. A live input holds what the run should be doing now, such as the units
+a loop runs on, so a panel steers a running program by setting it.
 
 A program output is one named part of a recording, of one type: an
 `ImageOutput`, a `SpectrumOutput`, a `MosaicOutput`. Its type decides
@@ -57,18 +61,17 @@ and let you act on it, which sets more program inputs, and the loop repeats.
 
 ```
  ProgramInputs ──▶ Run ──▶ Recording ──▶ Library ──▶ panels show it
-  Requests    ──▶          (its outputs)               │
-       ▲                                               │
-       └──── panels set program inputs, post requests ◀┘
+       ▲                   (its outputs)               │
+       │                                               │
+       └────────────── panels set program inputs ◀─────┘
 ```
 
 ## The collections
 
 A **collection** is something the app keeps in memory while it runs, holding
-the current set of one kind of thing. There are four:
+the current set of one kind of thing. There are three:
 - **Device inventory:** the hardware.
 - **ProgramInputs:** every setting's current value.
-- **Requests:** commands posted for running programs, each taken once.
 - **Library:** the open recordings.
 
 Any part of the app can look in a collection, change it through its own
@@ -82,9 +85,10 @@ of the app meet.
 | Piece | What it is |
 |---|---|
 | **Device** | A piece of hardware the microscope has: its identity, its settings (a `DeviceConfig`, whose fields each carry a `Field`) and maybe a connection. |
-| **Program** | One kind of experiment: the devices it needs, the program inputs it reads, the outputs it fills, the earlier outputs it reads, the requests it accepts, and the runners that can start it. Its `run` does the work. |
-| **RunContext** | What a running program is handed: its input values, the current value of its live inputs, its requests, the earlier outputs it reads, its devices, its outputs, status and cancel. |
+| **Program** | One kind of experiment: the devices it needs, the program inputs it reads, the outputs it fills, the earlier outputs it reads, the runners that can start it, and the checks it sets on starting. Its `run` does the work. |
+| **RunContext** | What a running program is handed for one part of its recording: its input values as the part began, its inbox (the current value of its live inputs), the earlier outputs it reads, its devices, the part's outputs, status and cancel. |
 | **Runner** | A way to start a program, such as once, continuously, or armed until a pixel is picked. The program declares it. It may offer the user a `Control` through its `RunnerContext`. Core says only that a control exists: what it is, such as a button or a toggle, is its type, and the panel showing the program draws each by its type. A runner may watch program inputs. |
+| **Check** | A condition a program sets on starting, judged with everything else a run needs before its recording opens, so a refused start leaves nothing behind. It sees what the run would start with, through its `CheckContext`: the save folder and the recordings saved there, the program input values, and the earlier outputs it would read. It answers with what the run still needs. A program's checks are judged once every output it reads has been found. |
 
 A run is not a piece of core: it is the engine executing one recording.
 
@@ -95,9 +99,7 @@ A run is not a piece of core: it is the engine executing one recording.
 | **ProgramInput** | The declaration of one value a program reads: a key, a default, and a `Field`. **One key means one value everywhere.** The key names the value itself, never a group or a program, and is declared once with `declare`. A second declaration of a key fails. Every program and panel that uses the value imports that one declaration. |
 | **Field** | The rules a value follows: how it is checked (`coerce`), saved (`encode`) and loaded (`decode`). Bad values raise `ParameterError`. How a value is edited on screen is not part of its rules. |
 | **ProgramInputs** | The collection of current values, by key. Any part of the app may read a value, set one (checked by its `Field`) or subscribe. It is saved with the session, except inputs declared `restored=False`, which start at their default each launch. |
-| **Request** | The declaration of one command a running program may accept: a key and the `Field` its posted value follows. Declared once, like a program input, and imported by the programs that accept it and the panels that post it. |
-| **Requests** | The collection where panels post requests. Each posted value is checked by its `Field` and given once to every running program that accepts it, which takes it with `ctx.requests(SOME_REQUEST)` when it chooses. |
-| **ProgramInputValues** | The values one run was given. A program reads them as `ctx.inputs[SOME_INPUT]`. Every one is saved with the recording. |
+| **ProgramInputValues** | The values one run was given. A program reads them as `ctx.inputs[SOME_INPUT]`. Every one is saved with the recording, except inputs declared `recorded=False`, whose programs record them in outputs of their own: the recording then says only when each was taken. |
 
 A program lists its inputs flat. It may also lay them out in `cards` for the
 Acquisition panel, which is screen layout only: a card never appears in a
@@ -108,7 +110,7 @@ cards every input is shown.
 
 | Piece | What it is |
 |---|---|
-| **Recording** | What one run produced: what made it (program, name, start time, input values, devices, the earlier recordings it read), where it is saved (or nothing, when unsaved), its note, whether it is finished, and its program outputs. Two outputs are of the same recording when their `recording` is the same object. Its folder is its Experiment. |
+| **Recording** | What one run produced: what made it (program, name, start time, the earlier recordings it read), its parts (each a `RecordingPart`: the input values and devices it ran with, and the outputs it filled), where it is saved (or nothing, when unsaved), its note, whether it is finished, and its program outputs. Two outputs are of the same recording when their `recording` is the same object. Its folder is its Experiment. |
 | **ProgramOutput** | One named part of a recording, of one type. Each type is a subclass that owns its content, how programs add to it, how panels read it, and how it is written to files and read back. Many programs may fill the same type. Types register in `program_output_registry`, which is how a recording on disk finds them again. |
 | **Library** | The recordings that are open: acquired now, or loaded from disk. Nothing else. You can add one, close one, list them, and subscribe. |
 
@@ -141,7 +143,6 @@ its base, in core or, for panels, in `utils/widgets/`. Nothing else lists them.
 | A device | `plugins/devices/` | `device_registry` |
 | A program | `plugins/programs/` | `program_registry` |
 | A program input, shared by programs and panels | `plugins/program_io/inputs/` | `declare` |
-| A request, shared by the programs that accept it and the panels that post it | `plugins/program_io/requests/` | (declaring it: a key is declared once) |
 | A type of program output, with its files | `plugins/program_io/outputs/`, one file each | `program_output_registry` |
 | A panel showing program outputs | `plugins/panels/` | `data_panel_registry` (`utils/widgets/data_panel.py`) |
 | A device's own panel | beside its device in `plugins/devices/` | `device_panel_registry` (`utils/widgets/device_panel.py`) |
@@ -161,9 +162,9 @@ Each keeps its own registry, since each is built from different collections.
 | `device.py` | `Device` + `device_registry`, and `DeviceConfig`, whose fields carry their `Field` |
 | `program.py` | `Program`, `RunContext` + `program_registry` |
 | `runner.py` | `Runner`, `RunnerContext`, `Control` |
+| `check.py` | `Check`, `CheckContext` |
 | `program_input.py` | `ProgramInput` + `declare`, `Field`, `ProgramInputValues`, `ProgramInputs` |
-| `requests.py` | `Request` + `request_registry`, `Requests` |
-| `recording.py` | `Recording` |
+| `recording.py` | `Recording`, `RecordingPart` |
 | `program_output.py` | `ProgramOutput` + `program_output_registry` |
 | `library.py` | `Library` |
 | `panels.py` | `Panel`. The only file here that uses Qt. |

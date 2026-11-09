@@ -11,12 +11,15 @@ from .autofocus.program import Autofocus
 from .brightfield.program import Brightfield
 from .confocal.program import Confocal
 from .flim.program import FLIM
+from .galvo_calibration.program import GalvoCalibrationProgram
 from .galvo_pinpoint.program import GalvoPinpoint
+from .longitudinal_monitor.program import LongitudinalMonitor
 from .mosaic.program import StageMosaic
 from .pinpoint_raman.program import PinpointRaman
 from .raman.program import Raman
 from .roi_spectral_series.program import RoiSpectralSeries
 from .split_confocal.program import SplitConfocal
+from .survey.program import Survey
 
 __all__ = [
     "program_registry",
@@ -30,4 +33,7 @@ __all__ = [
     "Raman",
     "RoiSpectralSeries",
     "Brightfield",
+    "GalvoCalibrationProgram",
+    "Survey",
+    "LongitudinalMonitor",
 ]

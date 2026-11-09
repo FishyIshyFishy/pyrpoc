@@ -22,6 +22,15 @@ from .histogram import (
     LASER_FREQUENCY_MHZ,
     HistogramSettings,
 )
+from .loop import (
+    DURATION_MIN,
+    FOCUS_CHECK_S,
+    PERIOD_S,
+    TREAT,
+    TREATED_GROUP,
+    TREATMENT_LINE,
+    TREATMENT_PORT,
+)
 from .mask import Mask
 from .masks import MASKS, MasksField, thumbnail
 from .modulation import MASK_LINES, MaskLine, lines_for
@@ -29,11 +38,38 @@ from .mosaic import TILE_SPACING_UM, X_TILES, Y_TILES, MosaicGrid
 from .pixel_pick import PICK, PickField, PixelPick
 from .point import GALVO_TARGET, Point, PointField
 from .roi import CENTER_REGION_FRACTION
-from .scan import SCAN_GEOMETRY_INPUTS, X_PIXELS, Y_PIXELS, ScanGeometry
+from .scan import (
+    DWELL_TIME_US,
+    EXTRA_LEFT,
+    EXTRA_RIGHT,
+    SCAN_GEOMETRY_INPUTS,
+    X_PIXELS,
+    Y_PIXELS,
+    ScanGeometry,
+)
 from .split import T0_SAMPLES, T1_SAMPLES, SplitWindows
+from .survey import FIELD_PIXELS, FIELD_UM, SURVEY_HEIGHT_UM, SURVEY_WIDTH_UM, TILE_OVERLAP
 from .trigger import FRAME_TRIGGER_PFI, PIXEL_CLOCK_CTR, PIXEL_CLOCK_PFI, TriggerLines
+from .units import UNITS, UnitsField
 
 __all__ = [
+    "DURATION_MIN",
+    "DWELL_TIME_US",
+    "EXTRA_LEFT",
+    "EXTRA_RIGHT",
+    "FIELD_PIXELS",
+    "FIELD_UM",
+    "FOCUS_CHECK_S",
+    "PERIOD_S",
+    "SURVEY_HEIGHT_UM",
+    "SURVEY_WIDTH_UM",
+    "TILE_OVERLAP",
+    "TREAT",
+    "TREATED_GROUP",
+    "TREATMENT_LINE",
+    "TREATMENT_PORT",
+    "UNITS",
+    "UnitsField",
     "CAMERA_BINNED",
     "CAMERA_EXPOSURE_MS",
     "CAMERA_GAIN_PCT",

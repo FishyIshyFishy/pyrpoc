@@ -4,32 +4,40 @@ direction: right
 classes: {
   coll: {style: {fill: "#fff3d6"; stroke: "#c79200"; stroke-width: 3; border-radius: 6}}
   prog: {style: {fill: "#e6f5e9"; stroke: "#3c8d4f"; stroke-width: 3; border-radius: 6}}
+  inbox: {style: {fill: "#e8f0fb"; stroke: "#3b6db3"; stroke-width: 2; border-radius: 6}}
   val: {style: {fill: "#f3ecfa"; stroke: "#7e57a8"; border-radius: 6}}
   view: {style: {fill: "#fde8e8"; stroke: "#b04a4a"; border-radius: 6}}
   disk: {shape: cylinder; style: {fill: "#eeeeee"; stroke: "#777777"}}
+  check: {shape: hexagon; style: {fill: "#e8f0fb"; stroke: "#3b6db3"}}
 }
 
-settings: "ProgramInputs\nthe user's settings\n(frozen copy at start;\n'live' ones re-read mid-run)" {class: coll}
-requests: "Requests\ncommands for a running\nprogram, each taken once" {class: coll}
+settings: "ProgramInputs\nthe user's settings" {class: coll}
 devices: "Devices\nhardware claimed\nfor the run" {class: coll}
 earlier: "Earlier outputs\nonly if the program\ndeclares `reads`" {class: val}
 
+inbox: "Inbox, one per run\neverything posted to it,\neach taken at its moment\nand logged" {class: inbox}
+
+preflight: "Preflight, before anything opens\nits devices are in the inventory,\na save target if saving, every\nread found, then the program's\nchecks, which see its input\nvalues and the reads" {class: check}
+
 run: "Run\nprogram.run(ctx)\nctx is its only door" {class: prog}
 
-recording: "Recording\nits ProgramOutputs" {class: val}
+recording: "Recording\nits parts, each with the\nsettings it ran with,\nand their ProgramOutputs" {class: val}
 library: "Library\nthe open recordings" {class: coll}
 files: "files on disk\n(if saving is on)" {class: disk}
-panels: "Panels\nshow outputs,\nset settings, post requests" {class: view}
+panels: "Panels\nshow outputs,\nset settings" {class: view}
 
-settings -> run
-requests -> run
-devices -> run
-earlier -> run
+settings -> preflight
+devices -> preflight
+earlier -> preflight
+preflight -> run: "nothing missing:\nvalues at start,\ndevices, reads"
+
+settings -> inbox: "edits"
+devices -> inbox: "edits"
+inbox -> run: "a live input: when read\nany other edit: between\npasses, as a new part"
 
 run -> recording
 recording -> library
 recording -> files: "as it fills"
-files -> earlier: "a later run reads it"
+earlier -- files: "a later run reads it" {source-arrowhead.shape: triangle}
 library -> panels
-panels -> settings: "mask drawn, pixel picked"
-panels -> requests: "visit this unit now"
+settings -- panels: "mask drawn, pixel picked,\nunits edited as a loop runs" {source-arrowhead.shape: triangle; style.stroke: "#b04a4a"}
