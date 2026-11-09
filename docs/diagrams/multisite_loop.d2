@@ -60,10 +60,10 @@ frames -> folder.tiffs
 multisite.sink -> folder.scratch: "append"
 folder.scratch -> multisite.begin: "carry on" {style.stroke-dash: 4}
 
-clean: "CleanFolder(carries_on=True)\nallows the runs the\nscratch names" {class: check}
+clean: "clean_folder(carries_on=True)\nallows the runs the\nscratch names" {class: check}
 folder.scratch -> clean {style.stroke-dash: 4}
 
-starting: "StartingUnits\nwith a scratch here, no units\nmay be drawn, so carrying on\nnever ignores units drawn" {class: check}
+starting: "starting_units\nwith a scratch here, no units\nmay be drawn, so carrying on\nnever ignores units drawn" {class: check}
 folder.scratch -> starting {style.stroke-dash: 4}
 units -> starting {style.stroke-dash: 4}
 

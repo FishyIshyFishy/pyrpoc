@@ -1,13 +1,14 @@
-"""``Program``: the declaration of one experiment, and ``RunContext``, what it
-is handed while running."""
+"""``Program``: the declaration of one experiment, and what it is handed in each of its two
+phases: ``PreflightContext`` before a run opens, and ``RunContext`` while it runs."""
 
 from __future__ import annotations
 
 import threading
+from abc import ABC, abstractmethod
 from collections.abc import Callable, Iterator, Mapping, Sequence
+from pathlib import Path
 from typing import Any, Protocol, TypeVar
 
-from pyrpoc.core.check import Check
 from pyrpoc.core.device import Device
 from pyrpoc.core.program_input import ProgramInput, ProgramInputValues
 from pyrpoc.core.program_output import ProgramOutput
@@ -50,7 +51,8 @@ class DeviceMap(Mapping[type[Device], Device]):
 
 class Program:
     """One experiment: the devices it uses, the program inputs it reads, its outputs, the
-    runners that start it, and ``run``, which does the work."""
+    runners that start it, ``preflight``, which says what else a run of it needs, and ``run``,
+    which does the work."""
 
     display_name: str = "Program"
 
@@ -82,9 +84,6 @@ class Program:
     # The ways this program can be started, in the order their controls are drawn.
     runners: list[Runner] = []
 
-    # Conditions of its own for starting, judged with the rest of what a run needs.
-    checks: list[Check] = []
-
     def __init_subclass__(cls, **kwargs: Any) -> None:
         super().__init_subclass__(**kwargs)
         # A card showing an input the program does not read would edit a value no run gets.
@@ -94,8 +93,38 @@ class Program:
         if unread:
             raise TypeError(f"{cls.__name__}'s cards show inputs it does not read: {unread}")
 
+    def preflight(self, ctx: PreflightContext) -> list[str]:
+        """What a run of it needs beyond its devices, its reads and valid input values, each said
+        as what it needs; empty when it may start."""
+        del ctx
+        return []
+
     def run(self, ctx: RunContext) -> None:
         raise NotImplementedError
+
+
+class PreflightContext(ABC):
+    """What a program sees of a run about to start: where it saves, the input values it would
+    be given and the earlier outputs it would read."""
+
+    @property
+    @abstractmethod
+    def folder(self) -> Path | None:
+        """The save folder, which the run is saved in and reads from; None when none is set."""
+
+    @abstractmethod
+    def recordings_in_folder(self) -> list[str]:
+        """The name of every recording saved in the folder, whether or not it can be read."""
+
+    @property
+    @abstractmethod
+    def inputs(self) -> ProgramInputValues:
+        """The program input values the run would be given."""
+
+    @abstractmethod
+    def earlier(self, name: str, output_type: type[OutputT]) -> OutputT | None:
+        """The earlier output the run would read as ``name``, which ``reads`` declares as
+        ``output_type``; None while there is none to read, which preflight already reports."""
 
 
 # note to self: python protocols are useful just for type checkers

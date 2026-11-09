@@ -30,16 +30,16 @@ key: |md
   from its folder.
 | {style: {fill: "#ffffff"; stroke: "#bbbbbb"}}
 
-clean: "CleanFolder, on every step\nthe folder holds only what the\nstep reads (a loop's: also the\nruns of a loop it carries on)" {class: check}
+clean: "clean_folder, on every step\nthe folder holds only what the\nstep reads (a loop's: also the\nruns of a loop it carries on)" {class: check}
 clean -> cal {style.stroke-dash: 4}
 clean -> sur {style.stroke-dash: 4}
 clean -> loop {style.stroke-dash: 4}
-measured: "CalibrationMeasured\nthe calibration read\nran to its end" {class: check}
+measured: "calibration_measured\nthe calibration read\nran to its end" {class: check}
 measured -> sur {style.stroke-dash: 4}
 measured -> loop {style.stroke-dash: 4}
-finished: "SurveyFinished\nthe survey read\nran to its end" {class: check}
+finished: "survey_finished\nthe survey read\nran to its end" {class: check}
 finished -> loop {style.stroke-dash: 4}
-starting: "StartingUnits\nfresh: units drawn, each\nfitting in one field;\ncarried on: none drawn" {class: check}
+starting: "starting_units\nfresh: units drawn, each\nfitting in one field;\ncarried on: none drawn" {class: check}
 starting -> loop {style.stroke-dash: 4}
 
 # ---------------------------------------------------------------- 1. calibration

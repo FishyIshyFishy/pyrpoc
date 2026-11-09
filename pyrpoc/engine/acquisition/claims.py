@@ -17,14 +17,6 @@ class MissingDevice(DeviceError):
         super().__init__("missing required devices: " + ", ".join(self.missing))
 
 
-class DeviceBusy(DeviceError):
-    """A program needs devices that another run holds."""
-
-    def __init__(self, busy: list[str]):
-        self.busy = list(busy)
-        super().__init__("in use by another run: " + ", ".join(self.busy))
-
-
 def expand(required: list[type[Device]]) -> list[type[Device]]:
     """Every device class implied by ``required``, following ``backed_by``:
     declaration order first, then each backing device, with no duplicates."""
@@ -68,11 +60,9 @@ class Leases:
     def __init__(self) -> None:
         self._held: dict[Device, int] = {}
 
-    def check(self, devices: Iterable[Device]) -> None:
-        # A program binds one device of each type, so the type names which.
-        busy = [device.display_name for device in devices if device in self._held]
-        if busy:
-            raise DeviceBusy(busy)
+    def held(self) -> frozenset[Device]:
+        """Every device some run holds."""
+        return frozenset(self._held)
 
     def take(self, run_id: int, devices: Iterable[Device]) -> None:
         for device in devices:

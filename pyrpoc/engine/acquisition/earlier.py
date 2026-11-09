@@ -28,7 +28,7 @@ class EarlierChoices:
         self.unreadable: list[Unreadable] = []
         # Picked by the user; a name with no pick reads the newest.
         self.picked: dict[str, EarlierOutput] = {}
-        # Kept, since checks judge a start again on every edit and a finished recording's files
+        # Kept, since preflight judges a start again on every edit and a finished recording's files
         # never change.
         self.loaded: dict[EarlierOutput, ProgramOutput] = {}
 

@@ -1,13 +1,12 @@
 """``CalibrationProgram``, ``SurveyProgram`` and ``LoopProgram``: the three kinds of multisite
-program. Each declares what every program of its kind reads, fills and is checked for, and runs
-its stage; a program subclasses one and gives its microscope and its own inputs."""
+program. Each declares what every program of its kind reads and fills, what it needs before it
+starts, and runs its stage; a program subclasses one and gives its microscope and its own inputs."""
 
 from __future__ import annotations
 
 from typing import Any
 
-from pyrpoc.core.check import Check
-from pyrpoc.core.program import Program, RunContext
+from pyrpoc.core.program import PreflightContext, Program, RunContext
 from pyrpoc.core.program_input import ProgramInput
 from pyrpoc.core.runner import Runner
 from pyrpoc.plugins.program_io.inputs import SCAN_GEOMETRY_INPUTS, ScanGeometry
@@ -16,10 +15,8 @@ from ...runners import Single
 from ..interfaces.microscope import Microscope
 from ..stages.loop.routine import RoutineSpec
 from .calibration import CALIBRATION_EMITS, run_calibration
-from .clean_folder import CleanFolder
-from .finished_reads import CalibrationMeasured, SurveyFinished
 from .loop import LOOP_EMITS, LOOP_FOCUS_INPUTS, LOOP_READS, LOOP_UNITS, run_loop
-from .starting_units import StartingUnits
+from .preflight import calibration_measured, clean_folder, starting_units, survey_finished
 from .survey import (
     REGION_INPUTS,
     SURVEY_EMITS,
@@ -40,7 +37,9 @@ class CalibrationProgram(Program):
     cards = {"Scan": SCAN_GEOMETRY_INPUTS}
     emits = CALIBRATION_EMITS
     runners = RUNNERS
-    checks: list[Check] = [CleanFolder(carries_on=False)]
+
+    def preflight(self, ctx: PreflightContext) -> list[str]:
+        return clean_folder(ctx, self.reads, carries_on=False)
 
     def microscope(self, ctx: RunContext) -> Microscope:
         """The instrument the run claimed."""
@@ -58,7 +57,9 @@ class SurveyProgram(Program):
     reads = SURVEY_READS
     emits = SURVEY_EMITS
     runners = RUNNERS
-    checks: list[Check] = [CleanFolder(carries_on=False), CalibrationMeasured()]
+
+    def preflight(self, ctx: PreflightContext) -> list[str]:
+        return [*clean_folder(ctx, self.reads, carries_on=False), *calibration_measured(ctx)]
 
     def microscope(self, ctx: RunContext) -> Microscope:
         """The instrument the run claimed."""
@@ -83,12 +84,14 @@ class LoopProgram(Program):
     reads = LOOP_READS
     emits = LOOP_EMITS
     runners = RUNNERS
-    checks: list[Check] = [
-        CleanFolder(carries_on=True),
-        CalibrationMeasured(),
-        SurveyFinished(),
-        StartingUnits(),
-    ]
+
+    def preflight(self, ctx: PreflightContext) -> list[str]:
+        return [
+            *clean_folder(ctx, self.reads, carries_on=True),
+            *calibration_measured(ctx),
+            *survey_finished(ctx),
+            *starting_units(ctx),
+        ]
 
     def microscope(self, ctx: RunContext) -> Microscope:
         """The instrument the run claimed."""

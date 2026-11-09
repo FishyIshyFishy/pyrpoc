@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from PyQt6.QtCore import QObject, pyqtSignal
+from PyQt6.QtCore import QFileSystemWatcher, QObject, QTimer, pyqtSignal
 
 from pyrpoc.core.program import program_registry
 from pyrpoc.engine.acquisition.save_target import SaveTarget
@@ -12,10 +12,10 @@ from pyrpoc.engine.data_library.earlier import EarlierOutput
 from pyrpoc.engine.data_library.model import LibraryModel
 from pyrpoc.engine.device_inventory.inventory import DeviceInventory
 
-from . import readiness
-from .earlier import EarlierChoices, any_reads
+from .earlier import EarlierChoices
 from .events import RunEvents
 from .executor import Run
+from .preflight import Start
 from .program_inputs import ProgramInputsStore
 
 
@@ -27,8 +27,8 @@ class Runs(QObject):
     note_changed = pyqtSignal()
     # The earlier outputs programs can read changed, or which one is picked.
     earlier_changed = pyqtSignal()
-    # What a program needs may have arrived or gone: a device, a name to save under, an earlier
-    # output, or a program input value its checks judge.
+    # Something preflight looks at changed: the devices or the runs holding them, where runs
+    # save or what that folder holds, a program input, or the library's room.
     readiness_changed = pyqtSignal()
     # Something worth remembering changed: the save target, or a run started.
     edited = pyqtSignal()
@@ -49,6 +49,13 @@ class Runs(QObject):
         self.earlier = EarlierChoices(library.store)
         self.events = RunEvents(library.store, self)
         self.live_runs: set[Run] = set()
+        # Files land in the save folder in bursts as a run saves, so one look follows a burst.
+        self.folder_watcher = QFileSystemWatcher(self)
+        self.folder_settled = QTimer(self)
+        self.folder_settled.setSingleShot(True)
+        self.folder_settled.setInterval(300)
+        self.folder_watcher.directoryChanged.connect(lambda _path: self.folder_settled.start())
+        self.folder_settled.timeout.connect(self.refresh_earlier)
         self.events.run_started.connect(self.on_run_started)
         self.events.run_finished.connect(self.on_run_finished)
         inventory.changed.connect(self.readiness_changed.emit)
@@ -56,23 +63,14 @@ class Runs(QObject):
         self.save_changed.connect(self.readiness_changed.emit)
         self.earlier_changed.connect(self.readiness_changed.emit)
         inputs.subscribe(lambda _key: self.readiness_changed.emit())
+        # Called on whichever thread changed the library; the signal carries it to this one.
+        library.subscribe(self.readiness_changed.emit)
+        library.auto_purge_changed.connect(lambda _on: self.readiness_changed.emit())
 
     def start(self, program_key: str, repeat: bool, claim: Callable[[Run], None]) -> None:
         """Start ``program_key`` with what the workbench holds right now, or report
         why not through ``events.start_refused``. A run that starts takes the note."""
-        program = program_registry.get(program_key)()
-        run = self.events.start(
-            program,
-            program_key,
-            self.inputs,
-            self.inventory.devices,
-            self.save,
-            self.note,
-            self.chosen_earlier(program_key),
-            self.earlier.load,
-            repeat,
-            claim,
-        )
+        run = self.events.start(self.start_of(program_key), self.note, repeat, claim)
         # Cleared so one note is never copied onto runs it was not written for.
         if run is not None and self.note:
             self.set_note("")
@@ -82,15 +80,21 @@ class Runs(QObject):
             self.save_changed.emit()
 
     def blockers(self, program_key: str) -> list[str]:
-        """What has to be supplied before ``program_key`` can run."""
+        """Everything ``program_key`` still needs before it can run."""
+        return self.events.executor.preflight(self.start_of(program_key))
+
+    def start_of(self, program_key: str) -> Start:
+        """A start of ``program_key`` with what the workbench holds right now."""
         program = program_registry.get(program_key)
-        start = readiness.StartingRun(
-            self.save.folder,
-            self.inputs.values_for(program.inputs),
-            self.chosen_earlier(program_key),
-            self.earlier.load,
+        return Start(
+            program_key=program_key,
+            program=program(),
+            inputs=self.inputs,
+            inventory=self.inventory.devices,
+            save=self.save,
+            chosen=self.chosen_earlier(program_key),
+            load=self.earlier.load,
         )
-        return readiness.missing(program, self.inventory.devices, self.save, start)
 
     def chosen_earlier(self, program_key: str) -> dict[str, EarlierOutput]:
         """The earlier output each name ``program_key`` reads would be read from now."""
@@ -102,9 +106,22 @@ class Runs(QObject):
         return chosen
 
     def refresh_earlier(self) -> None:
-        """Look again at the earlier outputs in the save folder."""
+        """Look again at the save folder: what it holds, and the earlier outputs in it."""
+        self.watch_folder()
         self.earlier.refresh(self.save.folder)
         self.earlier_changed.emit()
+
+    def watch_folder(self) -> None:
+        """Follow the save folder, once it exists, so files moved in or out outside the app are
+        judged again."""
+        watched = self.folder_watcher.directories()
+        folder = self.save.folder
+        wanted = [str(folder)] if folder is not None and folder.is_dir() else []
+        if watched != wanted:
+            if watched:
+                self.folder_watcher.removePaths(watched)
+            if wanted:
+                self.folder_watcher.addPaths(wanted)
 
     def pick_earlier(self, name: str, choice: EarlierOutput) -> None:
         """Read ``choice`` wherever ``name`` is read."""
@@ -141,6 +158,7 @@ class Runs(QObject):
     def on_run_started(self, run: Run) -> None:
         self.live_runs.add(run)
         self.publish_in_use()
+        self.readiness_changed.emit()
         # A run started with these settings, so they are worth keeping.
         self.edited.emit()
 
@@ -149,9 +167,11 @@ class Runs(QObject):
         run.inbox.close()
         self.live_runs.discard(run)
         self.publish_in_use()
-        # Only a saved run can change what later runs read.
-        if run.saver is not None and any_reads():
+        # A saved run changes what its folder holds, and may have just made the folder.
+        if run.saver is not None:
             self.refresh_earlier()
+        else:
+            self.readiness_changed.emit()
 
     def post_device_edits(self) -> None:
         """Post an edit to the devices to every run going, which takes it between passes."""
