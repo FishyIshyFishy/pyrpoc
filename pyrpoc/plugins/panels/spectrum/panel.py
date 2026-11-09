@@ -20,7 +20,7 @@ from pyrpoc.utils.widgets.data_panel import DataPanel, data_panel_registry
 @data_panel_registry.register("spectrum")
 class SpectrumPanel(DataPanel[SpectrumOutput]):
     display_name = "Spectrum"
-    group = "Spectral"
+    group = "Spectra"
     order = 10
     renders = SpectrumOutput
 

@@ -81,7 +81,7 @@ class MaskEditorPanel(DataPanel[ImageOutput]):
     """Draw thresholded polygon ROIs over an acquired image, one set per mask. Every edit
     rewrites the mask being drawn in the drawn masks, which programs read."""
 
-    display_name = "Mask editor"
+    display_name = "Mask Editor"
     group = "Mask editors"
     order = 30
     misc = True

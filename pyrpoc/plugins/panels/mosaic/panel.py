@@ -30,8 +30,8 @@ from .stack_view import StackView
 
 @data_panel_registry.register("mosaic")
 class MosaicPanel(DataPanel[MosaicOutput]):
-    display_name = "Mosaic"
-    group = "2D Image Views"
+    display_name = "Mosaic (Tile Scan)"
+    group = "Images"
     order = 22
     renders = MosaicOutput
 
