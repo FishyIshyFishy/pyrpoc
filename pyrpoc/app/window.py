@@ -293,9 +293,9 @@ class MainWindow(QWidget):
         actions = self.panel_actions
         self.menubar.populate_panels_menu(
             list(self.dock_by_key.values()),
-            [action for panel, action in actions.items() if not panel.misc],
-            list(self.device_docks.actions.values()),
-            [action for panel, action in actions.items() if panel.misc],
+            [action for panel, action in actions.items() if not panel.misc]
+            + list(self.device_docks.actions.values())
+            + [action for panel, action in actions.items() if panel.misc],
         )
 
     def set_style(self, theme_mode: str) -> None:

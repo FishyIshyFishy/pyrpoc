@@ -25,7 +25,7 @@ class DataPanel(Panel, Generic[OutputT]):
     # The heading it is listed under, and its place in the Add menu.
     group: str
     order: int
-    # Listed under Add Misc. Panel rather than Add Display: a tool that works
+    # Listed below the display headings in the Displays menu: a tool that works
     # on data, not a way to look at it.
     misc: ClassVar[bool] = False
 
