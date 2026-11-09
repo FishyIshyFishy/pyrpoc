@@ -66,3 +66,38 @@ def climb(
                 break
         step_um /= 2.0
     return ClimbResult(best_z_um, best_metric, at_edge=False)
+
+
+def sweep_then_climb(
+    measure: Callable[[float], float],
+    report: Callable[[ClimbStep], None],
+    start_z_um: float,
+    search: FocusSearch,
+) -> ClimbResult:
+    """Every first step across the search range, then a climb from the sharpest. A climb alone
+    finds focus only from within a first step of it: further out, the metric is flat with
+    noise, and it climbs that instead."""
+    low_um = start_z_um - search.search_range_um
+    high_um = start_z_um + search.search_range_um
+    count = int(search.search_range_um // search.initial_step_um)
+    # Nearest the start first, so a run stopped partway has looked where focus likeliest is.
+    offsets = [0.0]
+    for index in range(1, count + 1):
+        offsets += [index * search.initial_step_um, -index * search.initial_step_um]
+    best_z_um, best_metric = start_z_um, -float("inf")
+    for offset in offsets:
+        z_um = start_z_um + offset
+        metric = measure(z_um)
+        report(ClimbStep(z_um, metric, search.initial_step_um))
+        if metric > best_metric:
+            best_z_um, best_metric = z_um, metric
+    at_edge = count > 0 and abs(best_z_um - start_z_um) >= count * search.initial_step_um
+    # The sweep found focus to within half a step either way; the climb takes it from there.
+    fine = FocusSearch(
+        min(search.initial_step_um, high_um - best_z_um, best_z_um - low_um)
+        or search.final_step_um,
+        search.initial_step_um / 2.0,
+        search.final_step_um,
+    )
+    found = climb(measure, report, best_z_um, fine)
+    return ClimbResult(found.best_z_um, found.best_metric, at_edge or found.at_edge)

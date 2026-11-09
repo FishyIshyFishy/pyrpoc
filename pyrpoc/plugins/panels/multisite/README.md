@@ -1,86 +1,44 @@
-# multisite panel
+# Multisite Loop panel
 
-A running loop over the whole dish. The survey's overview is the backdrop, with each unit's latest frame laid where it was taken. Hold **Tab** to bring see-through cards up over the live dish.
+Shows a survey's dish and the newest loop run over it. The source picker chooses a **survey**, not a loop, so units can be drawn before any loop has run: a fresh loop starts only on units drawn.
 
-It is not registered as a panel yet. To run it on its own, against a fake loop:
+## What it shows
+- **The dish**: the survey's overview, with each unit's latest frame laid where it was taken. Each unit is outlined where it was last tracked, and drawn by where it stands. A dashed box one field across marks where the loop is working, and turns solid while it scans.
+- **The status line**: what the loop is doing now and what it does next.
+- **The overlay**: Tab, or the Queue button, holds two see-through glass cards up over the live dish, and Tab again puts them away. So do Esc and a click on the dish between the cards: the overlay is a glance at the loop, not a pane that stays. The cards fade in and out, and a faint veil over the dish says it is not taking input meanwhile.
+  - **Queue** (left): what the loop runs, top first. Row *now* is the routine running. Then come any routines asked to run next, then the rest in the order they fall due. A paused unit's routines are not queued. This is the loop's own order (`LoopView.queue`), not one the panel works out.
+  - **Units** (right): every unit, where it stands, and what it does next, with that routine's place in the queue.
 
-```
-uv run python -m pyrpoc.plugins.panels.multisite.demo
-```
+Choosing a unit in either card or on the dish chooses it in all three. Double-clicking a row brings its unit to the dish between the cards.
 
-The demo's **Indicators** menu switches each way of showing what the loop is doing, so they can be compared.
+## Steering the loop
+Right-click a unit in either card or on the dish:
+- **Run next**: put it at the front of the queue.
+- **Pause** / **Resume**: take it out of the queue, or put it back.
+- **Remove from loop...**: stop it for good, after asking.
 
-## Keys
-All keys are in `keys.py`.
+Each acts on the whole unit, every routine of it, because the loop does. Every change goes through the live `UNITS` input, which the loop reads between its steps. Until the loop logs a change taken, the unit's state reads *Pausing…*, *Removing…* and so on (`state/pending.py`).
 
-| Where | Key | Does |
-|---|---|---|
-| anywhere | hold Tab | peek at the overlay until released |
-| anywhere | tap Tab | keep the overlay up; Tab or Esc closes it |
-| dish | wheel / right or middle drag | zoom round the cursor / pan |
-| dish | Shift + drag | draw a unit freehand |
-| dish | click / Del | choose a unit / ask to remove it |
-| dish | F, double-click | the whole dish |
-| queue | ↑ ↓ | choose a routine; its unit is marked on the dish |
-| queue | Shift + ↑ ↓, or drag | reorder a routine that is due |
-| queue | Enter, double-click | glide to the unit |
-| queue | P / R / Del | pause or resume its unit / run it next / remove its unit, after asking |
+**Draw unit** (or right-click the empty dish) draws one unit: drag round a region. The dotted square is one field, and a shape larger than it is not added. A drawn unit is *Drawn* until the loop joins it, or *Refused* with the loop's reason.
 
-## The cards
-| Card | Where | Shows |
-|---|---|---|
-| Queue | left | every open routine in the order it will run; the keyboard goes here |
-| Loop | top | what the loop is doing now, its units and routines, the longest overdue wait, scans taken and lost, and the focus offset |
-| Chosen routine | right | where the routine chosen in the queue stands, its last scan, its unit's latest frame, and each measurement it recorded, one small trace per channel; hover a trace to read it |
-| Recent | right | what the loop has just done, newest first, each marked ✓ ! ✕ or •; click one to choose its unit |
+On the dish the wheel zooms, a left or middle drag pans, and a double-click on the empty dish shows all of it.
 
-Channels each get their own trace, not a shared axis, because they differ in scale. Each trace is drawn in its channel's colour on the dish, with the channel's name beside it, so colour is never the only cue. The status colours (good, warning, bad) are used only for how things went, and always come with their mark. While the overlay is up, the corner status line hides: the Loop card says the same thing. Locate puts the unit in the middle of the dish the cards leave clear.
-
-## How the queue runs
-The queue holds routines (one routine on one unit), in the order they will run:
-- **Now**: the routine being run.
-- **Run now**: routines asked to run next.
-- **Due**: due routines, in the person's order where they gave one, then by due time.
-- **Upcoming**: routines not yet due, by due time.
-- **Paused**: routines whose unit is paused.
-
-Reordering only breaks ties among routines that are due: nothing runs before it is due. `state/run_order.py` holds the rule, and the fake loop runs by the same function. Pause, run-now and remove act on the whole unit, as the loop does; the queue's hint line says so.
-
-A loop takes changes only between steps, so the panel shows each change as on its way until the loop's log shows it taken:
-- A queue row says "pausing…" (or the change sent) until then (`state/pending.py`).
-- A drawn unit stays dashed, tagged "joining…", until it joins or is refused (`state/drafts.py`).
+## How it reads the loop
+`feed.LoopFeed` finds the newest recording that read the chosen survey and holds a `LoopLogOutput`. On a clock it folds the log's new events with `LoopFold`, takes new frames from the same recording's `UnitFramesOutput`, and learns the instrument's clock from when events arrive (`state/clock.py`), so countdowns run right even on a simulated dish that runs faster than wall time. It finds every output by its type, never by a program's name for it.
 
 ## Layers
-Each layer imports only those below it. `uv run lint-imports` checks this.
+Each layer imports only those below it; `uv run lint-imports` checks this.
 
 | Layer | What it is |
 |---|---|
-| `demo/` | The fake dish and loop, and the window that runs them |
-| `view.py` | `MultisiteView`: the dish with the overlay over it, fed by one `LoopFeed`. Tab is caught here |
-| `overlay/`, `canvas/` | The see-through cards (`Card` is the base) and the dish with its layers. They never import each other |
-| `keys.py`, `look.py`, `feed.py`, `render.py` | Every key, every colour, `LoopFeed` (what the panel reads from a loop and every change it sends), and channels to colour |
-| `state/` | No Qt: the queue order, reordering, peek, pending changes, drafts, outlines, the log looking back, the summary, wording |
+| `panel.py` | `MultisitePanel`: the buttons, the status line, the dish and the overlay, wired to one `LoopFeed` |
+| `overlay.py` | `Overlay`: the cards held up over the dish, with the fade, the veil and closing on a click between them |
+| `dish.py`, `cards.py`, `unit_menu.py` | The dish view; the queue and units glass cards; the menu a right-click on a unit opens |
+| `backdrop.py`, `outlines.py`, `lasso.py` | What the dish draws: the overview and frames, the units and the working field, a unit being drawn |
+| `feed.py`, `look.py`, `render.py` | The loop as the panel reads it and steers it; the colours of the dish and the glass; channels to colour |
+| `state/` | No Qt: the queue and units rows, their wording, pending changes, the clock, outlines |
 
-To add a card, subclass `Card`, give it an `Anchor`, a width or height, and a share of its edge, and add it to the overlay in `view.py`. To add an indicator, add a layer in `canvas/layers/` and a flag in `canvas/indicators.py`.
-
-## Wiring it in
-Everything the panel needs comes through `feed.LoopFeed`. Wiring in is:
-1. **A feed built on a run's outputs.**
-   - `snapshot()`: fold the run's `LoopLogOutput` with `LoopFold`, then `state.routines.routine_statuses` and `state.snapshot.snapshot_of`, handing it the log's events. Fold again only when the log grows, not on every frame.
-   - `backdrop()`: from `SurveyOutput.overview()`.
-   - `frames()`: each unit's newest frame in `UnitFramesOutput`.
-   - The changes it sends go to the live `UNITS` input:
-     - pause: set `Unit.paused`;
-     - run now: raise `run_now_asked`;
-     - remove: drop the unit;
-     - add: append the `Unit` the panel made.
-2. **A thin `DataPanel`** that holds a `MultisiteView` over that feed.
-3. **Reordering.** The loop has no notion of the person's order yet. It needs a live input of routine keys that `Steering` reads, and `Queue.runnable` sorting due threads by it, as in `state/run_order.py`.
-
-## Still to decide
-- Which of the four indicators to keep.
-- Whether pause, run-now and remove should act per routine (a loop change).
-- How groups are given.
-- Whether the Recent card should let a person filter by unit or by kind.
-
-A unit's largest size (`state/outline.py`) is a stand-in for the loop's own rule, which allows for a tracking margin.
+## Not done yet
+- A loop carried on is given no units at first. Pausing or running one next gives it back, but removing a unit the loop was never given does nothing until then.
+- Groups are not drawn: every unit drawn takes the plain group.
+- Measurements and frames of a chosen unit over time are not shown.

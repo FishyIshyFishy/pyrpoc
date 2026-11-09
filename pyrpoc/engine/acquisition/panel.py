@@ -5,7 +5,8 @@ from __future__ import annotations
 from html import escape
 from typing import Any
 
-from PyQt6.QtCore import QSize, Qt
+from PyQt6.QtCore import QSize, Qt, QUrl
+from PyQt6.QtGui import QDesktopServices, QGuiApplication
 from PyQt6.QtWidgets import (
     QCheckBox,
     QFileDialog,
@@ -151,7 +152,7 @@ class AcquisitionPanel(Panel):
         self.stop_btn.clicked.connect(self.host.stop)
         self.save_check.toggled.connect(lambda checked: self.runs.set_save(enabled=checked))
         self.path_field.name_edited.connect(lambda text: self.runs.set_save(name=text))
-        self.path_field.folder_clicked.connect(self.choose_directory)
+        self.path_field.folder_clicked.connect(self.on_folder_clicked)
         self.note_btn.clicked.connect(self.edit_note)
         self.runs.note_changed.connect(self.on_note_changed)
 
@@ -266,6 +267,16 @@ class AcquisitionPanel(Panel):
             reason = f"\nNeeds {', '.join(missing)}" if missing else ""
             view.widget.setToolTip(view.tooltip + reason)
 
+    def on_folder_clicked(self) -> None:
+        """Ctrl+click opens the save folder in the file browser; a plain click chooses another."""
+        folder = self.runs.save.folder
+        ctrl = QGuiApplication.keyboardModifiers() & Qt.KeyboardModifier.ControlModifier
+        # A folder deleted or moved outside the app can only be chosen again.
+        if ctrl and folder is not None and folder.is_dir():
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(folder)))
+        else:
+            self.choose_directory()
+
     def choose_directory(self) -> None:
         folder = self.runs.save.folder
         start = str(folder) if folder is not None else ""
@@ -284,7 +295,7 @@ class AcquisitionPanel(Panel):
         if folder is None:
             tooltip = "Choose the folder acquisitions are saved to."
         else:
-            tooltip = f"{folder}\nClick to choose another folder."
+            tooltip = f"{folder}\nClick to choose another folder, Ctrl+click to open it."
         name = None if folder is None else short_name(folder.name or str(folder))
         # Dimmed while saving is off: the name then only names the run.
         self.path_field.set_folder(name, tooltip, in_use=save.enabled)

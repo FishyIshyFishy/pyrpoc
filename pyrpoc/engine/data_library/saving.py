@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import threading
+from collections.abc import Collection
 from pathlib import Path
 
 from pyrpoc.core.program_output import ProgramOutput
@@ -20,10 +21,11 @@ from pyrpoc.engine.data_library.format import (
 from .notes import save_note
 
 
-def save_location(root: Path) -> tuple[Path, Path]:
+def save_location(root: Path, taken: Collection[Path] = ()) -> tuple[Path, Path]:
     """The first free numbered stem of ``root``, which every file of a recording hangs its
-    suffix off, and the metadata file there."""
-    free = free_root(root)
+    suffix off, and the metadata file there. A stem is taken by a recording on disk, or by
+    one whose metadata file is among ``taken``."""
+    free = free_root(root, taken)
     return free, meta_path_for(free)
 
 

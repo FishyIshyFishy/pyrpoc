@@ -6,6 +6,8 @@ from __future__ import annotations
 import importlib.metadata
 import json
 import os
+import re
+from collections.abc import Collection
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
@@ -76,13 +78,16 @@ def recordings_in(folder: Path) -> list[Path]:
     return sorted(folder.glob(f"*{META_SUFFIX}"))
 
 
-def free_root(root: Path) -> Path:
-    """``root``, or the first of ``root_2``, ``root_3`` and so on that has no recording
-    yet."""
-    candidate, number = root, 1
-    while meta_path_for(candidate).exists():
+def free_root(root: Path, taken: Collection[Path] = ()) -> Path:
+    """``root``, or the first of ``root_2``, ``root_3`` and so on that has no recording yet:
+    none on disk, and none whose metadata file is among ``taken``. A ``root`` already
+    numbered carries on from its number, so ``run_2`` is followed by ``run_3``."""
+    numbered = re.fullmatch(r"(.+)_(\d+)", root.name)
+    base, number = (numbered[1], int(numbered[2])) if numbered else (root.name, 1)
+    candidate = root
+    while meta_path_for(candidate).exists() or meta_path_for(candidate) in taken:
         number += 1
-        candidate = root.with_name(f"{root.name}_{number}")
+        candidate = root.with_name(f"{base}_{number}")
     return candidate
 
 

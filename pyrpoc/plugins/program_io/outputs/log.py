@@ -72,6 +72,11 @@ class LogOutput(ProgramOutput, Generic[E]):
                 self.paths = {self.name: path}
         self.changed()
 
+    def since(self, start: int) -> list[E]:
+        """The events from the ``start``-th on, oldest first."""
+        with self.lock:
+            return self.events[start:]
+
     @property
     def nbytes(self) -> int:
         return self.nbytes_logged

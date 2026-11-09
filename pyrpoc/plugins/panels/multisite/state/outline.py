@@ -1,4 +1,4 @@
-"""A drawn outline: thinned to the points that shape it, and whether it is worth keeping."""
+"""A drawn outline: thinned to the points that shape it, and its size against one field."""
 
 from __future__ import annotations
 
@@ -10,8 +10,6 @@ from pyrpoc.plugins.program_io.outputs import Outline
 
 # The smallest share of a field a drawn unit may span, so a stray drag draws nothing.
 SMALLEST = 0.03
-# The largest share of a field a unit may span, leaving the loop room to track it.
-LARGEST = 0.8
 
 
 def thinned(points: Sequence[tuple[float, float]], tolerance: float) -> Outline:
@@ -49,7 +47,7 @@ def farthest(array: np.ndarray, start: int, end: int) -> tuple[int, float]:
 
 
 def middle(outline: Outline) -> tuple[float, float]:
-    """The centre of the outline's bounds, in µm: where a marker for it goes."""
+    """The centre of the outline's bounds, in µm."""
     points = np.asarray(outline)
     low, high = points.min(axis=0), points.max(axis=0)
     return float((low[0] + high[0]) / 2), float((low[1] + high[1]) / 2)
@@ -65,6 +63,7 @@ def too_small(outline: Outline, field_um: float) -> bool:
     return len(outline) < 3 or span_um(outline) < SMALLEST * field_um
 
 
-def fits(outline: Outline, field_um: float) -> bool:
-    """Whether a unit this shape leaves the loop room to track it within one field."""
-    return span_um(outline) <= LARGEST * field_um
+def within_field(outline: Outline, field_um: float) -> bool:
+    """Whether the outline fits in one field; the loop also wants a margin round it to track
+    it by, so one that fits may still be refused."""
+    return span_um(outline) <= field_um

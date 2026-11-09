@@ -94,6 +94,11 @@ class UnitFramesOutput(ImageOutput):
                 if (tag.unit, tag.routine) == (unit, routine)
             ]
 
+    def since(self, start: int) -> list[tuple[np.ndarray, FrameTag]]:
+        """The frames from the ``start``-th on, each with its tag, oldest first."""
+        with self.lock:
+            return list(zip(self.arrays[start:], self.tags[start:], strict=True))
+
     @classmethod
     def load(cls, *, name: str, recording: Recording, files: dict[str, Path]) -> UnitFramesOutput:
         output = cls(name=name, recording=recording, root=None)
