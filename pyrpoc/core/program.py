@@ -70,10 +70,6 @@ class Program:
     # row, and with no cards every input is shown.
     cards: dict[str, Sequence[ProgramInput[Any]]] = {}
 
-    # Outputs of earlier recordings in the same Experiment it reads, by the name it reads each
-    # under, and the type each must be. It cannot start until each has one to read.
-    reads: dict[str, type[ProgramOutput]] = {}
-
     # Its inputs that a run may read again while it runs, to follow edits made after it
     # started. The rest stay as they were when it started.
     live: list[ProgramInput[Any]] = []
@@ -94,8 +90,8 @@ class Program:
             raise TypeError(f"{cls.__name__}'s cards show inputs it does not read: {unread}")
 
     def preflight(self, ctx: PreflightContext) -> list[str]:
-        """What a run of it needs beyond its devices, its reads and valid input values, each said
-        as what it needs; empty when it may start."""
+        """What a run of it needs beyond its devices and valid input values, each said as what it
+        needs; empty when it may start."""
         del ctx
         return []
 
@@ -104,8 +100,8 @@ class Program:
 
 
 class PreflightContext(ABC):
-    """What a program sees of a run about to start: where it saves, the input values it would
-    be given and the earlier outputs it would read."""
+    """What a program sees of a run about to start: where it saves, and the input values it
+    would be given."""
 
     @property
     @abstractmethod
@@ -120,11 +116,6 @@ class PreflightContext(ABC):
     @abstractmethod
     def inputs(self) -> ProgramInputValues:
         """The program input values the run would be given."""
-
-    @abstractmethod
-    def earlier(self, name: str, output_type: type[OutputT]) -> OutputT | None:
-        """The earlier output the run would read as ``name``, which ``reads`` declares as
-        ``output_type``; None while there is none to read, which preflight already reports."""
 
 
 # note to self: python protocols are useful just for type checkers
@@ -142,14 +133,13 @@ class RunInbox(Protocol):
 class RunContext:
     """What a running program is handed for one part of its recording: its input values as
     they were when the part began, its inbox, which gives the current values of its live inputs,
-    the earlier outputs it reads, its devices, the part's outputs, status and cancel."""
+    its devices, the part's outputs, status and cancel."""
 
     def __init__(
         self,
         *,
         inputs: ProgramInputValues,
         inbox: RunInbox,
-        earlier: Mapping[str, ProgramOutput],
         devices: Mapping[type[Device], Device],
         outputs: dict[str, ProgramOutput],
         cancel: threading.Event,
@@ -157,7 +147,6 @@ class RunContext:
     ):
         self.inputs = inputs
         self._inbox = inbox
-        self._earlier = dict(earlier)
         self.devices = DeviceMap(devices)
         self.outputs = outputs
         self._cancel = cancel
@@ -172,21 +161,6 @@ class RunContext:
                 f"{sorted(self._inbox.live_keys())}"
             )
         return self._inbox.current(program_input.key)
-
-    def earlier(self, name: str, output_type: type[OutputT]) -> OutputT:
-        """The earlier output chosen for ``name``, which ``reads`` declares as
-        ``output_type``. It is read, never added to."""
-        if name not in self._earlier:
-            raise KeyError(
-                f"{name!r} is not declared in reads; this program declares {sorted(self._earlier)}"
-            )
-        program_output = self._earlier[name]
-        # Narrows for the type checker, and catches a program asking for the wrong type.
-        if not isinstance(program_output, output_type):
-            raise TypeError(
-                f"{name!r} is a {type(program_output).__name__}, not {output_type.__name__}"
-            )
-        return program_output
 
     def output(self, name: str, output_type: type[OutputT]) -> OutputT:
         """This run's output ``name``, which ``emits`` declares as ``output_type``."""

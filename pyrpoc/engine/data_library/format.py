@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from pyrpoc.core.program_output import ProgramOutput, program_output_registry
-from pyrpoc.core.recording import EarlierRead, Recording, RecordingPart
+from pyrpoc.core.recording import Recording, RecordingPart
 
 FORMAT = "pyrpoc-recording"
 FORMAT_VERSION = 9
@@ -59,8 +59,6 @@ class RecordingRecord:
     outputs: dict[str, OutputRecord]
     # What the user wrote about the run, before or after it.
     notes: str
-    # What it read of earlier recordings, by the name its program reads each under.
-    inputs: dict[str, EarlierRead]
     # Everything the run took from its inbox, in the order taken.
     taken: list[Taken]
 
@@ -163,10 +161,6 @@ def decode_record(raw: dict[str, Any]) -> RecordingRecord:
             for output, entry in raw["outputs"].items()
         },
         notes=str(raw["notes"]),
-        inputs={
-            str(name): EarlierRead(str(read["recording"]), str(read["output"]))
-            for name, read in raw["inputs"].items()
-        },
         taken=[
             Taken(
                 posted_at=str(taken["posted_at"]),
@@ -188,7 +182,6 @@ def load_recording(meta_path: Path) -> Recording:
         name=record.name,
         started_at=record.started_at,
         parts=record.parts,
-        reads=record.inputs,
         location=meta_path,
         note=record.notes,
         finished=True,

@@ -2,29 +2,30 @@
 a folder holding only the steps it reads, steps read that ran to their end, and for a loop,
 units it can start on."""
 
-# A step stopped partway still ends without an error, so it is offered as a read; refusing it
-# here, before the run opens, beats the run failing on it.
+# A step stopped partway still ends without an error, so the engine sets it as the input; refusing
+# it here, before the run opens, beats the run failing on it.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Sequence
+from typing import Any
 
 from pyrpoc.core.program import PreflightContext
+from pyrpoc.core.program_input import ProgramInput
 from pyrpoc.core.program_output import ProgramOutput
-from pyrpoc.plugins.program_io.inputs import UNITS
-from pyrpoc.plugins.program_io.outputs import GalvoCalibrationOutput, SurveyOutput
+from pyrpoc.plugins.program_io.inputs import CALIBRATION, SURVEY, UNITS
 
 from ..stages.loop.orchestrator import fits
 from .scratch import Scratch
 
 
 def clean_folder(
-    ctx: PreflightContext, reads: Mapping[str, type[ProgramOutput]], carries_on: bool
+    ctx: PreflightContext, reads: Sequence[ProgramInput[Any]], carries_on: bool
 ) -> list[str]:
     """Refuses a folder holding any recording the step does not read, so each read comes from
     the only recording that can supply it. With ``carries_on``, the recordings of a loop cut
     short, which its scratch names, may stay, so a new run can carry it on."""
-    read = [ctx.earlier(name, output_type) for name, output_type in reads.items()]
+    read: list[ProgramOutput | None] = [ctx.inputs[each] for each in reads]
     allowed = {each.recording.name for each in read if each is not None}
     if carries_on and ctx.folder is not None and Scratch(ctx.folder).exists():
         allowed |= set(Scratch(ctx.folder).recordings())
@@ -37,7 +38,7 @@ def clean_folder(
 
 def calibration_measured(ctx: PreflightContext) -> list[str]:
     """Refuses a calibration read whose run was stopped before it measured."""
-    calibration = ctx.earlier("calibration", GalvoCalibrationOutput)
+    calibration = ctx.inputs[CALIBRATION]
     if calibration is None or calibration.calibration is not None:
         return []
     name = calibration.recording.name
@@ -46,7 +47,7 @@ def calibration_measured(ctx: PreflightContext) -> list[str]:
 
 def survey_finished(ctx: PreflightContext) -> list[str]:
     """Refuses a survey read whose run was stopped before it made its overview."""
-    survey = ctx.earlier("survey", SurveyOutput)
+    survey = ctx.inputs[SURVEY]
     if survey is None or survey.finding is not None:
         return []
     return [f"a survey that finished ({survey.recording.name} was stopped before its overview)"]
@@ -66,7 +67,7 @@ def starting_units(ctx: PreflightContext) -> list[str]:
         ]
     if not units:
         return ["at least one unit drawn over the survey"]
-    survey = ctx.earlier("survey", SurveyOutput)
+    survey = ctx.inputs[SURVEY]
     # An unfinished survey may hold no tile to size a field by; survey_finished refuses it.
     if survey is None or survey.finding is None:
         return []

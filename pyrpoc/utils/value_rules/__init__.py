@@ -2,7 +2,16 @@
 
 from __future__ import annotations
 
-from .rules import BoolField, ChannelsField, ChoiceField, FloatField, IntField, PathField, TextField
+from .rules import (
+    BoolField,
+    ChannelsField,
+    ChoiceField,
+    EarlierOutputField,
+    FloatField,
+    IntField,
+    PathField,
+    TextField,
+)
 from .shorthands import (
     bool_input,
     channels_field,
@@ -19,6 +28,7 @@ __all__ = [
     "BoolField",
     "ChannelsField",
     "ChoiceField",
+    "EarlierOutputField",
     "FloatField",
     "IntField",
     "PathField",

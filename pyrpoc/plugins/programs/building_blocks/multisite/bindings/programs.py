@@ -39,7 +39,7 @@ class CalibrationProgram(Program):
     runners = RUNNERS
 
     def preflight(self, ctx: PreflightContext) -> list[str]:
-        return clean_folder(ctx, self.reads, carries_on=False)
+        return clean_folder(ctx, [], carries_on=False)
 
     def microscope(self, ctx: RunContext) -> Microscope:
         """The instrument the run claimed."""
@@ -52,14 +52,19 @@ class CalibrationProgram(Program):
 class SurveyProgram(Program):
     """Maps a region from the stage's corner, with the calibration read."""
 
-    inputs: list[ProgramInput[Any]] = [*REGION_INPUTS, *TILE_INPUTS, *SURVEY_FOCUS_INPUTS]
+    # The calibration has no row: the engine sets it from the save folder.
+    inputs: list[ProgramInput[Any]] = [
+        *REGION_INPUTS,
+        *TILE_INPUTS,
+        *SURVEY_FOCUS_INPUTS,
+        *SURVEY_READS,
+    ]
     cards = {"Region": REGION_INPUTS, "Tiles": TILE_INPUTS, "Focus Search": SURVEY_FOCUS_INPUTS}
-    reads = SURVEY_READS
     emits = SURVEY_EMITS
     runners = RUNNERS
 
     def preflight(self, ctx: PreflightContext) -> list[str]:
-        return [*clean_folder(ctx, self.reads, carries_on=False), *calibration_measured(ctx)]
+        return [*clean_folder(ctx, SURVEY_READS, carries_on=False), *calibration_measured(ctx)]
 
     def microscope(self, ctx: RunContext) -> Microscope:
         """The instrument the run claimed."""
@@ -77,17 +82,17 @@ class LoopProgram(Program):
     """Runs its routines on the units drawn over the survey read, taking edits to them live,
     and carries on a loop cut short in its folder."""
 
-    # The units have no row: they are drawn over the survey.
-    inputs: list[ProgramInput[Any]] = [*LOOP_UNITS, *LOOP_FOCUS_INPUTS]
+    # The units have no row: they are drawn over the survey. Nor do the survey and calibration:
+    # the engine sets them from the save folder.
+    inputs: list[ProgramInput[Any]] = [*LOOP_UNITS, *LOOP_FOCUS_INPUTS, *LOOP_READS]
     cards = {"Focus": LOOP_FOCUS_INPUTS}
     live: list[ProgramInput[Any]] = [*LOOP_UNITS]
-    reads = LOOP_READS
     emits = LOOP_EMITS
     runners = RUNNERS
 
     def preflight(self, ctx: PreflightContext) -> list[str]:
         return [
-            *clean_folder(ctx, self.reads, carries_on=True),
+            *clean_folder(ctx, LOOP_READS, carries_on=True),
             *calibration_measured(ctx),
             *survey_finished(ctx),
             *starting_units(ctx),

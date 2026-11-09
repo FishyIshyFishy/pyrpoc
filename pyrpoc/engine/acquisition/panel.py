@@ -31,7 +31,7 @@ from pyrpoc.utils.widgets.icons import asset_icon
 from pyrpoc.utils.widgets.param_form import ParamForm, input_form_section
 from pyrpoc.utils.widgets.path_field import PathField
 
-from .earlier_card import EarlierCard
+from .earlier import earlier_inputs
 from .host import RunnerHost
 from .note import NoteDialog
 from .program_inputs import ProgramInputsStore
@@ -73,7 +73,6 @@ class AcquisitionPanel(Panel):
         self.host = RunnerHost(runs, inputs, self)
         self.selected_program: str | None = None
         self.form: ParamForm | None = None
-        self.earlier_card: EarlierCard | None = None
         # Each rendered control, its button, and the watcher keeping them in line.
         self.control_views: list[ControlView] = []
 
@@ -187,31 +186,20 @@ class AcquisitionPanel(Panel):
         self.state_changed.emit()
 
     def build_inputs(self, key: str) -> QWidget:
-        """The card for what ``key`` reads of earlier recordings, if any, above its program
-        inputs."""
+        """The cards of ``key``'s program inputs."""
         program = program_registry.get(key)
-        if self.earlier_card is not None:
-            self.earlier_card.detach()
-        page = QWidget(self)
-        column = QVBoxLayout(page)
-        column.setContentsMargins(0, 0, 0, 0)
-        column.setSpacing(8)
-        self.earlier_card = None
-        if program.reads:
+        if earlier_inputs(program.inputs):
             # The folder may have changed outside the app since it was last looked at.
             self.runs.refresh_earlier()
-            self.earlier_card = EarlierCard(self.runs, program.reads, page)
-            column.addWidget(self.earlier_card)
         cards = program.cards or {"Inputs": program.inputs}
         self.form = ParamForm(
             [input_form_section(label, inputs) for label, inputs in cards.items()],
             self.inputs,
-            page,
+            self,
             cards=True,
         )
         self.form.invalid.connect(self.show_status)
-        column.addWidget(self.form, 1)
-        return page
+        return self.form
 
     def on_input_changed(self, key: str) -> None:
         """Show a value set elsewhere, such as a mask drawn in a Mask Editor."""

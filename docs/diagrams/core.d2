@@ -13,11 +13,10 @@ classes: {
 
 settings: "ProgramInputs\nthe user's settings" {class: coll}
 devices: "Devices\nhardware claimed\nfor the run" {class: coll}
-earlier: "Earlier outputs\nonly if the program\ndeclares `reads`" {class: val}
 
 inbox: "Inbox, one per run\neverything posted to it,\neach taken at its moment\nand logged" {class: inbox}
 
-preflight: "Preflight, one judge, before anything opens\nlists every need at once: devices there\nand free, somewhere to save, valid input\nvalues, every read found, room in the\nlibrary, and program.preflight(ctx).\nJudged again whenever any of it changes" {class: check}
+preflight: "Preflight, one judge, before anything opens\nlists every need at once: devices there\nand free, somewhere to save, valid input\nvalues, room in the library,\nand program.preflight(ctx).\nJudged again whenever any of it changes" {class: check}
 
 run: "Run\nprogram.run(ctx)\nctx is its only door" {class: prog}
 
@@ -28,8 +27,8 @@ panels: "Panels\nshow outputs,\nset settings" {class: view}
 
 settings -> preflight
 devices -> preflight
-earlier -> preflight
-preflight -> run: "nothing missing:\nvalues at start,\ndevices, reads"
+library -> preflight: "room"
+preflight -> run: "nothing missing:\nvalues at start,\ndevices"
 
 settings -> inbox: "edits"
 devices -> inbox: "edits"
@@ -38,6 +37,6 @@ inbox -> run: "a live input: when read\nany other edit: between\npasses, as a ne
 run -> recording
 recording -> library
 recording -> files: "as it fills"
-earlier -- files: "a later run reads it" {source-arrowhead.shape: triangle}
+settings -- files: "earlier outputs: newest in\nthe save folder, set by the engine" {source-arrowhead.shape: triangle}
 library -> panels
 settings -- panels: "mask drawn, pixel picked,\nunits edited as a loop runs" {source-arrowhead.shape: triangle; style.stroke: "#b04a4a"}

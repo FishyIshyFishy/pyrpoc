@@ -81,7 +81,6 @@ class RecordingSaver:
             },
             # Read each time: the note may be edited while the recording runs.
             notes=recording.note,
-            inputs=recording.reads,
             taken=list(self.taken),
         )
 

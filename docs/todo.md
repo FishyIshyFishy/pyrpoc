@@ -22,7 +22,7 @@ AGENT: do not write here
 A run has two phases. Preflight (`engine/acquisition/preflight.py`) lists everything a start needs, all at once. Then the run runs, and changes reach it only through the inbox (`engine/acquisition/inbox.py`), which carries edits to its inputs and devices.
 
 Inside the running phase there are still two doors, both through `RunContext`:
-- what it starts with: `ctx.inputs`, its devices and its earlier reads, frozen at the start of each part;
+- what it starts with: `ctx.inputs` (earlier outputs among them) and its devices, frozen at the start of each part;
 - what reaches it while it runs: `ctx.current`, through the inbox.
 
 They could be one: a run's starting values would simply be the first things it takes from its inbox. Nothing gains from doing this now; it is worth doing when either door next needs changing.
@@ -30,7 +30,6 @@ They could be one: a run's starting values would simply be the first things it t
 ### Core fixes remaining
 Core members that may still be what one consumer needed, not what the thing is:
 
-- Earlier outputs (`Program.reads`, `RunContext.earlier`, `PreflightContext.earlier`, `Recording.reads`/`EarlierRead`): a read is just a parameter whose value names an earlier output. It could be a `ProgramInput` with an "earlier output of type X" `Field`, picked by an editor over what the save folder holds, so preflight's "every read found" becomes "valid input values". The obstacle: loading a recording lives in `engine/data_library/format.py`, which plugins cannot import, so either the engine resolves those values when a run starts or loading moves down a layer. This changes the session and recording formats.
 - `PreflightContext.folder` and `recordings_in_folder` (`core/program.py`): only multisite's `clean_folder` uses them.
 - `Field.label` and `Field.tooltip` (`core/program_input.py`): the tooltip is screen text in core. The label also names a value in error messages ("Visit: must be <= 10"), so it is more defensible. Changing either touches every input and device setting.
 - `Listed` and `grouped` (`core/registry.py`): for listing things in grouped menus, a screen concern; `utils/widgets/` would fit.

@@ -1,82 +1,68 @@
-"""``EarlierChoices``: the earlier outputs in the save folder that programs can read, which one
-each read name reads, and each one's content once loaded."""
+"""``fill_earlier``: sets each program input that is an output of an earlier recording to the
+newest of its type in the save folder."""
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from pathlib import Path
+from typing import Any
 
-from pyrpoc.core.program import program_registry
+from pyrpoc.core.program_input import ProgramInput, program_input_registry
 from pyrpoc.core.program_output import ProgramOutput
-from pyrpoc.engine.data_library.earlier import EarlierOutput, Unreadable, earlier_outputs
-from pyrpoc.engine.data_library.format import load_recording
+from pyrpoc.engine.data_library.earlier import EarlierOutput, earlier_outputs
+from pyrpoc.engine.data_library.format import RecordingError, load_recording
 from pyrpoc.engine.data_library.store import LibraryStore
+from pyrpoc.utils.value_rules import EarlierOutputField
+
+from .program_inputs import ProgramInputsStore
 
 
-def any_reads() -> bool:
-    """Whether some registered program reads an earlier output."""
-    return any(cls.reads for cls in program_registry.entries.values())
+def earlier_inputs(inputs: Iterable[ProgramInput[Any]]) -> dict[str, EarlierOutputField]:
+    """The rule of each of ``inputs`` that is an output of an earlier recording, by key."""
+    return {each.key: each.rule for each in inputs if isinstance(each.rule, EarlierOutputField)}
 
 
-class EarlierChoices:
-    """The earlier outputs in one folder, the recordings there that cannot be read, the one
-    picked for each read name, and those loaded so far. A pick is shared by every program
-    reading that name."""
+def fill_earlier(
+    folder: Path | None, inputs: ProgramInputsStore, library: LibraryStore
+) -> dict[str, str]:
+    """Set every such input to the newest output of its type in ``folder``, or None when there
+    is none, and return why, by key, each whose newest cannot be read."""
+    rules = earlier_inputs(program_input_registry.values())
+    found = [] if folder is None or not rules else earlier_outputs(folder)[0]
+    unreadable: dict[str, str] = {}
+    for key, rule in rules.items():
+        newest = newest_of(found, rule.output_type)
+        current = inputs.get(key)
+        value: ProgramOutput | None = None
+        if newest is not None and rule.encode(current) == reference(newest):
+            # A finished recording's files never change, so the one already set stands.
+            continue
+        if newest is not None:
+            try:
+                value = load(newest, library)
+            except RecordingError as exc:
+                # An earlier recording's files are a boundary: they may not load.
+                unreadable[key] = str(exc)
+        if rule.encode(value) != rule.encode(current):
+            inputs.set(key, value)
+    return unreadable
 
-    def __init__(self, library: LibraryStore) -> None:
-        self.library = library
-        self.found: list[EarlierOutput] = []
-        self.unreadable: list[Unreadable] = []
-        # Picked by the user; a name with no pick reads the newest.
-        self.picked: dict[str, EarlierOutput] = {}
-        # Kept, since preflight judges a start again on every edit and a finished recording's files
-        # never change.
-        self.loaded: dict[EarlierOutput, ProgramOutput] = {}
 
-    def refresh(self, folder: Path | None) -> None:
-        """Look again at what ``folder`` holds."""
-        if folder is None or not any_reads():
-            self.found, self.unreadable = [], []
-        else:
-            self.found, self.unreadable = earlier_outputs(folder)
-        # A pick that left the folder, or a folder that changed, goes back to the latest.
-        self.picked = {name: each for name, each in self.picked.items() if each in self.found}
-        self.loaded = {each: output for each, output in self.loaded.items() if each in self.found}
+def newest_of(found: list[EarlierOutput], output_type: type[ProgramOutput]) -> EarlierOutput | None:
+    """The first of ``found``, which is newest first, that is an ``output_type``."""
+    return next((each for each in found if issubclass(each.output_type, output_type)), None)
 
-    def options(self, output_type: type[ProgramOutput]) -> list[EarlierOutput]:
-        """The outputs that are an ``output_type``, its daughter types included, newest
-        first."""
-        return [each for each in self.found if issubclass(each.output_type, output_type)]
 
-    def picked_for(self, name: str, output_type: type[ProgramOutput]) -> EarlierOutput | None:
-        """The output the user picked for ``name``, or None when there is no pick."""
-        picked = self.picked.get(name)
-        return picked if picked is not None and picked in self.options(output_type) else None
+def reference(each: EarlierOutput) -> dict[str, str]:
+    """``each`` as an earlier output's rule encodes it."""
+    return {"recording": each.name, "output": each.output}
 
-    def pick(self, name: str, choice: EarlierOutput) -> None:
-        self.picked[name] = choice
 
-    def chosen(self, name: str, output_type: type[ProgramOutput]) -> EarlierOutput | None:
-        """What a run reads for ``name``: the pick, else the newest, or None when there is
-        nothing to read."""
-        options = self.options(output_type)
-        if not options:
-            return None
-        return self.picked_for(name, output_type) or options[0]
-
-    def load(self, choice: EarlierOutput) -> ProgramOutput:
-        """``choice``'s content: the library's open copy when it holds one, else read from its
-        files. Raises ``RecordingError`` for files that cannot be read."""
-        if choice not in self.loaded:
-            open_copy = self.open_copy(choice)
-            self.loaded[choice] = self.read(choice) if open_copy is None else open_copy
-        return self.loaded[choice]
-
-    def open_copy(self, choice: EarlierOutput) -> ProgramOutput | None:
-        for recording in self.library.recordings():
-            if recording.location == choice.meta_path:
-                return recording.outputs[choice.output]
-        return None
-
-    def read(self, choice: EarlierOutput) -> ProgramOutput:
-        # Loaded copies stay out of the library: reading one must not take a place there.
-        return load_recording(choice.meta_path).outputs[choice.output]
+def load(each: EarlierOutput, library: LibraryStore) -> ProgramOutput:
+    """``each``'s content: the library's open copy when it holds one, else read from its files.
+    Raises ``RecordingError`` for files that cannot be read."""
+    for recording in library.recordings():
+        if recording.location == each.meta_path:
+            return recording.outputs[each.output]
+    # Loaded copies stay out of the library: reading one must not take a place there.
+    return load_recording(each.meta_path).outputs[each.output]

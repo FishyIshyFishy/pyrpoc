@@ -14,8 +14,7 @@ from pathlib import Path
 
 from pyrpoc.core.device import Device
 from pyrpoc.core.program import Cancelled, Program, RunContext
-from pyrpoc.core.program_output import ProgramOutput
-from pyrpoc.core.recording import EarlierRead, Recording, RecordingPart, utc_now
+from pyrpoc.core.recording import Recording, RecordingPart, utc_now
 from pyrpoc.engine.acquisition.save_target import SaveTarget
 from pyrpoc.engine.data_library.saving import RecordingSaver, save_location
 from pyrpoc.engine.data_library.store import LibraryStore
@@ -27,8 +26,7 @@ from .preflight import NotReady, Preflight, Start
 
 class Run:
     """One execution of one program: the recording it fills, where its files go and its saver,
-    the earlier outputs it reads, its inbox, whether it repeats, and whether it is still
-    going."""
+    its inbox, whether it repeats, and whether it is still going."""
 
     def __init__(
         self,
@@ -38,7 +36,6 @@ class Run:
         recording: Recording,
         root: Path | None,
         saver: RecordingSaver | None,
-        earlier: dict[str, ProgramOutput],
         inbox: RunInbox,
         repeat: bool,
     ):
@@ -48,7 +45,6 @@ class Run:
         self.recording = recording
         self.root = root
         self.saver = saver
-        self.earlier = earlier
         self.inbox = inbox
         self.repeat = repeat
         self.cancel = threading.Event()
@@ -93,31 +89,25 @@ class Executor:
         ``note`` goes to. Raises ``NotReady``, listing everything it needs, before anything
         opens."""
         # Judged under the lock, so no other run can take a device between judging and claiming.
-        # The reads it loads are kept by ``start.load``, as the panel has judged it already.
         with self._lock:
             needs = self.preflight(start)
             if needs:
                 raise NotReady(needs)
             program = start.program
             devices = claims.resolve(list(program.devices), start.inventory)
-            read = {name: start.load(each) for name, each in start.chosen.items()}
-            reads = {
-                name: EarlierRead(each.meta_path.name, each.output)
-                for name, each in start.chosen.items()
-            }
             self._run_id += 1
-            recording, root, saver = self.open_recording(start.program_key, reads, start.save, note)
+            recording, root, saver = self.open_recording(start.program_key, start.save, note)
             inbox = RunInbox(
                 program, start.inputs, devices, None if saver is None else saver.log_taken
             )
-            run = Run(program, self._run_id, devices, recording, root, saver, read, inbox, repeat)
+            run = Run(program, self._run_id, devices, recording, root, saver, inbox, repeat)
             self.leases.take(run.id, devices.values())
             ctx = self.begin_part(run)
             self.launch(run, ctx)
         return run
 
     def open_recording(
-        self, program_key: str, reads: dict[str, EarlierRead], save: SaveTarget, note: str
+        self, program_key: str, save: SaveTarget, note: str
     ) -> tuple[Recording, Path | None, RecordingSaver | None]:
         """A new recording with no parts yet, where its files go, and its saver if saving is
         on."""
@@ -135,7 +125,6 @@ class Executor:
             name=name,
             started_at=utc_now(),
             parts=[],
-            reads=reads,
             location=meta_path,
             note=note,
             finished=False,
@@ -171,7 +160,6 @@ class Executor:
         return RunContext(
             inputs=run.inbox.given(),
             inbox=run.inbox,
-            earlier=run.earlier,
             devices=run.devices,
             outputs=outputs,
             cancel=run.cancel,

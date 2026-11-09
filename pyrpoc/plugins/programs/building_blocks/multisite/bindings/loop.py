@@ -13,14 +13,15 @@ from pyrpoc.core.program import RunContext
 from pyrpoc.core.program_input import ProgramInput
 from pyrpoc.core.program_output import ProgramOutput
 from pyrpoc.plugins.program_io.inputs import (
+    CALIBRATION,
     DWELL_TIME_US,
     FOCUS_CHECK_S,
     FOCUS_FINAL_STEP_UM,
+    SURVEY,
     UNITS,
 )
 from pyrpoc.plugins.program_io.outputs import (
     FrameTag,
-    GalvoCalibrationOutput,
     LoopEvent,
     LoopLogOutput,
     SurveyOutput,
@@ -37,6 +38,7 @@ from ..stages.loop.orchestrator import LoopSetup, Orchestrator
 from ..stages.loop.resume import resumption
 from ..stages.loop.routine import RoutineSpec
 from ..stages.loop.survey_map import SurveyMap, Visit
+from .earlier import required
 from .scratch import Scratch
 
 # Every loop program reads the units, live: they are what it runs on, however they change.
@@ -49,10 +51,7 @@ LOOP_EMITS: dict[str, type[ProgramOutput]] = {
     "frames": UnitFramesOutput,
 }
 # What every loop reads: the survey, and the calibration its scans use.
-LOOP_READS: dict[str, type[ProgramOutput]] = {
-    "survey": SurveyOutput,
-    "calibration": GalvoCalibrationOutput,
-}
+LOOP_READS: list[ProgramInput[Any]] = [SURVEY, CALIBRATION]
 
 
 class RunSteering:
@@ -90,7 +89,7 @@ class LoopOutputs:
 
 def survey_map_of(ctx: RunContext) -> tuple[SurveyMap, SurveyOutput]:
     """The map of the survey read, and the survey itself."""
-    survey = ctx.earlier("survey", SurveyOutput)
+    survey = required(ctx, SURVEY)
     found = survey.found()
     visits = tuple(
         Visit(tile.x_um, tile.y_um, taken.time_s)
@@ -101,7 +100,7 @@ def survey_map_of(ctx: RunContext) -> tuple[SurveyMap, SurveyOutput]:
 
 def field_of(ctx: RunContext, survey: SurveyOutput, overscan: tuple[int, int]) -> FieldOfView:
     """The survey's field of view, scanned with the calibration read."""
-    calibration = ctx.earlier("calibration", GalvoCalibrationOutput).measured()
+    calibration = required(ctx, CALIBRATION).measured()
     pixels = survey[0].shape[-1]
     return FieldOfView(
         pixels * survey.um_per_px,

@@ -27,7 +27,7 @@ two phases.
 **Preflight** comes first, before anything opens: one judge lists everything
 the run still needs, all at once. That covers its devices being there and free,
 somewhere to save, valid input values, every earlier output it reads being
-found, room in the library, and whatever the program's own `preflight` asks
+in the folder, room in the library, and whatever the program's own `preflight` asks
 for. The Acquisition panel shows that same list and asks again whenever
 anything it looks at changes, the save folder's files included. The start asks
 once more and is refused with that list, so a refused start leaves nothing
@@ -63,9 +63,11 @@ runs save is choosing the Experiment. With no folder set, nothing is saved. A
 note written before a run is saved with its recording. It is not a program
 input: no program reads it.
 
-A program can read the outputs of an earlier recording in the same folder. It
-names the type of output it needs, not the program that made it, so programs
-never depend on each other.
+A program can read the outputs of an earlier recording in the same folder. Such
+an output is a program input like any other, whose `Field` names the type of
+output it needs, not the program that made it, so programs never depend on each
+other. The engine sets it to the newest output of that type in the save folder,
+and the recording keeps which one it was among its parameters.
 
 Open recordings collect in the **library**. Panels show what's in the library
 and let you act on it, which sets more program inputs, and the loop repeats.
@@ -96,9 +98,9 @@ of the app meet.
 | Piece | What it is |
 |---|---|
 | **Device** | A piece of hardware the microscope has: its identity, its settings (a `DeviceConfig`, whose fields each carry a `Field`) and maybe a connection. |
-| **Program** | One kind of experiment: the devices it needs, the program inputs it reads, the outputs it fills, the earlier outputs it reads and the runners that can start it. It has two phases: `preflight` says what else a run of it needs before it can start, and `run` does the work. |
-| **PreflightContext** | What a program's `preflight` sees of a run about to start: the save folder and the recordings saved there, the program input values, and the earlier outputs it would read (None while there is none to read). What every run needs is judged by the engine, not here. |
-| **RunContext** | What a running program is handed for one part of its recording: its input values as the part began, its inbox (the current value of its live inputs), the earlier outputs it reads, its devices, the part's outputs, status and cancel. |
+| **Program** | One kind of experiment: the devices it needs, the program inputs it reads, the outputs it fills and the runners that can start it. It has two phases: `preflight` says what else a run of it needs before it can start, and `run` does the work. |
+| **PreflightContext** | What a program's `preflight` sees of a run about to start: the save folder and the recordings saved there, and the program input values. What every run needs is judged by the engine, not here. |
+| **RunContext** | What a running program is handed for one part of its recording: its input values as the part began, its inbox (the current value of its live inputs), its devices, the part's outputs, status and cancel. |
 | **Runner** | A way to start a program, such as once, continuously, or armed until a pixel is picked. The program declares it. It may offer the user a `Control` through its `RunnerContext`. Core says only that a control exists: what it is, such as a button or a toggle, is its type, and the panel showing the program draws each by its type. A runner may watch program inputs. |
 
 A run is not a piece of core: it is the engine executing one recording.
@@ -121,7 +123,7 @@ cards every input is shown.
 
 | Piece | What it is |
 |---|---|
-| **Recording** | What one run produced: what made it (program, name, start time, the earlier recordings it read), its parts (each a `RecordingPart`: the input values and devices it ran with, and the outputs it filled), where it is saved (or nothing, when unsaved), its note, whether it is finished, and its program outputs. Two outputs are of the same recording when their `recording` is the same object. Its folder is its Experiment. |
+| **Recording** | What one run produced: what made it (program, name, start time), its parts (each a `RecordingPart`: the input values and devices it ran with, and the outputs it filled), where it is saved (or nothing, when unsaved), its note, whether it is finished, and its program outputs. Two outputs are of the same recording when their `recording` is the same object. Its folder is its Experiment. |
 | **ProgramOutput** | One named part of a recording, of one type. Each type is a subclass that owns its content, how programs add to it, how panels read it, and how it is written to files and read back. Many programs may fill the same type. Types register in `program_output_registry`, which is how a recording on disk finds them again. |
 | **Library** | The recordings that are open: acquired now, or loaded from disk. Nothing else. You can add one, close one, list them, and subscribe. |
 

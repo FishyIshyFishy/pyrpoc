@@ -16,15 +16,6 @@ def utc_now() -> str:
 
 
 @dataclass(frozen=True)
-class EarlierRead:
-    """The output of an earlier recording that a recording read under one name."""
-
-    # The earlier recording's metadata file name, in the same folder.
-    recording: str
-    output: str
-
-
-@dataclass(frozen=True)
 class RecordingPart:
     """A stretch of a recording made with one set of settings: when it began, the program
     input values and device settings it ran with, and the names of the outputs it filled."""
@@ -37,8 +28,7 @@ class RecordingPart:
 
 class Recording:
     """What one run produced: the program, name and start time, its parts, each with the
-    settings that made it, the earlier recordings it read, where it is saved, its note, and its
-    program outputs."""
+    settings that made it, where it is saved, its note, and its program outputs."""
 
     def __init__(
         self,
@@ -47,7 +37,6 @@ class Recording:
         name: str,
         started_at: str,
         parts: list[RecordingPart],
-        reads: dict[str, EarlierRead],
         location: Path | None,
         note: str,
         finished: bool,
@@ -58,8 +47,6 @@ class Recording:
         self.started_at = started_at
         # A new part begins each time the settings of a repeating run change between passes.
         self.parts = parts
-        # What it read of earlier recordings, by the name its program reads each under.
-        self.reads = reads
         # Its metadata file, or None when it is not saved.
         self.location = location
         # Written by the user before, during or after the run; the saver reads it as it writes.

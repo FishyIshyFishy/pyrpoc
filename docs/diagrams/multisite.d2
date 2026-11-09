@@ -26,8 +26,9 @@ key: |md
   - blue: a check, refusing a start
     before its recording opens
 
-  A step reads earlier outputs by type,
-  from its folder.
+  A step's earlier outputs are program
+  inputs, set by the engine to the newest
+  of their type in its folder.
 | {style: {fill: "#ffffff"; stroke: "#bbbbbb"}}
 
 clean: "clean_folder, on every step\nthe folder holds only what the\nstep reads (a loop's: also the\nruns of a loop it carries on)" {class: check}
@@ -52,7 +53,7 @@ cal -> library.cal_log
 
 # ---------------------------------------------------------------- 2. survey
 sur_in: "SURVEY_WIDTH/HEIGHT_UM\nFIELD_UM, FIELD_PIXELS\nTILE_OVERLAP, focus search" {class: input}
-sur: "2. Survey (any SurveyProgram)\nreads 'calibration'" {class: prog}
+sur: "2. Survey (any SurveyProgram)\ninput CALIBRATION" {class: prog}
 sur_in -> sur
 sur -> library.survey
 sur -> library.survey_log
@@ -61,7 +62,7 @@ sur -> library.survey_log
 units: "UNITS: tuple[Unit]\nthe units it runs on, live\nUnit = key + outline + group\n+ paused + run_now_asked" {class: live}
 loop_in: "TREAT, TREATED_GROUP\nFOCUS_CHECK_S, ..." {class: input}
 monitor_live: "PERIOD_S, DURATION_MIN" {class: live}
-loop: "3. Longitudinal Monitor\n(any LoopProgram: routines on units)\nreads 'survey' -> SurveyMap,\n'calibration' -> FieldOfView" {class: prog}
+loop: "3. Longitudinal Monitor\n(any LoopProgram: routines on units)\ninputs SURVEY -> SurveyMap,\nCALIBRATION -> FieldOfView" {class: prog}
 units -> loop: "at start, and between steps"
 loop_in -> loop
 monitor_live -> loop

@@ -12,7 +12,7 @@ from pyrpoc.core.library import Library
 from pyrpoc.core.program_input import ProgramInputs
 from pyrpoc.core.program_output import ProgramOutput
 from pyrpoc.core.recording import Recording
-from pyrpoc.plugins.program_io.inputs import UNITS
+from pyrpoc.plugins.program_io.inputs import SURVEY, UNITS
 from pyrpoc.plugins.program_io.outputs import (
     FrameTag,
     LoopEvent,
@@ -60,22 +60,20 @@ def output_of(recording: Recording, kind: type[OutputT]) -> OutputT | None:
     return next((each for each in recording.outputs.values() if isinstance(each, kind)), None)
 
 
-def reads_output(recording: Recording, output: ProgramOutput) -> bool:
-    """Whether ``recording`` read ``output`` as an earlier output in its folder."""
-    source = output.recording
-    if source.location is None or recording.folder != source.folder:
+def reads_survey(recording: Recording, survey: SurveyOutput) -> bool:
+    """Whether ``recording`` was given ``survey``, saved in the same folder, as its survey."""
+    folder = survey.recording.folder
+    if folder is None or recording.folder != folder:
         return False
-    return any(
-        read.recording == source.location.name and read.output == output.name
-        for read in recording.reads.values()
-    )
+    given = SURVEY.rule.encode(survey)
+    return any(part.parameters.get(SURVEY.key) == given for part in recording.parts)
 
 
 def loop_over(survey: SurveyOutput, library: Library) -> LoopLogOutput | None:
     """The log of the newest loop that read ``survey``."""
     for recording in reversed(library.recordings()):
         log = output_of(recording, LoopLogOutput)
-        if log is not None and reads_output(recording, survey):
+        if log is not None and reads_survey(recording, survey):
             return log
     return None
 
