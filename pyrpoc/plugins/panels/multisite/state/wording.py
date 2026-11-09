@@ -10,13 +10,13 @@ from .standing import QueueRow, Snapshot, Standing, UnitRow
 
 # What each standing means, for a tooltip.
 MEANING = {
-    Standing.DRAWN: "Drawn on the dish; the loop has not taken it yet",
-    Standing.REFUSED: "Drawn on the dish, but the loop would not take it",
-    Standing.RUNNING: "The loop is working on this unit now",
-    Standing.WAITING: "Waiting for its next routine to fall due",
-    Standing.LOST: "Not found where it was at its last scan; the loop keeps looking for it",
-    Standing.PAUSED: "Paused: none of its routines run until it is resumed",
-    Standing.DONE: "Every one of its routines has ended",
+    Standing.DRAWN: "Not added to the loop yet",
+    Standing.REFUSED: "Not accepted by the loop",
+    Standing.RUNNING: "In progress",
+    Standing.WAITING: "Waiting until the next routine is due",
+    Standing.LOST: "Not found at the last position. The loop continues to search.",
+    Standing.PAUSED: "Paused. No routines run until resumed.",
+    Standing.DONE: "All routines complete",
 }
 
 

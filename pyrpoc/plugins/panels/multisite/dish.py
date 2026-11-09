@@ -1,4 +1,4 @@
-"""``DishCanvas``: the whole dish in µm. The wheel zooms round the cursor, dragging pans, a click
+"""``DishCanvas``: the whole dish in µm. The wheel zooms in and out, dragging pans, a click
 chooses a unit and a right-click asks for its menu. While drawing, a drag draws a unit."""
 
 from __future__ import annotations
@@ -53,7 +53,6 @@ class DishCanvas(QGraphicsView):
         self.setBackgroundBrush(self.palette().color(QPalette.ColorRole.Base))
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self.setTransformationAnchor(QGraphicsView.ViewportAnchor.AnchorUnderMouse)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.drawing = False
         self.selected: str | None = None

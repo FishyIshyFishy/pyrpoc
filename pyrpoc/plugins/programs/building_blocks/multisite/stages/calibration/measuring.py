@@ -41,8 +41,10 @@ SEARCH_PX = 8.0
 SEARCH_FRACTION = 0.25
 # The feature must have this fraction of the view to move in, either way, along each axis.
 ROOM_FRACTION = 0.125
-# The real moves, as fractions of the room the feature has before it would leave the view.
-MOVE_FRACTIONS = (0.25, 0.5, 0.75, 1.0)
+# The real moves, as fractions of the room the feature has before it would leave the view. The
+# largest stops short of the edge because the rough scale that sizes them is only good to a few
+# percent.
+MOVE_FRACTIONS = (0.2, 0.4, 0.6, 0.8)
 EDGE_MARGIN_PX = 4
 
 

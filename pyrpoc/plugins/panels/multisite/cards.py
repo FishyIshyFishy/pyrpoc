@@ -17,14 +17,6 @@ from .state.pending import Pending
 from .state.standing import QueueRow, Snapshot, Standing, UnitRow
 from .state.wording import MEANING, next_text, standing_text, when_text
 
-QUEUE_HELP = (
-    "What the loop runs, top first, one routine on one unit at a time. A unit asked to run "
-    "next goes to the front; the rest run as they fall due. Paused units are not queued."
-)
-UNITS_HELP = (
-    "Every unit and what it does next. Right-click a unit here or on the dish to run it next, "
-    "pause it or remove it. Each acts on all of that unit's routines."
-)
 RADIUS = 12.0
 # Rows of units that have nothing to run are shown muted.
 QUIET = (Standing.PAUSED, Standing.DONE, Standing.REFUSED)
@@ -112,10 +104,9 @@ class Side(Enum):
 
 
 class GlassCard(QFrame):
-    """A see-through card on one side of the overlay: a heading, a line saying what it shows
-    and how to act on it, and its table."""
+    """A see-through card on one side of the overlay: a heading and its table."""
 
-    def __init__(self, parent: QWidget, title: str, help_text: str, table: UnitTable, side: Side):
+    def __init__(self, parent: QWidget, title: str, table: UnitTable, side: Side):
         super().__init__(parent)
         self.side, self.table = side, table
         # The theme fills every widget; on glass only the card itself is drawn.
@@ -128,18 +119,14 @@ class GlassCard(QFrame):
         root = QVBoxLayout(self)
         root.setContentsMargins(14, 12, 14, 12)
         root.setSpacing(6)
-        heading = QLabel(title.upper(), self)
+        # Headed like the app's other cards: the title as written, in bold.
+        heading = QLabel(title, self)
         face = heading.font()
         face.setBold(True)
-        face.setPointSizeF(face.pointSizeF() * 0.9)
         heading.setFont(face)
-        heading.setStyleSheet(f"color: {look.TEXT_DIM.name()}; letter-spacing: 1.5px;")
-        caption = QLabel(help_text, self)
-        caption.setWordWrap(True)
-        caption.setStyleSheet(f"color: {look.TEXT_DIM.name()};")
-        for widget in (heading, caption, table):
-            root.addWidget(widget)
-        root.setStretchFactor(table, 1)
+        heading.setStyleSheet(f"color: {look.TEXT.name()};")
+        root.addWidget(heading)
+        root.addWidget(table, 1)
 
     def paintEvent(self, event: QPaintEvent | None) -> None:
         painter = QPainter(self)
@@ -171,7 +158,7 @@ def unit_cells(row: UnitRow, snapshot: Snapshot, pending: Pending) -> list[str]:
 class QueueCard(GlassCard):
     def __init__(self, parent: QWidget):
         table = UnitTable(["#", "Unit", "Routine", "When"], parent)
-        super().__init__(parent, "Queue", QUEUE_HELP, table, Side.LEFT)
+        super().__init__(parent, "Queue", table, Side.LEFT)
 
     def show_loop(self, snapshot: Snapshot, queue: tuple[QueueRow, ...]) -> None:
         self.table.fill([(row.key, queue_cells(row, snapshot), False, "") for row in queue])
@@ -180,7 +167,7 @@ class QueueCard(GlassCard):
 class UnitsCard(GlassCard):
     def __init__(self, parent: QWidget):
         table = UnitTable(["Unit", "Group", "State", "Next"], parent)
-        super().__init__(parent, "Units", UNITS_HELP, table, Side.RIGHT)
+        super().__init__(parent, "Units", table, Side.RIGHT)
 
     def show_loop(self, snapshot: Snapshot, units: tuple[UnitRow, ...], pending: Pending) -> None:
         self.table.fill(
