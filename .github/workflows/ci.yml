@@ -1,14 +1,12 @@
-# Every check. The fast ones also run on each commit (.pre-commit-config.yaml);
-# they are repeated here because a local hook can be skipped or not installed.
+# pyright only: it is too slow for the commit hook, which runs the other checks (.pre-commit-config.yaml).
 name: CI
 
 on:
   push:
-  pull_request:
 
 jobs:
-  checks:
-    # The app targets Windows (bundled SDK DLLs), and Qt runs there without a virtual display.
+  pyright:
+    # The app targets Windows (bundled SDK DLLs).
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -17,7 +15,4 @@ jobs:
           enable-cache: true
       # Matches pythonVersion in [tool.pyright], so CI type-checks what Pylance does.
       - run: uv sync --locked --python 3.13
-      - name: pre-commit (ruff, import-linter)
-        run: uv run pre-commit run --all-files --show-diff-on-failure
-      - name: pyright
-        run: uv run pyright
+      - run: uv run pyright
