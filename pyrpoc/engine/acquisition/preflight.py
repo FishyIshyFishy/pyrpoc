@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from pyrpoc.core.device import Device
-from pyrpoc.core.program import PreflightContext, Program
+from pyrpoc.core.program import Program
 from pyrpoc.core.program_input import ParameterError, ProgramInputValues
 from pyrpoc.engine.acquisition.save_target import SaveTarget
 from pyrpoc.engine.data_library.format import META_SUFFIX, recordings_in
@@ -40,7 +40,7 @@ class Start:
     unreadable: Mapping[str, str]
 
 
-class Preflight(PreflightContext):
+class Preflight:
     """One start, judged whole: its devices are there and free, it has somewhere to save, its
     input values are valid, every earlier output it reads is in the folder, the library has room,
     and the program's own ``preflight`` is satisfied. Every need is listed at once."""

@@ -4,7 +4,6 @@ phases: ``PreflightContext`` before a run opens, and ``RunContext`` while it run
 from __future__ import annotations
 
 import threading
-from abc import ABC, abstractmethod
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from pathlib import Path
 from typing import Any, Protocol, TypeVar
@@ -99,23 +98,23 @@ class Program:
         raise NotImplementedError
 
 
-class PreflightContext(ABC):
+class PreflightContext(Protocol):
     """What a program sees of a run about to start: where it saves, and the input values it
     would be given."""
 
     @property
-    @abstractmethod
     def folder(self) -> Path | None:
         """The save folder, which the run is saved in and reads from; None when none is set."""
+        ...
 
-    @abstractmethod
     def recordings_in_folder(self) -> list[str]:
         """The name of every recording saved in the folder, whether or not it can be read."""
+        ...
 
     @property
-    @abstractmethod
     def inputs(self) -> ProgramInputValues:
         """The program input values the run would be given."""
+        ...
 
 
 # note to self: python protocols are useful just for type checkers
