@@ -59,8 +59,8 @@ class TileState:
 
 @data_panel_registry.register("image")
 class ImagePanel(DataPanel[ImageOutput]):
-    display_name = "Tiled channels"
-    group = "2D Image Views"
+    display_name = "Channels Side by Side"
+    group = "Images"
     order = 21
     renders = ImageOutput
 

@@ -1,6 +1,6 @@
-"""The Multisite Loop panel: a survey's dish with the units on it, and the queue and units of the
-newest loop run over it, held up over the dish on glass cards with Tab. Right-click a unit to
-steer the loop."""
+"""The Multisite Dish Map panel: a survey's dish with the units on it, and the queue and units
+of the newest loop run over it, held up over the dish on glass cards with Tab. Right-click a
+unit to steer the loop."""
 
 from __future__ import annotations
 
@@ -34,7 +34,7 @@ NOTICE_S = 6.0
 
 @data_panel_registry.register("multisite")
 class MultisitePanel(DataPanel[SurveyOutput]):
-    display_name = "Multisite Loop"
+    display_name = "Multisite Dish Map"
     group = "Multisite"
     order = 40
     renders = SurveyOutput

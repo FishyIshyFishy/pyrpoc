@@ -55,8 +55,8 @@ def channel_lut(hist_widget: pg.HistogramLUTWidget) -> np.ndarray:
 
 @data_panel_registry.register("overlay")
 class OverlayPanel(DataPanel[ImageOutput]):
-    display_name = "Overlaid channels"
-    group = "2D Image Views"
+    display_name = "Merged Channels"
+    group = "Images"
     order = 20
     renders = ImageOutput
 
