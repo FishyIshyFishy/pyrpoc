@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from enum import Enum
 from html import escape
 from typing import Any
 
@@ -23,7 +24,7 @@ from PyQt6.QtWidgets import (
 )
 
 from pyrpoc.core.panels import Panel
-from pyrpoc.core.program import program_registry
+from pyrpoc.core.program import Program, program_registry
 from pyrpoc.core.registry import grouped
 from pyrpoc.utils.widgets.control_views import ControlView, build_control_view
 from pyrpoc.utils.widgets.grouped_combo import GroupedComboBox
@@ -31,28 +32,20 @@ from pyrpoc.utils.widgets.icons import asset_icon
 from pyrpoc.utils.widgets.param_form import ParamForm, input_form_section
 from pyrpoc.utils.widgets.path_field import PathField
 
-from .earlier import earlier_inputs
 from .host import RunnerHost
 from .note import NoteDialog
 from .program_inputs import ProgramInputsStore
 from .runs import Runs
 
-# Status dot colours, by what the status asks of the user: wait, act, or look.
-_DOT_READY = "#3ecf8e"
-_DOT_NEEDS = "#f2c744"
-_DOT_BUSY = "#4f8df5"
-_DOT_ERROR = "#e5484d"
 
+class Tone(Enum):
+    """What a status asks of the user, as the colour of the dot that leads it: nothing, to act,
+    to wait, or to look."""
 
-def status_dot(text: str) -> str:
-    """The colour of the dot that leads a status line."""
-    if text.startswith("needs"):
-        return _DOT_NEEDS
-    if text.startswith("error"):
-        return _DOT_ERROR
-    if text.startswith("acquiring"):
-        return _DOT_BUSY
-    return _DOT_READY
+    READY = "#3ecf8e"
+    NEEDS = "#f2c744"
+    BUSY = "#4f8df5"
+    ERROR = "#e5484d"
 
 
 def short_name(name: str) -> str:
@@ -71,7 +64,9 @@ class AcquisitionPanel(Panel):
         self.runs = runs
         self.inputs = inputs
         self.host = RunnerHost(runs, inputs, self)
-        self.selected_program: str | None = None
+        self.program: type[Program] | None = None
+        # What the shown program still needs, judged once each time readiness changes.
+        self.missing: list[str] = []
         self.form: ParamForm | None = None
         # Each rendered control, its button, and the watcher keeping them in line.
         self.control_views: list[ControlView] = []
@@ -87,7 +82,7 @@ class AcquisitionPanel(Panel):
         # Wrapped text would otherwise hold the panel wider than its dock.
         self.status_label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         root.addWidget(self.status_label)
-        self.show_status("idle")
+        self.show_status(Tone.READY, "idle")
         self.scroll_area = QScrollArea(self)
         self.scroll_area.setWidgetResizable(True)
         self.scroll_area.setFrameShape(QFrame.Shape.NoFrame)
@@ -159,38 +154,36 @@ class AcquisitionPanel(Panel):
         self.runs.save_changed.connect(self.on_save_changed)
         self.inputs.subscribe(self.on_input_changed)
         self.host.controls_changed.connect(self.render_controls)
-        self.host.status.connect(self.show_status)
+        # A runner's own status is a note, never a need or a failure.
+        self.host.status.connect(lambda text: self.show_status(Tone.READY, text))
         runs = self.runs.events
         runs.run_started.connect(lambda _run: self.on_run_started())
-        runs.run_status.connect(lambda _run, text: self.show_status(text))
+        runs.run_status.connect(lambda _run, text: self.show_status(Tone.BUSY, text))
         runs.run_finished.connect(lambda _run: self.on_run_finished())
         runs.run_failed.connect(lambda _run, message: self.on_run_failed(message))
         runs.start_refused.connect(self.on_run_failed)
 
     def on_program_chosen(self, index: int) -> None:
         key = self.program_combo.itemData(index)
-        if key != self.selected_program:
+        if self.program is None or key != self.program.registry_key:
             self.select_program(key)
 
     def select_program(self, key: str) -> None:
         """Show ``key``: its runners' controls and its inputs."""
-        self.selected_program = key
-        self.host.attach(key, program_registry.get(key))
+        program = program_registry.get(key)
+        self.program = program
+        self.host.attach(program)
         index = self.program_combo.findData(key)
         if self.program_combo.currentIndex() != index:
             self.program_combo.blockSignals(True)
             self.program_combo.setCurrentIndex(index)
             self.program_combo.blockSignals(False)
-        self.scroll_area.setWidget(self.build_inputs(key))
+        self.scroll_area.setWidget(self.build_inputs(program))
         self.refresh_readiness()
         self.state_changed.emit()
 
-    def build_inputs(self, key: str) -> QWidget:
-        """The cards of ``key``'s program inputs."""
-        program = program_registry.get(key)
-        if earlier_inputs(program.inputs):
-            # The folder may have changed outside the app since it was last looked at.
-            self.runs.refresh_earlier()
+    def build_inputs(self, program: type[Program]) -> QWidget:
+        """The cards of ``program``'s inputs."""
         cards = program.cards or {"Inputs": program.inputs}
         self.form = ParamForm(
             [input_form_section(label, inputs) for label, inputs in cards.items()],
@@ -198,7 +191,7 @@ class AcquisitionPanel(Panel):
             self,
             cards=True,
         )
-        self.form.invalid.connect(self.show_status)
+        self.form.invalid.connect(lambda text: self.show_status(Tone.NEEDS, text))
         return self.form
 
     def on_input_changed(self, key: str) -> None:
@@ -209,30 +202,23 @@ class AcquisitionPanel(Panel):
         if self.form is not None:
             self.form.reload()
 
-    def blockers(self) -> list[str]:
-        """What the shown program still needs before it can run."""
-        if self.selected_program is None:
-            return []
-        return self.runs.blockers(self.selected_program)
-
     def refresh_readiness(self, *, announce: bool = True) -> None:
-        """Enable or disable the controls and say what is missing, if anything."""
+        """Judge what the shown program still needs, enable or disable the controls, and say
+        what is missing, if anything."""
         # ``announce`` is off when a run has just ended, so its outcome is not immediately
         # overwritten with "ready".
-        missing = self.blockers()
+        self.missing = [] if self.program is None else self.runs.blockers(self.program)
         self.apply_enabled()
         if self.host.running:
             # The status is the run's own while it goes; edits made meanwhile must not replace it.
             return
-        if missing:
-            self.show_status("needs " + ", ".join(missing))
-        elif announce and not self.host.running:
-            self.show_status("ready")
+        if self.missing:
+            self.show_status(Tone.NEEDS, "needs " + ", ".join(self.missing))
+        elif announce:
+            self.show_status(Tone.READY, "ready")
 
-    def show_status(self, text: str) -> None:
-        self.status_label.setText(
-            f'<span style="color:{status_dot(text)}">●</span>&nbsp;{escape(text)}'
-        )
+    def show_status(self, tone: Tone, text: str) -> None:
+        self.status_label.setText(f'<span style="color:{tone.value}">●</span>&nbsp;{escape(text)}')
 
     def render_controls(self) -> None:
         """Draw the shown program's controls, replacing whatever was there."""
@@ -247,12 +233,11 @@ class AcquisitionPanel(Panel):
 
     def apply_enabled(self) -> None:
         """Off while something is missing or a run is in progress."""
-        missing = self.blockers()
-        ready = not missing and not self.host.running
+        ready = not self.missing and not self.host.running
         for view in self.control_views:
             view.widget.setEnabled(ready)
             # A dimmed control says why on hover, so the way forward is one mouse-over away.
-            reason = f"\nNeeds {', '.join(missing)}" if missing else ""
+            reason = f"\nNeeds {', '.join(self.missing)}" if self.missing else ""
             view.widget.setToolTip(view.tooltip + reason)
 
     def on_folder_clicked(self) -> None:
@@ -305,7 +290,7 @@ class AcquisitionPanel(Panel):
         )
 
     def on_run_started(self) -> None:
-        self.show_status("acquiring")
+        self.show_status(Tone.BUSY, "acquiring")
         self.set_running_ui(True)
 
     def on_run_finished(self) -> None:
@@ -314,10 +299,10 @@ class AcquisitionPanel(Panel):
         # A runner may already have started the next run from this same finish.
         if not running:
             self.refresh_readiness(announce=False)
-            self.show_status("stopped")
+            self.show_status(Tone.READY, "stopped")
 
     def on_run_failed(self, message: str) -> None:
-        self.show_status(f"error - {message}")
+        self.show_status(Tone.ERROR, f"error - {message}")
         self.set_running_ui(self.host.running)
         QMessageBox.critical(self, "Acquisition Error", message)
 
@@ -330,7 +315,7 @@ class AcquisitionPanel(Panel):
         self.path_field.setEnabled(not save_fixed)
 
     def export_persistence_state(self) -> dict[str, Any]:
-        return {"program": self.selected_program}
+        return {"program": None if self.program is None else self.program.registry_key}
 
     def import_persistence_state(self, state: dict[str, Any]) -> None:
         """Show the saved program, or the first one if it no longer exists."""

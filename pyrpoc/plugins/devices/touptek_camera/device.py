@@ -12,7 +12,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from pyrpoc.core.device import Device, DeviceConfig, device_registry
+from pyrpoc.core.device import Connection, Device, DeviceConfig, device_registry
 from pyrpoc.utils.value_rules import text_field
 
 from .sdk import ToupcamError, ToupcamSession, row_pitch, unpack_rgb24
@@ -35,8 +35,7 @@ class ToupcamConfig(DeviceConfig):
 @device_registry.register("touptek_camera")
 class ToupcamCamera(Device):
     display_name = "ToupTek Camera"
-    owns_connection = True
-    holds_session = True
+    connection = Connection.SESSION
     config_cls = ToupcamConfig
 
     config: ToupcamConfig
@@ -68,10 +67,6 @@ class ToupcamCamera(Device):
         session = self.require_session()
         self.session = None
         session.close()
-
-    def check_reachable(self) -> bool:
-        self.require_session().frame_size()
-        return True
 
     def require_session(self) -> ToupcamSession:
         if self.session is None:

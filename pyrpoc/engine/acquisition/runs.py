@@ -6,15 +6,15 @@ from collections.abc import Callable
 
 from PyQt6.QtCore import QFileSystemWatcher, QObject, QTimer, pyqtSignal
 
-from pyrpoc.core.program import program_registry
+from pyrpoc.core.program import Program
 from pyrpoc.engine.acquisition.save_target import SaveTarget
 from pyrpoc.engine.data_library.model import LibraryModel
 from pyrpoc.engine.device_inventory.inventory import DeviceInventory
 
 from .earlier import fill_earlier
 from .events import RunEvents
-from .executor import Run
-from .preflight import Start
+from .executor import Executor, Run
+from .preflight import NotReady, Start
 from .program_inputs import ProgramInputsStore
 
 
@@ -46,7 +46,8 @@ class Runs(QObject):
         self.library = library
         # Why, by key, each earlier output input's newest in the save folder cannot be read.
         self.unreadable: dict[str, str] = {}
-        self.events = RunEvents(library.store, self)
+        self.events = RunEvents(self)
+        self.executor = Executor(library.store, self.events.callbacks())
         self.live_runs: set[Run] = set()
         # Files land in the save folder in bursts as a run saves, so one look follows a burst.
         self.folder_watcher = QFileSystemWatcher(self)
@@ -61,31 +62,36 @@ class Runs(QObject):
         inventory.edited.connect(self.post_device_edits)
         self.save_changed.connect(self.readiness_changed.emit)
         inputs.subscribe(lambda _key: self.readiness_changed.emit())
-        # Called on whichever thread changed the library; the signal carries it to this one.
-        library.subscribe(self.readiness_changed.emit)
+        library.changed.connect(self.readiness_changed)
         library.auto_purge_changed.connect(lambda _on: self.readiness_changed.emit())
 
-    def start(self, program_key: str, repeat: bool, claim: Callable[[Run], None]) -> None:
-        """Start ``program_key`` with what the workbench holds right now, or report
-        why not through ``events.start_refused``. A run that starts takes the note."""
-        run = self.events.start(self.start_of(program_key), self.note, repeat, claim)
+    def start(self, program: type[Program], repeat: bool, claim: Callable[[Run], None]) -> None:
+        """Start ``program`` with what the workbench holds right now, or report why not through
+        ``events.start_refused``. A run that starts takes the note."""
+        # Reported rather than raised, since every caller is a Qt slot. ``claim`` gets the run
+        # before ``run_started`` announces it, so whoever started it has recorded it by then.
+        try:
+            run = self.executor.start(self.start_of(program), note=self.note, repeat=repeat)
+        except NotReady as exc:
+            self.events.start_refused.emit(str(exc))
+            return
+        claim(run)
+        self.events.run_started.emit(run)
         # Cleared so one note is never copied onto runs it was not written for.
-        if run is not None and self.note:
+        if self.note:
             self.set_note("")
         # Saved under the next free name when the one asked for was taken, and shown so.
-        if run is not None and run.saver is not None and run.recording.name != self.save.name:
+        if run.saver is not None and run.recording.name != self.save.name:
             self.save.name = run.recording.name
             self.save_changed.emit()
 
-    def blockers(self, program_key: str) -> list[str]:
-        """Everything ``program_key`` still needs before it can run."""
-        return self.events.executor.preflight(self.start_of(program_key))
+    def blockers(self, program: type[Program]) -> list[str]:
+        """Everything ``program`` still needs before it can run."""
+        return self.executor.preflight(self.start_of(program))
 
-    def start_of(self, program_key: str) -> Start:
-        """A start of ``program_key`` with what the workbench holds right now."""
-        program = program_registry.get(program_key)
+    def start_of(self, program: type[Program]) -> Start:
+        """A start of ``program`` with what the workbench holds right now."""
         return Start(
-            program_key=program_key,
             program=program(),
             inputs=self.inputs,
             inventory=self.inventory.devices,

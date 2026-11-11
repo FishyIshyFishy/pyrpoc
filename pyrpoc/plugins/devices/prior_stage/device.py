@@ -11,7 +11,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Literal
 
-from pyrpoc.core.device import Device, DeviceConfig, device_registry
+from pyrpoc.core.device import Connection, Device, DeviceConfig, device_registry
 from pyrpoc.utils.value_rules import int_field
 
 from .sdk import PriorError, PriorSession
@@ -60,8 +60,7 @@ def format_number(value: float) -> str:
 @device_registry.register("prior_stage")
 class PriorStage(Device):
     display_name = "Prior Stage"
-    owns_connection = True
-    holds_session = True
+    connection = Connection.SESSION
     config_cls = PriorConfig
 
     config: PriorConfig
@@ -88,10 +87,6 @@ class PriorStage(Device):
         session = self.require_session()
         self.session = None
         session.close()
-
-    def check_reachable(self) -> bool:
-        self.command("controller.model.get")
-        return True
 
     def require_session(self) -> PriorSession:
         if self.session is None:

@@ -15,10 +15,10 @@ A multisite program subclasses one of three bases in `bindings/programs.py`:
 | Base | Reads | Fills | Needs before it starts | The program gives |
 |---|---|---|---|---|
 | `CalibrationProgram` | | `calibration`, `view`, `log` | `clean_folder` | `microscope` |
-| `SurveyProgram` | `calibration` | `survey`, `log` | `clean_folder`, `calibration_measured` | `microscope`, `overscan` |
-| `LoopProgram` | `survey`, `calibration` | `log`, `units`, `frames` | all four below | `microscope`, `overscan`, `routines` |
+| `SurveyProgram` | `calibration` | `survey`, `log` | `clean_folder` | `microscope`, `overscan` |
+| `LoopProgram` | `survey`, `calibration` | `log`, `units`, `frames` | both below | `microscope`, `overscan`, `routines` |
 
-"Reads" are program inputs too (`CALIBRATION`, `SURVEY`), with no card: the engine sets each to the newest output of its type in the save folder. Each base also declares the inputs its stage reads, with their cards, and `run`s its stage. A program adds its devices, its own inputs (extending the base's `inputs`, `cards` and, for a loop, `live`), and where it is listed. Two programs of a kind therefore always read, fill and refuse the same things, so a panel can rely on what every multisite program publishes.
+"Reads" are program inputs too (`CALIBRATION`, `SURVEY`), with no card: the engine sets each to the newest output of its type in the save folder whose run completed, so a step stopped partway is never read. Each base also declares the inputs its stage reads, with their cards, and `run`s its stage. A program adds its devices, its own inputs (extending the base's `inputs`, `cards` and, for a loop, `live`), and where it is listed. Two programs of a kind therefore always read, fill and refuse the same things, so a panel can rely on what every multisite program publishes.
 
 ## Layers
 Each layer imports only the layers below it. `uv run lint-imports` enforces this.
@@ -60,7 +60,6 @@ A loop is doing the latest `LoopActivity` until the `UnitScanned` after it; with
 ## Before a stage starts
 Each base's `preflight` asks what its stage needs (`bindings/preflight.py`), so a start that cannot work is refused before its recording opens, in the same list as everything else it needs:
 - `clean_folder`: the folder holds only the earlier steps it reads (and, for a loop, the runs of a loop it carries on).
-- `calibration_measured` and `survey_finished`: the steps it reads ran to their end, not stopped partway.
 - `starting_units`: a fresh loop has units drawn, each fitting in one field of the survey; a loop carried on has none drawn, since it starts from its scratch.
 
 ## Units in a loop

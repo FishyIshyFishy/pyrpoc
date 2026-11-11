@@ -32,7 +32,6 @@ class Start:
     """A start asked for: the program, and what the workbench holds for it now. ``unreadable``
     says why, by key, each earlier output input's newest in the folder cannot be read."""
 
-    program_key: str
     program: Program
     inputs: ProgramInputsStore
     inventory: list[Device]

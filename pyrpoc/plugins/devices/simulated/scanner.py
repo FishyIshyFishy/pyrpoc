@@ -7,7 +7,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from pyrpoc.core.device import Device, DeviceConfig
+from pyrpoc.core.device import Device, DeviceConfig, device_registry
 from pyrpoc.utils.simulation import CHANNELS
 
 from .dish import SimulatedDish
@@ -18,6 +18,7 @@ class ScannerConfig(DeviceConfig):
     pass
 
 
+@device_registry.register("simulated_scanner")
 class SimulatedScanner(Device):
     display_name = "Simulated Scanner"
     backed_by = SimulatedDish

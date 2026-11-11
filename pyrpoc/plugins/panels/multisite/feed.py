@@ -104,7 +104,7 @@ class LoopFeed:
 
     def field_um(self) -> float:
         """The side of one scan field, in µm: one survey tile."""
-        return self.survey[0].shape[-1] * self.survey.um_per_px
+        return self.survey.field_um
 
     def update(self, wall_s: float) -> Snapshot:
         """Take whatever the loop has logged and imaged since the last update."""

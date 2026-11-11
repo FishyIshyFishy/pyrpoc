@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -13,6 +14,14 @@ if TYPE_CHECKING:  # pragma: no cover
 
 def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+class Outcome(str, Enum):
+    """How a run ended: it ran to its end, it was stopped partway, or it failed."""
+
+    COMPLETED = "completed"
+    STOPPED = "stopped"
+    FAILED = "failed"
 
 
 @dataclass(frozen=True)
@@ -28,7 +37,8 @@ class RecordingPart:
 
 class Recording:
     """What one run produced: the program, name and start time, its parts, each with the
-    settings that made it, where it is saved, its note, and its program outputs."""
+    settings that made it, where it is saved, its note, how its run ended, and its program
+    outputs."""
 
     def __init__(
         self,
@@ -40,6 +50,7 @@ class Recording:
         location: Path | None,
         note: str,
         finished: bool,
+        outcome: Outcome | None,
     ):
         self.program_key = program_key
         # The save filename, set whether or not it was saved; empty for an unnamed run.
@@ -53,6 +64,8 @@ class Recording:
         self.note = note
         # Nothing more will be added: its run ended, or it was loaded from disk.
         self.finished = finished
+        # None while its run goes, and for one on disk whose run never ended.
+        self.outcome = outcome
         # Filled once by whoever opens it, since each output points back here.
         self.outputs: dict[str, ProgramOutput] = {}
 

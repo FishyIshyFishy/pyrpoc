@@ -35,11 +35,6 @@ clean: "clean_folder, on every step\nthe folder holds only what the\nstep reads 
 clean -> cal {style.stroke-dash: 4}
 clean -> sur {style.stroke-dash: 4}
 clean -> loop {style.stroke-dash: 4}
-measured: "calibration_measured\nthe calibration read\nran to its end" {class: check}
-measured -> sur {style.stroke-dash: 4}
-measured -> loop {style.stroke-dash: 4}
-finished: "survey_finished\nthe survey read\nran to its end" {class: check}
-finished -> loop {style.stroke-dash: 4}
 starting: "starting_units\nfresh: units drawn, each\nfitting in one field;\ncarried on: none drawn" {class: check}
 starting -> loop {style.stroke-dash: 4}
 

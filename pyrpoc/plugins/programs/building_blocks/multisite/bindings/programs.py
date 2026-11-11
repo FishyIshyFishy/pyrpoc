@@ -16,7 +16,7 @@ from ..interfaces.microscope import Microscope
 from ..stages.loop.routine import RoutineSpec
 from .calibration import CALIBRATION_EMITS, run_calibration
 from .loop import LOOP_EMITS, LOOP_FOCUS_INPUTS, LOOP_READS, LOOP_UNITS, run_loop
-from .preflight import calibration_measured, clean_folder, starting_units, survey_finished
+from .preflight import clean_folder, starting_units
 from .survey import (
     REGION_INPUTS,
     SURVEY_EMITS,
@@ -64,7 +64,7 @@ class SurveyProgram(Program):
     runners = RUNNERS
 
     def preflight(self, ctx: PreflightContext) -> list[str]:
-        return [*clean_folder(ctx, SURVEY_READS, carries_on=False), *calibration_measured(ctx)]
+        return clean_folder(ctx, SURVEY_READS, carries_on=False)
 
     def microscope(self, ctx: RunContext) -> Microscope:
         """The instrument the run claimed."""
@@ -93,8 +93,6 @@ class LoopProgram(Program):
     def preflight(self, ctx: PreflightContext) -> list[str]:
         return [
             *clean_folder(ctx, LOOP_READS, carries_on=True),
-            *calibration_measured(ctx),
-            *survey_finished(ctx),
             *starting_units(ctx),
         ]
 

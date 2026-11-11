@@ -101,10 +101,9 @@ def survey_map_of(ctx: RunContext) -> tuple[SurveyMap, SurveyOutput]:
 def field_of(ctx: RunContext, survey: SurveyOutput, overscan: tuple[int, int]) -> FieldOfView:
     """The survey's field of view, scanned with the calibration read."""
     calibration = required(ctx, CALIBRATION).measured()
-    pixels = survey[0].shape[-1]
     return FieldOfView(
-        pixels * survey.um_per_px,
-        pixels,
+        survey.field_um,
+        survey.field_pixels,
         (calibration.um_per_volt_x, calibration.um_per_volt_y),
         ctx.inputs[DWELL_TIME_US],
         *overscan,

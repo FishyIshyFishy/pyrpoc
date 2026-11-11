@@ -7,6 +7,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass, fields
 from dataclasses import field as dc_field
+from enum import Enum
 from typing import Any
 from uuid import uuid4
 
@@ -53,18 +54,22 @@ def decode_config(cls: type[DeviceConfig], raw: Mapping[str, Any]) -> DeviceConf
     return cls(**kwargs)
 
 
+class Connection(Enum):
+    """How a device is reached: through a session the app keeps open from launch to exit, by a
+    test the user can run, or not at all."""
+
+    SESSION = "session"
+    TESTABLE = "testable"
+    NONE = "none"
+
+
 class Device:
     """One addressable piece of the instrument."""
 
     display_name: str = "Device"
     registry_key: str = "device"
 
-    # True when this device holds a resource that can be opened and verified.
-    owns_connection: bool = False
-
-    # True when this device keeps a connection open between runs: the app
-    # opens it at launch and closes it on exit.
-    holds_session: bool = False
+    connection: Connection = Connection.NONE
 
     # Set when this device has no connection of its own. Claims propagate up
     # this link, so claiming the galvo claims its DAQ.
@@ -82,19 +87,19 @@ class Device:
         return ""
 
     def check_reachable(self) -> bool:
-        """Raise or return False when the device is not there."""
-        return True
+        """Raise or return False when a ``TESTABLE`` device is not there."""
+        raise NotImplementedError
 
     @property
     def session_open(self) -> bool:
         return False
 
     def open_session(self) -> None:
-        """Open the connection a ``holds_session`` device keeps."""
+        """Open the connection a ``SESSION`` device keeps."""
         raise NotImplementedError
 
     def close_session(self) -> None:
-        """Close the connection a ``holds_session`` device keeps."""
+        """Close the connection a ``SESSION`` device keeps."""
         raise NotImplementedError
 
     def __repr__(self) -> str:  # pragma: no cover - debugging aid

@@ -10,14 +10,18 @@ import re
 from collections.abc import Collection
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from pyrpoc.core.program_output import ProgramOutput, program_output_registry
-from pyrpoc.core.recording import Recording, RecordingPart
+from pyrpoc.core.recording import Outcome, Recording, RecordingPart
 
 FORMAT = "pyrpoc-recording"
-FORMAT_VERSION = 9
+FORMAT_VERSION = 10
 META_SUFFIX = "_meta.json"
+
+
+# What a run took: a change to one of its program inputs, or to its devices.
+TakenKind = Literal["input", "device"]
 
 
 class RecordingError(Exception):
@@ -31,8 +35,7 @@ class Taken:
 
     posted_at: str
     taken_at: str
-    # "input" or "device".
-    kind: str
+    kind: TakenKind
     # The input's key, or the device's class name.
     key: str
     # As its rules encode it, or None for an input not recorded; a device's whole settings.
@@ -55,6 +58,8 @@ class RecordingRecord:
     started_at: str
     ended_at: str | None
     last_error: str | None
+    # None until its run ends.
+    outcome: Outcome | None
     parts: list[RecordingPart]
     outputs: dict[str, OutputRecord]
     # What the user wrote about the run, before or after it.
@@ -134,6 +139,12 @@ def optional_str(value: Any) -> str | None:
     return None if value is None else str(value)
 
 
+def taken_kind(value: Any) -> TakenKind:
+    if value == "input" or value == "device":
+        return value
+    raise ValueError(f"unknown kind of taken {value!r}")
+
+
 def decode_record(raw: dict[str, Any]) -> RecordingRecord:
     """The recording a metadata file's JSON describes."""
     # Unknown fields are ignored, so a format may add some.
@@ -144,6 +155,7 @@ def decode_record(raw: dict[str, Any]) -> RecordingRecord:
         started_at=str(raw["started_at"]),
         ended_at=optional_str(raw["ended_at"]),
         last_error=optional_str(raw["last_error"]),
+        outcome=None if raw["outcome"] is None else Outcome(raw["outcome"]),
         parts=[
             RecordingPart(
                 started_at=str(part["started_at"]),
@@ -165,7 +177,7 @@ def decode_record(raw: dict[str, Any]) -> RecordingRecord:
             Taken(
                 posted_at=str(taken["posted_at"]),
                 taken_at=str(taken["taken_at"]),
-                kind=str(taken["kind"]),
+                kind=taken_kind(taken["kind"]),
                 key=str(taken["key"]),
                 value=taken["value"],
             )
@@ -185,6 +197,7 @@ def load_recording(meta_path: Path) -> Recording:
         location=meta_path,
         note=record.notes,
         finished=True,
+        outcome=record.outcome,
     )
     recording.outputs = {
         output: load_output(recording, meta_path, output, entry)

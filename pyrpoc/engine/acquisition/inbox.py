@@ -14,7 +14,7 @@ from pyrpoc.core.device import Device, encode_config
 from pyrpoc.core.program import Program
 from pyrpoc.core.program_input import ProgramInputValues
 from pyrpoc.core.recording import utc_now
-from pyrpoc.engine.data_library.format import Taken
+from pyrpoc.engine.data_library.format import Taken, TakenKind
 
 from .program_inputs import ProgramInputsStore
 
@@ -103,7 +103,7 @@ class RunInbox:
         self.device_settings = settings
         return bool(changed)
 
-    def log(self, posted_at: str, kind: str, key: str, value: Any) -> None:
+    def log(self, posted_at: str, kind: TakenKind, key: str, value: Any) -> None:
         if self.on_taken is not None:
             self.on_taken(Taken(posted_at, utc_now(), kind, key, value))
 

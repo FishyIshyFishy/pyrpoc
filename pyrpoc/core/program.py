@@ -54,6 +54,8 @@ class Program:
     which does the work."""
 
     display_name: str = "Program"
+    # Set by ``program_registry``; a recording names the program that made it by it.
+    registry_key: str
 
     # The heading it is listed under, and its place in the program list.
     group: str
@@ -191,5 +193,4 @@ class RunContext:
             raise Cancelled("run stopped")
 
 
-# Programs keep their key at the registration site, not on the class.
-program_registry: Registry[Program] = Registry("ProgramRegistry", Program, stamp=None)
+program_registry: Registry[Program] = Registry("ProgramRegistry", Program)

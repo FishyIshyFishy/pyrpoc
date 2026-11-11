@@ -8,7 +8,7 @@ from dataclasses import dataclass
 
 from PyQt6.QtCore import QObject, pyqtSignal
 
-from pyrpoc.core.device import Device, DeviceError, device_registry
+from pyrpoc.core.device import Connection, Device, DeviceError, device_registry
 
 log = logging.getLogger(__name__)
 
@@ -113,18 +113,15 @@ class DeviceInventory(QObject):
         self.device_changed()
 
     def test_device(self, device: Device) -> None:
-        """Check the device is reachable, and keep the result."""
+        """Check a ``TESTABLE`` device is reachable, and keep the result."""
         status = self.status[device]
-        if device.owns_connection:
-            # A hardware boundary: the SDK raises whatever it raises.
-            try:
-                status.last_test_ok = device.check_reachable()
-                status.last_error = None
-            except Exception as exc:
-                status.last_test_ok = False
-                status.last_error = str(exc)
-        else:
-            status.last_test_ok = True
+        # A hardware boundary: the SDK raises whatever it raises.
+        try:
+            status.last_test_ok = device.check_reachable()
+            status.last_error = None
+        except Exception as exc:
+            status.last_test_ok = False
+            status.last_error = str(exc)
         self.device_changed()
 
     def request_panel(self, device: Device, show: bool) -> None:
@@ -148,7 +145,7 @@ class DeviceInventory(QObject):
         failed = [
             device
             for device in self.devices
-            if device.holds_session
+            if device.connection is Connection.SESSION
             and not device.session_open
             and not self.try_open_session(device)
         ]

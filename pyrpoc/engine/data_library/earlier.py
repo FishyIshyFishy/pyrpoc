@@ -1,4 +1,4 @@
-"""The outputs of finished recordings in an Experiment that later runs can read, and the
+"""The outputs of completed recordings in an Experiment that later runs can read, and the
 recordings there that cannot be read."""
 
 from __future__ import annotations
@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from pyrpoc.core.program_output import ProgramOutput, program_output_registry
+from pyrpoc.core.recording import Outcome
 
 from .format import META_SUFFIX, RecordingError, read_record, recordings_in
 
@@ -32,9 +33,9 @@ class Unreadable:
 
 
 def earlier_outputs(folder: Path) -> tuple[list[EarlierOutput], list[Unreadable]]:
-    """Every output of a known type in a recording in ``folder`` that ended without an error,
-    newest first, and the recordings there that cannot be read."""
-    # One still being written, or one that failed, is nothing a later run should build on.
+    """Every output of a known type in a recording in ``folder`` whose run completed, newest
+    first, and the recordings there that cannot be read."""
+    # One still being written, stopped partway or failed is nothing a later run should build on.
     found: list[EarlierOutput] = []
     unreadable: list[Unreadable] = []
     for meta_path in recordings_in(folder):
@@ -43,7 +44,7 @@ def earlier_outputs(folder: Path) -> tuple[list[EarlierOutput], list[Unreadable]
         except RecordingError as exc:
             unreadable.append(Unreadable(meta_path, str(exc)))
             continue
-        if record.ended_at is None or record.last_error:
+        if record.outcome is not Outcome.COMPLETED:
             continue
         stem = meta_path.name.removesuffix(META_SUFFIX)
         for output, entry in record.outputs.items():

@@ -1,9 +1,5 @@
 """What a multisite step needs before it starts, beyond what the engine judges for every program:
-a folder holding only the steps it reads, steps read that ran to their end, and for a loop,
-units it can start on."""
-
-# A step stopped partway still ends without an error, so the engine sets it as the input; refusing
-# it here, before the run opens, beats the run failing on it.
+a folder holding only the steps it reads, and for a loop, units it can start on."""
 
 from __future__ import annotations
 
@@ -13,7 +9,7 @@ from typing import Any
 from pyrpoc.core.program import PreflightContext
 from pyrpoc.core.program_input import ProgramInput
 from pyrpoc.core.program_output import ProgramOutput
-from pyrpoc.plugins.program_io.inputs import CALIBRATION, SURVEY, UNITS
+from pyrpoc.plugins.program_io.inputs import SURVEY, UNITS
 
 from ..stages.loop.orchestrator import fits
 from .scratch import Scratch
@@ -36,23 +32,6 @@ def clean_folder(
     return [f"a folder holding only what it reads (move out {', '.join(extra)})"]
 
 
-def calibration_measured(ctx: PreflightContext) -> list[str]:
-    """Refuses a calibration read whose run was stopped before it measured."""
-    calibration = ctx.inputs[CALIBRATION]
-    if calibration is None or calibration.calibration is not None:
-        return []
-    name = calibration.recording.name
-    return [f"a calibration that finished ({name} was stopped before it measured)"]
-
-
-def survey_finished(ctx: PreflightContext) -> list[str]:
-    """Refuses a survey read whose run was stopped before it made its overview."""
-    survey = ctx.inputs[SURVEY]
-    if survey is None or survey.finding is not None:
-        return []
-    return [f"a survey that finished ({survey.recording.name} was stopped before its overview)"]
-
-
 def starting_units(ctx: PreflightContext) -> list[str]:
     """Refuses a fresh loop with no units drawn, or with units larger than one field of the
     survey read. A loop carried on starts from its scratch instead, so it is refused if units
@@ -68,11 +47,10 @@ def starting_units(ctx: PreflightContext) -> list[str]:
     if not units:
         return ["at least one unit drawn over the survey"]
     survey = ctx.inputs[SURVEY]
-    # An unfinished survey may hold no tile to size a field by; survey_finished refuses it.
-    if survey is None or survey.finding is None:
+    # The engine names a survey not yet read among what the run needs.
+    if survey is None:
         return []
-    pixels = survey[0].shape[-1]
-    too_large = sum(not fits(unit, survey.um_per_px, pixels) for unit in units)
+    too_large = sum(not fits(unit, survey.um_per_px, survey.field_pixels) for unit in units)
     if not too_large:
         return []
     return [f"units that each fit in one field ({too_large} of {len(units)} are larger)"]

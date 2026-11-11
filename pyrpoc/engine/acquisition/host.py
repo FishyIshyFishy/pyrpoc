@@ -9,25 +9,26 @@ from PyQt6.QtCore import QObject, pyqtSignal
 
 from pyrpoc.core.program import Program
 from pyrpoc.core.program_input import ProgramInputs
+from pyrpoc.core.recording import Outcome
 from pyrpoc.core.runner import Control
 from pyrpoc.engine.acquisition.executor import Run
 from pyrpoc.engine.acquisition.runs import Runs
+
+from .earlier import earlier_inputs
 
 
 class RunnerSession:
     """The context one program's runners are attached with, and the runs they started; once
     ``closed``, it starts nothing and tells its runners nothing."""
 
-    def __init__(self, host: RunnerHost, key: str, program: type[Program]):
+    def __init__(self, host: RunnerHost, program: type[Program]):
         self.host = host
-        self.key = key
         self.program = program
         self.controls: list[Control] = []
         self.started: list[Callable[[], None]] = []
         self.ended: list[Callable[[bool], None]] = []
         self.input_watchers: list[Callable[[str], None]] = []
         self.runs: list[Run] = []
-        self.failed: set[Run] = set()
         self.closed = False
 
     @property
@@ -80,8 +81,7 @@ class RunnerSession:
     def release(self, run: Run) -> None:
         """Drop a run that has ended, then tell its runners how it went."""
         self.runs.remove(run)
-        completed = not run.cancel.is_set() and run not in self.failed
-        self.failed.discard(run)
+        completed = run.recording.outcome is Outcome.COMPLETED
         for callback in list(self.ended):
             callback(completed)
 
@@ -99,7 +99,6 @@ class RunnerHost(QObject):
         self.inputs = inputs
         self.slot: RunnerSession | None = None
 
-        runs.events.run_failed.connect(self.note_failure)
         runs.events.run_finished.connect(self.forget)
         inputs.subscribe(self.on_input_changed)
 
@@ -112,10 +111,13 @@ class RunnerHost(QObject):
         """Whether a run the selected program's runners started is going."""
         return self.slot is not None and self.slot.running
 
-    def attach(self, key: str, program: type[Program]) -> None:
+    def attach(self, program: type[Program]) -> None:
         """Replace whatever is attached with ``program``'s runners."""
         self.detach()
-        slot = RunnerSession(self, key, program)
+        if earlier_inputs(program.inputs):
+            # The folder may have changed outside the app since it was last looked at.
+            self.runs.refresh_earlier()
+        slot = RunnerSession(self, program)
         self.slot = slot
         for runner in program.runners:
             runner.attach(slot)
@@ -133,18 +135,13 @@ class RunnerHost(QObject):
 
     def start(self, slot: RunnerSession, repeat: bool) -> None:
         """Start ``slot``'s program with what the workbench holds right now."""
-        self.runs.start(slot.key, repeat, slot.claim)
+        self.runs.start(slot.program, repeat, slot.claim)
 
     def stop(self) -> None:
         """Stop every run the selected program's runners started."""
         if self.slot is not None:
             for run in self.slot.runs:
                 run.stop()
-
-    def note_failure(self, run: Run, message: str) -> None:
-        del message
-        if self.slot is not None and run in self.slot.runs:
-            self.slot.failed.add(run)
 
     def forget(self, run: Run) -> None:
         """Drop a finished run."""

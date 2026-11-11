@@ -25,10 +25,10 @@ L = TypeVar("L", bound=Listed)
 
 
 class Registry(Generic[T]):
-    def __init__(self, name: str, base_class: type[T], *, stamp: str | None = "registry_key"):
+    def __init__(self, name: str, base_class: type[T], *, stamp: str = "registry_key"):
         self.name = name
         self.base_class = base_class
-        # The class attribute to record the key on, or None to leave the class alone.
+        # The class attribute each registered class records its key on.
         self.stamp = stamp
         self.entries: dict[str, type[T]] = {}
 
@@ -46,8 +46,7 @@ class Registry(Generic[T]):
         if key in self.entries:
             raise KeyError(f"{key!r} is already registered in {self.name}")
         self.entries[key] = cls
-        if self.stamp is not None:
-            setattr(cls, self.stamp, key)
+        setattr(cls, self.stamp, key)
 
     def keys(self) -> list[str]:
         return sorted(self.entries)

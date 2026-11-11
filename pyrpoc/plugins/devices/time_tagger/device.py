@@ -8,7 +8,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Protocol
 
-from pyrpoc.core.device import Device, DeviceConfig, DeviceError, device_registry
+from pyrpoc.core.device import Connection, Device, DeviceConfig, DeviceError, device_registry
 from pyrpoc.utils.value_rules import float_field, int_field
 
 
@@ -62,7 +62,7 @@ class TaggerConfig(DeviceConfig):
 @device_registry.register("time_tagger")
 class TimeTagger(Device):
     display_name = "Swabian TimeTagger"
-    owns_connection = True
+    connection = Connection.TESTABLE
     config_cls = TaggerConfig
 
     config: TaggerConfig
