@@ -44,9 +44,8 @@ class ProgramOutput:
         """The output written to ``files``, keyed as ``paths`` was."""
         raise NotImplementedError
 
-    def close(self, error: Exception | None) -> None:
+    def close(self) -> None:
         """Finish its files: nothing more will be added."""
-        del error
 
     def subscribe(self, callback: Callable[[ProgramOutput], None]) -> None:
         with self.lock:

@@ -1,14 +1,14 @@
 """The NI-DAQ card: its device name, and which analog inputs are wired."""
 
 # Analog inputs are a property of the card, not the scanner, so they live here.
-# ``owns_connection`` means the card can be verified, not that it holds a handle: NI tasks are
+# ``TESTABLE``, not ``SESSION``: the card can be verified, but holds no handle. NI tasks are
 # created per scan by the programs that use them.
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 
-from pyrpoc.core.device import Device, DeviceConfig, DeviceError, device_registry
+from pyrpoc.core.device import Connection, Device, DeviceConfig, DeviceError, device_registry
 from pyrpoc.utils.value_rules import channels_field, text_field
 
 
@@ -29,7 +29,7 @@ class DaqConfig(DeviceConfig):
 @device_registry.register("daq")
 class DAQ(Device):
     display_name = "NI-DAQ"
-    owns_connection = True
+    connection = Connection.TESTABLE
     config_cls = DaqConfig
 
     config: DaqConfig

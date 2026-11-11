@@ -1,13 +1,14 @@
 """The common rules a value follows: whole numbers, decimals, text, paths, yes/no, a choice
-from a list, and a set of channels."""
+from a list, a set of channels, and an output of an earlier recording."""
 
 from __future__ import annotations
 
 from collections.abc import Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from pyrpoc.core.program_input import Field, ParameterError
+from pyrpoc.core.program_output import ProgramOutput
 
 
 @dataclass(frozen=True)
@@ -121,3 +122,22 @@ class ChannelsField(Field):
 
     def encode(self, value: Any) -> Any:
         return list(value)
+
+
+@dataclass(frozen=True)
+class EarlierOutputField(Field):
+    """An output of an earlier recording in the save folder, of ``output_type``, or None while
+    the folder holds none. The engine sets it; no form edits it."""
+
+    output_type: type[ProgramOutput] = field(kw_only=True)
+
+    def coerce(self, value: Any) -> ProgramOutput | None:
+        if value is None or isinstance(value, self.output_type):
+            return value
+        raise ParameterError(f"{self.label}: expected a {self.output_type.__name__}")
+
+    def encode(self, value: ProgramOutput | None) -> Any:
+        # Which recording and output it was, so a recording's parameters say what it read.
+        if value is None:
+            return None
+        return {"recording": value.recording.name, "output": value.name}

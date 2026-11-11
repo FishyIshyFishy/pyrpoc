@@ -8,29 +8,25 @@ filling one recording, in parts."""
 from __future__ import annotations
 
 import threading
-from collections.abc import Callable, Mapping
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
 from pyrpoc.core.device import Device
 from pyrpoc.core.program import Cancelled, Program, RunContext
-from pyrpoc.core.program_output import ProgramOutput
-from pyrpoc.core.recording import EarlierRead, Recording, RecordingPart, utc_now
-from pyrpoc.engine.acquisition.program_inputs import ProgramInputsStore
+from pyrpoc.core.recording import Outcome, Recording, RecordingPart, utc_now
 from pyrpoc.engine.acquisition.save_target import SaveTarget
-from pyrpoc.engine.data_library.earlier import EarlierOutput
 from pyrpoc.engine.data_library.saving import RecordingSaver, save_location
 from pyrpoc.engine.data_library.store import LibraryStore
 
 from . import claims
 from .inbox import RunInbox, device_state
-from .readiness import NotReady, StartingRun, missing
+from .preflight import NotReady, Preflight, Start
 
 
 class Run:
     """One execution of one program: the recording it fills, where its files go and its saver,
-    the earlier outputs it reads, its inbox, whether it repeats, and whether it is still
-    going."""
+    its inbox, whether it repeats, and whether it is still going."""
 
     def __init__(
         self,
@@ -40,7 +36,6 @@ class Run:
         recording: Recording,
         root: Path | None,
         saver: RecordingSaver | None,
-        earlier: dict[str, ProgramOutput],
         inbox: RunInbox,
         repeat: bool,
     ):
@@ -50,7 +45,6 @@ class Run:
         self.recording = recording
         self.root = root
         self.saver = saver
-        self.earlier = earlier
         self.inbox = inbox
         self.repeat = repeat
         self.cancel = threading.Event()
@@ -85,49 +79,35 @@ class Executor:
         self._run_id = 0
         self._lock = threading.RLock()
 
-    def start(
-        self,
-        program: Program,
-        inputs: ProgramInputsStore,
-        inventory: list[Device],
-        *,
-        program_key: str,
-        save: SaveTarget,
-        note: str,
-        earlier: Mapping[str, EarlierOutput],
-        load: Callable[[EarlierOutput], ProgramOutput],
-        repeat: bool,
-    ) -> Run:
-        """Start ``program`` on a worker thread of its own, filling a new recording that
-        ``note`` goes to. ``earlier`` is the output chosen for each name it reads, and ``load``
-        gives its content. Raises ``NotReady``, ``DeviceBusy``, ``ParameterError``,
-        ``RecordingError`` or ``LibraryFull`` before anything starts."""
-        # Loaded outside the lock: loading files must not hold up another run starting.
-        start = StartingRun(save.folder, inputs.values_for(program.inputs), earlier, load)
-        needs = missing(type(program), inventory, save, start)
-        if needs:
-            raise NotReady(needs)
-        read = {name: load(each) for name, each in earlier.items()}
+    def preflight(self, start: Start) -> list[str]:
+        """Everything ``start`` still needs; empty when it may start."""
         with self._lock:
-            devices = claims.resolve(list(program.devices), inventory)
-            self.leases.check(devices.values())
-            inputs.validate(program.inputs)
-            self.library.check_room()
+            return Preflight(start, self.leases.held(), self.library).blockers()
+
+    def start(self, start: Start, *, note: str, repeat: bool) -> Run:
+        """Start the program on a worker thread of its own, filling a new recording that
+        ``note`` goes to. Raises ``NotReady``, listing everything it needs, before anything
+        opens."""
+        # Judged under the lock, so no other run can take a device between judging and claiming.
+        with self._lock:
+            needs = self.preflight(start)
+            if needs:
+                raise NotReady(needs)
+            program = start.program
+            devices = claims.resolve(list(program.devices), start.inventory)
             self._run_id += 1
-            reads = {
-                name: EarlierRead(each.meta_path.name, each.output)
-                for name, each in earlier.items()
-            }
-            recording, root, saver = self.open_recording(program_key, reads, save, note)
-            inbox = RunInbox(program, inputs, devices, None if saver is None else saver.log_taken)
-            run = Run(program, self._run_id, devices, recording, root, saver, read, inbox, repeat)
+            recording, root, saver = self.open_recording(program.registry_key, start.save, note)
+            inbox = RunInbox(
+                program, start.inputs, devices, None if saver is None else saver.log_taken
+            )
+            run = Run(program, self._run_id, devices, recording, root, saver, inbox, repeat)
             self.leases.take(run.id, devices.values())
             ctx = self.begin_part(run)
             self.launch(run, ctx)
         return run
 
     def open_recording(
-        self, program_key: str, reads: dict[str, EarlierRead], save: SaveTarget, note: str
+        self, program_key: str, save: SaveTarget, note: str
     ) -> tuple[Recording, Path | None, RecordingSaver | None]:
         """A new recording with no parts yet, where its files go, and its saver if saving is
         on."""
@@ -145,10 +125,10 @@ class Executor:
             name=name,
             started_at=utc_now(),
             parts=[],
-            reads=reads,
             location=meta_path,
             note=note,
             finished=False,
+            outcome=None,
         )
         saver = None if meta_path is None else RecordingSaver(recording, meta_path)
         return recording, root, saver
@@ -181,7 +161,6 @@ class Executor:
         return RunContext(
             inputs=run.inbox.given(),
             inbox=run.inbox,
-            earlier=run.earlier,
             devices=run.devices,
             outputs=outputs,
             cancel=run.cancel,
@@ -212,7 +191,8 @@ class Executor:
 
     def worker(self, run: Run, ctx: RunContext) -> None:
         # The run boundary: whatever a program raises becomes a reported failure.
-        error: Exception | None = None
+        outcome = Outcome.COMPLETED
+        failures: list[str] = []
         try:
             run.program.run(ctx)
             while run.repeat and not run.winding_down.is_set():
@@ -221,41 +201,51 @@ class Executor:
                     ctx = self.begin_part(run)
                 run.program.run(ctx)
         except Cancelled:
-            pass  # a clean stop, not a failure: what the Stop button does
+            outcome = Outcome.STOPPED  # a clean stop, not a failure: what the Stop button does
         except Exception as exc:
-            error = exc
-            self.callbacks.on_failed(run, str(exc))
+            outcome, failures = Outcome.FAILED, [str(exc)]
         finally:
-            self.finalize(run, error)
+            self.finalize(run, outcome, failures)
 
-    def finalize(self, run: Run, error: Exception | None) -> None:
+    def finalize(self, run: Run, outcome: Outcome, failures: list[str]) -> None:
         """Let the run's devices go, then close its recording."""
         # Reported rather than raised: this runs on the worker thread after the program. The
         # devices are let go first, since nothing of the run touches them any more.
         with self._lock:
             self.leases.release(run.id)
             run.running = False
-        for message in close_recording(run.recording, run.saver, error):
+        for message in close_recording(run.recording, run.saver, outcome, failures):
             self.callbacks.on_failed(run, message)
         self.callbacks.on_finished(run)
 
 
 def close_recording(
-    recording: Recording, saver: RecordingSaver | None, error: Exception | None
+    recording: Recording, saver: RecordingSaver | None, outcome: Outcome, failures: list[str]
 ) -> list[str]:
-    """Close the recording's outputs, then its saver, returning every failure's message."""
+    """Close the recording's outputs, then its saver, and set how its run ended: failed if the
+    run or any closing failed. Returns every failure's message, the run's own first."""
+    failures = [
+        *failures,
+        *closing_failures([output.close for output in recording.outputs.values()]),
+    ]
+    recording.outcome = Outcome.FAILED if failures else outcome
+    if saver is not None:
+        first = failures[0] if failures else None
+        failures += closing_failures([lambda: saver.finalize(first)])
+    if failures:
+        recording.outcome = Outcome.FAILED
+    recording.finished = True
+    return failures
+
+
+def closing_failures(closers: list[Callable[[], None]]) -> list[str]:
+    """Call every closer, returning each failure's message."""
     # Collected rather than raised: a failed save is still a failure, and the other closers
     # must still run. Closing writes files, which raise whatever their library raises.
-    closers: list[Callable[[], None]] = [
-        lambda output=output: output.close(error) for output in recording.outputs.values()
-    ]
-    if saver is not None:
-        closers.append(lambda: saver.finalize(error))
-    errors: list[str] = []
+    failures: list[str] = []
     for close in closers:
         try:
             close()
         except Exception as exc:
-            errors.append(str(exc))
-    recording.finished = True
-    return errors
+            failures.append(str(exc))
+    return failures

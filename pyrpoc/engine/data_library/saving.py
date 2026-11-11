@@ -56,10 +56,10 @@ class RecordingSaver:
         """Put a new part of the recording, and its outputs, on disk at once."""
         self.write_metadata(ended_at=None, last_error=None)
 
-    def finalize(self, error: Exception | None) -> None:
-        """Rewrite the metadata."""
+    def finalize(self, last_error: str | None) -> None:
+        """Rewrite the metadata once the run has ended, with its outcome and its first failure."""
         # The program outputs are closed first, so every output's paths are complete by now.
-        self.write_metadata(ended_at=utc_now(), last_error=str(error) if error else None)
+        self.write_metadata(ended_at=utc_now(), last_error=last_error)
 
     def write_metadata(self, *, ended_at: str | None, last_error: str | None) -> None:
         with self.lock:
@@ -74,6 +74,7 @@ class RecordingSaver:
             started_at=recording.started_at,
             ended_at=ended_at,
             last_error=last_error,
+            outcome=recording.outcome,
             parts=list(recording.parts),
             outputs={
                 name: output_record(program_output, self.meta_path.parent)
@@ -81,7 +82,6 @@ class RecordingSaver:
             },
             # Read each time: the note may be edited while the recording runs.
             notes=recording.note,
-            inputs=recording.reads,
             taken=list(self.taken),
         )
 

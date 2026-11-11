@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
-from pyrpoc.core.program import RunContext
+from pyrpoc.core.program import RunContext, program_registry
 from pyrpoc.plugins.devices.simulated import SimulatedScanner
 
 from ...building_blocks.multisite import CalibrationProgram, Microscope
 from ..dish_microscope import DishMicroscope
 
 
+@program_registry.register("simulated_galvo_calibration")
 class SimulatedGalvoCalibration(CalibrationProgram):
     display_name = "Galvo Calibration"
     group = "Simulations"

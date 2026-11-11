@@ -14,7 +14,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from pyrpoc.utils.widgets.device_panel import DeviceLink, DevicePanel
+from pyrpoc.utils.widgets.device_panel import DeviceLink, DevicePanel, device_panel_registry
 from pyrpoc.utils.widgets.param_form import ConfigValues, ParamForm, config_form_section
 
 from .dish import SimulatedDish
@@ -24,6 +24,7 @@ TRAVEL_UM = 1e6
 POLL_MS = 200
 
 
+@device_panel_registry.register("simulated_dish")
 class SimulatedDishPanel(DevicePanel):
     def __init__(self, device: SimulatedDish, link: DeviceLink) -> None:
         super().__init__(device, link)

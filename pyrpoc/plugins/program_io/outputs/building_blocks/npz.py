@@ -19,7 +19,7 @@ class NpzStack(ArrayStack):
 
     # Buffered: an npz cannot be appended to, and everything is held in memory anyway.
 
-    def close(self, error: Exception | None) -> None:
+    def close(self) -> None:
         if self.root is not None and self.arrays:
             path = self.root.with_name(f"{self.root.name}_{self.name}.npz")
             np.savez_compressed(
@@ -29,7 +29,7 @@ class NpzStack(ArrayStack):
                 **self.extra(),
             )
             self.paths = {self.name: path}
-        super().close(error)
+        super().close()
 
     def extra(self) -> dict[str, Any]:
         """More arrays to save beside the data, read back by ``take_extra``."""

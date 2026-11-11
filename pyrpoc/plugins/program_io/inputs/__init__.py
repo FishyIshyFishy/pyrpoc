@@ -8,6 +8,7 @@ from __future__ import annotations
 from .camera import CAMERA_BINNED, CAMERA_EXPOSURE_MS, CAMERA_GAIN_PCT, CameraSettings
 from .ccd_readout import CCD_EXPOSURE_S, CCD_FRAMES_TO_AVERAGE
 from .daq import SAMPLE_RATE_MHZ, rate_hz
+from .earlier import CALIBRATION, SURVEY
 from .focus_search import (
     FOCUS_FINAL_STEP_UM,
     FOCUS_INITIAL_STEP_UM,
@@ -53,6 +54,8 @@ from .trigger import FRAME_TRIGGER_PFI, PIXEL_CLOCK_CTR, PIXEL_CLOCK_PFI, Trigge
 from .units import UNITS, UnitsField
 
 __all__ = [
+    "CALIBRATION",
+    "SURVEY",
     "DURATION_MIN",
     "DWELL_TIME_US",
     "EXTRA_LEFT",

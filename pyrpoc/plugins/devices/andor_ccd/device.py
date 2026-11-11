@@ -27,7 +27,7 @@ from typing import Any, Literal
 
 import numpy as np
 
-from pyrpoc.core.device import Device, DeviceConfig, device_registry
+from pyrpoc.core.device import Connection, Device, DeviceConfig, device_registry
 from pyrpoc.utils.value_rules import int_field, path_field
 
 from .sdk import ACQUIRING, IDLE, AndorError, AndorSession, Temperature, code_name
@@ -118,8 +118,7 @@ def clipped(counts: np.ndarray, accumulations: int) -> bool:
 @device_registry.register("andor_ccd")
 class AndorCCD(Device):
     display_name = "Andor CCD"
-    owns_connection = True
-    holds_session = True
+    connection = Connection.SESSION
     config_cls = AndorCcdConfig
 
     config: AndorCcdConfig
@@ -148,10 +147,6 @@ class AndorCCD(Device):
         session = self.require_session()
         self.session = None
         session.close()
-
-    def check_reachable(self) -> bool:
-        self.require_session().temperature()
-        return True
 
     def require_session(self) -> AndorSession:
         if self.session is None:

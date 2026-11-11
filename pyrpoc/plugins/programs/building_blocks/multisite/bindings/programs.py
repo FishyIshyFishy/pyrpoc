@@ -1,13 +1,12 @@
 """``CalibrationProgram``, ``SurveyProgram`` and ``LoopProgram``: the three kinds of multisite
-program. Each declares what every program of its kind reads, fills and is checked for, and runs
-its stage; a program subclasses one and gives its microscope and its own inputs."""
+program. Each declares what every program of its kind reads and fills, what it needs before it
+starts, and runs its stage; a program subclasses one and gives its microscope and its own inputs."""
 
 from __future__ import annotations
 
 from typing import Any
 
-from pyrpoc.core.check import Check
-from pyrpoc.core.program import Program, RunContext
+from pyrpoc.core.program import PreflightContext, Program, RunContext
 from pyrpoc.core.program_input import ProgramInput
 from pyrpoc.core.runner import Runner
 from pyrpoc.plugins.program_io.inputs import SCAN_GEOMETRY_INPUTS, ScanGeometry
@@ -16,10 +15,8 @@ from ...runners import Single
 from ..interfaces.microscope import Microscope
 from ..stages.loop.routine import RoutineSpec
 from .calibration import CALIBRATION_EMITS, run_calibration
-from .clean_folder import CleanFolder
-from .finished_reads import CalibrationMeasured, SurveyFinished
 from .loop import LOOP_EMITS, LOOP_FOCUS_INPUTS, LOOP_READS, LOOP_UNITS, run_loop
-from .starting_units import StartingUnits
+from .preflight import clean_folder, starting_units
 from .survey import (
     REGION_INPUTS,
     SURVEY_EMITS,
@@ -40,7 +37,9 @@ class CalibrationProgram(Program):
     cards = {"Scan": SCAN_GEOMETRY_INPUTS}
     emits = CALIBRATION_EMITS
     runners = RUNNERS
-    checks: list[Check] = [CleanFolder(carries_on=False)]
+
+    def preflight(self, ctx: PreflightContext) -> list[str]:
+        return clean_folder(ctx, [], carries_on=False)
 
     def microscope(self, ctx: RunContext) -> Microscope:
         """The instrument the run claimed."""
@@ -53,12 +52,19 @@ class CalibrationProgram(Program):
 class SurveyProgram(Program):
     """Maps a region from the stage's corner, with the calibration read."""
 
-    inputs: list[ProgramInput[Any]] = [*REGION_INPUTS, *TILE_INPUTS, *SURVEY_FOCUS_INPUTS]
+    # The calibration has no row: the engine sets it from the save folder.
+    inputs: list[ProgramInput[Any]] = [
+        *REGION_INPUTS,
+        *TILE_INPUTS,
+        *SURVEY_FOCUS_INPUTS,
+        *SURVEY_READS,
+    ]
     cards = {"Region": REGION_INPUTS, "Tiles": TILE_INPUTS, "Focus Search": SURVEY_FOCUS_INPUTS}
-    reads = SURVEY_READS
     emits = SURVEY_EMITS
     runners = RUNNERS
-    checks: list[Check] = [CleanFolder(carries_on=False), CalibrationMeasured()]
+
+    def preflight(self, ctx: PreflightContext) -> list[str]:
+        return clean_folder(ctx, SURVEY_READS, carries_on=False)
 
     def microscope(self, ctx: RunContext) -> Microscope:
         """The instrument the run claimed."""
@@ -76,19 +82,19 @@ class LoopProgram(Program):
     """Runs its routines on the units drawn over the survey read, taking edits to them live,
     and carries on a loop cut short in its folder."""
 
-    # The units have no row: they are drawn over the survey.
-    inputs: list[ProgramInput[Any]] = [*LOOP_UNITS, *LOOP_FOCUS_INPUTS]
+    # The units have no row: they are drawn over the survey. Nor do the survey and calibration:
+    # the engine sets them from the save folder.
+    inputs: list[ProgramInput[Any]] = [*LOOP_UNITS, *LOOP_FOCUS_INPUTS, *LOOP_READS]
     cards = {"Focus": LOOP_FOCUS_INPUTS}
     live: list[ProgramInput[Any]] = [*LOOP_UNITS]
-    reads = LOOP_READS
     emits = LOOP_EMITS
     runners = RUNNERS
-    checks: list[Check] = [
-        CleanFolder(carries_on=True),
-        CalibrationMeasured(),
-        SurveyFinished(),
-        StartingUnits(),
-    ]
+
+    def preflight(self, ctx: PreflightContext) -> list[str]:
+        return [
+            *clean_folder(ctx, LOOP_READS, carries_on=True),
+            *starting_units(ctx),
+        ]
 
     def microscope(self, ctx: RunContext) -> Microscope:
         """The instrument the run claimed."""

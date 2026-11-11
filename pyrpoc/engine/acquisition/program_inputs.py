@@ -42,11 +42,6 @@ class ProgramInputsStore:
         if callback in self._subscribers:
             self._subscribers.remove(callback)
 
-    def validate(self, inputs: Sequence[ProgramInput[Any]]) -> None:
-        """Re-check the current value of each of ``inputs`` against its rules."""
-        for each in inputs:
-            each.rule.coerce(self.get(each.key))
-
     def values_for(self, inputs: Sequence[ProgramInput[Any]]) -> ProgramInputValues:
         """The current values of ``inputs``, which a run keeps however they change later."""
         return ProgramInputValues({each.key: self.get(each.key) for each in inputs})

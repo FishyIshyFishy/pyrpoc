@@ -68,9 +68,14 @@ class LibraryStore:
     def over_limit(self) -> bool:
         return self.nbytes > self.limit_bytes
 
+    @property
+    def full(self) -> bool:
+        """Over the limit with nothing to free room, so new data is refused."""
+        return self.over_limit and not self.auto_purge
+
     def check_room(self) -> None:
-        """Refuse new data while over the limit with nothing to free room."""
-        if self.over_limit and not self.auto_purge:
+        """Refuse new data while full."""
+        if self.full:
             raise LibraryFull(
                 f"The data library holds {gib(self.nbytes)}, over its "
                 f"{gib(self.limit_bytes)} limit. Close recordings in the Data Library "

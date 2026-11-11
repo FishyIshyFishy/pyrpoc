@@ -16,8 +16,10 @@ from .store import LibraryFull, LibraryStore
 
 
 class LibraryModel(QObject):
-    # A program output changed. Emitted from the thread that changed it; Qt
-    # delivers it on the GUI thread, which is the only one panels may touch.
+    # Which recordings are open, or what they hold, changed. Emitted from the thread that changed
+    # the store; Qt delivers it on the GUI thread, which is the only one panels may touch.
+    changed = pyqtSignal()
+    # A program output changed, delivered the same way.
     output_changed = pyqtSignal(object)
     auto_purge_changed = pyqtSignal(bool)
     # Why a recording could not be loaded. Reported, not raised: every caller
@@ -37,8 +39,11 @@ class LibraryModel(QObject):
         self._purge_timer.setInterval(0)
         self._purge_timer.timeout.connect(self.purge)
         self.output_changed.connect(lambda _output: self.schedule_purge())
+        self.changed.connect(self.schedule_purge)
+        # Called at once, on the thread that changed the store, so a new output is followed
+        # before its run adds to it. Subscribing to an output is safe from any thread.
         store.subscribe(self.relay_new_outputs)
-        store.subscribe(self.schedule_purge)
+        store.subscribe(self.changed.emit)
 
     def relay_new_outputs(self) -> None:
         """Follow every output of every open recording."""
@@ -54,10 +59,11 @@ class LibraryModel(QObject):
         return self.store.recordings()
 
     def subscribe(self, callback: Callable[[], None]) -> None:
-        self.store.subscribe(callback)
+        """Call ``callback`` on the GUI thread after every change."""
+        self.changed.connect(callback)
 
     def unsubscribe(self, callback: Callable[[], None]) -> None:
-        self.store.unsubscribe(callback)
+        self.changed.disconnect(callback)
 
     @property
     def nbytes(self) -> int:

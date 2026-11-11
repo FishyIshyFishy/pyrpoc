@@ -134,6 +134,16 @@ class SurveyOutput(MosaicOutput):
         self.paths |= {f"{OVERVIEW_PREFIX}{label}": path for label, path in files.items()}
 
     @property
+    def field_pixels(self) -> int:
+        """The side of one field, in pixels: one tile's width."""
+        return self[0].shape[-1]
+
+    @property
+    def field_um(self) -> float:
+        """The side of one field, in µm."""
+        return self.field_pixels * self.um_per_px
+
+    @property
     def nbytes(self) -> int:
         extra = 0 if self.overview_planes is None else self.overview_planes.nbytes
         return super().nbytes + extra

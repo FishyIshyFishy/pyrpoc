@@ -12,13 +12,13 @@ Programs import only this package's root (`__init__.py`). Everything below it is
 ## Programs
 A multisite program subclasses one of three bases in `bindings/programs.py`:
 
-| Base | Reads | Fills | Is checked for | The program gives |
+| Base | Reads | Fills | Needs before it starts | The program gives |
 |---|---|---|---|---|
-| `CalibrationProgram` | | `calibration`, `view`, `log` | `CleanFolder` | `microscope` |
-| `SurveyProgram` | `calibration` | `survey`, `log` | `CleanFolder`, `CalibrationMeasured` | `microscope`, `overscan` |
-| `LoopProgram` | `survey`, `calibration` | `log`, `units`, `frames` | all four checks below | `microscope`, `overscan`, `routines` |
+| `CalibrationProgram` | | `calibration`, `view`, `log` | `clean_folder` | `microscope` |
+| `SurveyProgram` | `calibration` | `survey`, `log` | `clean_folder` | `microscope`, `overscan` |
+| `LoopProgram` | `survey`, `calibration` | `log`, `units`, `frames` | both below | `microscope`, `overscan`, `routines` |
 
-Each base also declares the inputs its stage reads, with their cards, and `run`s its stage. A program adds its devices, its own inputs (extending the base's `inputs`, `cards` and, for a loop, `live`), and where it is listed. Two programs of a kind therefore always read, fill and refuse the same things, so a panel can rely on what every multisite program publishes.
+"Reads" are program inputs too (`CALIBRATION`, `SURVEY`), with no card: the engine sets each to the newest output of its type in the save folder whose run completed, so a step stopped partway is never read. Each base also declares the inputs its stage reads, with their cards, and `run`s its stage. A program adds its devices, its own inputs (extending the base's `inputs`, `cards` and, for a loop, `live`), and where it is listed. Two programs of a kind therefore always read, fill and refuse the same things, so a panel can rely on what every multisite program publishes.
 
 ## Layers
 Each layer imports only the layers below it. `uv run lint-imports` enforces this.
@@ -58,10 +58,9 @@ Every stage logs typed events through its sink as it works, and each binding wri
 A loop is doing the latest `LoopActivity` until the `UnitScanned` after it; with none since, it is waiting for the next step due. `LoopLogOutput.view().doing` works this out.
 
 ## Before a stage starts
-Each program declares the checks its stage needs, so a start that cannot work is refused before its recording opens:
-- `CleanFolder`: the folder holds only the earlier steps it reads (and, for a loop, the runs of a loop it carries on).
-- `CalibrationMeasured` and `SurveyFinished`: the steps it reads ran to their end, not stopped partway.
-- `StartingUnits`: a fresh loop has units drawn, each fitting in one field of the survey; a loop carried on has none drawn, since it starts from its scratch.
+Each base's `preflight` asks what its stage needs (`bindings/preflight.py`), so a start that cannot work is refused before its recording opens, in the same list as everything else it needs:
+- `clean_folder`: the folder holds only the earlier steps it reads (and, for a loop, the runs of a loop it carries on).
+- `starting_units`: a fresh loop has units drawn, each fitting in one field of the survey; a loop carried on has none drawn, since it starts from its scratch.
 
 ## Units in a loop
 - **Identity.** A `Unit` has a key it keeps for life, made by `Unit.new` wherever the unit comes from: drawn by a person or found by software. The loop gives each unit a number as it joins (`Roster`) and never gives a number twice, so a unit deleted and drawn again is a new unit with a new number.
@@ -77,11 +76,11 @@ Each program declares the checks its stage needs, so a start that cannot work is
 While a loop runs, it keeps `loop_scratch.jsonl` in its folder: the name of each recording that ran it, and a copy of every event. When every routine has ended, the scratch goes.
 
 If a loop is stopped or cut short, the scratch stays. Starting the loop again in that folder carries it on:
-- `CleanFolder(carries_on=True)` lets the recordings the scratch names stay in the folder;
+- `clean_folder(carries_on=True)` lets the recordings the scratch names stay in the folder;
 - `resumption()` replays the events into each unit, its routines' progress and history, and the focus offset;
 - the new run's log starts with every earlier event, so the run that finishes the loop tells all of it.
 
-A loop carried on starts from the scratch, not from `UNITS`, which `StartingUnits` makes sure is empty. A routine carries on from its `RoutineHistory`, and each unit is taken to be where it was last found, its look learnt again from the next scan.
+A loop carried on starts from the scratch, not from `UNITS`, which `starting_units` makes sure is empty. A routine carries on from its `RoutineHistory`, and each unit is taken to be where it was last found, its look learnt again from the next scan.
 
 ## Adding to it
 - **A routine:** one file in `routines/` that yields `Scan`, `Wait` and `Record` steps for one unit, starting from its `RoutineHistory` (empty unless the loop is carried on). Add its binding in `bindings/` for the program inputs it reads, and a `LoopProgram` whose `routines` returns it.

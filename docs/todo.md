@@ -19,15 +19,18 @@ AGENT: do not write here
 ## Agent written stuff
 
 ### Run stuff
-A run still has two doors into it, though both pass through `RunContext`:
-- what it starts with: `ctx.inputs`, its devices and its earlier reads, frozen at the start of each part;
-- what reaches it while it runs: the inbox (`engine/acquisition/inbox.py`), which carries requests and edits to inputs and devices.
-  
-They could be one: the context has an inbox, and a run's starting values are simply the first things in it, taken at the start, with later ones taken at their moments. Nothing gains from doing this now; it is worth doing when either door next needs changing.
+A run has two phases. Preflight (`engine/acquisition/preflight.py`) lists everything a start needs, all at once. Then the run runs, and changes reach it only through the inbox (`engine/acquisition/inbox.py`), which carries edits to its inputs and devices.
+
+Inside the running phase there are still two doors, both through `RunContext`:
+- what it starts with: `ctx.inputs` (earlier outputs among them) and its devices, frozen at the start of each part;
+- what reaches it while it runs: `ctx.current`, through the inbox.
+
+They could be one: a run's starting values would simply be the first things it takes from its inbox. Nothing gains from doing this now; it is worth doing when either door next needs changing.
 
 ### Core fixes remaining
 Core members that may still be what one consumer needed, not what the thing is:
 
+- `PreflightContext.folder` and `recordings_in_folder` (`core/program.py`): only multisite's `clean_folder` uses them.
 - `Field.label` and `Field.tooltip` (`core/program_input.py`): the tooltip is screen text in core. The label also names a value in error messages ("Visit: must be <= 10"), so it is more defensible. Changing either touches every input and device setting.
 - `Listed` and `grouped` (`core/registry.py`): for listing things in grouped menus, a screen concern; `utils/widgets/` would fit.
 - `make_instance_id` (`core/device.py`): panels import it from there just to get a unique id.
