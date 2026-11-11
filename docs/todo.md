@@ -3,7 +3,7 @@ AGENT: do not write here
 ## Human written stuff
 
 ### Bugs
-1. Checks not consolidated, prior stage asked to be connected in galvo calib only after 2 images were acquired.     
+1. Checks not consolidated, prior stage asked to be connected in galvo calib only after 2 images were acquired. Also "live inputs" are not working anymore.
 2. metadata saved before checks?
 3. checks do not update when the action to pass the checks is done, the user needs to stimulate a signal
 
