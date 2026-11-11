@@ -9,7 +9,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from pyrpoc.core.device import Device, DeviceConfig
+from pyrpoc.core.device import Device, DeviceConfig, device_registry
 from pyrpoc.utils.simulation import Axis, Dish, DishSettings, FocalSurface
 from pyrpoc.utils.value_rules import float_field, int_field
 
@@ -63,6 +63,7 @@ class DishConfig(DeviceConfig):
         )
 
 
+@device_registry.register("simulated_dish")
 class SimulatedDish(Device):
     display_name = "Simulated Dish"
     config_cls = DishConfig

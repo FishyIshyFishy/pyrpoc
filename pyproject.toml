@@ -1,6 +1,6 @@
 [project]
 name = "pyrpoc"
-version = "3.1.6"
+version = "3.1.7"
 description = "Real-time Precision Opto-Control Toolkit"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -18,6 +18,7 @@ dependencies = [
   "nidaqmx",
   "tifffile",
   "swabian-timetagger>=2.22.6",
+  "zaber-motion>=7.0",
 ]
 
 [project.scripts]
@@ -227,7 +228,6 @@ source_modules = [
   "pyrpoc.core.device",
   "pyrpoc.core.program",
   "pyrpoc.core.runner",
-  "pyrpoc.core.check",
   "pyrpoc.core.program_input",
   "pyrpoc.core.program_output",
   "pyrpoc.core.library",
@@ -241,7 +241,7 @@ type = "forbidden"
 source_modules = [
   "pyrpoc.engine.acquisition.claims",
   "pyrpoc.engine.acquisition.executor",
-  "pyrpoc.engine.acquisition.readiness",
+  "pyrpoc.engine.acquisition.preflight",
   "pyrpoc.engine.acquisition.program_inputs",
   "pyrpoc.engine.acquisition.save_target",
   "pyrpoc.engine.data_library.store",

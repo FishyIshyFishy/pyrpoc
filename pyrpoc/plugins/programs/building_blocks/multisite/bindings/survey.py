@@ -4,13 +4,15 @@ a program makes."""
 from __future__ import annotations
 
 from collections.abc import Sequence
+from typing import Any
 
 import numpy as np
 
 from pyrpoc.core.program import RunContext
-from pyrpoc.core.program_input import ProgramInputValues
+from pyrpoc.core.program_input import ProgramInput, ProgramInputValues
 from pyrpoc.core.program_output import ProgramOutput
 from pyrpoc.plugins.program_io.inputs import (
+    CALIBRATION,
     DWELL_TIME_US,
     FIELD_PIXELS,
     FIELD_UM,
@@ -24,7 +26,6 @@ from pyrpoc.plugins.program_io.inputs import (
 )
 from pyrpoc.plugins.program_io.outputs import (
     GalvoCalibration,
-    GalvoCalibrationOutput,
     MosaicTile,
     SurveyEvent,
     SurveyFinding,
@@ -37,14 +38,15 @@ from ..interfaces.field import FieldOfView
 from ..interfaces.microscope import Microscope
 from ..interfaces.overview import Overview
 from ..stages.survey.walk import SurveySettings, survey
+from .earlier import required
 
 REGION_INPUTS = (SURVEY_WIDTH_UM, SURVEY_HEIGHT_UM)
 TILE_INPUTS = (FIELD_UM, FIELD_PIXELS, TILE_OVERLAP, DWELL_TIME_US)
 SURVEY_FOCUS_INPUTS = (FOCUS_SEARCH_RANGE_UM, FOCUS_INITIAL_STEP_UM, FOCUS_FINAL_STEP_UM)
 # What every survey fills: its tiles, what it found, the overview made of them, and what it did.
 SURVEY_EMITS: dict[str, type[ProgramOutput]] = {"survey": SurveyOutput, "log": SurveyLogOutput}
-# The calibration its field is scanned with.
-SURVEY_READS: dict[str, type[ProgramOutput]] = {"calibration": GalvoCalibrationOutput}
+# The calibration its field is scanned with, the newest in its folder.
+SURVEY_READS: list[ProgramInput[Any]] = [CALIBRATION]
 
 
 def settings_from(
@@ -91,6 +93,6 @@ class SurveyOutputs:
 
 def run_survey(ctx: RunContext, scope: Microscope, overscan: tuple[int, int]) -> None:
     """Survey the region from the stage's corner, with the calibration read."""
-    calibration = ctx.earlier("calibration", GalvoCalibrationOutput).measured()
+    calibration = required(ctx, CALIBRATION).measured()
     settings = settings_from(ctx.inputs, calibration, overscan)
     survey(ctx, scope, settings, SurveyOutputs(ctx))

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -15,13 +16,12 @@ def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-@dataclass(frozen=True)
-class EarlierRead:
-    """The output of an earlier recording that a recording read under one name."""
+class Outcome(str, Enum):
+    """How a run ended: it ran to its end, it was stopped partway, or it failed."""
 
-    # The earlier recording's metadata file name, in the same folder.
-    recording: str
-    output: str
+    COMPLETED = "completed"
+    STOPPED = "stopped"
+    FAILED = "failed"
 
 
 @dataclass(frozen=True)
@@ -37,8 +37,8 @@ class RecordingPart:
 
 class Recording:
     """What one run produced: the program, name and start time, its parts, each with the
-    settings that made it, the earlier recordings it read, where it is saved, its note, and its
-    program outputs."""
+    settings that made it, where it is saved, its note, how its run ended, and its program
+    outputs."""
 
     def __init__(
         self,
@@ -47,10 +47,10 @@ class Recording:
         name: str,
         started_at: str,
         parts: list[RecordingPart],
-        reads: dict[str, EarlierRead],
         location: Path | None,
         note: str,
         finished: bool,
+        outcome: Outcome | None,
     ):
         self.program_key = program_key
         # The save filename, set whether or not it was saved; empty for an unnamed run.
@@ -58,14 +58,14 @@ class Recording:
         self.started_at = started_at
         # A new part begins each time the settings of a repeating run change between passes.
         self.parts = parts
-        # What it read of earlier recordings, by the name its program reads each under.
-        self.reads = reads
         # Its metadata file, or None when it is not saved.
         self.location = location
         # Written by the user before, during or after the run; the saver reads it as it writes.
         self.note = note
         # Nothing more will be added: its run ended, or it was loaded from disk.
         self.finished = finished
+        # None while its run goes, and for one on disk whose run never ended.
+        self.outcome = outcome
         # Filled once by whoever opens it, since each output points back here.
         self.outputs: dict[str, ProgramOutput] = {}
 

@@ -49,6 +49,14 @@ class FocusPlane:
 
 
 @dataclass(frozen=True)
+class FocusDrift:
+    """How fast focus drifted over a survey, in µm per minute, and its standard error."""
+
+    um_per_min: float
+    error_um_per_min: float
+
+
+@dataclass(frozen=True)
 class MotionRate:
     """How fast what was imaged moved, in µm per minute: the median over every feature
     followed, the spread about it, and how many there were."""
@@ -70,10 +78,12 @@ class SurveyTile:
 
 @dataclass(frozen=True)
 class SurveyFinding:
-    """What the whole survey found: the focus plane, how fast things move (None with nothing
+    """What the whole survey found: the focus plane, as it stood when the last tile was taken,
+    and how fast focus drifted (None if not measured), how fast things move (None with nothing
     to follow), and the dish position stitching gave each tile's top-left pixel."""
 
     focus: FocusPlane
+    drift: FocusDrift | None
     motion: MotionRate | None
     placed: tuple[tuple[float, float], ...]
 
@@ -134,6 +144,16 @@ class SurveyOutput(MosaicOutput):
         self.paths |= {f"{OVERVIEW_PREFIX}{label}": path for label, path in files.items()}
 
     @property
+    def field_pixels(self) -> int:
+        """The side of one field, in pixels: one tile's width."""
+        return self[0].shape[-1]
+
+    @property
+    def field_um(self) -> float:
+        """The side of one field, in µm."""
+        return self.field_pixels * self.um_per_px
+
+    @property
     def nbytes(self) -> int:
         extra = 0 if self.overview_planes is None else self.overview_planes.nbytes
         return super().nbytes + extra
@@ -180,8 +200,11 @@ class SurveyOutput(MosaicOutput):
 
 def finding_from(raw: dict[str, Any]) -> SurveyFinding:
     motion = raw["motion"]
+    # Surveys saved before focus drift was measured hold none.
+    drift = raw.get("drift")
     return SurveyFinding(
         FocusPlane(**raw["focus"]),
+        None if drift is None else FocusDrift(**drift),
         None if motion is None else MotionRate(**motion),
         tuple((float(left), float(top)) for left, top in raw["placed"]),
     )

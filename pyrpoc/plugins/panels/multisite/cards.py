@@ -6,8 +6,16 @@ from __future__ import annotations
 from collections.abc import Sequence
 from enum import Enum
 
-from PyQt6.QtCore import QPoint, QRectF, Qt, pyqtSignal
-from PyQt6.QtGui import QColor, QMouseEvent, QPainter, QPaintEvent, QPalette, QPen
+from PyQt6.QtCore import QEvent, QPoint, QRectF, Qt, pyqtSignal
+from PyQt6.QtGui import (
+    QColor,
+    QGuiApplication,
+    QMouseEvent,
+    QPainter,
+    QPaintEvent,
+    QPalette,
+    QPen,
+)
 from PyQt6.QtWidgets import QFrame, QHeaderView, QLabel, QVBoxLayout, QWidget
 
 from pyrpoc.utils.widgets.table import ListTable, horizontal_header, viewport_of
@@ -47,7 +55,8 @@ class UnitTable(ListTable):
     def __init__(self, columns: list[str], parent: QWidget):
         super().__init__(columns, parent)
         self.setAlternatingRowColors(False)
-        self.setStyleSheet(glass_sheet(self.palette().color(QPalette.ColorRole.Highlight)))
+        self.glass_accent = QColor()
+        self.show_glass()
         viewport_of(self).setAutoFillBackground(False)
         header = horizontal_header(self)
         header.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
@@ -59,6 +68,20 @@ class UnitTable(ListTable):
         self.cellDoubleClicked.connect(lambda row, _column: self.locate.emit(self.keys[row]))
         self.keys: list[str] = []
         self.chosen: str | None = None
+
+    def show_glass(self) -> None:
+        """Lay the table on glass, its chosen row in the theme's accent."""
+        # The app's accent, not the table's own: the glass sheet sets the table's selection color.
+        accent = QGuiApplication.palette().color(QPalette.ColorRole.Highlight)
+        # Only when it changed, since restyling the table changes its palette again.
+        if accent != self.glass_accent:
+            self.glass_accent = accent
+            self.setStyleSheet(glass_sheet(accent))
+
+    def changeEvent(self, e: QEvent | None) -> None:
+        super().changeEvent(e)
+        if e is not None and e.type() == QEvent.Type.PaletteChange:
+            self.show_glass()
 
     def fill(self, rows: Sequence[tuple[str, list[str], bool, str]]) -> None:
         """Each row's unit key, cells, whether it is muted, and its tooltip; the choice stays

@@ -1,13 +1,13 @@
-"""``Program``: the declaration of one experiment, and ``RunContext``, what it
-is handed while running."""
+"""``Program``: the declaration of one experiment, and what it is handed in each of its two
+phases: ``PreflightContext`` before a run opens, and ``RunContext`` while it runs."""
 
 from __future__ import annotations
 
 import threading
 from collections.abc import Callable, Iterator, Mapping, Sequence
+from pathlib import Path
 from typing import Any, Protocol, TypeVar
 
-from pyrpoc.core.check import Check
 from pyrpoc.core.device import Device
 from pyrpoc.core.program_input import ProgramInput, ProgramInputValues
 from pyrpoc.core.program_output import ProgramOutput
@@ -50,9 +50,12 @@ class DeviceMap(Mapping[type[Device], Device]):
 
 class Program:
     """One experiment: the devices it uses, the program inputs it reads, its outputs, the
-    runners that start it, and ``run``, which does the work."""
+    runners that start it, ``preflight``, which says what else a run of it needs, and ``run``,
+    which does the work."""
 
     display_name: str = "Program"
+    # Set by ``program_registry``; a recording names the program that made it by it.
+    registry_key: str
 
     # The heading it is listed under, and its place in the program list.
     group: str
@@ -68,10 +71,6 @@ class Program:
     # row, and with no cards every input is shown.
     cards: dict[str, Sequence[ProgramInput[Any]]] = {}
 
-    # Outputs of earlier recordings in the same Experiment it reads, by the name it reads each
-    # under, and the type each must be. It cannot start until each has one to read.
-    reads: dict[str, type[ProgramOutput]] = {}
-
     # Its inputs that a run may read again while it runs, to follow edits made after it
     # started. The rest stay as they were when it started.
     live: list[ProgramInput[Any]] = []
@@ -82,9 +81,6 @@ class Program:
     # The ways this program can be started, in the order their controls are drawn.
     runners: list[Runner] = []
 
-    # Conditions of its own for starting, judged with the rest of what a run needs.
-    checks: list[Check] = []
-
     def __init_subclass__(cls, **kwargs: Any) -> None:
         super().__init_subclass__(**kwargs)
         # A card showing an input the program does not read would edit a value no run gets.
@@ -94,8 +90,33 @@ class Program:
         if unread:
             raise TypeError(f"{cls.__name__}'s cards show inputs it does not read: {unread}")
 
+    def preflight(self, ctx: PreflightContext) -> list[str]:
+        """What a run of it needs beyond its devices and valid input values, each said as what it
+        needs; empty when it may start."""
+        del ctx
+        return []
+
     def run(self, ctx: RunContext) -> None:
         raise NotImplementedError
+
+
+class PreflightContext(Protocol):
+    """What a program sees of a run about to start: where it saves, and the input values it
+    would be given."""
+
+    @property
+    def folder(self) -> Path | None:
+        """The save folder, which the run is saved in and reads from; None when none is set."""
+        ...
+
+    def recordings_in_folder(self) -> list[str]:
+        """The name of every recording saved in the folder, whether or not it can be read."""
+        ...
+
+    @property
+    def inputs(self) -> ProgramInputValues:
+        """The program input values the run would be given."""
+        ...
 
 
 # note to self: python protocols are useful just for type checkers
@@ -113,14 +134,13 @@ class RunInbox(Protocol):
 class RunContext:
     """What a running program is handed for one part of its recording: its input values as
     they were when the part began, its inbox, which gives the current values of its live inputs,
-    the earlier outputs it reads, its devices, the part's outputs, status and cancel."""
+    its devices, the part's outputs, status and cancel."""
 
     def __init__(
         self,
         *,
         inputs: ProgramInputValues,
         inbox: RunInbox,
-        earlier: Mapping[str, ProgramOutput],
         devices: Mapping[type[Device], Device],
         outputs: dict[str, ProgramOutput],
         cancel: threading.Event,
@@ -128,7 +148,6 @@ class RunContext:
     ):
         self.inputs = inputs
         self._inbox = inbox
-        self._earlier = dict(earlier)
         self.devices = DeviceMap(devices)
         self.outputs = outputs
         self._cancel = cancel
@@ -143,21 +162,6 @@ class RunContext:
                 f"{sorted(self._inbox.live_keys())}"
             )
         return self._inbox.current(program_input.key)
-
-    def earlier(self, name: str, output_type: type[OutputT]) -> OutputT:
-        """The earlier output chosen for ``name``, which ``reads`` declares as
-        ``output_type``. It is read, never added to."""
-        if name not in self._earlier:
-            raise KeyError(
-                f"{name!r} is not declared in reads; this program declares {sorted(self._earlier)}"
-            )
-        program_output = self._earlier[name]
-        # Narrows for the type checker, and catches a program asking for the wrong type.
-        if not isinstance(program_output, output_type):
-            raise TypeError(
-                f"{name!r} is a {type(program_output).__name__}, not {output_type.__name__}"
-            )
-        return program_output
 
     def output(self, name: str, output_type: type[OutputT]) -> OutputT:
         """This run's output ``name``, which ``emits`` declares as ``output_type``."""
@@ -189,5 +193,4 @@ class RunContext:
             raise Cancelled("run stopped")
 
 
-# Programs keep their key at the registration site, not on the class.
-program_registry: Registry[Program] = Registry("ProgramRegistry", Program, stamp=None)
+program_registry: Registry[Program] = Registry("ProgramRegistry", Program)

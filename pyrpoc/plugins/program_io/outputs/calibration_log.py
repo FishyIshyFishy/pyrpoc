@@ -70,9 +70,29 @@ class AxisMeasured:
         return f"{self.axis}: {self.um_per_volt:.3f} µm per volt ({residual})"
 
 
-CalibrationEvent = FeatureFound | AxisMeasuring | StageMoved | AxisMeasured
+@dataclass(frozen=True)
+class AxisPrecision:
+    """How well one axis's scale is known, as a fraction of it at one standard error, after
+    ``rounds`` rounds of moves; and how far, in degrees, the image moved off the axis as the
+    stage moved along it, and how many pixels that misplaces the field's edge by."""
+
+    kind: ClassVar[str] = "precision"
+    time_s: float
+    axis: str
+    uncertainty: float
+    rounds: int
+    degrees_off_axis: float
+    edge_px: float
+
+    def text(self) -> str:
+        known = f"{self.axis}: scale known to ±{self.uncertainty:.2%} in {self.rounds} rounds"
+        off = f"{self.degrees_off_axis:+.2f}° off the axis ({self.edge_px:.1f} px at the edge)"
+        return f"{known}; the image moves {off}"
+
+
+CalibrationEvent = FeatureFound | AxisMeasuring | StageMoved | AxisMeasured | AxisPrecision
 CALIBRATION_EVENTS: dict[str, type[CalibrationEvent]] = {
-    cls.kind: cls for cls in (FeatureFound, AxisMeasuring, StageMoved, AxisMeasured)
+    cls.kind: cls for cls in (FeatureFound, AxisMeasuring, StageMoved, AxisMeasured, AxisPrecision)
 }
 
 

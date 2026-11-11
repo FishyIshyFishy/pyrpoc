@@ -16,7 +16,7 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
 )
 
-from pyrpoc.core.device import Device, device_registry
+from pyrpoc.core.device import Connection, Device, device_registry
 from pyrpoc.core.panels import Panel
 from pyrpoc.utils.widgets.device_panel import has_panel
 from pyrpoc.utils.widgets.table import ListTable, horizontal_header, viewport_of
@@ -31,17 +31,19 @@ COLUMNS = ["Device", "Status", "Connection"]
 def status_of(device: Device, status: DeviceStatus, in_use: bool) -> str:
     if in_use:
         return "In use"
-    if device.holds_session:
-        if device.session_open:
+    match device.connection:
+        case Connection.SESSION if device.session_open:
             return "Connected"
-        return "Error" if status.last_error else "Disconnected"
-    if device.owns_connection:
-        if status.last_test_ok is None:
+        case Connection.SESSION:
+            return "Error" if status.last_error else "Disconnected"
+        case Connection.TESTABLE if status.last_test_ok is None:
             return "Not tested"
-        return "OK" if status.last_test_ok else "Failed"
-    if device.backed_by is not None:
-        return f"via {device.backed_by.display_name}"
-    return "—"
+        case Connection.TESTABLE:
+            return "OK" if status.last_test_ok else "Failed"
+        case Connection.NONE if device.backed_by is not None:
+            return f"via {device.backed_by.display_name}"
+        case Connection.NONE:
+            return "—"
 
 
 class DevicesPanel(Panel):
@@ -125,12 +127,11 @@ class DevicesPanel(Panel):
             )
         else:
             menu.addAction("Configure…", lambda: self.configure(device))
-        if device.holds_session:
-            if device.session_open:
-                add_action(menu, "Disconnect", lambda: inventory.disconnect_device(device), idle)
-            else:
-                menu.addAction("Connect", lambda: inventory.connect_device(device))
-        elif device.owns_connection:
+        if device.connection is Connection.SESSION and device.session_open:
+            add_action(menu, "Disconnect", lambda: inventory.disconnect_device(device), idle)
+        elif device.connection is Connection.SESSION:
+            menu.addAction("Connect", lambda: inventory.connect_device(device))
+        elif device.connection is Connection.TESTABLE:
             add_action(menu, "Test Connection", lambda: inventory.test_device(device), idle)
         menu.addSeparator()
         add_action(menu, "Remove", lambda: inventory.remove(device), idle)

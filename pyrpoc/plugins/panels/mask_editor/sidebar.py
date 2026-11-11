@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from PyQt6.QtCore import QPoint, QSize, Qt, pyqtSignal
+from PyQt6.QtCore import QEvent, QPoint, QSize, Qt, pyqtSignal
 from PyQt6.QtGui import QAction, QColor, QFont, QIcon, QPixmap
 from PyQt6.QtWidgets import (
     QAbstractItemView,
@@ -56,7 +56,7 @@ class MaskPicker(QListWidget):
 
     def __init__(self, parent: QWidget):
         super().__init__(parent)
-        self.ids: list[str] = []
+        self.masks: tuple[Mask, ...] = ()
         self.setIconSize(QSize(ICON_PX, ICON_PX))
         self.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.setEditTriggers(QAbstractItemView.EditTrigger.DoubleClicked)
@@ -71,7 +71,7 @@ class MaskPicker(QListWidget):
         """List ``masks``, selecting the one whose id is ``current``."""
         self.blockSignals(True)
         self.clear()
-        self.ids = [mask.id for mask in masks]
+        self.masks = masks
         for mask in masks:
             item = QListWidgetItem(QIcon(thumbnail(mask, ICON_PX)), mask.label)
             item.setFlags(item.flags() | Qt.ItemFlag.ItemIsEditable)
@@ -81,6 +81,19 @@ class MaskPicker(QListWidget):
         if current in self.ids:
             self.setCurrentRow(self.ids.index(current))
         self.blockSignals(False)
+
+    @property
+    def ids(self) -> list[str]:
+        return [mask.id for mask in self.masks]
+
+    def changeEvent(self, e: QEvent | None) -> None:
+        super().changeEvent(e)
+        # Thumbnails are drawn in the theme's colors, so a new theme draws them again.
+        if e is not None and e.type() == QEvent.Type.PaletteChange:
+            for row, mask in enumerate(self.masks):
+                item = self.item(row)
+                if item is not None:
+                    item.setIcon(QIcon(thumbnail(mask, ICON_PX)))
 
     def build_add_row(self) -> QListWidgetItem:
         """The row after the last mask: a full-width button with a centred plus. The item

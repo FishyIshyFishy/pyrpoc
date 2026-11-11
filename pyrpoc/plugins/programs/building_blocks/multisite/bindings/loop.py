@@ -13,14 +13,18 @@ from pyrpoc.core.program import RunContext
 from pyrpoc.core.program_input import ProgramInput
 from pyrpoc.core.program_output import ProgramOutput
 from pyrpoc.plugins.program_io.inputs import (
+    CALIBRATION,
     DWELL_TIME_US,
     FOCUS_CHECK_S,
     FOCUS_FINAL_STEP_UM,
+    FOCUS_INITIAL_STEP_UM,
+    FOCUS_SEARCH_RANGE_UM,
+    SURVEY,
     UNITS,
+    FocusSearch,
 )
 from pyrpoc.plugins.program_io.outputs import (
     FrameTag,
-    GalvoCalibrationOutput,
     LoopEvent,
     LoopLogOutput,
     SurveyOutput,
@@ -37,11 +41,17 @@ from ..stages.loop.orchestrator import LoopSetup, Orchestrator
 from ..stages.loop.resume import resumption
 from ..stages.loop.routine import RoutineSpec
 from ..stages.loop.survey_map import SurveyMap, Visit
+from .earlier import required
 from .scratch import Scratch
 
 # Every loop program reads the units, live: they are what it runs on, however they change.
 LOOP_UNITS: list[ProgramInput[Any]] = [UNITS]
-LOOP_FOCUS_INPUTS = (FOCUS_CHECK_S, FOCUS_FINAL_STEP_UM)
+LOOP_FOCUS_INPUTS = (
+    FOCUS_CHECK_S,
+    FOCUS_SEARCH_RANGE_UM,
+    FOCUS_INITIAL_STEP_UM,
+    FOCUS_FINAL_STEP_UM,
+)
 # What every loop fills: its log, its units, and every frame of every unit.
 LOOP_EMITS: dict[str, type[ProgramOutput]] = {
     "log": LoopLogOutput,
@@ -49,10 +59,7 @@ LOOP_EMITS: dict[str, type[ProgramOutput]] = {
     "frames": UnitFramesOutput,
 }
 # What every loop reads: the survey, and the calibration its scans use.
-LOOP_READS: dict[str, type[ProgramOutput]] = {
-    "survey": SurveyOutput,
-    "calibration": GalvoCalibrationOutput,
-}
+LOOP_READS: list[ProgramInput[Any]] = [SURVEY, CALIBRATION]
 
 
 class RunSteering:
@@ -90,22 +97,22 @@ class LoopOutputs:
 
 def survey_map_of(ctx: RunContext) -> tuple[SurveyMap, SurveyOutput]:
     """The map of the survey read, and the survey itself."""
-    survey = ctx.earlier("survey", SurveyOutput)
+    survey = required(ctx, SURVEY)
     found = survey.found()
     visits = tuple(
         Visit(tile.x_um, tile.y_um, taken.time_s)
         for tile, taken in zip(survey.tiles, survey.taken, strict=True)
     )
-    return SurveyMap(found.focus, found.motion, Overview(*survey.overview()), visits), survey
+    overview = Overview(*survey.overview())
+    return SurveyMap(found.focus, found.drift, found.motion, overview, visits), survey
 
 
 def field_of(ctx: RunContext, survey: SurveyOutput, overscan: tuple[int, int]) -> FieldOfView:
     """The survey's field of view, scanned with the calibration read."""
-    calibration = ctx.earlier("calibration", GalvoCalibrationOutput).measured()
-    pixels = survey[0].shape[-1]
+    calibration = required(ctx, CALIBRATION).measured()
     return FieldOfView(
-        pixels * survey.um_per_px,
-        pixels,
+        survey.field_um,
+        survey.field_pixels,
         (calibration.um_per_volt_x, calibration.um_per_volt_y),
         ctx.inputs[DWELL_TIME_US],
         *overscan,
@@ -151,8 +158,8 @@ def run_loop(
     folder if there is one. The scratch goes once every routine has ended."""
     survey_map, survey = survey_map_of(ctx)
     field = field_of(ctx, survey, overscan)
-    focus_check_s, final_step_um = ctx.inputs[FOCUS_CHECK_S], ctx.inputs[FOCUS_FINAL_STEP_UM]
-    setup = LoopSetup(survey_map, field, focus_check_s, final_step_um, routines)
+    search = FocusSearch.from_inputs(ctx.inputs)
+    setup = LoopSetup(survey_map, field, ctx.inputs[FOCUS_CHECK_S], search, routines)
     outputs = LoopOutputs(ctx, scratch_beside(survey))
     orchestrator = Orchestrator(ctx, scope, setup, outputs, RunSteering(ctx))
     begin(ctx, orchestrator, outputs)

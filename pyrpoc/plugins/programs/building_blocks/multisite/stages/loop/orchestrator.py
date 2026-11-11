@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 
+from pyrpoc.plugins.program_io.inputs import FocusSearch
 from pyrpoc.plugins.program_io.outputs import (
     LoopFinished,
     LoopResumed,
@@ -28,6 +29,7 @@ from ...interfaces.cancellation import Cancellation
 from ...interfaces.field import FieldOfView
 from ...interfaces.microscope import Microscope
 from .focus_keeper import FocusKeeper
+from .focus_site import Bounds
 from .queue import Queue, Thread
 from .resume import Resumption
 from .roster import Roster
@@ -36,7 +38,7 @@ from .scanning import UnitScanner
 from .sink import LoopSink
 from .steering import Steering
 from .survey_map import SurveyMap
-from .tracking import Track, Tracker, placed_track, start_track, window_px
+from .tracking import MARGIN_UM, Track, Tracker, placed_track, start_track, window_px
 
 # The longest the loop waits at once, so commands and stops are taken up promptly.
 IDLE_S = 1.0
@@ -45,12 +47,12 @@ IDLE_S = 1.0
 @dataclass(frozen=True)
 class LoopSetup:
     """What a loop runs from: the survey's map of the dish, the field each scan covers, how
-    often focus is checked and to what step, and the routines."""
+    often focus is checked and how widely and finely at most, and the routines."""
 
     survey: SurveyMap
     field: FieldOfView
     focus_check_s: float
-    final_step_um: float
+    focus_search: FocusSearch
     routines: tuple[RoutineSpec, ...]
 
 
@@ -75,9 +77,14 @@ class Orchestrator:
         self.setup = setup
         self.sink = sink
         self.steering = steering
-        tracker = Tracker(setup.field, setup.survey.motion)
-        self.focus = FocusKeeper(setup.survey.focus, setup.focus_check_s, setup.final_step_um)
-        self.scanner = UnitScanner(scope, setup.field, tracker, self.focus, sink)
+        survey = setup.survey
+        self.tracker = Tracker(setup.field, survey.motion)
+        self.focus = FocusKeeper(
+            survey.focus, survey.drift, survey.focused_s, setup.focus_check_s, setup.focus_search
+        )
+        self.scanner = UnitScanner(
+            scope, setup.field, self.tracker, self.focus, survey.overview, sink
+        )
         self.queue = Queue()
         self.roster = Roster(())
         self.tracks: dict[int, Track] = {}
@@ -97,9 +104,7 @@ class Orchestrator:
     def resume(self, reached: Resumption) -> None:
         """Carry on from where a loop cut short had reached."""
         self.roster = Roster(reached.records.values())
-        self.focus.offset_um = reached.focus_offset_um
-        if reached.focus_checked_s is not None:
-            self.focus.checked_s = reached.focus_checked_s
+        self.focus.replay(reached.focus_checks)
         self.sink.log(LoopResumed(self.scope.now()))
         for record in self.roster.records():
             if record.left_s is None:
@@ -280,4 +285,19 @@ class Orchestrator:
             self.sink.log(Measured(now, thread.unit, thread.routine, step.name, step.values))
         elif isinstance(step, Scan):
             thread.urgent = False
-            thread.sending = self.scanner.scan(thread, self.tracks[thread.unit], step)
+            track = self.tracks[thread.unit]
+            thread.sending = self.scanner.scan(thread, track, step, self.occupied())
+
+    def occupied(self) -> list[Bounds]:
+        """Where each unit still in the loop may be now: its outline's bounds, grown by a margin
+        and by how far it may have moved since it was last seen."""
+        now = self.scope.now()
+        occupied = []
+        for record in self.roster.records():
+            if record.left_s is not None:
+                continue
+            track = self.tracks[record.number]
+            grow = MARGIN_UM + self.tracker.radius_um(now - track.seen_s)
+            left, top, right, bottom = track.unit.bounds()
+            occupied.append((left - grow, top - grow, right + grow, bottom + grow))
+        return occupied

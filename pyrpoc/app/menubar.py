@@ -20,13 +20,12 @@ class MainMenuBar(QMenuBar):
     def __init__(self, parent: QWidget):
         super().__init__(parent)
 
-        self.panels_menu = QMenu("Panels", self)
+        self.panels_menu = QMenu("&Panels", self)
         self.addMenu(self.panels_menu)
-        # Parented to the bar, not to Panels: populate_panels_menu clears Panels
-        # on every change and would otherwise orphan these submenus.
-        self.add_display_menu = QMenu("Add Display", self)
-        self.add_device_menu = QMenu("Add Device", self)
-        self.add_misc_menu = QMenu("Add Misc. Panel", self)
+        self.displays_menu = QMenu("&Displays", self)
+        self.addMenu(self.displays_menu)
+        self.instruments_menu = QMenu("&Instruments", self)
+        self.addMenu(self.instruments_menu)
 
         self.style_menu = QMenu("&Style", self)
         self.addMenu(self.style_menu)
@@ -40,41 +39,34 @@ class MainMenuBar(QMenuBar):
         devices: list[tuple[str, str]],
         misc: list[tuple[str, str]],
     ) -> None:
-        """What can be added, as (key, label): displays in one submenu per
-        heading, devices and misc panels flat. Fixed for the session."""
-        self.add_display_menu.clear()
+        """What can be added, as (key, label): displays in one submenu per heading
+        with the misc panels below them, and instruments flat. Fixed for the session."""
+        self.displays_menu.clear()
         for heading, entries in displays.items():
-            group_menu = QMenu(heading, self.add_display_menu)
-            self.add_display_menu.addMenu(group_menu)
+            group_menu = QMenu(heading, self.displays_menu)
+            self.displays_menu.addMenu(group_menu)
             add_entries(group_menu, entries, self.panel_requested.emit)
-        self.add_device_menu.clear()
-        add_entries(self.add_device_menu, devices, self.device_requested.emit)
-        self.add_misc_menu.clear()
-        add_entries(self.add_misc_menu, misc, self.panel_requested.emit)
+        if misc:
+            self.displays_menu.addSeparator()
+            add_entries(self.displays_menu, misc, self.panel_requested.emit)
+        self.instruments_menu.clear()
+        add_entries(self.instruments_menu, devices, self.device_requested.emit)
 
     def populate_panels_menu(
         self,
         docks: list[qtads.CDockWidget],
-        display_actions: list[QAction],
-        device_actions: list[QAction],
-        misc_actions: list[QAction],
+        open_actions: list[QAction],
     ) -> None:
-        """Fill the Panels menu: the fixed panels, then a section each for displays,
-        devices and misc panels, each with its Add submenu and one entry per panel."""
+        """Fill the Panels menu: the fixed panels, then one entry per open added panel."""
         # Unchecking a fixed dock hides it; unchecking an added one destroys it, and unchecking a
         # device closes its panel but keeps the device.
         self.panels_menu.clear()
         for dock in docks:
             self.panels_menu.addAction(dock.toggleViewAction())
-        for add_menu, actions in (
-            (self.add_display_menu, display_actions),
-            (self.add_device_menu, device_actions),
-            (self.add_misc_menu, misc_actions),
-        ):
+        if open_actions:
             self.panels_menu.addSeparator()
-            self.panels_menu.addMenu(add_menu)
-            for action in actions:
-                self.panels_menu.addAction(action)
+        for action in open_actions:
+            self.panels_menu.addAction(action)
 
     def populate_style_menu(self, selected_mode: str) -> None:
         self.style_menu.clear()

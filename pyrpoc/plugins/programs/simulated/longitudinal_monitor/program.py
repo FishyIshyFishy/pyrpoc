@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from pyrpoc.core.program import RunContext
+from pyrpoc.core.program import RunContext, program_registry
 from pyrpoc.plugins.devices.simulated import SimulatedScanner
 
 from ...building_blocks.multisite import (
@@ -18,6 +18,7 @@ from ...building_blocks.multisite import (
 from ..dish_microscope import DishMicroscope
 
 
+@program_registry.register("simulated_longitudinal_monitor")
 class SimulatedLongitudinalMonitor(LoopProgram):
     display_name = "Longitudinal Monitor"
     group = "Simulations"

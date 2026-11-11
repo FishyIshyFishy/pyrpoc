@@ -10,6 +10,8 @@ from enum import Enum
 from .loop_events import (
     FocusChecked,
     FocusingAtUnit,
+    FocusingBeside,
+    FocusNotFound,
     LoopActivity,
     LoopEvent,
     LoopFinished,
@@ -158,7 +160,7 @@ class LoopFold:
                 self.units[event.unit].urgent |= set(self.units[event.unit].due)
             case StepDue():
                 self.units[event.unit].due[event.routine] = event.due_s
-            case MovingToUnit() | FocusingAtUnit() | ScanningUnit():
+            case MovingToUnit() | FocusingAtUnit() | FocusingBeside() | ScanningUnit():
                 self.doing = event
             case UnitScanned():
                 self.doing = None
@@ -171,7 +173,7 @@ class LoopFold:
             case LoopResumed() | LoopFinished():
                 # A loop carried on, or ended, is between scans whatever it was doing.
                 self.doing = None
-            case FocusChecked() | UnitRefused():
+            case FocusChecked() | FocusNotFound() | UnitRefused():
                 pass
 
     def take_scan(self, fold: UnitFold, event: UnitScanned) -> None:

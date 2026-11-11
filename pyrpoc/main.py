@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import importlib
 import logging
 import os
 import sys
@@ -107,13 +108,10 @@ def parse_args() -> tuple[argparse.Namespace, list[str]]:
 
 def add_simulations() -> None:
     """Register the simulated devices and programs."""
-    # Imported here, not at the top: importing the programs registers their
-    # program inputs, which must not exist without --simulated.
-    from pyrpoc.plugins.devices.simulated import register as register_devices
-    from pyrpoc.plugins.programs.simulated import register as register_programs
-
-    register_devices()
-    register_programs()
+    # Imported here, not at the top: importing them registers them, and they must
+    # not be listed without --simulated.
+    importlib.import_module("pyrpoc.plugins.devices.simulated")
+    importlib.import_module("pyrpoc.plugins.programs.simulated")
 
 
 def main() -> int:

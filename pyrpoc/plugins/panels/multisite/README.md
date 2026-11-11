@@ -1,4 +1,4 @@
-# Multisite Loop panel
+# Multisite Dish Map panel
 
 Shows a survey's dish and the newest loop run over it. The source picker chooses a **survey**, not a loop, so units can be drawn before any loop has run: a fresh loop starts only on units drawn.
 

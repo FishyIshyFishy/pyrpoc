@@ -11,33 +11,31 @@ classes: {
   check: {shape: hexagon; style: {fill: "#e8f0fb"; stroke: "#3b6db3"}}
 }
 
-settings: "ProgramInputs\nthe user's settings" {class: coll}
-devices: "Devices\nhardware claimed\nfor the run" {class: coll}
-earlier: "Earlier outputs\nonly if the program\ndeclares `reads`" {class: val}
+settings: "ProgramInputs" {class: coll}
+devices: "Devices" {class: coll}
 
-inbox: "Inbox, one per run\neverything posted to it,\neach taken at its moment\nand logged" {class: inbox}
+inbox: "Inbox" {class: inbox}
 
-preflight: "Preflight, before anything opens\nits devices are in the inventory,\na save target if saving, every\nread found, then the program's\nchecks, which see its input\nvalues and the reads" {class: check}
+preflight: "Preflight" {class: check}
 
-run: "Run\nprogram.run(ctx)\nctx is its only door" {class: prog}
+run: "Run" {class: prog}
 
-recording: "Recording\nits parts, each with the\nsettings it ran with,\nand their ProgramOutputs" {class: val}
-library: "Library\nthe open recordings" {class: coll}
-files: "files on disk\n(if saving is on)" {class: disk}
-panels: "Panels\nshow outputs,\nset settings" {class: view}
+recording: "Recording\n (many consituent ProgramOutputs of 1 run)" {class: val}
+library: "Library" {class: coll}
+files: "files on disk" {class: disk}
+panels: "Panels" {class: view}
 
 settings -> preflight
 devices -> preflight
-earlier -> preflight
-preflight -> run: "nothing missing:\nvalues at start,\ndevices, reads"
+library -> preflight
+preflight -> run
 
 settings -> inbox: "edits"
 devices -> inbox: "edits"
-inbox -> run: "a live input: when read\nany other edit: between\npasses, as a new part"
+inbox -> run
 
 run -> recording
 recording -> library
 recording -> files: "as it fills"
-earlier -- files: "a later run reads it" {source-arrowhead.shape: triangle}
 library -> panels
 settings -- panels: "mask drawn, pixel picked,\nunits edited as a loop runs" {source-arrowhead.shape: triangle; style.stroke: "#b04a4a"}

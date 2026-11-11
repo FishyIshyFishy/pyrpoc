@@ -13,6 +13,7 @@ from .confocal.program import Confocal
 from .flim.program import FLIM
 from .galvo_calibration.program import GalvoCalibrationProgram
 from .galvo_pinpoint.program import GalvoPinpoint
+from .hyperspectral.program import Hyperspectral
 from .longitudinal_monitor.program import LongitudinalMonitor
 from .mosaic.program import StageMosaic
 from .pinpoint_raman.program import PinpointRaman
@@ -27,6 +28,7 @@ __all__ = [
     "SplitConfocal",
     "FLIM",
     "GalvoPinpoint",
+    "Hyperspectral",
     "StageMosaic",
     "Autofocus",
     "PinpointRaman",
