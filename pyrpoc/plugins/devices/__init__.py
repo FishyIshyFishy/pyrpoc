@@ -19,6 +19,8 @@ from .prior_stage.sdk import PriorError
 from .time_tagger.device import FlimMeasurement, TaggerError, TimeTagger
 from .touptek_camera.device import ToupcamCamera
 from .touptek_camera.sdk import ToupcamError
+from .zaber_stage.device import ZaberError, ZaberStage
+from .zaber_stage.panel import ZaberStagePanel
 
 __all__ = [
     "Device",
@@ -39,4 +41,7 @@ __all__ = [
     "TimeTagger",
     "ToupcamCamera",
     "ToupcamError",
+    "ZaberError",
+    "ZaberStage",
+    "ZaberStagePanel",
 ]
