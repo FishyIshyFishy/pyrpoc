@@ -44,11 +44,13 @@ Step = Scan | Wait | Record
 @dataclass(frozen=True)
 class Seen:
     """What a scan gave its routine: the ``(C, H, W)`` image centred on the unit, the unit's
-    outline as a mask of it, and when it was taken."""
+    outline as a mask of it, when it was taken, and whether the unit was found in it; if not,
+    the image is of where the unit was last seen."""
 
     image: np.ndarray
     mask: np.ndarray
     time_s: float
+    found: bool
 
     def means(self) -> tuple[float, ...]:
         """Each channel's mean inside the unit."""

@@ -17,8 +17,11 @@ from pyrpoc.plugins.program_io.inputs import (
     DWELL_TIME_US,
     FOCUS_CHECK_S,
     FOCUS_FINAL_STEP_UM,
+    FOCUS_INITIAL_STEP_UM,
+    FOCUS_SEARCH_RANGE_UM,
     SURVEY,
     UNITS,
+    FocusSearch,
 )
 from pyrpoc.plugins.program_io.outputs import (
     FrameTag,
@@ -43,7 +46,12 @@ from .scratch import Scratch
 
 # Every loop program reads the units, live: they are what it runs on, however they change.
 LOOP_UNITS: list[ProgramInput[Any]] = [UNITS]
-LOOP_FOCUS_INPUTS = (FOCUS_CHECK_S, FOCUS_FINAL_STEP_UM)
+LOOP_FOCUS_INPUTS = (
+    FOCUS_CHECK_S,
+    FOCUS_SEARCH_RANGE_UM,
+    FOCUS_INITIAL_STEP_UM,
+    FOCUS_FINAL_STEP_UM,
+)
 # What every loop fills: its log, its units, and every frame of every unit.
 LOOP_EMITS: dict[str, type[ProgramOutput]] = {
     "log": LoopLogOutput,
@@ -95,7 +103,8 @@ def survey_map_of(ctx: RunContext) -> tuple[SurveyMap, SurveyOutput]:
         Visit(tile.x_um, tile.y_um, taken.time_s)
         for tile, taken in zip(survey.tiles, survey.taken, strict=True)
     )
-    return SurveyMap(found.focus, found.motion, Overview(*survey.overview()), visits), survey
+    overview = Overview(*survey.overview())
+    return SurveyMap(found.focus, found.drift, found.motion, overview, visits), survey
 
 
 def field_of(ctx: RunContext, survey: SurveyOutput, overscan: tuple[int, int]) -> FieldOfView:
@@ -149,8 +158,8 @@ def run_loop(
     folder if there is one. The scratch goes once every routine has ended."""
     survey_map, survey = survey_map_of(ctx)
     field = field_of(ctx, survey, overscan)
-    focus_check_s, final_step_um = ctx.inputs[FOCUS_CHECK_S], ctx.inputs[FOCUS_FINAL_STEP_UM]
-    setup = LoopSetup(survey_map, field, focus_check_s, final_step_um, routines)
+    search = FocusSearch.from_inputs(ctx.inputs)
+    setup = LoopSetup(survey_map, field, ctx.inputs[FOCUS_CHECK_S], search, routines)
     outputs = LoopOutputs(ctx, scratch_beside(survey))
     orchestrator = Orchestrator(ctx, scope, setup, outputs, RunSteering(ctx))
     begin(ctx, orchestrator, outputs)

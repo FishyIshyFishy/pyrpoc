@@ -26,17 +26,35 @@ class FieldOfView:
     def um_per_px(self) -> float:
         return self.field_um / self.pixels
 
+    def around(self, pixels: int) -> FieldOfView:
+        """A square field ``pixels`` a side at the same pixel size, centred where this one is."""
+        return FieldOfView(
+            pixels * self.um_per_px,
+            pixels,
+            self.um_per_volt,
+            self.dwell_us,
+            self.extra_left,
+            self.extra_right,
+        )
+
     def scan(self) -> ScanGeometry:
         """The field centred on the stage's position."""
+        fast_amplitude = self.field_um / 2.0 / abs(self.um_per_volt[0])
+        slow_amplitude = self.field_um / 2.0 / abs(self.um_per_volt[1])
+        # Pixel i is sampled (i - pixels / 2) pixels from the stage. Reversed by ``on_dish``, an
+        # axis running against the stage would put the stage at pixels / 2 - 1, so its scan is
+        # moved one pixel to keep the stage at pixels / 2 either way.
+        fast_offset = 2.0 * fast_amplitude / self.pixels if self.um_per_volt[0] < 0 else 0.0
+        slow_offset = 2.0 * slow_amplitude / self.pixels if self.um_per_volt[1] < 0 else 0.0
         return ScanGeometry(
             x_pixels=self.pixels,
             y_pixels=self.pixels,
             extra_left=self.extra_left,
             extra_right=self.extra_right,
-            fast_axis_offset=0.0,
-            fast_axis_amplitude=self.field_um / 2.0 / abs(self.um_per_volt[0]),
-            slow_axis_offset=0.0,
-            slow_axis_amplitude=self.field_um / 2.0 / abs(self.um_per_volt[1]),
+            fast_axis_offset=fast_offset,
+            fast_axis_amplitude=fast_amplitude,
+            slow_axis_offset=slow_offset,
+            slow_axis_amplitude=slow_amplitude,
             dwell_time_us=self.dwell_us,
         )
 

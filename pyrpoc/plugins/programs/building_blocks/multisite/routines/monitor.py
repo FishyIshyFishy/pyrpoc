@@ -1,5 +1,9 @@
-"""The monitor routine: treat the unit once if it is in the treated group, then scan it every
-period for the duration, recording its mean intensity each time."""
+"""The monitor routine: with a treatment, one first scan of every unit, the line driven only for
+the treated group's; then a scan every period for the duration, recording the unit's mean
+intensity each time it is found."""
+
+# The untreated units' first scan is a sham: the same scan with the line left low. Each group
+# then takes the same imaging light before monitoring, so the groups differ only in the treatment.
 
 from __future__ import annotations
 
@@ -36,14 +40,17 @@ def monitor(
     treatment: Treatment | None,
 ) -> Routine:
     """Monitor ``unit``, carrying on from ``history``; a ``treatment`` of None treats nobody."""
-    # Any scan in the history means the treatment, which comes first, was already given.
-    if treatment is not None and unit.group == treatment.group and not history.scans_s:
-        yield Scan((treatment.line,))
-    started = history.records[0].time_s if history.records else None
+    # Any scan in the history means the first scan, treatment or sham, was already given.
+    first = 0 if treatment is None else 1
+    if treatment is not None and not history.scans_s:
+        yield Scan((treatment.line,) if unit.group == treatment.group else ())
+    started = history.scans_s[first] if len(history.scans_s) > first else None
     while True:
         seen = seen_from((yield Scan(())))
         started = seen.time_s if started is None else started
-        yield Record("intensity", seen.means())
+        # A scan that did not find the unit imaged where it was, which is not a measure of it.
+        if seen.found:
+            yield Record("intensity", seen.means())
         settings = now()
         if seen.time_s - started >= settings.duration_min * 60.0:
             return

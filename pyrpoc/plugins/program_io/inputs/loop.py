@@ -31,13 +31,19 @@ FOCUS_CHECK_S = float_input(
     minimum=10.0,
     step=60.0,
     decimals=0,
-    tooltip="How often focus is found again, to follow it as it drifts",
+    tooltip=(
+        "The longest between focus checks; they come sooner while the drift is not yet known "
+        "well enough to predict focus to the final step"
+    ),
 )
 TREAT = bool_input(
     "loop_treat",
     "Treat at Start",
     False,
-    tooltip="Before monitoring, scan each unit of the treated group once with the line driven",
+    tooltip=(
+        "Before monitoring, scan each unit once: the treated group's with the line driven, "
+        "the rest's without it as a sham, so both groups take the same imaging light"
+    ),
 )
 TREATED_GROUP = declare(
     "loop_treated_group",

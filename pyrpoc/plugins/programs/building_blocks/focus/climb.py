@@ -68,6 +68,19 @@ def climb(
     return ClimbResult(best_z_um, best_metric, at_edge=False)
 
 
+def find_focus(
+    measure: Callable[[float], float],
+    report: Callable[[ClimbStep], None],
+    start_z_um: float,
+    search: FocusSearch,
+) -> ClimbResult:
+    """The sharpest z within ``search`` of ``start_z_um``: swept then climbed when the range is
+    wider than one first step, and climbed alone otherwise."""
+    wide = search.search_range_um > search.initial_step_um
+    how = sweep_then_climb if wide else climb
+    return how(measure, report, start_z_um, search)
+
+
 def sweep_then_climb(
     measure: Callable[[float], float],
     report: Callable[[ClimbStep], None],

@@ -1,6 +1,6 @@
 """Longitudinal Monitor: the first loop program. Each unit drawn over the survey is scanned
-every period for a duration, treated first if it is in the treated group, and tracked and kept
-in focus throughout."""
+every period for a duration, treated first if it is in the treated group (the rest given a
+sham scan), and tracked and kept in focus throughout."""
 
 from __future__ import annotations
 

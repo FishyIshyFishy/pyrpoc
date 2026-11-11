@@ -6,6 +6,7 @@ from __future__ import annotations
 from .calibration_log import (
     AxisMeasured,
     AxisMeasuring,
+    AxisPrecision,
     CalibrationEvent,
     CalibrationLogOutput,
     FeatureFound,
@@ -20,6 +21,8 @@ from .loop_events import (
     LOOP_EVENTS,
     FocusChecked,
     FocusingAtUnit,
+    FocusingBeside,
+    FocusNotFound,
     LoopActivity,
     LoopEvent,
     LoopFinished,
@@ -46,8 +49,17 @@ from .mosaic import MosaicOutput, MosaicTile
 from .samples import SamplesOutput
 from .spectrum import SpectrumOutput
 from .spectrum_series import SpectrumSeriesOutput
-from .survey import FocusPlane, MotionRate, Placement, SurveyFinding, SurveyOutput, SurveyTile
+from .survey import (
+    FocusDrift,
+    FocusPlane,
+    MotionRate,
+    Placement,
+    SurveyFinding,
+    SurveyOutput,
+    SurveyTile,
+)
 from .survey_log import (
+    FocusDriftMeasured,
     FocusWidened,
     MotionMeasured,
     MotionRevisiting,
@@ -65,15 +77,20 @@ from .units import Outline, Unit, UnitRecord, UnitsOutput
 __all__ = [
     "LOOP_EVENTS",
     "AxisMeasured",
+    "AxisPrecision",
     "AxisMeasuring",
     "CalibrationEvent",
     "CalibrationLogOutput",
     "FeatureFound",
     "FocusingAtUnit",
+    "FocusingBeside",
+    "FocusNotFound",
     "LogEvent",
     "LogOutput",
     "LoopActivity",
     "MotionMeasured",
+    "FocusDrift",
+    "FocusDriftMeasured",
     "MotionRevisiting",
     "MovingToUnit",
     "ScanningUnit",

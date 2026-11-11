@@ -1,8 +1,21 @@
 """Tracking: finding each unit again near where it was last seen, in a frame centred there, by
 matching the image of it last time. Tracking moves a unit's outline; nothing else does."""
 
+# A unit is found in two steps. Its whole window, neighbours and all, is matched within reach of
+# where it may have moved: the neighbourhood tells a unit from others that look like it, which
+# matters most when the reach is wide. That match is then refined on the unit's outline alone,
+# within a margin: neighbours move independently of the unit, and left in the match they pull
+# it towards a compromise between them, a little further with each template update (the
+# template update problem, Matthews et al. 2004). A match that is not distinct, one that another
+# place matched nearly as well, is taken as not found: the unit stays where it was, and its reach
+# grows until a distinct match returns.
+#
+# Each unit is scanned over only as much of the field as can hold it wherever it may have moved,
+# so neither imaging nor treatment light reaches cells further away.
+
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 
 import cv2
@@ -19,6 +32,11 @@ from ...interfaces.overview import Overview
 MARGIN_UM = 5.0
 # How many spreads of the motion rate the search allows beyond the median.
 SPREAD_ALLOWANCE = 2.0
+# How far past its outline a unit is matched: about the blur of an edge, so the outline's own
+# edge counts.
+EDGE_UM = 1.0
+# Scans of a unit come in sides of whole multiples of this, so a rig builds few rasters.
+SIDE_STEP_PX = 32
 
 
 @dataclass
@@ -125,35 +143,47 @@ class Tracker:
         speed = self.motion.um_per_min + SPREAD_ALLOWANCE * self.motion.spread_um_per_min
         return speed * elapsed_s / 60.0 + MARGIN_UM
 
+    def side_px(self, track: Track, now_s: float) -> int:
+        """The side of a square scan centred on the unit's last centre that holds its window
+        wherever within reach it has moved, and no more than the field."""
+        height, width = window_px(track.unit, self.field.um_per_px)
+        reach = math.ceil(self.radius_um(now_s - track.seen_s) / self.field.um_per_px)
+        # A pixel either side for the template's corner, which sits up to one off centre.
+        side = max(height, width) + 2 * reach + 2
+        return min(self.field.pixels, SIDE_STEP_PX * math.ceil(side / SIDE_STEP_PX))
+
     def locate(self, track: Track, frame: np.ndarray, now_s: float) -> Found | None:
-        """Where the unit is in ``frame``, a field centred on its last centre, or None when it
+        """Where the unit is in ``frame``, a scan centred on its last centre, or None when it
         is not found within reach."""
         radius_um = self.radius_um(now_s - track.seen_s)
         if track.template is None:
             return Found((0.0, 0.0), radius_um)
-        pixels = self.field.pixels
+        height, width = frame.shape[-2:]
         t_height, t_width = track.template.shape
         offset_x, offset_y = track.template_offset_px
-        expected = ((pixels - t_width) / 2.0 + offset_x, (pixels - t_height) / 2.0 + offset_y)
-        room = max(0.0, (pixels - max(t_height, t_width)) / 2.0)
+        expected = ((width - t_width) / 2.0 + offset_x, (height - t_height) / 2.0 + offset_y)
+        room = max(0.0, (min(height, width) - max(t_height, t_width)) / 2.0)
         radius_px = min(radius_um / self.field.um_per_px, room)
-        found = locate_near(track.template, frame[track.channel], expected, radius_px)
-        if found is None:
+        plane = frame[track.channel]
+        whole = np.ones(track.template.shape, dtype=bool)
+        near = locate_near(track.template, whole, plane, expected, radius_px)
+        # Every scan's match is taken as the unit, so one that is not distinct is not found.
+        if near is None or not near.distinct:
             return None
+        mask = matched_mask(track.unit, (t_height, t_width), self.field.um_per_px)
+        margin_px = MARGIN_UM / self.field.um_per_px
+        refined = locate_near(track.template, mask, plane, (near.x, near.y), margin_px)
+        found = near if refined is None or not refined.distinct else refined
         shift = (
-            (found[0] - expected[0]) * self.field.um_per_px,
-            (found[1] - expected[1]) * self.field.um_per_px,
+            (found.x - expected[0]) * self.field.um_per_px,
+            (found.y - expected[1]) * self.field.um_per_px,
         )
         return Found(shift, radius_um)
 
     def follow(self, track: Track, found: Found, frame: np.ndarray, now_s: float) -> None:
         """Move the unit by what was found, and take its new look as the template."""
         track.unit = track.unit.moved_by(*found.shift_um)
-        centre = self.field.pixels / 2.0
-        shifted = (
-            centre + found.shift_um[0] / self.field.um_per_px,
-            centre + found.shift_um[1] / self.field.um_per_px,
-        )
+        shifted = found_centre(frame, found.shift_um, self.field.um_per_px)
         if track.template is None:
             height, width = window_px(track.unit, self.field.um_per_px)
             track.channel = strongest_channel(crop_centred(frame, shifted, (height, width)))
@@ -169,6 +199,23 @@ class Tracker:
             top + height / 2.0 - shifted[1],
         )
         track.seen_s = now_s
+
+
+def found_centre(
+    frame: np.ndarray, shift_um: tuple[float, float], um_per_px: float
+) -> tuple[float, float]:
+    """The (x, y) pixel of a frame centred on a unit's last centre where it was found,
+    ``shift_um`` from there."""
+    height, width = frame.shape[-2:]
+    return width / 2.0 + shift_um[0] / um_per_px, height / 2.0 + shift_um[1] / um_per_px
+
+
+def matched_mask(unit: Unit, size: tuple[int, int], um_per_px: float) -> np.ndarray:
+    """The pixels of a ``size`` window centred on ``unit`` it is matched on: its outline, grown
+    by an edge's blur."""
+    grow = math.ceil(EDGE_UM / um_per_px)
+    kernel = np.ones((2 * grow + 1, 2 * grow + 1), dtype=np.uint8)
+    return cv2.dilate(outline_mask(unit, size, um_per_px).astype(np.uint8), kernel) > 0
 
 
 def start_track(unit: Unit, overview: Overview, field: FieldOfView, seen_s: float) -> Track:
