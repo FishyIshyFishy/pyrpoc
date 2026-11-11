@@ -7,7 +7,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Any
 
-from PyQt6.QtCore import pyqtSignal
+from PyQt6.QtCore import QEvent, pyqtSignal
 from PyQt6.QtWidgets import (
     QCheckBox,
     QFrame,
@@ -97,9 +97,8 @@ class MaskRow(QFrame):
 
     def __init__(self, mask: Mask, mask_line: MaskLine, parent: QWidget):
         super().__init__(parent)
-        self.mask_id = mask.id
+        self.drawn_mask = mask
         self.setObjectName("maskRow")
-        self.setStyleSheet("#maskRow { border: 1px solid palette(midlight); border-radius: 4px; }")
         self.setToolTip(mask.describe())
         row = QHBoxLayout(self)
         row.setContentsMargins(4, 2, 4, 2)
@@ -109,7 +108,7 @@ class MaskRow(QFrame):
         self.enabled.setChecked(mask_line.enabled)
         row.addWidget(self.enabled)
         self.picture = QLabel(self)
-        self.picture.setPixmap(thumbnail(mask, THUMBNAIL_PX))
+        self.show_picture()
         row.addWidget(self.picture)
         self.name = QLabel(mask.label or "mask", self)
         self.name.setMinimumWidth(0)
@@ -120,6 +119,17 @@ class MaskRow(QFrame):
         row.addWidget(self.port_line)
         self.apply_enabled(mask_line.enabled)
         self.enabled.toggled.connect(self.on_toggled)
+        # Last, so the picture exists before a restyle can change the palette.
+        self.setStyleSheet("#maskRow { border: 1px solid palette(midlight); border-radius: 4px; }")
+
+    def show_picture(self) -> None:
+        self.picture.setPixmap(thumbnail(self.drawn_mask, THUMBNAIL_PX))
+
+    def changeEvent(self, a0: QEvent | None) -> None:
+        super().changeEvent(a0)
+        # The picture is drawn in the theme's colors, so a new theme draws it again.
+        if a0 is not None and a0.type() == QEvent.Type.PaletteChange:
+            self.show_picture()
 
     def apply_enabled(self, enabled: bool) -> None:
         for each in (self.picture, self.name, self.port_line):
@@ -131,7 +141,7 @@ class MaskRow(QFrame):
 
     def value(self) -> MaskLine:
         return MaskLine(
-            self.mask_id, self.port_line.port, self.port_line.line, self.enabled.isChecked()
+            self.drawn_mask.id, self.port_line.port, self.port_line.line, self.enabled.isChecked()
         )
 
 

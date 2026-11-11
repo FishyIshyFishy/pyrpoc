@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
-from PyQt6.QtCore import QPoint, QPointF, QRect, QRectF, Qt, pyqtSignal
+from PyQt6.QtCore import QEvent, QPoint, QPointF, QRect, QRectF, Qt, pyqtSignal
 from PyQt6.QtGui import (
     QColor,
     QContextMenuEvent,
@@ -50,7 +50,7 @@ class DishCanvas(QGraphicsView):
             QPainter.RenderHint.Antialiasing | QPainter.RenderHint.SmoothPixmapTransform
         )
         self.setFrameShape(QFrame.Shape.NoFrame)
-        self.setBackgroundBrush(self.palette().color(QPalette.ColorRole.Base))
+        self.show_backdrop()
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
@@ -69,6 +69,15 @@ class DishCanvas(QGraphicsView):
         # Room past the edges, so a unit at the rim can still be brought to the middle.
         grow = max(self.dish_rect.width(), self.dish_rect.height())
         self.dish.setSceneRect(self.dish_rect.adjusted(-grow, -grow, grow, grow))
+
+    def show_backdrop(self) -> None:
+        self.setBackgroundBrush(self.palette().color(QPalette.ColorRole.Base))
+
+    def changeEvent(self, event: QEvent | None) -> None:
+        super().changeEvent(event)
+        # Around the dish is the theme's input color, so a new theme fills it again.
+        if event is not None and event.type() == QEvent.Type.PaletteChange:
+            self.show_backdrop()
 
     @property
     def accent(self) -> QColor:

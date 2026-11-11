@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 from pathlib import Path
 
 from PyQt6.QtCore import QFile, QSettings, QStandardPaths, QTextStream
@@ -40,45 +41,90 @@ def _require(pattern: str, text: str, qss_path: str) -> str:
     return match.group(1)
 
 
-def _derive_palette(qss_text: str, qss_path: str) -> QPalette:
-    """A QPalette matching the colors in *qss_text*."""
-    # Widgets styled with ``palette(...)`` tokens only re-theme if the palette tracks the
-    # stylesheet, so it is derived from the same text.
+@dataclass(frozen=True)
+class _SheetColors:
+    """The colors a stylesheet gives the window, its inputs, disabled text and selections."""
+
+    window: QColor
+    window_text: QColor
+    base: QColor
+    text: QColor
+    border: QColor
+    disabled_text: QColor
+    highlight: QColor
+    highlighted_text: QColor
+
+
+def _sheet_colors(qss_text: str, qss_path: str) -> _SheetColors:
+    """Read the window, input, disabled and selection colors out of *qss_text*."""
     widget_block = _require(r"QWidget\s*\{([^}]*)\}", qss_text, qss_path)
     lineedit_block = _require(r"QLineEdit\s*\{([^}]*)\}", qss_text, qss_path)
-
-    window_bg = _parse_qss_color(_require(r"background-color:\s*([^;]+);", widget_block, qss_path))
-    window_fg = _parse_qss_color(_require(r"(?<!-)color:\s*([^;]+);", widget_block, qss_path))
-    highlight = _parse_qss_color(
-        _require(r"selection-background-color:\s*([^;]+);", widget_block, qss_path)
-    )
-    highlighted_text = _parse_qss_color(
-        _require(r"selection-color:\s*([^;]+);", widget_block, qss_path)
-    )
-
-    base = _parse_qss_color(_require(r"background-color:\s*([^;]+);", lineedit_block, qss_path))
-    text = _parse_qss_color(_require(r"(?<!-)color:\s*([^;]+);", lineedit_block, qss_path))
-    border = _parse_qss_color(
-        _require(r"border:\s*[^;]*solid\s+([^;\s]+);", lineedit_block, qss_path)
-    )
     disabled_block = _require(r"QWidget:disabled\s*\{([^}]*)\}", qss_text, qss_path)
-    disabled_fg = _parse_qss_color(_require(r"(?<!-)color:\s*([^;]+);", disabled_block, qss_path))
 
+    def color(pattern: str, block: str) -> QColor:
+        return _parse_qss_color(_require(pattern, block, qss_path))
+
+    return _SheetColors(
+        window=color(r"background-color:\s*([^;]+);", widget_block),
+        window_text=color(r"(?<!-)color:\s*([^;]+);", widget_block),
+        base=color(r"background-color:\s*([^;]+);", lineedit_block),
+        text=color(r"(?<!-)color:\s*([^;]+);", lineedit_block),
+        border=color(r"border:\s*[^;]*solid\s+([^;\s]+);", lineedit_block),
+        disabled_text=color(r"(?<!-)color:\s*([^;]+);", disabled_block),
+        highlight=color(r"selection-background-color:\s*([^;]+);", widget_block),
+        highlighted_text=color(r"selection-color:\s*([^;]+);", widget_block),
+    )
+
+
+def _role_colors(sheet: _SheetColors) -> dict[QPalette.ColorRole, QColor]:
+    """A color for every palette role, from the stylesheet's colors."""
+    # Light themes select in a see-through accent; links and the accent itself are solid.
+    accent = QColor(sheet.highlight)
+    accent.setAlpha(255)
+    role = QPalette.ColorRole
+    return {
+        role.Window: sheet.window,
+        role.WindowText: sheet.window_text,
+        role.Button: sheet.window,
+        role.ButtonText: sheet.window_text,
+        role.Base: sheet.base,
+        # The stylesheet gives item views the window color as their alternate rows.
+        role.AlternateBase: sheet.window,
+        role.Text: sheet.text,
+        role.BrightText: QColor("#ffffff"),
+        role.PlaceholderText: sheet.disabled_text,
+        role.ToolTipBase: sheet.window,
+        role.ToolTipText: sheet.window_text,
+        role.Light: sheet.window.lighter(150),
+        role.Midlight: sheet.border,
+        role.Mid: sheet.border,
+        role.Dark: sheet.window.darker(150),
+        role.Shadow: sheet.window.darker(300),
+        role.Highlight: sheet.highlight,
+        role.HighlightedText: sheet.highlighted_text,
+        role.Accent: accent,
+        role.Link: accent,
+        role.LinkVisited: accent,
+    }
+
+
+def _derive_palette(qss_text: str, qss_path: str) -> QPalette:
+    """A QPalette with every role set from the colors in *qss_text*."""
+    # Widgets styled with ``palette(...)`` tokens only re-theme if the palette tracks the
+    # stylesheet, so it is derived from the same text. Every role is set: one left out falls
+    # through to the OS palette, whose dark- or light-mode colors then show in the other mode.
+    sheet = _sheet_colors(qss_text, qss_path)
     palette = QPalette()
-    palette.setColor(QPalette.ColorRole.Window, window_bg)
-    palette.setColor(QPalette.ColorRole.WindowText, window_fg)
-    palette.setColor(QPalette.ColorRole.Button, window_bg)
-    palette.setColor(QPalette.ColorRole.ButtonText, window_fg)
-    palette.setColor(QPalette.ColorRole.Base, base)
-    palette.setColor(QPalette.ColorRole.Text, text)
-    palette.setColor(QPalette.ColorRole.Mid, border)
-    palette.setColor(QPalette.ColorRole.Midlight, border)
-    palette.setColor(QPalette.ColorRole.Highlight, highlight)
-    palette.setColor(QPalette.ColorRole.HighlightedText, highlighted_text)
+    for role, color in _role_colors(sheet).items():
+        palette.setColor(role, color)
     # Icons drawn from the palette dim with their button only if this is set.
     disabled = QPalette.ColorGroup.Disabled
-    for role in (QPalette.ColorRole.WindowText, QPalette.ColorRole.ButtonText):
-        palette.setColor(disabled, role, disabled_fg)
+    for role in (
+        QPalette.ColorRole.WindowText,
+        QPalette.ColorRole.ButtonText,
+        QPalette.ColorRole.Text,
+    ):
+        palette.setColor(disabled, role, sheet.disabled_text)
     return palette
 
 

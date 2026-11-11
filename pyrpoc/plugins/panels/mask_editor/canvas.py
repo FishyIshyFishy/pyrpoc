@@ -9,7 +9,7 @@ import random
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-from PyQt6.QtCore import QPointF, Qt
+from PyQt6.QtCore import QEvent, QPointF, Qt
 from PyQt6.QtGui import (
     QColor,
     QMouseEvent,
@@ -92,7 +92,7 @@ class MaskImageView(QGraphicsView):
         self.setMouseTracking(True)
         self.setFrameShape(QFrame.Shape.NoFrame)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        self.setBackgroundBrush(self.palette().color(QPalette.ColorRole.Base))
+        self.show_backdrop()
         # Off once the wheel zooms, so a resize does not undo the user's zoom.
         self.fitting = True
 
@@ -109,6 +109,16 @@ class MaskImageView(QGraphicsView):
         self._roi_labels: list[QGraphicsTextItem] = []
 
     # Qt types every event as optional; the None checks narrow for that.
+    def show_backdrop(self) -> None:
+        self.setBackgroundBrush(self.palette().color(QPalette.ColorRole.Base))
+
+    def changeEvent(self, event: QEvent | None) -> None:
+        super().changeEvent(event)
+        # The backdrop and the mask's tint are the theme's colors, so a new theme redraws both.
+        if event is not None and event.type() == QEvent.Type.PaletteChange:
+            self.show_backdrop()
+            self.editor.update_view_image()
+
     def wheelEvent(self, event: QWheelEvent | None) -> None:
         if event is None:
             return
