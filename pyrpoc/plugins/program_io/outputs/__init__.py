@@ -15,6 +15,7 @@ from .calibration_log import (
 from .focus_stack import FocusResult, FocusStackOutput, FocusStep
 from .galvo_calibration import CalibrationPoint, GalvoCalibration, GalvoCalibrationOutput
 from .histogram import HistogramOutput
+from .hyperspectral import HyperspectralOutput
 from .image import ImageOutput
 from .log import LogEvent, LogOutput, event_from_dict, event_to_dict
 from .loop_events import (
@@ -148,6 +149,7 @@ __all__ = [
     "FocusStackOutput",
     "FocusStep",
     "HistogramOutput",
+    "HyperspectralOutput",
     "ImageOutput",
     "MosaicOutput",
     "MosaicTile",

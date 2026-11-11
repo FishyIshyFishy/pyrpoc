@@ -8,6 +8,7 @@ from __future__ import annotations
 from .camera import CAMERA_BINNED, CAMERA_EXPOSURE_MS, CAMERA_GAIN_PCT, CameraSettings
 from .ccd_readout import CCD_EXPOSURE_S, CCD_FRAMES_TO_AVERAGE
 from .daq import SAMPLE_RATE_MHZ, rate_hz
+from .delay_sweep import DELAY_START_UM, DELAY_STEPS, DELAY_STOP_UM, DelaySweep
 from .earlier import CALIBRATION, SURVEY
 from .focus_search import (
     FOCUS_FINAL_STEP_UM,
@@ -79,6 +80,9 @@ __all__ = [
     "CCD_EXPOSURE_S",
     "CCD_FRAMES_TO_AVERAGE",
     "CENTER_REGION_FRACTION",
+    "DELAY_START_UM",
+    "DELAY_STEPS",
+    "DELAY_STOP_UM",
     "FOCUS_FINAL_STEP_UM",
     "FOCUS_INITIAL_STEP_UM",
     "FOCUS_SEARCH_RANGE_UM",
@@ -104,6 +108,7 @@ __all__ = [
     "Y_PIXELS",
     "Y_TILES",
     "CameraSettings",
+    "DelaySweep",
     "FocusSearch",
     "HistogramSettings",
     "Mask",
