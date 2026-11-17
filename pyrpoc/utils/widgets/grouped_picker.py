@@ -39,10 +39,7 @@ class GroupedPickerDialog(QDialog):
         hint_label.setWordWrap(True)
         hint_label.setStyleSheet("color: palette(mid);")
         root.addWidget(hint_label)
-        self.search = QLineEdit(self)
-        self.search.setPlaceholderText("Search")
-        self.search.setClearButtonEnabled(True)
-        root.addWidget(self.search)
+        root.addLayout(self.build_search_row())
         self.tree = QTreeWidget(self)
         self.tree.setHeaderHidden(True)
         self.tree.setRootIsDecorated(False)
@@ -77,9 +74,12 @@ class GroupedPickerDialog(QDialog):
                 self.entries.append(item)
         self.tree.expandAll()
 
-    def build_footer(self) -> QHBoxLayout:
-        """All and None, the count, and OK and Cancel."""
+    def build_search_row(self) -> QHBoxLayout:
+        """The search box, then All and None for what it shows."""
         row = QHBoxLayout()
+        self.search = QLineEdit(self)
+        self.search.setPlaceholderText("Search")
+        self.search.setClearButtonEnabled(True)
         all_btn = QPushButton("All", self)
         all_btn.setToolTip("Check every entry shown")
         all_btn.setAutoDefault(False)
@@ -88,6 +88,14 @@ class GroupedPickerDialog(QDialog):
         none_btn.setToolTip("Uncheck every entry shown")
         none_btn.setAutoDefault(False)
         none_btn.clicked.connect(lambda: self.check_shown(Qt.CheckState.Unchecked))
+        row.addWidget(self.search, 1)
+        row.addWidget(all_btn)
+        row.addWidget(none_btn)
+        return row
+
+    def build_footer(self) -> QHBoxLayout:
+        """The count, and OK and Cancel."""
+        row = QHBoxLayout()
         self.count_label = QLabel(self)
         self.count_label.setStyleSheet("color: palette(mid);")
         self.buttons = QDialogButtonBox(
@@ -95,8 +103,6 @@ class GroupedPickerDialog(QDialog):
         )
         self.buttons.accepted.connect(self.accept)
         self.buttons.rejected.connect(self.reject)
-        row.addWidget(all_btn)
-        row.addWidget(none_btn)
         row.addWidget(self.count_label, 1)
         row.addWidget(self.buttons)
         return row
