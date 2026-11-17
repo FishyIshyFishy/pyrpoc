@@ -132,7 +132,6 @@ class AcquisitionPanel(Panel):
         }
         dialog = GroupedPickerDialog(
             "Choose Programs",
-            "Pick the programs to list in the dropdown. Choose again from the foot of the list.",
             groups,
             self.visible,
             self,

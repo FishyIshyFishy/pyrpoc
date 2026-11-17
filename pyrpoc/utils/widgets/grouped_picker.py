@@ -26,7 +26,6 @@ class GroupedPickerDialog(QDialog):
     def __init__(
         self,
         title: str,
-        hint: str,
         groups: dict[str, list[tuple[str, str]]],
         checked: set[str],
         parent: QWidget,
@@ -35,10 +34,6 @@ class GroupedPickerDialog(QDialog):
         self.setWindowTitle(title)
         self.resize(380, 520)
         root = QVBoxLayout(self)
-        hint_label = QLabel(hint, self)
-        hint_label.setWordWrap(True)
-        hint_label.setStyleSheet("color: palette(mid);")
-        root.addWidget(hint_label)
         root.addLayout(self.build_search_row())
         self.tree = QTreeWidget(self)
         self.tree.setHeaderHidden(True)
