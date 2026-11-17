@@ -135,6 +135,8 @@ def main() -> int:
     autosave.restore()
     connect_saved_devices(window, app.inventory)
     fit_to_available_screen(window)
+    # A session tends to use a few programs, so they are chosen afresh from last time's.
+    window.acquisition.choose_programs()
     return qt_app.exec()
 
 

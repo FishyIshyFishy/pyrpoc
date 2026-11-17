@@ -28,6 +28,7 @@ from pyrpoc.core.program import Program, program_registry
 from pyrpoc.core.registry import grouped
 from pyrpoc.utils.widgets.control_views import ControlView, build_control_view
 from pyrpoc.utils.widgets.grouped_combo import GroupedComboBox
+from pyrpoc.utils.widgets.grouped_picker import GroupedPickerDialog
 from pyrpoc.utils.widgets.icons import asset_icon
 from pyrpoc.utils.widgets.param_form import ParamForm, input_form_section
 from pyrpoc.utils.widgets.path_field import PathField
@@ -65,6 +66,8 @@ class AcquisitionPanel(Panel):
         self.inputs = inputs
         self.host = RunnerHost(runs, inputs, self)
         self.program: type[Program] | None = None
+        # The programs the dropdown lists; only the user's view, never what can run.
+        self.visible: set[str] = set(program_registry.keys())
         # What the shown program still needs, judged once each time readiness changes.
         self.missing: list[str] = []
         self.form: ParamForm | None = None
@@ -94,18 +97,57 @@ class AcquisitionPanel(Panel):
         self.set_running_ui(False)
         self.on_save_changed()
         self.on_note_changed()
-        self.select_program(program_registry.keys()[0])
+        self.select_program(self.first_visible())
 
     def build_program_row(self) -> QHBoxLayout:
         row = QHBoxLayout()
         row.addWidget(QLabel("Program:", self))
         self.program_combo = GroupedComboBox(self)
-        for heading, keys in grouped(program_registry).items():
-            self.program_combo.add_group(
-                heading, [(program_registry.get(key).display_name, key) for key in keys]
-            )
+        self.fill_program_combo()
         row.addWidget(self.program_combo, 1)
         return row
+
+    def fill_program_combo(self) -> None:
+        """List the visible programs under their headings, then the way to change which."""
+        # Clearing would otherwise report a change to no program at all.
+        self.program_combo.blockSignals(True)
+        self.program_combo.clear_entries()
+        for heading, keys in grouped(program_registry).items():
+            shown = [key for key in keys if key in self.visible]
+            if shown:
+                self.program_combo.add_group(
+                    heading, [(program_registry.get(key).display_name, key) for key in shown]
+                )
+        self.program_combo.add_action("Choose programs…")
+        self.program_combo.blockSignals(False)
+
+    def first_visible(self) -> str:
+        return next(key for key in program_registry.keys() if key in self.visible)
+
+    def choose_programs(self) -> None:
+        """Ask which programs the dropdown lists, keeping the shown one if it stays."""
+        groups = {
+            heading: [(program_registry.get(key).display_name, key) for key in keys]
+            for heading, keys in grouped(program_registry).items()
+        }
+        dialog = GroupedPickerDialog(
+            "Choose Programs",
+            "Pick the programs to list in the dropdown. Choose again from the foot of the list.",
+            groups,
+            self.visible,
+            self,
+        )
+        if not dialog.exec():
+            return
+        self.set_visible(dialog.checked)
+        self.state_changed.emit()
+
+    def set_visible(self, keys: set[str]) -> None:
+        """List only ``keys``, moving to the first of them if the shown program is not one."""
+        self.visible = keys
+        self.fill_program_combo()
+        shown = None if self.program is None else self.program.registry_key
+        self.select_program(shown if shown in keys else self.first_visible())
 
     def build_transport_row(self) -> QHBoxLayout:
         row = QHBoxLayout()
@@ -143,6 +185,7 @@ class AcquisitionPanel(Panel):
 
     def connect_signals(self) -> None:
         self.program_combo.currentIndexChanged.connect(self.on_program_chosen)
+        self.program_combo.action_clicked.connect(self.choose_programs)
         self.stop_btn.clicked.connect(self.host.stop)
         self.save_check.toggled.connect(lambda checked: self.runs.set_save(enabled=checked))
         self.path_field.name_edited.connect(lambda text: self.runs.set_save(name=text))
@@ -315,9 +358,19 @@ class AcquisitionPanel(Panel):
         self.path_field.setEnabled(not save_fixed)
 
     def export_persistence_state(self) -> dict[str, Any]:
-        return {"program": None if self.program is None else self.program.registry_key}
+        return {
+            "program": None if self.program is None else self.program.registry_key,
+            "visible": sorted(self.visible),
+        }
 
     def import_persistence_state(self, state: dict[str, Any]) -> None:
-        """Show the saved program, or the first one if it no longer exists."""
+        """List the saved programs and show the saved one, falling back to every program and
+        the first listed when what was saved no longer exists."""
+        saved = state.get("visible")
+        keys = set(program_registry.keys())
+        if isinstance(saved, list):
+            keys &= set(saved)
+        self.visible = keys or set(program_registry.keys())
+        self.fill_program_combo()
         key = state.get("program")
-        self.select_program(key if key in program_registry.entries else program_registry.keys()[0])
+        self.select_program(key if key in self.visible else self.first_visible())

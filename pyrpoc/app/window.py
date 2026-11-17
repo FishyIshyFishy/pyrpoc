@@ -127,8 +127,10 @@ class MainWindow(QWidget):
 
     def build_panels(self) -> None:
         app = self.app
+        # Kept by its own type too, so startup can ask which programs to list.
+        self.acquisition = AcquisitionPanel(app.runs, app.inputs)
         self.fixed_panels = {
-            DockKey.ACQUISITION: AcquisitionPanel(app.runs, app.inputs),
+            DockKey.ACQUISITION: self.acquisition,
             DockKey.DEVICES: DevicesPanel(app.inventory),
             DockKey.DATA: DataLibraryPanel(app.library, lambda: app.runs.save.folder),
         }
