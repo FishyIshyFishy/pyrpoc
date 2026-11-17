@@ -27,11 +27,11 @@ from pyrpoc.core.panels import Panel
 from pyrpoc.core.program import Program, program_registry
 from pyrpoc.core.registry import grouped
 from pyrpoc.utils.widgets.control_views import ControlView, build_control_view
-from pyrpoc.utils.widgets.filter_combo import FilterComboBox
 from pyrpoc.utils.widgets.grouped_picker import GroupedPickerDialog
 from pyrpoc.utils.widgets.icons import asset_icon
 from pyrpoc.utils.widgets.param_form import ParamForm, input_form_section
 from pyrpoc.utils.widgets.path_field import PathField
+from pyrpoc.utils.widgets.type_ahead_combo import TypeAheadComboBox
 
 from .host import RunnerHost
 from .note import NoteDialog
@@ -102,7 +102,7 @@ class AcquisitionPanel(Panel):
     def build_program_row(self) -> QHBoxLayout:
         row = QHBoxLayout()
         row.addWidget(QLabel("Program:", self))
-        self.program_combo = FilterComboBox(self)
+        self.program_combo = TypeAheadComboBox(self)
         self.fill_program_combo()
         row.addWidget(self.program_combo, 1)
         return row

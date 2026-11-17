@@ -1,7 +1,9 @@
-"""A dropdown whose open list is filtered by typing and walked with the arrow keys."""
+"""A dropdown that drops its list below the box and jumps to entries as the user types, like a
+web form's country select."""
 
 from __future__ import annotations
 
+import time
 from enum import Enum
 
 from PyQt6.QtCore import QEvent, QModelIndex, QObject, QPoint, Qt, pyqtSignal
@@ -17,7 +19,6 @@ from PyQt6.QtGui import (
 from PyQt6.QtWidgets import (
     QComboBox,
     QFrame,
-    QLineEdit,
     QListView,
     QStyle,
     QStyledItemDelegate,
@@ -36,13 +37,16 @@ class Kind(Enum):
 
 
 _KIND_ROLE = Qt.ItemDataRole.UserRole + 1
-# What typing is matched against: an entry's label and its heading, in lower case.
-_SEARCH_ROLE = Qt.ItemDataRole.UserRole + 2
+# What typing is matched against: the label without its indent, in lower case.
+_MATCH_ROLE = Qt.ItemDataRole.UserRole + 2
 # What the closed box shows while the entry is current.
 _SHOWN_ROLE = Qt.ItemDataRole.UserRole + 3
 
 _MAX_LIST_HEIGHT = 360
 _PAGE = 8
+# Longer than Qt's default keyboard interval: a whole name like "united s" is typed in one go,
+# as in a browser's select.
+_TYPING_PAUSE_S = 1.0
 
 
 class _RowDelegate(QStyledItemDelegate):
@@ -64,7 +68,7 @@ class _RowDelegate(QStyledItemDelegate):
         option.state |= QStyle.StateFlag.State_Enabled
         option.state &= ~QStyle.StateFlag.State_MouseOver
         if index.row() == self.highlighted:
-            # Active too: the filter field holds focus, and the theme fades an inactive selection.
+            # Active too: the theme fades a selection in a view without focus.
             option.state |= QStyle.StateFlag.State_Selected | QStyle.StateFlag.State_Active
         if index.data(_KIND_ROLE) is not Kind.ACTION:
             super().paint(painter, option, index)
@@ -79,21 +83,18 @@ class _RowDelegate(QStyledItemDelegate):
         painter.restore()
 
 
-class _FilterPopup(QFrame):
-    """The open list: a filter field over the entries, dropped below the box."""
+class _ListPopup(QFrame):
+    """The open list, dropped below the box. Typing moves the highlight to the first entry that
+    starts with what was typed."""
 
-    def __init__(self, combo: FilterComboBox):
+    def __init__(self, combo: TypeAheadComboBox):
         super().__init__(combo, Qt.WindowType.Popup)
         self.combo = combo
-        # Whether the list opened above the box, so refitting it after filtering keeps it there.
-        self.above = False
+        self.typed = ""
+        self.typed_at = 0.0
         self.setFrameShape(QFrame.Shape.StyledPanel)
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(4, 4, 4, 4)
-        layout.setSpacing(4)
-        self.search = QLineEdit(self)
-        self.search.setPlaceholderText("Type to filter")
-        self.search.setClearButtonEnabled(True)
+        layout.setContentsMargins(0, 0, 0, 0)
         self.list = QListView(self)
         self.list.setModel(combo.entries)
         self.list.setFocusPolicy(Qt.FocusPolicy.NoFocus)
@@ -103,70 +104,34 @@ class _FilterPopup(QFrame):
         self.list.setMouseTracking(True)
         self.delegate = _RowDelegate(self.list)
         self.list.setItemDelegate(self.delegate)
-        layout.addWidget(self.search)
         layout.addWidget(self.list)
-
-        self.search.textChanged.connect(self.apply_filter)
-        self.search.installEventFilter(self)
         viewport = self.list.viewport()
         assert viewport is not None
         viewport.installEventFilter(self)
 
-    def open(self, text: str) -> None:
-        """Show every entry with the current one highlighted, then filter by ``text``."""
-        self.search.clear()
-        self.apply_filter("")
+    def open(self) -> None:
+        """Show the list with the current entry highlighted in its middle."""
+        self.typed = ""
         self.place()
         self.show()
-        self.set_highlight(self.combo.currentIndex())
+        self.setFocus()
+        current = self.combo.currentIndex()
+        self.set_highlight(current)
         self.list.scrollTo(
-            self.combo.entries.index(self.combo.currentIndex(), 0),
-            QListView.ScrollHint.PositionAtCenter,
+            self.combo.entries.index(current, 0), QListView.ScrollHint.PositionAtCenter
         )
-        self.search.setFocus()
-        self.search.setText(text)
 
     def kind(self, row: int) -> Kind:
         return self.combo.entries.index(row, 0).data(_KIND_ROLE)
 
     def pickable(self, row: int) -> bool:
-        return (
-            0 <= row < self.combo.count()
-            and not self.list.isRowHidden(row)
-            and self.kind(row) is not Kind.HEADING
-        )
-
-    def apply_filter(self, text: str) -> None:
-        """Show the entries matching ``text``, and the headings over them; highlight the first
-        match."""
-        query = text.strip().lower()
-        # Walked from the bottom so each heading knows whether any entry beneath it is shown.
-        shown_below = False
-        first_match = -1
-        for row in reversed(range(self.combo.count())):
-            kind = self.kind(row)
-            if kind is Kind.HEADING:
-                hidden = not shown_below
-                shown_below = False
-            elif kind is Kind.ACTION:
-                hidden = False
-            else:
-                hidden = query not in self.combo.entries.index(row, 0).data(_SEARCH_ROLE)
-                shown_below |= not hidden
-                first_match = row if not hidden else first_match
-            self.list.setRowHidden(row, hidden)
-        if self.isVisible():
-            self.place()
-        if query or not self.pickable(self.delegate.highlighted):
-            self.set_highlight(first_match)
+        return 0 <= row < self.combo.count() and self.kind(row) is not Kind.HEADING
 
     def set_highlight(self, row: int) -> None:
         self.delegate.highlighted = row
         viewport = self.list.viewport()
         assert viewport is not None
         viewport.update()
-        if row < 0:
-            return
         # The first entry of a group brings its heading into view with it.
         if row > 0 and self.kind(row - 1) is Kind.HEADING:
             self.list.scrollTo(self.combo.entries.index(row - 1, 0))
@@ -185,74 +150,100 @@ class _FilterPopup(QFrame):
             row = following
         self.set_highlight(row)
 
+    def type_ahead(self, text: str) -> None:
+        """Add ``text`` to what has been typed, starting afresh after a pause, and highlight the
+        first entry it begins."""
+        now = time.monotonic()
+        if now - self.typed_at > _TYPING_PAUSE_S:
+            self.typed = ""
+        self.typed_at = now
+        self.typed += text.lower()
+        match = self.first_starting(self.typed, 0)
+        # Pressing one letter again and again steps through the entries starting with it.
+        if match < 0 and self.typed == self.typed[0] * len(self.typed):
+            match = self.first_starting(self.typed[0], self.delegate.highlighted + 1)
+        if match >= 0:
+            self.set_highlight(match)
+
+    def first_starting(self, prefix: str, start: int) -> int:
+        """The first entry from row ``start`` on, wrapping round, whose label starts with
+        ``prefix``; -1 if none does."""
+        count = self.combo.count()
+        for offset in range(count):
+            row = (max(start, 0) + offset) % count
+            label = self.combo.entries.index(row, 0).data(_MATCH_ROLE)
+            if self.kind(row) is Kind.ENTRY and label.startswith(prefix):
+                return row
+        return -1
+
     def place(self) -> None:
-        """Size the list to its shown rows and drop it below the box, or above when there is
-        no room beneath; once open it stays on the side it opened on."""
-        shown = [row for row in range(self.combo.count()) if not self.list.isRowHidden(row)]
-        content = sum(self.list.sizeHintForRow(row) for row in shown) + 2 * self.list.frameWidth()
+        """Size the list to its entries and drop it below the box, or above when there is no
+        room beneath."""
+        rows = range(self.combo.count())
+        content = sum(self.list.sizeHintForRow(row) for row in rows) + 2 * self.list.frameWidth()
         self.list.setFixedHeight(min(content, _MAX_LIST_HEIGHT))
         width = max(self.combo.width(), self.list.sizeHintForColumn(0) + 32)
         self.setFixedWidth(width)
         self.adjustSize()
-        below = self.combo.mapToGlobal(QPoint(0, self.combo.height()))
-        top = self.combo.mapToGlobal(QPoint(0, 0)).y() - self.height()
+        position = self.combo.mapToGlobal(QPoint(0, self.combo.height()))
         screen = self.combo.screen()
-        if not self.isVisible():
-            fits = (
-                screen is None or below.y() + self.height() <= screen.availableGeometry().bottom()
-            )
-            self.above = not fits
-        position = QPoint(below.x(), top if self.above else below.y())
         if screen is not None:
             area = screen.availableGeometry()
+            if position.y() + self.height() > area.bottom():
+                position.setY(self.combo.mapToGlobal(QPoint(0, 0)).y() - self.height())
             position.setX(max(area.left(), min(position.x(), area.right() - width)))
         self.move(position)
 
     def eventFilter(self, a0: QObject | None, a1: QEvent | None) -> bool:
-        if a1 is None:
-            return False
-        if a0 is self.search and a1.type() == QEvent.Type.KeyPress:
-            assert isinstance(a1, QKeyEvent)
-            return self.on_key(a1.key())
-        if a1.type() in (
+        if a1 is None or a1.type() not in (
             QEvent.Type.MouseMove,
             QEvent.Type.MouseButtonPress,
             QEvent.Type.MouseButtonRelease,
         ):
-            assert isinstance(a1, QMouseEvent)
-            row = self.list.indexAt(a1.position().toPoint()).row()
-            if a1.type() == QEvent.Type.MouseMove and self.pickable(row):
-                self.set_highlight(row)
-            if a1.type() == QEvent.Type.MouseButtonRelease and self.pickable(row):
-                self.combo.pick(row)
-            # The view's own handling would select and scroll; the highlight stands in for both.
-            return a1.type() != QEvent.Type.MouseMove
-        return super().eventFilter(a0, a1)
+            return super().eventFilter(a0, a1)
+        assert isinstance(a1, QMouseEvent)
+        row = self.list.indexAt(a1.position().toPoint()).row()
+        if a1.type() == QEvent.Type.MouseMove and self.pickable(row):
+            self.set_highlight(row)
+        if a1.type() == QEvent.Type.MouseButtonRelease and self.pickable(row):
+            self.combo.pick(row)
+        # The view's own handling would select and scroll; the highlight stands in for both.
+        return a1.type() != QEvent.Type.MouseMove
 
-    def on_key(self, key: int) -> bool:
-        """Handle the keys that move or pick; the rest edit the filter."""
+    def keyPressEvent(self, a0: QKeyEvent | None) -> None:
+        assert a0 is not None
+        key = a0.key()
         steps = {
             Qt.Key.Key_Up.value: -1,
             Qt.Key.Key_Down.value: 1,
             Qt.Key.Key_PageUp.value: -_PAGE,
             Qt.Key.Key_PageDown.value: _PAGE,
+            Qt.Key.Key_Home.value: -self.combo.count(),
+            Qt.Key.Key_End.value: self.combo.count(),
         }
         if key in steps:
             self.move_highlight(steps[key])
-        elif key in (Qt.Key.Key_Return.value, Qt.Key.Key_Enter.value):
+        elif key in (Qt.Key.Key_Return.value, Qt.Key.Key_Enter.value, Qt.Key.Key_Tab.value):
             if self.pickable(self.delegate.highlighted):
                 self.combo.pick(self.delegate.highlighted)
         elif key == Qt.Key.Key_Escape.value:
             self.hide()
-        else:
-            return False
-        return True
+        elif typed_text(a0):
+            self.type_ahead(a0.text())
 
 
-class FilterComboBox(QComboBox):
-    """A combo box whose list drops below it with a filter field: typing narrows the entries,
-    the arrow keys walk them and Enter picks one. Entries may sit under unselectable headings,
-    and an action entry may close the list."""
+def typed_text(event: QKeyEvent) -> bool:
+    """Whether ``event`` types a character rather than giving a shortcut."""
+    shortcut = event.modifiers() & (
+        Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.AltModifier
+    )
+    return not shortcut and event.text().isprintable() and event.text() != ""
+
+
+class TypeAheadComboBox(QComboBox):
+    """A combo box whose list drops below it; typing jumps to the first entry starting with what
+    was typed, the arrow keys walk the list and Enter picks. Entries may sit under unselectable
+    headings, and an action entry at the foot may close the list."""
 
     # The action entry at the foot of the list was picked.
     action_clicked = pyqtSignal()
@@ -261,13 +252,13 @@ class FilterComboBox(QComboBox):
         super().__init__(parent)
         self.entries = QStandardItemModel(self)
         self.setModel(self.entries)
-        # The heading the next entries sit under, if any.
-        self.heading = ""
-        self.popup = _FilterPopup(self)
+        # Whether entries added now sit under a heading, and so are indented.
+        self.under_heading = False
+        self.popup = _ListPopup(self)
 
     def clear_entries(self) -> None:
         self.entries.clear()
-        self.heading = ""
+        self.under_heading = False
 
     def add_heading(self, text: str) -> QStandardItem:
         """A bold row the entries added after it sit under; returned so a caller can add a
@@ -279,16 +270,16 @@ class FilterComboBox(QComboBox):
         font.setBold(True)
         item.setFont(font)
         self.entries.appendRow(item)
-        self.heading = text
+        self.under_heading = True
         return item
 
     def add_entry(self, label: str, data: object, shown: str) -> None:
         """An entry listed as ``label``, holding ``data``, that the closed box shows as
         ``shown``."""
-        item = QStandardItem(f"    {label}" if self.heading else label)
+        item = QStandardItem(f"    {label}" if self.under_heading else label)
         item.setData(data, Qt.ItemDataRole.UserRole)
         item.setData(Kind.ENTRY, _KIND_ROLE)
-        item.setData(f"{self.heading} {label}".lower(), _SEARCH_ROLE)
+        item.setData(label.lower(), _MATCH_ROLE)
         item.setData(shown, _SHOWN_ROLE)
         self.entries.appendRow(item)
         # A heading becomes current when it is the first row, and is never a choice.
@@ -297,7 +288,7 @@ class FilterComboBox(QComboBox):
 
     def add_action(self, label: str) -> None:
         """An entry at the foot of the list that emits ``action_clicked`` instead of being
-        chosen; it is shown whatever the filter."""
+        chosen."""
         item = QStandardItem(label)
         item.setData(Kind.ACTION, _KIND_ROLE)
         item.setFlags(Qt.ItemFlag.NoItemFlags)
@@ -305,7 +296,7 @@ class FilterComboBox(QComboBox):
         font.setItalic(True)
         item.setFont(font)
         self.entries.appendRow(item)
-        self.heading = ""
+        self.under_heading = False
 
     def pick(self, row: int) -> None:
         self.popup.hide()
@@ -315,20 +306,17 @@ class FilterComboBox(QComboBox):
             self.setCurrentIndex(row)
 
     def showPopup(self) -> None:
-        self.popup.open("")
+        self.popup.open()
 
     def hidePopup(self) -> None:
         self.popup.hide()
 
     def keyPressEvent(self, e: QKeyEvent | None) -> None:
-        """Typing on the closed box opens the list filtered by what was typed."""
+        """Typing on the closed box opens the list and jumps to what was typed."""
         assert e is not None
-        text = e.text()
-        plain = not e.modifiers() & (
-            Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.AltModifier
-        )
-        if plain and text.isprintable() and text.strip():
-            self.popup.open(text)
+        if typed_text(e) and e.text() != " ":
+            self.popup.open()
+            self.popup.type_ahead(e.text())
             return
         super().keyPressEvent(e)
 

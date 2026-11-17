@@ -13,7 +13,7 @@ from PyQt6.QtWidgets import QHBoxLayout, QLabel, QWidget
 from pyrpoc.core.library import Library
 from pyrpoc.core.program_output import ProgramOutput
 
-from .filter_combo import FilterComboBox
+from .type_ahead_combo import TypeAheadComboBox
 
 OutputT = TypeVar("OutputT", bound=ProgramOutput)
 
@@ -57,7 +57,7 @@ class SourcePicker(QWidget, Generic[OutputT]):
         self.row = QHBoxLayout(self)
         self.row.setContentsMargins(0, 0, 0, 0)
         self.row.addWidget(QLabel("Source:", self))
-        self.combo = FilterComboBox(self)
+        self.combo = TypeAheadComboBox(self)
         self.combo.currentIndexChanged.connect(lambda _index: self.changed.emit())
         self.row.addWidget(self.combo, 1)
 
