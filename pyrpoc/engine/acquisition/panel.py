@@ -27,7 +27,7 @@ from pyrpoc.core.panels import Panel
 from pyrpoc.core.program import Program, program_registry
 from pyrpoc.core.registry import grouped
 from pyrpoc.utils.widgets.control_views import ControlView, build_control_view
-from pyrpoc.utils.widgets.grouped_combo import GroupedComboBox
+from pyrpoc.utils.widgets.filter_combo import FilterComboBox
 from pyrpoc.utils.widgets.grouped_picker import GroupedPickerDialog
 from pyrpoc.utils.widgets.icons import asset_icon
 from pyrpoc.utils.widgets.param_form import ParamForm, input_form_section
@@ -102,7 +102,7 @@ class AcquisitionPanel(Panel):
     def build_program_row(self) -> QHBoxLayout:
         row = QHBoxLayout()
         row.addWidget(QLabel("Program:", self))
-        self.program_combo = GroupedComboBox(self)
+        self.program_combo = FilterComboBox(self)
         self.fill_program_combo()
         row.addWidget(self.program_combo, 1)
         return row
@@ -113,11 +113,12 @@ class AcquisitionPanel(Panel):
         self.program_combo.blockSignals(True)
         self.program_combo.clear_entries()
         for heading, keys in grouped(program_registry).items():
-            shown = [key for key in keys if key in self.visible]
-            if shown:
-                self.program_combo.add_group(
-                    heading, [(program_registry.get(key).display_name, key) for key in shown]
-                )
+            listed = [key for key in keys if key in self.visible]
+            if listed:
+                self.program_combo.add_heading(heading)
+            for key in listed:
+                name = program_registry.get(key).display_name
+                self.program_combo.add_entry(name, key, f"{heading} › {name}")
         self.program_combo.add_action("Choose programs…")
         self.program_combo.blockSignals(False)
 
