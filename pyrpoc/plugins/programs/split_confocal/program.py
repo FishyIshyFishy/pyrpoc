@@ -12,12 +12,11 @@ from pyrpoc.plugins.program_io.inputs import (
     MASKS,
     NUM_FRAMES,
     SAMPLE_RATE_MHZ,
-    SCAN_GEOMETRY_INPUTS,
     T0_SAMPLES,
     T1_SAMPLES,
-    SplitWindows,
 )
 from pyrpoc.plugins.program_io.outputs import ImageOutput, SamplesOutput
+from pyrpoc.plugins.programs.building_blocks.settings import SCAN_GEOMETRY_INPUTS, SplitWindows
 
 from ..building_blocks.functions.galvo_raster import Raster
 from ..building_blocks.functions.run_loops import count_off
@@ -51,6 +50,9 @@ class SplitConfocal(Program):
         ),
         "Modulation": (MASK_LINES,),
     }
+    # What sets the shape of each image and of each pixel's samples.
+    fixed = [*SCAN_GEOMETRY_INPUTS, SAMPLE_RATE_MHZ, T0_SAMPLES, T1_SAMPLES]
+    saves = [MASKS]
     emits = {"intensity": ImageOutput, "raw_pixel_stream": SamplesOutput}
     runners = [Single(), Continuous()]
 

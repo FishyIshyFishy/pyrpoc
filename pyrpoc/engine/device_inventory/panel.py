@@ -8,7 +8,6 @@ from collections.abc import Callable
 from PyQt6.QtCore import QPoint, Qt
 from PyQt6.QtGui import QAction
 from PyQt6.QtWidgets import (
-    QComboBox,
     QHBoxLayout,
     QHeaderView,
     QMenu,
@@ -20,6 +19,7 @@ from pyrpoc.core.device import Connection, Device, device_registry
 from pyrpoc.core.panels import Panel
 from pyrpoc.utils.widgets.device_panel import has_panel
 from pyrpoc.utils.widgets.table import ListTable, horizontal_header, viewport_of
+from pyrpoc.utils.widgets.type_ahead_combo import TypeAheadComboBox
 
 from .configure import ConfigureDialog
 from .inventory import DeviceInventory, DeviceStatus
@@ -78,9 +78,10 @@ class DevicesPanel(Panel):
 
     def build_add_row(self) -> QHBoxLayout:
         row = QHBoxLayout()
-        self.type_combo = QComboBox(self)
+        self.type_combo = TypeAheadComboBox(self)
         for key in device_registry.keys():
-            self.type_combo.addItem(device_registry.get(key).display_name, key)
+            name = device_registry.get(key).display_name
+            self.type_combo.add_entry(name, key, name)
         add_btn = QPushButton("Add", self)
         add_btn.clicked.connect(self.add_chosen)
         row.addWidget(self.type_combo, 1)

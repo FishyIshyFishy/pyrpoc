@@ -1,5 +1,5 @@
 """The dock manager: three fixed panels, one dock per added data panel, and
-the device panels ``DeviceDocks`` keeps."""
+the device panels ``DeviceDocks`` keeps. ``DockPlacement`` decides where each new dock goes."""
 
 from __future__ import annotations
 
@@ -15,6 +15,7 @@ from PyQt6.QtWidgets import QVBoxLayout, QWidget
 
 from pyrpoc.app.application import Application
 from pyrpoc.app.device_docks import DeviceDocks
+from pyrpoc.app.dock_placement import DockPlacement
 from pyrpoc.app.menubar import MainMenuBar
 from pyrpoc.app.theme.manager import ThemeController
 from pyrpoc.core.panels import Panel
@@ -79,7 +80,8 @@ class MainWindow(QWidget):
         # Which instance of its type each panel is, to tell same-kind docks apart.
         self.panel_ordinals: dict[DataPanel, int] = {}
 
-        self.device_docks = DeviceDocks(self.app.inventory, self.dock_manager, self)
+        self.placement = DockPlacement(self.dock_manager)
+        self.device_docks = DeviceDocks(self.app.inventory, self.placement, self)
         self.device_docks.actions_changed.connect(self.refresh_panels_menu)
 
         self.menubar = MainMenuBar(self)
@@ -127,38 +129,21 @@ class MainWindow(QWidget):
 
     def build_panels(self) -> None:
         app = self.app
+        # Kept by its own type too, so startup can ask which programs to list.
+        self.acquisition = AcquisitionPanel(app.runs, app.inputs)
         self.fixed_panels = {
-            DockKey.ACQUISITION: AcquisitionPanel(app.runs, app.inputs),
+            DockKey.ACQUISITION: self.acquisition,
             DockKey.DEVICES: DevicesPanel(app.inventory),
             DockKey.DATA: DataLibraryPanel(app.library, lambda: app.runs.save.folder),
         }
         for panel in self.fixed_panels.values():
             panel.state_changed.connect(self.screen_changed.emit)
-        first: qtads.CDockWidget | None = None
         for spec in PANELS:
-            panel = self.fixed_panels[spec.key]
-            dock = self.add_dock(spec.title, panel, spec.object_name, tab_with=first)
+            dock = qtads.CDockWidget(spec.title)
+            # ADS keys save/restore by the object name at add time, so set it first.
+            dock.setObjectName(spec.object_name)
+            self.placement.add(dock, self.fixed_panels[spec.key])
             self.dock_by_key[spec.key] = dock
-            if first is None:
-                first = dock
-
-    def add_dock(
-        self,
-        title: str,
-        widget: QWidget,
-        object_name: str,
-        tab_with: qtads.CDockWidget | None,
-    ) -> qtads.CDockWidget:
-        dock = qtads.CDockWidget(title)
-        # ADS keys save/restore by the object name at add time, so set it first.
-        dock.setObjectName(object_name)
-        dock.setWidget(widget)
-        area = qtads.DockWidgetArea.LeftDockWidgetArea
-        if tab_with is None:
-            self.dock_manager.addDockWidget(area, dock)
-        else:
-            self.dock_manager.addDockWidgetTab(area, dock)
-        return dock
 
     @property
     def panels(self) -> list[DataPanel]:
@@ -231,8 +216,7 @@ class MainWindow(QWidget):
         self.assign_ordinal(panel)
         dock = qtads.CDockWidget(self.panel_title(panel))
         dock.setObjectName(self.panel_object_name(panel))
-        dock.setWidget(panel)
-        self.dock_manager.addDockWidgetFloating(dock)
+        self.placement.add(dock, panel)
         self.panel_docks[panel] = dock
 
         action = QAction(self.panel_title(panel), self)
@@ -277,16 +261,15 @@ class MainWindow(QWidget):
         return state.toBase64().data().decode("ascii")
 
     def restore_dock_layout(self, layout_base64: str | None) -> None:
-        if not layout_base64:
-            return
-        data = QByteArray.fromBase64(layout_base64.encode("ascii"))
-        if data.isEmpty():
-            return
-        self.restoring_layout = self.device_docks.frozen = True
-        try:
-            self.dock_manager.restoreState(data)
-        finally:
-            self.restoring_layout = self.device_docks.frozen = False
+        """Arrange the docks as saved, then put each panel in its dock."""
+        data = QByteArray.fromBase64((layout_base64 or "").encode("ascii"))
+        if not data.isEmpty():
+            self.restoring_layout = self.device_docks.frozen = True
+            try:
+                self.dock_manager.restoreState(data)
+            finally:
+                self.restoring_layout = self.device_docks.frozen = False
+        self.placement.release()
         self.refresh_panels_menu()
 
     def refresh_panels_menu(self) -> None:

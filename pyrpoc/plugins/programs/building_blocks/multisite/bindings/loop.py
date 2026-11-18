@@ -21,7 +21,6 @@ from pyrpoc.plugins.program_io.inputs import (
     FOCUS_SEARCH_RANGE_UM,
     SURVEY,
     UNITS,
-    FocusSearch,
 )
 from pyrpoc.plugins.program_io.outputs import (
     FrameTag,
@@ -33,6 +32,7 @@ from pyrpoc.plugins.program_io.outputs import (
     UnitRecord,
     UnitsOutput,
 )
+from pyrpoc.plugins.programs.building_blocks.settings import FocusSearch
 
 from ..interfaces.field import FieldOfView
 from ..interfaces.microscope import Microscope
@@ -44,8 +44,6 @@ from ..stages.loop.survey_map import SurveyMap, Visit
 from .earlier import required
 from .scratch import Scratch
 
-# Every loop program reads the units, live: they are what it runs on, however they change.
-LOOP_UNITS: list[ProgramInput[Any]] = [UNITS]
 LOOP_FOCUS_INPUTS = (
     FOCUS_CHECK_S,
     FOCUS_SEARCH_RANGE_UM,
@@ -69,7 +67,7 @@ class RunSteering:
         self.ctx = ctx
 
     def units(self) -> tuple[Unit, ...]:
-        return self.ctx.current(UNITS)
+        return self.ctx.inputs[UNITS]
 
 
 class LoopOutputs:

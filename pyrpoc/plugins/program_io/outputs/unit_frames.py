@@ -12,8 +12,8 @@ import numpy as np
 
 from pyrpoc.core.program_output import program_output_registry
 from pyrpoc.core.recording import Recording
+from pyrpoc.utils.file_formats.tiff import append_planes, frame_count, read_planes
 
-from .building_blocks.tiff import append_planes, frame_count, read_planes
 from .image import ImageOutput
 
 # The ``paths`` keys of the frames' tags and channels, beside one key per unit and routine.

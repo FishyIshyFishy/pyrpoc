@@ -16,7 +16,6 @@ from pyrpoc.plugins.program_io.inputs import (
 
 from ..building_blocks.multisite import (
     MONITOR_INPUTS,
-    MONITOR_LIVE,
     TREATMENT_INPUTS,
     DigitalLine,
     LoopProgram,
@@ -50,7 +49,15 @@ class LongitudinalMonitor(LoopProgram):
         "Scan": (EXTRA_LEFT, EXTRA_RIGHT),
         "DAQ": (SAMPLE_RATE_MHZ,),
     }
-    live = [*LoopProgram.live, *MONITOR_LIVE]
+    # How every unit is scanned, and the line treatment drives, as the loop began.
+    fixed = [
+        *LoopProgram.fixed,
+        EXTRA_LEFT,
+        EXTRA_RIGHT,
+        SAMPLE_RATE_MHZ,
+        TREATMENT_PORT,
+        TREATMENT_LINE,
+    ]
 
     def microscope(self, ctx: RunContext) -> Microscope:
         return RigMicroscope(ctx)

@@ -9,6 +9,7 @@ from typing import Any, TypeVar
 
 from pyrpoc.core.program_output import ProgramOutput
 from pyrpoc.core.recording import Recording
+from pyrpoc.utils.file_formats.json_file import read_json, write_json
 
 J = TypeVar("J", bound="JsonFile")
 
@@ -22,12 +23,11 @@ class JsonFile(ProgramOutput):
 
     def save(self, content: dict[str, Any]) -> None:
         """Write ``content`` as the file, when saving."""
-        text = json.dumps(content, indent=2)
-        self.nbytes_saved = len(text)
+        self.nbytes_saved = len(json.dumps(content, indent=2))
         if self.root is None:
             return
         path = self.root.with_name(f"{self.root.name}_{self.name}.json")
-        path.write_text(text, encoding="utf-8")
+        write_json(path, content)
         self.paths = {self.name: path}
 
     def take(self, raw: dict[str, Any]) -> None:
@@ -43,7 +43,6 @@ class JsonFile(ProgramOutput):
         output = cls(name=name, recording=recording, root=None)
         if files:
             (path,) = files.values()
-            text = path.read_text(encoding="utf-8")
-            output.nbytes_saved = len(text)
-            output.take(json.loads(text))
+            output.nbytes_saved = path.stat().st_size
+            output.take(read_json(path))
         return output

@@ -1,15 +1,8 @@
-"""The scan: how the beam crosses the sample, and ``ScanGeometry``, which turns
-those inputs into volts."""
+"""The program inputs of a scan: the beam's path and pixels, the DAQ's rate and lines, the
+region scanned when no mask is drawn, the mosaic grid, frames per run, and the focus search."""
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
-from typing import Any
-
-import numpy as np
-
-from pyrpoc.core.program_input import ParameterError, ProgramInput, ProgramInputValues
 from pyrpoc.utils.value_rules import float_input, int_input
 
 X_PIXELS = int_input("x_pixels", "X Pixels", 512, minimum=8, tooltip="Number of pixels in X")
@@ -52,90 +45,88 @@ DWELL_TIME_US = float_input(
     "dwell_time_us", "Dwell Time (us)", 2.0, minimum=0.1, step=1.0, tooltip="Pixel dwell time"
 )
 
-
-def values_from_parameters(
-    inputs: Sequence[ProgramInput[Any]], parameters: Mapping[str, Any]
-) -> ProgramInputValues:
-    """``inputs`` as a recording's ``parameters`` hold them, which must name every one."""
-    return ProgramInputValues({each.key: each.rule.decode(parameters[each.key]) for each in inputs})
-
-
-# The inputs ``ScanGeometry`` is made from.
-SCAN_GEOMETRY_INPUTS = (
-    X_PIXELS,
-    Y_PIXELS,
-    EXTRA_LEFT,
-    EXTRA_RIGHT,
-    FAST_AXIS_OFFSET,
-    FAST_AXIS_AMPLITUDE,
-    SLOW_AXIS_OFFSET,
-    SLOW_AXIS_AMPLITUDE,
-    DWELL_TIME_US,
+SAMPLE_RATE_MHZ = float_input(
+    "sample_rate_mhz",
+    "Sample Rate (MHz)",
+    1.0,
+    minimum=0.000001,
+    maximum=5.0,
+    step=0.1,
+    tooltip="DAQ AO sample rate in MHz; the FLIM pixel clock divides down from it",
+)
+FRAME_TRIGGER_PFI = int_input(
+    "frame_trigger_pfi",
+    "Frame Trigger PFI Line",
+    0,
+    minimum=0,
+    tooltip="PFI line that exports the AO start trigger (frame marker)",
+)
+PIXEL_CLOCK_CTR = int_input(
+    "pixel_clock_ctr",
+    "Pixel Clock Counter",
+    0,
+    minimum=0,
+    tooltip="Counter used to generate the pixel clock",
+)
+PIXEL_CLOCK_PFI = int_input(
+    "pixel_clock_pfi",
+    "Pixel Clock PFI Line",
+    1,
+    minimum=0,
+    tooltip="PFI line that outputs the pixel clock",
 )
 
+CENTER_REGION_FRACTION = float_input(
+    "center_region_fraction",
+    "Center Fraction",
+    0.25,
+    minimum=0.01,
+    maximum=1.0,
+    step=0.05,
+    decimals=3,
+    tooltip="Width and height of the centred rectangle, as a fraction of the scan, "
+    "when no mask is drawn",
+)
 
-@dataclass(frozen=True)
-class ScanGeometry:
-    """How the beam is scanned: the pixel grid, the overscan either side, the
-    volts each axis spans, and the dwell per pixel."""
+X_TILES = int_input("x_tiles", "X Tiles", 3, minimum=1, tooltip="Tiles along the stage's x axis")
+Y_TILES = int_input("y_tiles", "Y Tiles", 3, minimum=1, tooltip="Tiles along the stage's y axis")
+# One spacing serves both axes; the display finds the overlap from the images.
+TILE_SPACING_UM = float_input(
+    "tile_spacing_um",
+    "Spacing (um)",
+    100.0,
+    minimum=0.001,
+    step=10.0,
+    decimals=3,
+    tooltip="Stage step between neighbouring tiles, in both x and y",
+)
 
-    x_pixels: int
-    y_pixels: int
-    extra_left: int
-    extra_right: int
-    fast_axis_offset: float
-    fast_axis_amplitude: float
-    slow_axis_offset: float
-    slow_axis_amplitude: float
-    dwell_time_us: float
+NUM_FRAMES = int_input("num_frames", "Frames", 1, minimum=1, tooltip="Number of frames to capture")
 
-    @classmethod
-    def from_inputs(cls, values: ProgramInputValues) -> ScanGeometry:
-        return cls(
-            x_pixels=values[X_PIXELS],
-            y_pixels=values[Y_PIXELS],
-            extra_left=values[EXTRA_LEFT],
-            extra_right=values[EXTRA_RIGHT],
-            fast_axis_offset=values[FAST_AXIS_OFFSET],
-            fast_axis_amplitude=values[FAST_AXIS_AMPLITUDE],
-            slow_axis_offset=values[SLOW_AXIS_OFFSET],
-            slow_axis_amplitude=values[SLOW_AXIS_AMPLITUDE],
-            dwell_time_us=values[DWELL_TIME_US],
-        )
-
-    @classmethod
-    def from_parameters(cls, parameters: Mapping[str, Any], source: str) -> ScanGeometry:
-        """The scan a recording's ``parameters`` describe. Raises ``ParameterError``
-        naming ``source`` if they describe none."""
-        if any(each.key not in parameters for each in SCAN_GEOMETRY_INPUTS):
-            raise ParameterError(
-                f"{source} was not acquired with a scan geometry, "
-                "so a pixel does not name a position"
-            )
-        return cls.from_inputs(values_from_parameters(SCAN_GEOMETRY_INPUTS, parameters))
-
-    @property
-    def total_x(self) -> int:
-        return self.x_pixels + self.extra_left + self.extra_right
-
-    @property
-    def kept_columns(self) -> slice:
-        """The scanned columns that are displayed, between the overscan."""
-        return slice(self.extra_left, self.extra_left + self.x_pixels)
-
-    def fast_volts(self, columns: np.ndarray) -> np.ndarray:
-        """Fast-axis volts at displayed ``columns``, where columns left of 0 or
-        past ``x_pixels`` are overscan at the same pitch."""
-        fast_step = 2.0 * self.fast_axis_amplitude / self.x_pixels
-        return self.fast_axis_offset - self.fast_axis_amplitude + columns * fast_step
-
-    def slow_volts(self, rows: np.ndarray) -> np.ndarray:
-        """Slow-axis volts at displayed ``rows``."""
-        relative = -1.0 + 2.0 * rows / self.y_pixels
-        return self.slow_axis_offset + relative * self.slow_axis_amplitude
-
-    def voltage_at(self, x: int, y: int) -> tuple[float, float]:
-        """The (fast, slow) volts at which displayed pixel ``(x, y)`` was sampled."""
-        # Displayed frames are already cropped of overscan, and each pixel is held
-        # at one voltage for its whole dwell, so there is no half-pixel centre to add.
-        return float(self.fast_volts(np.asarray(x))), float(self.slow_volts(np.asarray(y)))
+FOCUS_SEARCH_RANGE_UM = float_input(
+    "focus_search_range_um",
+    "Search Range (um)",
+    50.0,
+    minimum=0.001,
+    step=10.0,
+    decimals=3,
+    tooltip="The search never moves z further than this from where it started",
+)
+FOCUS_INITIAL_STEP_UM = float_input(
+    "focus_initial_step_um",
+    "Initial Step (um)",
+    5.0,
+    minimum=0.001,
+    step=1.0,
+    decimals=3,
+    tooltip="The first z step; it halves each time neither direction improves focus",
+)
+FOCUS_FINAL_STEP_UM = float_input(
+    "focus_final_step_um",
+    "Final Step (um)",
+    0.5,
+    minimum=0.001,
+    step=0.1,
+    decimals=3,
+    tooltip="The search stops once the step would halve below this",
+)

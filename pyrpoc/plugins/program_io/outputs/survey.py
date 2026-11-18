@@ -14,8 +14,8 @@ import numpy as np
 
 from pyrpoc.core.program_output import program_output_registry
 from pyrpoc.core.recording import Recording
+from pyrpoc.utils.file_formats.tiff import append_pages, channel_paths, read_pages
 
-from .building_blocks.tiff import append_pages, channel_paths, read_pages
 from .mosaic import MosaicOutput, MosaicTile
 
 # The ``paths`` keys of the survey's facts and of each overview channel, beside the mosaic's.

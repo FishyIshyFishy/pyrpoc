@@ -12,10 +12,9 @@ from pyrpoc.plugins.program_io.inputs import (
     MASK_LINES,
     MASKS,
     SAMPLE_RATE_MHZ,
-    SCAN_GEOMETRY_INPUTS,
-    DelaySweep,
 )
 from pyrpoc.plugins.program_io.outputs import HyperspectralOutput
+from pyrpoc.plugins.programs.building_blocks.settings import SCAN_GEOMETRY_INPUTS, DelaySweep
 
 from ..building_blocks.functions.galvo_raster import Raster
 from ..building_blocks.runners import Single
@@ -68,6 +67,9 @@ class Hyperspectral(Program):
         "DAQ": (SAMPLE_RATE_MHZ,),
         "Modulation": (MASK_LINES,),
     }
+    # What sets the shape of each image, and the delays the sweep stops at.
+    fixed = [*SCAN_GEOMETRY_INPUTS, SAMPLE_RATE_MHZ, *DELAY_SWEEP_INPUTS]
+    saves = [MASKS]
     emits = {"hyperspectral": HyperspectralOutput}
     # Once only: a sweep is one pass over the delays, never repeated or looped.
     runners = [Single()]

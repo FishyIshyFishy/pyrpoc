@@ -1,10 +1,10 @@
-"""Modulation: each drawn mask drives one digital line during a scan, on the port and line
-set beside it."""
+"""``MaskLine``: the port and line one drawn mask drives during a scan, and the rules and
+editor for every mask's line."""
 
 from __future__ import annotations
 
 from collections.abc import Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from PyQt6.QtCore import QEvent, pyqtSignal
@@ -18,13 +18,13 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from pyrpoc.core.program_input import Field, ParameterError, declare
-from pyrpoc.plugins.program_io.inputs.mask import Mask
-from pyrpoc.plugins.program_io.inputs.masks import MASKS, thumbnail
+from pyrpoc.core.program_input import Field, ParameterError, ProgramInput
 from pyrpoc.utils.widgets.editors import Editor, FieldValues, editor_for
 from pyrpoc.utils.widgets.empty_state import EmptyState
 from pyrpoc.utils.widgets.flow_grid import FlowGrid
 from pyrpoc.utils.widgets.port_line_edit import PortLineEdit
+
+from .mask import Mask, thumbnail
 
 THUMBNAIL_PX = 24
 # The narrowest a mask's row is given before the rows drop to fewer columns.
@@ -151,9 +151,10 @@ class MaskLinesTable(QWidget):
 
     changed = pyqtSignal()
 
-    def __init__(self, values: FieldValues, parent: QWidget):
+    def __init__(self, values: FieldValues, masks: ProgramInput[tuple[Mask, ...]], parent: QWidget):
         super().__init__(parent)
         self.values = values
+        self.drawn_masks = masks
         self.rows: list[MaskRow] = []
         self.empty = EmptyState("No masks yet", "Draw one in a Mask Editor.", self)
         self.grid_host = QWidget(self)
@@ -165,7 +166,7 @@ class MaskLinesTable(QWidget):
         outer.addWidget(self.grid_host)
 
     def masks(self) -> tuple[Mask, ...]:
-        return self.values.get(MASKS.key)
+        return self.values.get(self.drawn_masks.key)
 
     def value(self) -> tuple[MaskLine, ...]:
         return tuple(row.value() for row in self.rows)
@@ -204,6 +205,9 @@ class MaskLinesField(Field):
     """The port and line each drawn mask drives, by mask id. A mask with none set drives the
     next free line on port 0."""
 
+    # The input holding the masks these lines are for, which the editor shows a row for each of.
+    masks: ProgramInput[tuple[Mask, ...]] = field(kw_only=True)
+
     def coerce(self, value: Any) -> tuple[MaskLine, ...]:
         if value is None:
             return ()
@@ -217,7 +221,7 @@ class MaskLinesField(Field):
 
 @editor_for(MaskLinesField)
 def mask_lines_editor(spec: MaskLinesField, parent: QWidget, values: FieldValues) -> Editor:
-    table = MaskLinesTable(values, parent)
+    table = MaskLinesTable(values, spec.masks, parent)
     return Editor(
         table,
         get=table.value,
@@ -227,12 +231,3 @@ def mask_lines_editor(spec: MaskLinesField, parent: QWidget, values: FieldValues
         spec=spec,
         wide=True,
     )
-
-
-MASK_LINES = declare(
-    "mask_lines",
-    MaskLinesField(
-        "Masks", "Whether each drawn mask drives a digital output line during the scan, and which"
-    ),
-    (),
-)

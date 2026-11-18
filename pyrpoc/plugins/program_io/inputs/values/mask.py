@@ -1,15 +1,21 @@
-"""``Mask``: a drawn region, with a label and an id that stays the same through edits."""
+"""``Mask``: a drawn region, with a label and an id that stays the same through edits; the
+rules for the drawn masks, their thumbnail, and their file beside a recording."""
 
 from __future__ import annotations
 
 import base64
+from collections.abc import Iterable
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
 import numpy as np
+from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QColor, QGuiApplication, QImage, QPainter, QPalette, QPixmap
 
-from pyrpoc.core.program_input import ParameterError
+from pyrpoc.core.program_input import Field, ParameterError
+from pyrpoc.utils.file_formats.npz import write_npz
 
 
 # ``eq=False`` because comparing arrays in a dataclass's ``__eq__`` raises.
@@ -71,3 +77,59 @@ class Mask:
         except (KeyError, TypeError, ValueError) as exc:
             raise ParameterError(f"a mask's id, shape and bits do not fit together: {exc}") from exc
         return cls(lit, str(raw.get("label", "")), mask_id)
+
+
+def thumbnail(mask: Mask, size: int) -> QPixmap:
+    """A ``size`` square tile: the mask's lit pixels in the accent colour on the input
+    background, framed, with the mask's aspect kept."""
+    palette = QGuiApplication.palette()
+    accent = palette.color(QPalette.ColorRole.Highlight)
+    alpha = np.ascontiguousarray(np.where(mask.array > 0, 255, 0).astype(np.uint8))
+    height, width = alpha.shape
+    rgba = np.zeros((height, width, 4), dtype=np.uint8)
+    rgba[..., :3] = accent.red(), accent.green(), accent.blue()
+    rgba[..., 3] = alpha
+    shape = QImage(rgba.tobytes(), width, height, 4 * width, QImage.Format.Format_RGBA8888)
+    scaled = QPixmap.fromImage(shape.copy()).scaled(
+        size - 4, size - 4, Qt.AspectRatioMode.KeepAspectRatio
+    )
+    tile = QPixmap(size, size)
+    tile.fill(palette.color(QPalette.ColorRole.Base))
+    painter = QPainter(tile)
+    painter.drawPixmap((size - scaled.width()) // 2, (size - scaled.height()) // 2, scaled)
+    painter.setPen(QColor(palette.color(QPalette.ColorRole.Mid)))
+    painter.drawRect(0, 0, size - 1, size - 1)
+    painter.end()
+    return tile
+
+
+@dataclass(frozen=True)
+class MasksField(Field):
+    """The rules for the drawn masks: a tuple of ``Mask``, in the order they were drawn."""
+
+    def coerce(self, value: Any) -> tuple[Mask, ...]:
+        if value is None:
+            return ()
+        if isinstance(value, (str, bytes, dict)) or not isinstance(value, Iterable):
+            raise ParameterError(f"{self.label}: expected a list of masks")
+        return tuple(each if isinstance(each, Mask) else Mask.from_dict(each) for each in value)
+
+    def encode(self, value: tuple[Mask, ...]) -> Any:
+        return [mask.to_dict() for mask in value]
+
+
+class MasksNpz:
+    """The drawn masks as one ``.npz``: mask ``i``'s pixels as ``mask_<i>``, and every mask's
+    ``ids`` and ``labels`` in the same order."""
+
+    suffix = ".npz"
+
+    def write(self, path: Path, value: tuple[Mask, ...]) -> None:
+        write_npz(
+            path,
+            {
+                **{f"mask_{index}": mask.array for index, mask in enumerate(value)},
+                "ids": np.asarray([mask.id for mask in value], dtype=str),
+                "labels": np.asarray([mask.label for mask in value], dtype=str),
+            },
+        )

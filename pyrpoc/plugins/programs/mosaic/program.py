@@ -13,13 +13,12 @@ from pyrpoc.plugins.program_io.inputs import (
     MASK_LINES,
     MASKS,
     SAMPLE_RATE_MHZ,
-    SCAN_GEOMETRY_INPUTS,
     TILE_SPACING_UM,
     X_TILES,
     Y_TILES,
-    MosaicGrid,
 )
 from pyrpoc.plugins.program_io.outputs import MosaicOutput, MosaicTile
+from pyrpoc.plugins.programs.building_blocks.settings import SCAN_GEOMETRY_INPUTS, MosaicGrid
 
 from ..building_blocks.functions.galvo_raster import Raster
 from ..building_blocks.functions.run_loops import walk
@@ -68,6 +67,9 @@ class StageMosaic(Program):
             TILE_SPACING_UM,
         ),
     }
+    # What sets the shape of each image, and the grid of tiles.
+    fixed = [*SCAN_GEOMETRY_INPUTS, SAMPLE_RATE_MHZ, X_TILES, Y_TILES, TILE_SPACING_UM]
+    saves = [MASKS]
     emits = {"mosaic": MosaicOutput}
     # Once only: a mosaic is one pass over the grid, never repeated or looped.
     runners = [Single()]

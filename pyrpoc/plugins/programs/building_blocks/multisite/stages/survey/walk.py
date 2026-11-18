@@ -18,7 +18,6 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from pyrpoc.plugins.program_io.inputs import FocusSearch
 from pyrpoc.plugins.program_io.outputs import (
     FocusDrift,
     FocusDriftMeasured,
@@ -36,6 +35,7 @@ from pyrpoc.plugins.program_io.outputs import (
     TileTaken,
     TileVisiting,
 )
+from pyrpoc.plugins.programs.building_blocks.settings import FocusSearch
 
 from ....focus.climb import ClimbResult, find_focus
 from ....focus.tenengrad import tenengrad

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Generic, Protocol, TypeVar
 
 
@@ -32,38 +33,69 @@ class Field:
 
 
 T = TypeVar("T")
+T_contra = TypeVar("T_contra", contravariant=True)
+P = TypeVar("P", bound="ProgramInput[Any]")
 
 
 @dataclass(frozen=True, eq=False)
 class ProgramInput(Generic[T]):
     """The declaration of one value a program reads: its key, the rules its
-    values follow (which carry its label), its default, whether a session restores it, and
-    whether a recording keeps its values."""
+    values follow (which carry its label), its default, and whether a session restores it."""
 
     key: str
     rule: Field
     default: T
-    # False for a value too large to rewrite on every autosave: each launch starts at the default.
+    # False for a value that describes only the sample in front of the microscope now, or one
+    # too large to rewrite on every autosave: each launch starts at the default.
     restored: bool
-    # False for a value the programs reading it record in outputs of their own, so a recording's
-    # metadata says only when it was taken.
-    recorded: bool
+
+
+class InputFile(Protocol[T_contra]):
+    """How a value is written to a file of its own beside a recording."""
+
+    @property
+    def suffix(self) -> str: ...
+
+    def write(self, path: Path, value: T_contra) -> None: ...
+
+
+@dataclass(frozen=True, eq=False)
+class SidecarProgramInput(ProgramInput[T]):
+    """A program input whose value can be written to a file of its own beside a recording's
+    metadata, and so is never put in the metadata itself. A program that reads it chooses
+    whether to save it."""
+
+    file: InputFile[T]
 
 
 # Every declared program input, by key.
 program_input_registry: dict[str, ProgramInput[Any]] = {}
 
 
-def declare(
-    key: str, rule: Field, default: T, *, restored: bool = True, recorded: bool = True
-) -> ProgramInput[T]:
-    """The program input ``key``, which every program that reads it imports from here."""
+def register(program_input: P) -> P:
     # Declared once, so a key can never mean two values: a second program imports the first's.
-    if key in program_input_registry:
-        raise ValueError(f"program input {key!r} is already declared")
-    program_input = ProgramInput(key, rule, default, restored, recorded)
-    program_input_registry[key] = program_input
+    if program_input.key in program_input_registry:
+        raise ValueError(f"program input {program_input.key!r} is already declared")
+    program_input_registry[program_input.key] = program_input
     return program_input
+
+
+def declare(key: str, rule: Field, default: T, *, restored: bool = True) -> ProgramInput[T]:
+    """The program input ``key``, which every program that reads it imports from here."""
+    return register(ProgramInput(key, rule, default, restored))
+
+
+def declare_sidecar(
+    key: str, rule: Field, default: T, *, restored: bool, file: InputFile[T]
+) -> SidecarProgramInput[T]:
+    """The sidecar program input ``key``, written as ``file`` by a program that saves it."""
+    return register(SidecarProgramInput(key, rule, default, restored, file))
+
+
+class InputReader(Protocol):
+    """Reads program inputs' values."""
+
+    def __getitem__(self, program_input: ProgramInput[T]) -> T: ...
 
 
 class ProgramInputValues:

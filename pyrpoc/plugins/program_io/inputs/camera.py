@@ -1,10 +1,7 @@
-"""The camera's run settings: exposure, gain and binning."""
+"""The program inputs of the camera: exposure, gain and binning."""
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-
-from pyrpoc.core.program_input import ProgramInputValues
 from pyrpoc.utils.value_rules import bool_input, float_input, int_input
 
 # Program inputs rather than device configuration: they change with the
@@ -30,16 +27,3 @@ CAMERA_BINNED = bool_input(
     False,
     tooltip="Half the width and height, for faster and brighter frames",
 )
-
-
-@dataclass(frozen=True)
-class CameraSettings:
-    """How the camera takes each frame."""
-
-    exposure_ms: float
-    gain_pct: int
-    binned: bool
-
-    @classmethod
-    def from_inputs(cls, values: ProgramInputValues) -> CameraSettings:
-        return cls(values[CAMERA_EXPOSURE_MS], values[CAMERA_GAIN_PCT], values[CAMERA_BINNED])

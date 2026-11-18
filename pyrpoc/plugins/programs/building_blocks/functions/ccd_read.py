@@ -6,7 +6,7 @@ from __future__ import annotations
 import numpy as np
 
 from pyrpoc.core.program import Cancelled, RunContext
-from pyrpoc.core.program_input import ProgramInputValues
+from pyrpoc.core.program_input import InputReader
 from pyrpoc.plugins.devices import AndorCCD, SpectrumReadout
 from pyrpoc.plugins.devices.andor_ccd.device import AcceptedTimings, Amplifier, ReadMode, clipped
 from pyrpoc.plugins.program_io.inputs import CCD_EXPOSURE_S, CCD_FRAMES_TO_AVERAGE
@@ -21,7 +21,7 @@ RAMAN_READOUT_MHZ = 0.05
 RAMAN_PREAMP_GAIN = 1.0
 
 
-def spectrum_readout(values: ProgramInputValues) -> SpectrumReadout:
+def spectrum_readout(values: InputReader) -> SpectrumReadout:
     """The readout a Raman spectrum is taken with."""
     return SpectrumReadout(
         exposure_s=values[CCD_EXPOSURE_S],

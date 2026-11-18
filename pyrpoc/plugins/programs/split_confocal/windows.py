@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from pyrpoc.plugins.program_io.inputs import SplitWindows
+from pyrpoc.plugins.programs.building_blocks.settings import SplitWindows
 
 
 def gated_to_t0(

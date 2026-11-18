@@ -7,7 +7,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from pyrpoc.plugins.program_io.inputs import ScanGeometry
+from pyrpoc.plugins.programs.building_blocks.settings import ScanGeometry
 
 
 @dataclass(frozen=True)

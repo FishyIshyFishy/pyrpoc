@@ -11,6 +11,7 @@ import PyQt6Ads as qtads
 from PyQt6.QtCore import QObject, QTimer, pyqtSignal
 from PyQt6.QtGui import QAction
 
+from pyrpoc.app.dock_placement import DockPlacement
 from pyrpoc.core.device import Device
 from pyrpoc.engine.device_inventory.inventory import DeviceInventory
 from pyrpoc.utils.widgets.device_panel import DevicePanel, device_panel_registry, has_panel
@@ -47,12 +48,10 @@ class DeviceDocks(QObject):
     # The per-device menu entries changed; the window rebuilds the Panels menu.
     actions_changed = pyqtSignal()
 
-    def __init__(
-        self, inventory: DeviceInventory, dock_manager: qtads.CDockManager, parent: QObject
-    ):
+    def __init__(self, inventory: DeviceInventory, placement: DockPlacement, parent: QObject):
         super().__init__(parent)
         self.inventory = inventory
-        self.dock_manager = dock_manager
+        self.placement = placement
         # Set while ADS closes docks itself, restoring a layout or tearing down,
         # so those closes are not taken for the user closing a panel.
         self.frozen = False
@@ -83,8 +82,7 @@ class DeviceDocks(QObject):
         dock = qtads.CDockWidget(panel.title)
         # ADS keys save/restore by the object name at add time, so set it first.
         dock.setObjectName(dock_object_name(device))
-        dock.setWidget(panel)
-        self.dock_manager.addDockWidgetFloating(dock)
+        self.placement.add(dock, panel)
         dock.closed.connect(lambda *_args, d=device: self.discard(d))
         self.docks[device] = dock
         self.panels[device] = panel
@@ -94,7 +92,7 @@ class DeviceDocks(QObject):
     def close(self, device: Device) -> None:
         dock = self.docks.pop(device)
         panel = self.panels.pop(device)
-        self.dock_manager.removeDockWidget(dock)
+        self.placement.dock_manager.removeDockWidget(dock)
         dock.takeWidget()
         panel.setParent(None)
         panel.deleteLater()

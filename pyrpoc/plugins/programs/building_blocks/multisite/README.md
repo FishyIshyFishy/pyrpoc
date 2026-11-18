@@ -20,7 +20,7 @@ A multisite program subclasses one of three bases in `bindings/programs.py`:
 | `SurveyProgram` | `calibration` | `survey`, `log` | `clean_folder` | `microscope`, `overscan` |
 | `LoopProgram` | `survey`, `calibration` | `log`, `units`, `frames` | both below | `microscope`, `overscan`, `routines` |
 
-"Reads" are program inputs too (`CALIBRATION`, `SURVEY`), with no card: the engine sets each to the newest output of its type in the save folder whose run completed, so a step stopped partway is never read. Each base also declares the inputs its stage reads, with their cards, and `run`s its stage. A program adds its devices, its own inputs (extending the base's `inputs`, `cards` and, for a loop, `live`), and where it is listed. Two programs of a kind therefore always read, fill and refuse the same things, so a panel can rely on what every multisite program publishes.
+"Reads" are program inputs too (`CALIBRATION`, `SURVEY`), with no card: the engine sets each to the newest output of its type in the save folder whose run completed, so a step stopped partway is never read. Each base also declares the inputs its stage reads, with their cards, and `run`s its stage. A program adds its devices, its own inputs (extending the base's `inputs`, `cards` and `fixed`), and where it is listed. Two programs of a kind therefore always read, fill and refuse the same things, so a panel can rely on what every multisite program publishes.
 
 ## Layers
 Each layer imports only the layers below it. `uv run lint-imports` enforces this.

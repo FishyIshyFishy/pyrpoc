@@ -17,6 +17,7 @@ class Survey(SurveyProgram):
     order = 31
     devices = [Galvo, DAQ, PriorStage]
     inputs = [*SurveyProgram.inputs, EXTRA_LEFT, EXTRA_RIGHT, SAMPLE_RATE_MHZ]
+    fixed = [*SurveyProgram.fixed, EXTRA_LEFT, EXTRA_RIGHT, SAMPLE_RATE_MHZ]
     cards = {
         **SurveyProgram.cards,
         "Scan": (EXTRA_LEFT, EXTRA_RIGHT),

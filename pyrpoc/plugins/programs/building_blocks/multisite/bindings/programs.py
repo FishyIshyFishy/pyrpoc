@@ -9,13 +9,14 @@ from typing import Any
 from pyrpoc.core.program import PreflightContext, Program, RunContext
 from pyrpoc.core.program_input import ProgramInput
 from pyrpoc.core.runner import Runner
-from pyrpoc.plugins.program_io.inputs import SCAN_GEOMETRY_INPUTS, ScanGeometry
+from pyrpoc.plugins.program_io.inputs import UNITS
+from pyrpoc.plugins.programs.building_blocks.settings import SCAN_GEOMETRY_INPUTS, ScanGeometry
 
 from ...runners import Single
 from ..interfaces.microscope import Microscope
 from ..stages.loop.routine import RoutineSpec
 from .calibration import CALIBRATION_EMITS, run_calibration
-from .loop import LOOP_EMITS, LOOP_FOCUS_INPUTS, LOOP_READS, LOOP_UNITS, run_loop
+from .loop import LOOP_EMITS, LOOP_FOCUS_INPUTS, LOOP_READS, run_loop
 from .preflight import clean_folder, starting_units
 from .survey import (
     REGION_INPUTS,
@@ -35,6 +36,7 @@ class CalibrationProgram(Program):
 
     inputs: list[ProgramInput[Any]] = [*SCAN_GEOMETRY_INPUTS]
     cards = {"Scan": SCAN_GEOMETRY_INPUTS}
+    fixed: list[ProgramInput[Any]] = [*SCAN_GEOMETRY_INPUTS]
     emits = CALIBRATION_EMITS
     runners = RUNNERS
 
@@ -60,6 +62,8 @@ class SurveyProgram(Program):
         *SURVEY_READS,
     ]
     cards = {"Region": REGION_INPUTS, "Tiles": TILE_INPUTS, "Focus Search": SURVEY_FOCUS_INPUTS}
+    # What sets the grid of tiles and each tile's scan, and the calibration it began on.
+    fixed: list[ProgramInput[Any]] = [*REGION_INPUTS, *TILE_INPUTS, *SURVEY_READS]
     emits = SURVEY_EMITS
     runners = RUNNERS
 
@@ -84,9 +88,10 @@ class LoopProgram(Program):
 
     # The units have no row: they are drawn over the survey. Nor do the survey and calibration:
     # the engine sets them from the save folder.
-    inputs: list[ProgramInput[Any]] = [*LOOP_UNITS, *LOOP_FOCUS_INPUTS, *LOOP_READS]
+    inputs: list[ProgramInput[Any]] = [UNITS, *LOOP_FOCUS_INPUTS, *LOOP_READS]
     cards = {"Focus": LOOP_FOCUS_INPUTS}
-    live: list[ProgramInput[Any]] = [*LOOP_UNITS]
+    # The survey and calibration it started on, whatever later runs save in its folder.
+    fixed: list[ProgramInput[Any]] = [*LOOP_READS]
     emits = LOOP_EMITS
     runners = RUNNERS
 

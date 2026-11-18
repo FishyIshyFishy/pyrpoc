@@ -1,5 +1,5 @@
-"""The recording format: a ``<stem>_meta.json`` that names its data files, and
-how it is written and read."""
+"""The recording format: a ``<stem>_meta.json`` that names its data files and its log of
+applied edits, and how it is written and read."""
 
 from __future__ import annotations
 
@@ -16,12 +16,13 @@ from pyrpoc.core.program_output import ProgramOutput, program_output_registry
 from pyrpoc.core.recording import Outcome, Recording, RecordingPart
 
 FORMAT = "pyrpoc-recording"
-FORMAT_VERSION = 10
+FORMAT_VERSION = 11
 META_SUFFIX = "_meta.json"
+APPLIED_EDITS_SUFFIX = "_applied_edits.jsonl"
 
 
-# What a run took: a change to one of its program inputs, or to its devices.
-TakenKind = Literal["input", "device"]
+# What a run applied: an edit to one of its program inputs, or to its devices.
+AppliedEditKind = Literal["input", "device"]
 
 
 class RecordingError(Exception):
@@ -29,16 +30,17 @@ class RecordingError(Exception):
 
 
 @dataclass(frozen=True)
-class Taken:
-    """The run taking something posted to it: a change to one of its program inputs or to its
-    devices."""
+class AppliedEdit:
+    """An edit a run started using partway through: to one of its program inputs or to its
+    devices, when it was made and when the run applied it."""
 
     posted_at: str
-    taken_at: str
-    kind: TakenKind
+    applied_at: str
+    kind: AppliedEditKind
     # The input's key, or the device's class name.
     key: str
-    # As its rules encode it, or None for an input not recorded; a device's whole settings.
+    # As its rules encode it; ``{"file": name}`` for a saved sidecar input and None for one not
+    # saved; a device's whole settings.
     value: Any
 
 
@@ -64,12 +66,16 @@ class RecordingRecord:
     outputs: dict[str, OutputRecord]
     # What the user wrote about the run, before or after it.
     notes: str
-    # Everything the run took from its inbox, in the order taken.
-    taken: list[Taken]
+    # The file beside it logging every edit the run applied, one JSON line each, in order.
+    applied_edits: str
 
 
 def pyrpoc_version() -> str:
     return importlib.metadata.version("pyrpoc")
+
+
+def applied_edits_path_for(root: Path) -> Path:
+    return root.with_name(f"{root.name}{APPLIED_EDITS_SUFFIX}")
 
 
 def meta_path_for(root: Path) -> Path:
@@ -139,12 +145,6 @@ def optional_str(value: Any) -> str | None:
     return None if value is None else str(value)
 
 
-def taken_kind(value: Any) -> TakenKind:
-    if value == "input" or value == "device":
-        return value
-    raise ValueError(f"unknown kind of taken {value!r}")
-
-
 def decode_record(raw: dict[str, Any]) -> RecordingRecord:
     """The recording a metadata file's JSON describes."""
     # Unknown fields are ignored, so a format may add some.
@@ -173,16 +173,7 @@ def decode_record(raw: dict[str, Any]) -> RecordingRecord:
             for output, entry in raw["outputs"].items()
         },
         notes=str(raw["notes"]),
-        taken=[
-            Taken(
-                posted_at=str(taken["posted_at"]),
-                taken_at=str(taken["taken_at"]),
-                kind=taken_kind(taken["kind"]),
-                key=str(taken["key"]),
-                value=taken["value"],
-            )
-            for taken in raw["taken"]
-        ],
+        applied_edits=str(raw["applied_edits"]),
     )
 
 

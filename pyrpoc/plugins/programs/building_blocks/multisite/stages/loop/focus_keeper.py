@@ -21,8 +21,8 @@ from collections.abc import Callable, Iterable
 
 import numpy as np
 
-from pyrpoc.plugins.program_io.inputs import FocusSearch
 from pyrpoc.plugins.program_io.outputs import FocusDrift, FocusPlane
+from pyrpoc.plugins.programs.building_blocks.settings import FocusSearch
 
 from ....focus.climb import ClimbResult, find_focus
 

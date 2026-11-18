@@ -7,12 +7,13 @@ from datetime import datetime
 from pathlib import Path
 from typing import Generic, TypeVar
 
-from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtGui import QStandardItem, QStandardItemModel
-from PyQt6.QtWidgets import QComboBox, QHBoxLayout, QLabel, QWidget
+from PyQt6.QtCore import pyqtSignal
+from PyQt6.QtWidgets import QHBoxLayout, QLabel, QWidget
 
 from pyrpoc.core.library import Library
 from pyrpoc.core.program_output import ProgramOutput
+
+from .type_ahead_combo import TypeAheadComboBox
 
 OutputT = TypeVar("OutputT", bound=ProgramOutput)
 
@@ -56,10 +57,8 @@ class SourcePicker(QWidget, Generic[OutputT]):
         self.row = QHBoxLayout(self)
         self.row.setContentsMargins(0, 0, 0, 0)
         self.row.addWidget(QLabel("Source:", self))
-        self.combo = QComboBox(self)
-        self.entries = QStandardItemModel(self)
-        self.combo.setModel(self.entries)
-        self.combo.currentIndexChanged.connect(self.on_chosen)
+        self.combo = TypeAheadComboBox(self)
+        self.combo.currentIndexChanged.connect(lambda _index: self.changed.emit())
         self.row.addWidget(self.combo, 1)
 
         library.subscribe(self.refresh_sources)
@@ -69,13 +68,13 @@ class SourcePicker(QWidget, Generic[OutputT]):
         """Rebuild the picker, keeping the current choice while it is open."""
         current = self.chosen()
         self.combo.blockSignals(True)
-        self.combo.clear()
+        self.combo.clear_entries()
         self.choices = []
-        self.add_row(QStandardItem("Latest"), None)
+        self.add_entry("Latest", None)
         for folder, outputs in self.groups().items():
             self.add_heading(folder)
             for program_output in outputs:
-                self.add_row(QStandardItem(source_text(program_output)), program_output)
+                self.add_entry(source_text(program_output), program_output)
         if current is not None:
             index = next((i for i, each in enumerate(self.choices) if each is current), 0)
             self.combo.setCurrentIndex(index)
@@ -89,28 +88,15 @@ class SourcePicker(QWidget, Generic[OutputT]):
             groups.setdefault(program_output.recording.folder, []).append(program_output)
         return groups
 
-    def add_row(self, item: QStandardItem, choice: OutputT | None) -> None:
-        self.entries.appendRow(item)
+    def add_entry(self, text: str, choice: OutputT | None) -> None:
+        self.combo.add_entry(text, None, text)
         self.choices.append(choice)
 
     def add_heading(self, folder: Path | None) -> None:
-        """A bold row naming a folder, which cannot be chosen."""
-        item = QStandardItem("Unsaved" if folder is None else folder.name)
+        """A row naming a folder, which cannot be chosen."""
+        item = self.combo.add_heading("Unsaved" if folder is None else folder.name)
         item.setToolTip("Not saved" if folder is None else str(folder))
-        # Enabled but not selectable, so the theme does not dim it past reading.
-        item.setFlags(Qt.ItemFlag.ItemIsEnabled)
-        font = self.combo.font()
-        font.setBold(True)
-        item.setFont(font)
-        self.add_row(item, None)
-
-    def on_chosen(self, index: int) -> None:
-        item = self.entries.item(index)
-        if item is not None and not item.isSelectable():
-            # Reached by the keyboard or wheel: a heading is always followed by an entry.
-            self.combo.setCurrentIndex(index + 1)
-            return
-        self.changed.emit()
+        self.choices.append(None)
 
     def chosen(self) -> OutputT | None:
         """The output picked by hand, or None when following the latest."""

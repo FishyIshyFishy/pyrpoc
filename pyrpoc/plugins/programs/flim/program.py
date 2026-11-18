@@ -20,13 +20,15 @@ from pyrpoc.plugins.program_io.inputs import (
     PIXEL_CLOCK_CTR,
     PIXEL_CLOCK_PFI,
     SAMPLE_RATE_MHZ,
+)
+from pyrpoc.plugins.program_io.outputs import HistogramOutput, ImageOutput
+from pyrpoc.plugins.programs.building_blocks.settings import (
     SCAN_GEOMETRY_INPUTS,
     HistogramSettings,
     ScanGeometry,
     TriggerLines,
     rate_hz,
 )
-from pyrpoc.plugins.program_io.outputs import HistogramOutput, ImageOutput
 
 from ..building_blocks.functions.run_loops import count_off
 from ..building_blocks.runners import Continuous, Single
@@ -91,6 +93,18 @@ class FLIM(Program):
             FRAME_SETTLE_S,
         ),
     }
+    # What sets the shape of each image and histogram, and the lines that clock them.
+    fixed = [
+        *SCAN_GEOMETRY_INPUTS,
+        SAMPLE_RATE_MHZ,
+        FRAME_TRIGGER_PFI,
+        PIXEL_CLOCK_CTR,
+        PIXEL_CLOCK_PFI,
+        LASER_FREQUENCY_MHZ,
+        HISTOGRAM_BINS,
+        HISTOGRAM_BINWIDTH_PS,
+        FRAME_SETTLE_S,
+    ]
     emits = {"intensity": ImageOutput, "histogram": HistogramOutput}
     runners = [Single(), Continuous()]
 

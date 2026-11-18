@@ -9,7 +9,7 @@ from typing import Any
 import numpy as np
 
 from pyrpoc.core.program import RunContext
-from pyrpoc.core.program_input import ProgramInput, ProgramInputValues
+from pyrpoc.core.program_input import InputReader, ProgramInput
 from pyrpoc.core.program_output import ProgramOutput
 from pyrpoc.plugins.program_io.inputs import (
     CALIBRATION,
@@ -22,7 +22,6 @@ from pyrpoc.plugins.program_io.inputs import (
     SURVEY_HEIGHT_UM,
     SURVEY_WIDTH_UM,
     TILE_OVERLAP,
-    FocusSearch,
 )
 from pyrpoc.plugins.program_io.outputs import (
     GalvoCalibration,
@@ -33,6 +32,7 @@ from pyrpoc.plugins.program_io.outputs import (
     SurveyOutput,
     SurveyTile,
 )
+from pyrpoc.plugins.programs.building_blocks.settings import FocusSearch
 
 from ..interfaces.field import FieldOfView
 from ..interfaces.microscope import Microscope
@@ -50,7 +50,7 @@ SURVEY_READS: list[ProgramInput[Any]] = [CALIBRATION]
 
 
 def settings_from(
-    values: ProgramInputValues, calibration: GalvoCalibration, overscan: tuple[int, int]
+    values: InputReader, calibration: GalvoCalibration, overscan: tuple[int, int]
 ) -> SurveySettings:
     field = FieldOfView(
         values[FIELD_UM],

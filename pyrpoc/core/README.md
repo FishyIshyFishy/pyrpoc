@@ -40,16 +40,25 @@ work once. Continuous does it again and again into the same recording until
 you stop it, so a long continuous run is still one recording.
 
 Everything that changes for a running run goes to its **inbox**: edits to its
-program inputs and edits to its devices. Each is taken at its own moment:
-- a **live** input's edit when the program reads that input, between its own
-  steps;
-- every other edit between passes of a repeating run, where it begins a new
-  **part** of the recording, with new outputs of the same types (`intensity`,
-  then `intensity 2`), so each output was made with one set of settings.
+program inputs and edits to its devices. Each is applied at its own moment:
+- an input is **live** unless its program lists it as `fixed`: its edit is
+  applied the next time the program reads it, between its own steps;
+- an edit to a **fixed** input, or to the devices, is applied between passes of
+  a repeating run, where it begins a new **part** of the recording, with new
+  outputs of the same types (`intensity`, then `intensity 2`), so each output was
+  made with the settings that shape it. A run done once never applies one.
 
-The recording logs everything the run took, when it was posted and when it was
-taken. A live input holds what the run should be doing now, such as the units
-a loop runs on, so a panel steers a running program by setting it.
+A program lists as fixed what a pass cannot follow, such as what sets the shape
+of an image. A live input holds what the run should be doing now, such as the
+units a loop runs on, so a panel steers a running program by setting it.
+
+A saved recording is a metadata file beside the files its outputs write. Each
+part's parameters hold the value of every input the run read, except
+**sidecar** inputs: values too large or too structured for the metadata, such
+as the drawn masks. A sidecar input is kept only when its program lists it in
+`saves`, as a file of its own beside the metadata, which the parameters name.
+Every edit the run applied is logged, with when it was made and when it was
+applied, in a file of its own beside the metadata.
 
 A program output is one named part of a recording, of one type: an
 `ImageOutput`, a `SpectrumOutput`, a `MosaicOutput`. Its type decides
@@ -98,9 +107,9 @@ of the app meet.
 | Piece | What it is |
 |---|---|
 | **Device** | A piece of hardware the microscope has: its identity, its settings (a `DeviceConfig`, whose fields each carry a `Field`) and maybe a connection. |
-| **Program** | One kind of experiment: the devices it needs, the program inputs it reads, the outputs it fills and the runners that can start it. It has two phases: `preflight` says what else a run of it needs before it can start, and `run` does the work. |
+| **Program** | One kind of experiment: the devices it needs, the program inputs it reads, which of them it holds `fixed` and which sidecar inputs it `saves`, the outputs it fills and the runners that can start it. It has two phases: `preflight` says what else a run of it needs before it can start, and `run` does the work. |
 | **PreflightContext** | What a program's `preflight` sees of a run about to start: the save folder and the recordings saved there, and the program input values. What every run needs is judged by the engine, not here. |
-| **RunContext** | What a running program is handed for one part of its recording: its input values as the part began, its inbox (the current value of its live inputs), its devices, the part's outputs, status and cancel. |
+| **RunContext** | What a running program is handed for one part of its recording: its inputs (each live one as it is now, each fixed one as the part began), its devices, the part's outputs, status and cancel. |
 | **Runner** | A way to start a program, such as once, continuously, or armed until a pixel is picked. The program declares it. It may offer the user a `Control` through its `RunnerContext`. Core says only that a control exists: what it is, such as a button or a toggle, is its type, and the panel showing the program draws each by its type. A runner may watch program inputs. |
 
 A run is not a piece of core: it is the engine executing one recording.
@@ -109,10 +118,11 @@ A run is not a piece of core: it is the engine executing one recording.
 
 | Piece | What it is |
 |---|---|
-| **ProgramInput** | The declaration of one value a program reads: a key, a default, and a `Field`. **One key means one value everywhere.** The key names the value itself, never a group or a program, and is declared once with `declare`. A second declaration of a key fails. Every program and panel that uses the value imports that one declaration. |
+| **ProgramInput** | The declaration of one value a program reads: a key, a default, a `Field`, and whether a session restores it. **One key means one value everywhere.** The key names the value itself, never a group or a program, and is declared once with `declare`. A second declaration of a key fails. Every program and panel that uses the value imports that one declaration. |
+| **SidecarProgramInput** | A program input whose value can be written to a file of its own beside a recording (its `InputFile`), declared with `declare_sidecar`. It never goes in a recording's metadata; a program that reads it chooses whether to save it. Only these can be listed in a program's `saves`. |
 | **Field** | The rules a value follows: how it is checked (`coerce`), saved (`encode`) and loaded (`decode`). Bad values raise `ParameterError`. How a value is edited on screen is not part of its rules. |
 | **ProgramInputs** | The collection of current values, by key. Any part of the app may read a value, set one (checked by its `Field`) or subscribe. It is saved with the session, except inputs declared `restored=False`, which start at their default each launch. |
-| **ProgramInputValues** | The values one run was given. A program reads them as `ctx.inputs[SOME_INPUT]`. Every one is saved with the recording, except inputs declared `recorded=False`, whose programs record them in outputs of their own: the recording then says only when each was taken. |
+| **ProgramInputValues** | A set of program input values, read as `values[SOME_INPUT]`: what a run about to start would be given, or what a recording's parameters hold. Both it and a running program's `ctx.inputs` are an `InputReader`. |
 
 A program lists its inputs flat. It may also lay them out in `cards` for the
 Acquisition panel, which is screen layout only: a card never appears in a
@@ -155,7 +165,8 @@ its base, in core or, for panels, in `utils/widgets/`. Nothing else lists them.
 |---|---|---|
 | A device | `plugins/devices/` | `device_registry` |
 | A program | `plugins/programs/` | `program_registry` |
-| A program input, shared by programs and panels | `plugins/program_io/inputs/` | `declare` |
+| A program input, shared by programs and panels | the file of its subject in `plugins/program_io/inputs/`; a value type it holds in `inputs/values/` | `declare`, or `declare_sidecar` |
+| A file format, like TIFF pages or an npz | `utils/file_formats/` | (none: outputs and sidecar inputs call it directly) |
 | A type of program output, with its files | `plugins/program_io/outputs/`, one file each | `program_output_registry` |
 | A panel showing program outputs | `plugins/panels/` | `data_panel_registry` (`utils/widgets/data_panel.py`) |
 | A device's own panel | beside its device in `plugins/devices/` | `device_panel_registry` (`utils/widgets/device_panel.py`) |
@@ -175,7 +186,7 @@ Each keeps its own registry, since each is built from different collections.
 | `device.py` | `Device` + `device_registry`, and `DeviceConfig`, whose fields carry their `Field` |
 | `program.py` | `Program`, `PreflightContext`, `RunContext` + `program_registry` |
 | `runner.py` | `Runner`, `RunnerContext`, `Control` |
-| `program_input.py` | `ProgramInput` + `declare`, `Field`, `ProgramInputValues`, `ProgramInputs` |
+| `program_input.py` | `ProgramInput` + `declare`, `SidecarProgramInput` + `declare_sidecar`, `InputFile`, `Field`, `InputReader`, `ProgramInputValues`, `ProgramInputs` |
 | `recording.py` | `Recording`, `RecordingPart` |
 | `program_output.py` | `ProgramOutput` + `program_output_registry` |
 | `library.py` | `Library` |

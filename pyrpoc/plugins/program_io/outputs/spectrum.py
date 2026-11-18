@@ -4,7 +4,6 @@ the detector actually used."""
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
 
 import numpy as np
 
@@ -30,9 +29,9 @@ class SpectrumOutput(NpzStack):
         with self.lock:
             self.exposure_s = seconds
 
-    def extra(self) -> dict[str, Any]:
-        return {} if self.exposure_s is None else {"exposure_s": np.float64(self.exposure_s)}
+    def extra(self) -> dict[str, np.ndarray]:
+        return {} if self.exposure_s is None else {"exposure_s": np.asarray(self.exposure_s)}
 
-    def take_extra(self, archive: Any) -> None:
-        if "exposure_s" in archive:
-            self.exposure_s = float(archive["exposure_s"])
+    def take_extra(self, arrays: dict[str, np.ndarray]) -> None:
+        if "exposure_s" in arrays:
+            self.exposure_s = float(arrays["exposure_s"])

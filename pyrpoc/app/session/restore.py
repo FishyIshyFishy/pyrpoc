@@ -128,7 +128,7 @@ def apply(state: SessionState, app: Application, window: MainWindow) -> None:
     )
     app.library.set_auto_purge(working.library.auto_purge)
     window.restore_fixed_panel_states(screen.panels)
-    # Every dock exists now; the saved layout goes on last.
+    # Every dock exists now; the saved layout goes on last, and the panels into their docks.
     window.restore_dock_layout(screen.ads_layout)
 
 

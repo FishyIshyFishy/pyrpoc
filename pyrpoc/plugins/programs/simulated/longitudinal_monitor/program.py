@@ -7,7 +7,6 @@ from pyrpoc.plugins.devices.simulated import SimulatedScanner
 
 from ...building_blocks.multisite import (
     MONITOR_INPUTS,
-    MONITOR_LIVE,
     TREATMENT_INPUTS,
     DigitalLine,
     LoopProgram,
@@ -26,7 +25,6 @@ class SimulatedLongitudinalMonitor(LoopProgram):
     devices = [SimulatedScanner]
     inputs = [*LoopProgram.inputs, *MONITOR_INPUTS, *TREATMENT_INPUTS]
     cards = {"Monitor": MONITOR_INPUTS, "Treatment": TREATMENT_INPUTS, **LoopProgram.cards}
-    live = [*LoopProgram.live, *MONITOR_LIVE]
 
     def microscope(self, ctx: RunContext) -> Microscope:
         return DishMicroscope(ctx)

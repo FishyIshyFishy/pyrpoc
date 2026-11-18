@@ -4,14 +4,9 @@ from __future__ import annotations
 
 from pyrpoc.core.program import Program, RunContext, program_registry
 from pyrpoc.plugins.devices import DAQ, Galvo
-from pyrpoc.plugins.program_io.inputs import (
-    MASK_LINES,
-    MASKS,
-    NUM_FRAMES,
-    SAMPLE_RATE_MHZ,
-    SCAN_GEOMETRY_INPUTS,
-)
+from pyrpoc.plugins.program_io.inputs import MASK_LINES, MASKS, NUM_FRAMES, SAMPLE_RATE_MHZ
 from pyrpoc.plugins.program_io.outputs import ImageOutput
+from pyrpoc.plugins.programs.building_blocks.settings import SCAN_GEOMETRY_INPUTS
 
 from ..building_blocks.functions.galvo_raster import Raster
 from ..building_blocks.functions.run_loops import count_off
@@ -32,6 +27,9 @@ class Confocal(Program):
         "DAQ": (SAMPLE_RATE_MHZ,),
         "Modulation": (MASK_LINES,),
     }
+    # What sets the shape of each image.
+    fixed = [*SCAN_GEOMETRY_INPUTS, SAMPLE_RATE_MHZ]
+    saves = [MASKS]
     emits = {"intensity": ImageOutput}
     runners = [Single(), Continuous()]
 

@@ -5,7 +5,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 
-from pyrpoc.plugins.program_io.inputs import FocusSearch
 from pyrpoc.plugins.program_io.outputs import (
     LoopFinished,
     LoopResumed,
@@ -24,6 +23,7 @@ from pyrpoc.plugins.program_io.outputs import (
     UnitRefused,
     UnitResumed,
 )
+from pyrpoc.plugins.programs.building_blocks.settings import FocusSearch
 
 from ...interfaces.cancellation import Cancellation
 from ...interfaces.field import FieldOfView

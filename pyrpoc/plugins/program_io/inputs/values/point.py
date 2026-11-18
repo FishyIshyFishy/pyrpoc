@@ -9,11 +9,8 @@ from typing import Any
 from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtWidgets import QDoubleSpinBox, QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
-from pyrpoc.core.program_input import Field, ParameterError, declare
-from pyrpoc.plugins.program_io.inputs.pixel_pick import PixelPick
+from pyrpoc.core.program_input import Field, ParameterError
 from pyrpoc.utils.widgets.editors import Editor, FieldValues, editor_for
-
-from .scan import ScanGeometry
 
 
 @dataclass(frozen=True)
@@ -28,15 +25,6 @@ class Point:
     source_label: str = ""
     pixel_x: int = -1
     pixel_y: int = -1
-
-    @classmethod
-    def from_pick(cls, pick: PixelPick) -> Point:
-        """The position the picked pixel was measured at."""
-        # From the clicked image's inputs, not the current ones, which may have been edited
-        # since the image was taken.
-        scan = ScanGeometry.from_parameters(pick.parameters, pick.source_label)
-        fast_v, slow_v = scan.voltage_at(pick.x, pick.y)
-        return cls(fast_v, slow_v, pick.source_label, pick.x, pick.y)
 
     @property
     def picked(self) -> bool:
@@ -181,10 +169,3 @@ def point_editor(spec: PointField, parent: QWidget, values: FieldValues) -> Edit
         spec=spec,
         wide=True,
     )
-
-
-GALVO_TARGET = declare(
-    "galvo_target",
-    PointField("Target", "Galvo position to park at. Pick it off an image, or type volts directly"),
-    Point(),
-)
