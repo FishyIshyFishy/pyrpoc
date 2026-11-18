@@ -7,7 +7,7 @@ from html import escape
 from typing import Any
 
 from PyQt6.QtCore import QSize, Qt, QUrl
-from PyQt6.QtGui import QDesktopServices, QGuiApplication
+from PyQt6.QtGui import QColor, QDesktopServices, QGuiApplication
 from PyQt6.QtWidgets import (
     QCheckBox,
     QFileDialog,
@@ -35,6 +35,7 @@ from pyrpoc.utils.widgets.type_ahead_combo import TypeAheadComboBox
 
 from .host import RunnerHost
 from .note import NoteDialog
+from .preflight import needs_text
 from .program_inputs import ProgramInputsStore
 from .runs import Runs
 
@@ -47,6 +48,18 @@ class Tone(Enum):
     NEEDS = "#f2c744"
     BUSY = "#4f8df5"
     ERROR = "#e5484d"
+
+
+def status_sheet(tone: Tone) -> str:
+    """The status line's box: tinted and bordered in the tone's colour when the user must act or
+    look, and plain otherwise."""
+    # Every tone keeps the same padding and border width, so the line never shifts as it changes.
+    box = "padding: 6px 8px; border-radius: 4px; border: 1px solid"
+    if tone not in (Tone.NEEDS, Tone.ERROR):
+        return f"QLabel {{ {box} transparent; background: transparent; }}"
+    colour = QColor(tone.value)
+    tint = f"rgba({colour.red()}, {colour.green()}, {colour.blue()}, 0.16)"
+    return f"QLabel {{ {box} {tone.value}; background: {tint}; }}"
 
 
 def short_name(name: str) -> str:
@@ -256,12 +269,13 @@ class AcquisitionPanel(Panel):
             # The status is the run's own while it goes; edits made meanwhile must not replace it.
             return
         if self.missing:
-            self.show_status(Tone.NEEDS, "needs " + ", ".join(self.missing))
+            self.show_status(Tone.NEEDS, needs_text(self.missing))
         elif announce:
             self.show_status(Tone.READY, "ready")
 
     def show_status(self, tone: Tone, text: str) -> None:
         self.status_label.setText(f'<span style="color:{tone.value}">●</span>&nbsp;{escape(text)}')
+        self.status_label.setStyleSheet(status_sheet(tone))
 
     def render_controls(self) -> None:
         """Draw the shown program's controls, replacing whatever was there."""
