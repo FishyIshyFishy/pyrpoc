@@ -84,8 +84,8 @@ class _RowDelegate(QStyledItemDelegate):
 
 
 class _ListPopup(QFrame):
-    """The open list, dropped below the box. Typing moves the highlight to the first entry that
-    starts with what was typed."""
+    """The open list, dropped below the box. Typing moves the highlight to the first entry that,
+    or whose heading, starts with what was typed."""
 
     def __init__(self, combo: TypeAheadComboBox):
         super().__init__(combo, Qt.WindowType.Popup)
@@ -166,14 +166,20 @@ class _ListPopup(QFrame):
             self.set_highlight(match)
 
     def first_starting(self, prefix: str, start: int) -> int:
-        """The first entry from row ``start`` on, wrapping round, whose label starts with
-        ``prefix``; -1 if none does."""
+        """The first entry from row ``start`` on, wrapping round, whose label or heading starts
+        with ``prefix``; -1 if none does. A matching heading gives its first entry."""
         count = self.combo.count()
         for offset in range(count):
             row = (max(start, 0) + offset) % count
-            label = self.combo.entries.index(row, 0).data(_MATCH_ROLE)
-            if self.kind(row) is Kind.ENTRY and label.startswith(prefix):
+            if self.kind(row) is Kind.ACTION:
+                continue
+            if not self.combo.entries.index(row, 0).data(_MATCH_ROLE).startswith(prefix):
+                continue
+            if self.kind(row) is Kind.ENTRY:
                 return row
+            # A heading with no entries under it has nothing to jump to.
+            if row + 1 < count and self.kind(row + 1) is Kind.ENTRY:
+                return row + 1
         return -1
 
     def place(self) -> None:
@@ -265,6 +271,7 @@ class TypeAheadComboBox(QComboBox):
         tooltip."""
         item = QStandardItem(text)
         item.setData(Kind.HEADING, _KIND_ROLE)
+        item.setData(text.lower(), _MATCH_ROLE)
         item.setFlags(Qt.ItemFlag.NoItemFlags)
         font = self.font()
         font.setBold(True)
