@@ -90,10 +90,13 @@ class MaskPicker(QListWidget):
         super().changeEvent(e)
         # Thumbnails are drawn in the theme's colors, so a new theme draws them again.
         if e is not None and e.type() == QEvent.Type.PaletteChange:
+            # A new icon emits itemChanged, which would be taken for a rename.
+            self.blockSignals(True)
             for row, mask in enumerate(self.masks):
                 item = self.item(row)
                 if item is not None:
                     item.setIcon(QIcon(thumbnail(mask, ICON_PX)))
+            self.blockSignals(False)
 
     def build_add_row(self) -> QListWidgetItem:
         """The row after the last mask: a full-width button with a centred plus. The item

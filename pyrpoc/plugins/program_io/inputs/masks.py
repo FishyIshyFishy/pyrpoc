@@ -66,4 +66,6 @@ MASKS = declare(
     # Shown by the lines input, which draws each mask beside its line.
     MasksField("Masks", "The masks drawn in a Mask Editor, which is where they are edited"),
     (),
+    # Drawn on the sample in front of the microscope now, so a new session starts without any.
+    restored=False,
 )

@@ -6,7 +6,6 @@ from __future__ import annotations
 import itertools
 from dataclasses import replace
 from pathlib import Path
-from typing import Any
 
 import cv2
 import numpy as np
@@ -519,22 +518,6 @@ class MaskEditorPanel(DataPanel[ImageOutput]):
         super().detach()
         self.inputs.unsubscribe(self.on_input_changed)
 
-    def export_persistence_state(self) -> dict[str, Any]:
-        rois = {mask_id: [roi.to_dict() for roi in rois] for mask_id, rois in self.drafts.items()}
-        return {"current": self.current, "rois": rois}
-
-    def import_persistence_state(self, state: dict[str, Any]) -> None:
-        """Take each mask's ROIs and the mask being drawn from session JSON, skipping ROIs
-        that are malformed or belong to a mask that is gone."""
-        ids = {mask.id for mask in self.masks()}
-        saved = state.get("rois")
-        for mask_id, rows in saved.items() if isinstance(saved, dict) else ():
-            if mask_id in ids and isinstance(rows, list):
-                self.drafts[mask_id] = list(filter(None, map(saved_roi, rows)))
-        current = state.get("current")
-        self.choose_mask(current if current in ids else "")
-        self.show_masks()
-
     def save_mask(self, mask_id: str) -> None:
         mask = next(m for m in self.masks() if m.id == mask_id)
         path, _ = QFileDialog.getSaveFileName(
@@ -549,14 +532,6 @@ class MaskEditorPanel(DataPanel[ImageOutput]):
             QMessageBox.critical(self, "Export Failed", f"Failed to save mask to {path}: {exc}")
             return
         QMessageBox.information(self, "Mask Exported", f"Wrote a mask to {written}.")
-
-
-def saved_roi(raw: Any) -> MaskRoi | None:
-    """An ROI from session JSON, or None for one that is malformed."""
-    try:
-        return MaskRoi.from_dict(raw)
-    except ValueError:
-        return None
 
 
 def mask_from_rois(rois: list[MaskRoi], data: np.ndarray) -> np.ndarray:

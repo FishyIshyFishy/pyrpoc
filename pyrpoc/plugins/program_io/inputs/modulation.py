@@ -235,4 +235,6 @@ MASK_LINES = declare(
         "Masks", "Whether each drawn mask drives a digital output line during the scan, and which"
     ),
     (),
+    # Keyed by mask id, and masks are not restored.
+    restored=False,
 )
