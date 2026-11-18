@@ -11,12 +11,8 @@ import numpy as np
 from pyrpoc.core.program import RunContext
 from pyrpoc.core.program_input import ParameterError
 from pyrpoc.plugins.devices import DAQ, Galvo
-from pyrpoc.plugins.program_io.inputs import (
-    CENTER_REGION_FRACTION,
-    MASKS,
-    ScanGeometry,
-    rate_hz,
-)
+from pyrpoc.plugins.program_io.inputs import CENTER_REGION_FRACTION, MASKS
+from pyrpoc.plugins.programs.building_blocks.settings import ScanGeometry, rate_hz
 
 from ..building_blocks.functions.daq_tasks import acquire
 from ..building_blocks.functions.galvo_raster import pixel_samples

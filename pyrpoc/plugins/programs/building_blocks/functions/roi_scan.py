@@ -12,7 +12,8 @@ import cv2
 import numpy as np
 
 from pyrpoc.core.program_input import ParameterError
-from pyrpoc.plugins.program_io.inputs import Mask, ScanGeometry
+from pyrpoc.plugins.program_io.inputs import Mask
+from pyrpoc.plugins.programs.building_blocks.settings import ScanGeometry
 
 
 @dataclass(frozen=True)

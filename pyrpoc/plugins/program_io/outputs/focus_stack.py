@@ -9,8 +9,8 @@ from pathlib import Path
 
 from pyrpoc.core.program_output import program_output_registry
 from pyrpoc.core.recording import Recording
+from pyrpoc.utils.file_formats.tiff import read_pages
 
-from .building_blocks.tiff import read_pages
 from .image import ImageOutput
 
 # The ``paths`` key of the search's steps and result, beside one key per channel.

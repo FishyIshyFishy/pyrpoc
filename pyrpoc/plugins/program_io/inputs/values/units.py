@@ -1,13 +1,15 @@
-"""``UNITS``, the regions of the dish a loop starts on, as a program input."""
+"""The rules for the units a loop runs on, and their file beside a recording."""
 
 from __future__ import annotations
 
 from collections.abc import Iterable
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
-from pyrpoc.core.program_input import Field, ParameterError, ProgramInput, declare
+from pyrpoc.core.program_input import Field, ParameterError
 from pyrpoc.plugins.program_io.outputs import Unit
+from pyrpoc.utils.file_formats.json_file import write_json
 
 
 @dataclass(frozen=True)
@@ -28,12 +30,10 @@ class UnitsField(Field):
         return [unit.to_dict() for unit in value]
 
 
-UNITS: ProgramInput[tuple[Unit, ...]] = declare(
-    "units",
-    UnitsField("Units", "The regions of the dish a loop runs on, drawn over the survey"),
-    (),
-    # Thousands of outlines would be rewritten on every autosave and every edit in a loop's
-    # metadata. A loop's units output and log are the record of them.
-    restored=False,
-    recorded=False,
-)
+class UnitsJson:
+    """The units as one ``.json``: ``{"units": [...]}``, each as its ``to_dict``."""
+
+    suffix = ".json"
+
+    def write(self, path: Path, value: tuple[Unit, ...]) -> None:
+        write_json(path, {"units": [unit.to_dict() for unit in value]})

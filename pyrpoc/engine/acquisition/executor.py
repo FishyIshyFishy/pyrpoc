@@ -97,9 +97,7 @@ class Executor:
             devices = claims.resolve(list(program.devices), start.inventory)
             self._run_id += 1
             recording, root, saver = self.open_recording(program.registry_key, start.save, note)
-            inbox = RunInbox(
-                program, start.inputs, devices, None if saver is None else saver.log_taken
-            )
+            inbox = RunInbox(program, start.inputs, devices, saver)
             run = Run(program, self._run_id, devices, recording, root, saver, inbox, repeat)
             self.leases.take(run.id, devices.values())
             ctx = self.begin_part(run)
@@ -130,7 +128,10 @@ class Executor:
             finished=False,
             outcome=None,
         )
-        saver = None if meta_path is None else RecordingSaver(recording, meta_path)
+        saver = None if root is None else RecordingSaver(recording, root)
+        # Begun before its first part, whose parameters may write sidecar files into the folder.
+        if saver is not None:
+            saver.begin()
         return recording, root, saver
 
     def begin_part(self, run: Run) -> RunContext:
@@ -159,8 +160,7 @@ class Executor:
         recording.parts = [*recording.parts, part]
         self.announce(run, first=number == 1)
         return RunContext(
-            inputs=run.inbox.given(),
-            inbox=run.inbox,
+            inputs=run.inbox,
             devices=run.devices,
             outputs=outputs,
             cancel=run.cancel,
@@ -171,10 +171,7 @@ class Executor:
         """Put the recording's new part on disk, and the recording in the library the first
         time."""
         if run.saver is not None:
-            if first:
-                run.saver.begin()
-            else:
-                run.saver.part_begun()
+            run.saver.part_begun()
         if first:
             self.library.add(run.recording)
         else:
@@ -196,8 +193,8 @@ class Executor:
         try:
             run.program.run(ctx)
             while run.repeat and not run.winding_down.is_set():
-                # Edits made during a pass are taken here, between passes, never mid-pass.
-                if run.inbox.take_settings():
+                # Edits to fixed inputs made during a pass are applied here, between passes.
+                if run.inbox.apply_settings():
                     ctx = self.begin_part(run)
                 run.program.run(ctx)
         except Cancelled:

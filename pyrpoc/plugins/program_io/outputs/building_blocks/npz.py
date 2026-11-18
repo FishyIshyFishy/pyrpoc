@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, TypeVar
+from typing import TypeVar
 
 import numpy as np
 
 from pyrpoc.core.recording import Recording
+from pyrpoc.utils.file_formats.npz import read_npz, write_npz
 
 from .array_stack import ArrayStack
 
@@ -22,29 +23,31 @@ class NpzStack(ArrayStack):
     def close(self) -> None:
         if self.root is not None and self.arrays:
             path = self.root.with_name(f"{self.root.name}_{self.name}.npz")
-            np.savez_compressed(
-                str(path),
-                data=np.stack(self.arrays, axis=0),
-                channels=np.asarray(self.channels, dtype=str),
-                **self.extra(),
+            write_npz(
+                path,
+                {
+                    "data": np.stack(self.arrays, axis=0),
+                    "channels": np.asarray(self.channels, dtype=str),
+                    **self.extra(),
+                },
             )
             self.paths = {self.name: path}
         super().close()
 
-    def extra(self) -> dict[str, Any]:
+    def extra(self) -> dict[str, np.ndarray]:
         """More arrays to save beside the data, read back by ``take_extra``."""
         return {}
 
-    def take_extra(self, archive: Any) -> None:
-        del archive
+    def take_extra(self, arrays: dict[str, np.ndarray]) -> None:
+        del arrays
 
     @classmethod
     def load(cls: type[S], *, name: str, recording: Recording, files: dict[str, Path]) -> S:
         output = cls(name=name, recording=recording, root=None)
         if files:
             (path,) = files.values()
-            with np.load(str(path)) as archive:
-                channels = [str(label) for label in archive["channels"]]
-                output.fill(list(archive["data"]), channels)
-                output.take_extra(archive)
+            arrays = read_npz(path)
+            channels = [str(label) for label in arrays["channels"]]
+            output.fill(list(arrays["data"]), channels)
+            output.take_extra(arrays)
         return output

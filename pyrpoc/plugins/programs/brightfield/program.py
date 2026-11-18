@@ -11,9 +11,9 @@ from pyrpoc.plugins.program_io.inputs import (
     CAMERA_EXPOSURE_MS,
     CAMERA_GAIN_PCT,
     NUM_FRAMES,
-    CameraSettings,
 )
 from pyrpoc.plugins.program_io.outputs import ImageOutput
+from pyrpoc.plugins.programs.building_blocks.settings import CameraSettings
 
 from ..building_blocks.functions.run_loops import count_off
 from ..building_blocks.runners import Continuous, Single
@@ -42,6 +42,8 @@ class Brightfield(Program):
         ),
         "Frames": (NUM_FRAMES,),
     }
+    # Binning sets the shape of each frame.
+    fixed = [CAMERA_BINNED]
     emits = {"intensity": ImageOutput}
     runners = [Single(), Continuous()]
 

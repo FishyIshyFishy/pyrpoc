@@ -8,13 +8,8 @@ import numpy as np
 
 from pyrpoc.core.program import RunContext
 from pyrpoc.plugins.devices import DAQ, Galvo
-from pyrpoc.plugins.program_io.inputs import (
-    MASK_LINES,
-    MASKS,
-    ScanGeometry,
-    lines_for,
-    rate_hz,
-)
+from pyrpoc.plugins.program_io.inputs import MASK_LINES, MASKS, lines_for
+from pyrpoc.plugins.programs.building_blocks.settings import ScanGeometry, rate_hz
 
 from .daq_tasks import acquire
 from .mask_ttl import mask_ttl

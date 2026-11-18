@@ -17,8 +17,6 @@ from ..routines.monitor import Monitoring, Treatment, monitor
 from ..stages.loop.routine import RoutineSpec
 
 MONITOR_INPUTS = (PERIOD_S, DURATION_MIN, DWELL_TIME_US)
-# Read again before each wait, so an edit takes effect at a unit's next scan.
-MONITOR_LIVE = (PERIOD_S, DURATION_MIN)
 TREATMENT_INPUTS = (TREAT, TREATED_GROUP)
 
 
@@ -27,7 +25,8 @@ def monitor_routine(ctx: RunContext, line: DigitalLine) -> RoutineSpec:
     ``line`` if the run asks for it."""
     treatment = Treatment(ctx.inputs[TREATED_GROUP], line) if ctx.inputs[TREAT] else None
 
+    # Read again before each wait, so an edit takes effect at a unit's next scan.
     def now() -> Monitoring:
-        return Monitoring(ctx.current(PERIOD_S), ctx.current(DURATION_MIN))
+        return Monitoring(ctx.inputs[PERIOD_S], ctx.inputs[DURATION_MIN])
 
     return RoutineSpec("monitor", lambda unit, history: monitor(unit, history, now, treatment))

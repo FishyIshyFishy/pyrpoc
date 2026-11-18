@@ -6,7 +6,7 @@ import numpy as np
 
 from pyrpoc.core.program import RunContext
 from pyrpoc.plugins.devices.simulated import SimulatedDish, SimulatedScanner
-from pyrpoc.plugins.program_io.inputs import ScanGeometry
+from pyrpoc.plugins.programs.building_blocks.settings import ScanGeometry
 
 from ..building_blocks.multisite import DigitalLine
 from .dish_scan import dish_frame

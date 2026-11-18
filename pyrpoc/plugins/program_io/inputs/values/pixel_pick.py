@@ -1,12 +1,11 @@
-"""``PixelPick``: the last click on one pixel of an image, and ``PICK``, the program input
-holding it."""
+"""``PixelPick``: the last click on one pixel of an image, and the rules for it."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any
 
-from pyrpoc.core.program_input import Field, ParameterError, declare
+from pyrpoc.core.program_input import Field, ParameterError
 from pyrpoc.plugins.program_io.outputs.image import ImageOutput
 from pyrpoc.utils.widgets.source_picker import source_text
 
@@ -63,7 +62,3 @@ class PickField(Field):
 
     def encode(self, value: PixelPick | None) -> Any:
         return None if value is None else value.to_dict()
-
-
-# No program shows it: image panels write it, and a runner turns it into what its program reads.
-PICK = declare("pick", PickField("Pick", "The last pixel clicked on an image"), None)

@@ -39,7 +39,6 @@ from typing import Literal
 
 import numpy as np
 
-from pyrpoc.plugins.program_io.inputs import ScanGeometry
 from pyrpoc.plugins.program_io.outputs import (
     AxisMeasured,
     AxisMeasuring,
@@ -49,6 +48,7 @@ from pyrpoc.plugins.program_io.outputs import (
     GalvoCalibration,
     StageMoved,
 )
+from pyrpoc.plugins.programs.building_blocks.settings import ScanGeometry
 
 from ...analysis.view_shift import ambiguity_px, structure, view_shift
 from ...interfaces.microscope import Microscope

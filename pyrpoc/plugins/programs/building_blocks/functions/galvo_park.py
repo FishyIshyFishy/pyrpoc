@@ -9,6 +9,7 @@ from pyrpoc.core.program_input import ProgramInputs
 from pyrpoc.plugins.devices import DAQ, DaqError, Galvo
 from pyrpoc.plugins.program_io.inputs import GALVO_TARGET, PixelPick, Point
 
+from ..settings import ScanGeometry
 from .daq_tasks import add_galvo_channels
 
 
@@ -26,6 +27,15 @@ def park_galvos(daq: DAQ, galvo: Galvo, point: Point) -> None:
         raise DaqError(f"could not park the galvos: {exc}") from exc
 
 
+def point_at(pick: PixelPick) -> Point:
+    """The position the picked pixel was measured at."""
+    # From the clicked image's inputs, not the current ones, which may have been edited
+    # since the image was taken.
+    scan = ScanGeometry.from_parameters(pick.parameters, pick.source_label)
+    fast_v, slow_v = scan.voltage_at(pick.x, pick.y)
+    return Point(fast_v, slow_v, pick.source_label, pick.x, pick.y)
+
+
 def aim_at_pixel(pick: PixelPick, inputs: ProgramInputs) -> None:
     """Point the galvos at the picked pixel: its volts become the target."""
-    inputs.set(GALVO_TARGET.key, Point.from_pick(pick))
+    inputs.set(GALVO_TARGET.key, point_at(pick))

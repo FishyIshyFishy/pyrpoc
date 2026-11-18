@@ -22,10 +22,9 @@ from pyrpoc.plugins.program_io.inputs import (
     FOCUS_SEARCH_RANGE_UM,
     MASKS,
     SAMPLE_RATE_MHZ,
-    SCAN_GEOMETRY_INPUTS,
-    FocusSearch,
 )
 from pyrpoc.plugins.program_io.outputs import FocusResult, FocusStackOutput, FocusStep
+from pyrpoc.plugins.programs.building_blocks.settings import SCAN_GEOMETRY_INPUTS, FocusSearch
 
 from ..building_blocks.focus.climb import ClimbResult, ClimbStep, climb
 from ..building_blocks.focus.tenengrad import tenengrad
@@ -106,6 +105,17 @@ class Autofocus(Program):
             FOCUS_FINAL_STEP_UM,
         ),
     }
+    # The region scanned and the search, as the run began.
+    fixed = [
+        *SCAN_GEOMETRY_INPUTS,
+        SAMPLE_RATE_MHZ,
+        MASKS,
+        CENTER_REGION_FRACTION,
+        FOCUS_SEARCH_RANGE_UM,
+        FOCUS_INITIAL_STEP_UM,
+        FOCUS_FINAL_STEP_UM,
+    ]
+    saves = [MASKS]
     emits = {"intensity": FocusStackOutput}
     # Once only: each start is one complete search.
     runners = [Single()]

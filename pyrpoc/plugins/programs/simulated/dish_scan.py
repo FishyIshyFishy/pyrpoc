@@ -7,7 +7,7 @@ from collections.abc import Callable
 import numpy as np
 
 from pyrpoc.plugins.devices.simulated import SimulatedDish, SimulatedScanner
-from pyrpoc.plugins.program_io.inputs import ScanGeometry
+from pyrpoc.plugins.programs.building_blocks.settings import ScanGeometry
 
 
 def dish_frame(

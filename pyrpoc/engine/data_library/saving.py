@@ -1,22 +1,28 @@
-"""``RecordingSaver``: one recording's metadata file, beside the files its outputs write."""
+"""``RecordingSaver``: one recording's metadata file, its log of applied edits and its sidecar
+files, beside the files its outputs write."""
 
 from __future__ import annotations
 
 import threading
 from collections.abc import Collection
+from dataclasses import asdict
 from pathlib import Path
+from typing import Any
 
+from pyrpoc.core.program_input import SidecarProgramInput
 from pyrpoc.core.program_output import ProgramOutput
 from pyrpoc.core.recording import Recording, utc_now
 from pyrpoc.engine.data_library.format import (
+    AppliedEdit,
     OutputRecord,
     RecordingRecord,
-    Taken,
+    applied_edits_path_for,
     free_root,
     meta_path_for,
     pyrpoc_version,
     write_record,
 )
+from pyrpoc.utils.file_formats.json_file import append_json_line
 
 from .notes import save_note
 
@@ -30,27 +36,40 @@ def save_location(root: Path, taken: Collection[Path] = ()) -> tuple[Path, Path]
 
 
 class RecordingSaver:
-    """Writes ``recording``'s metadata file, at its location, as its run goes."""
+    """Writes ``recording``'s files beside the stem ``root`` as its run goes: the metadata, the
+    log of edits it applied, and the sidecar inputs its program saves."""
 
-    def __init__(self, recording: Recording, meta_path: Path):
+    def __init__(self, recording: Recording, root: Path):
         self.recording = recording
-        self.meta_path = meta_path
-        self.taken: list[Taken] = []
+        self.root = root
+        self.meta_path = meta_path_for(root)
+        self.edits_path = applied_edits_path_for(root)
+        # How many files each sidecar input has been saved to, by key.
+        self.sidecar_counts: dict[str, int] = {}
         # A run writes from its own thread, and a note edit from the GUI thread.
         self.lock = threading.Lock()
 
     def begin(self) -> None:
-        """Create the folder, and put the recording on disk before its data."""
+        """Create the folder, and put the recording on disk before any of its parts."""
         self.meta_path.parent.mkdir(parents=True, exist_ok=True)
+        self.edits_path.write_text("", encoding="utf-8")
         self.write_metadata(ended_at=None, last_error=None)
         # A note written before the run is set now, as one edited later is set by the library.
         if self.recording.note:
             save_note(self.recording)
 
-    def log_taken(self, taken: Taken) -> None:
-        """Record the run taking something from its inbox, on disk at once."""
-        self.taken.append(taken)
-        self.write_metadata(ended_at=None, last_error=None)
+    def log_applied(self, edit: AppliedEdit) -> None:
+        """Add an edit the run applied to the log, on disk at once."""
+        append_json_line(self.edits_path, asdict(edit))
+
+    def save_sidecar(self, program_input: SidecarProgramInput[Any], value: Any) -> str:
+        """Write ``value`` to the next file of ``program_input``, returning the file's name."""
+        number = self.sidecar_counts.get(program_input.key, 0) + 1
+        self.sidecar_counts[program_input.key] = number
+        stem = f"{self.root.name}_{program_input.key}_{number}"
+        path = self.root.with_name(f"{stem}{program_input.file.suffix}")
+        program_input.file.write(path, value)
+        return path.name
 
     def part_begun(self) -> None:
         """Put a new part of the recording, and its outputs, on disk at once."""
@@ -82,7 +101,7 @@ class RecordingSaver:
             },
             # Read each time: the note may be edited while the recording runs.
             notes=recording.note,
-            taken=list(self.taken),
+            applied_edits=self.edits_path.name,
         )
 
 

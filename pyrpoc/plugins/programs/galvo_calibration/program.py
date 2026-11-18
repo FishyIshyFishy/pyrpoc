@@ -17,6 +17,7 @@ class GalvoCalibrationProgram(CalibrationProgram):
     devices = [Galvo, DAQ, PriorStage]
     inputs = [*CalibrationProgram.inputs, SAMPLE_RATE_MHZ]
     cards = {**CalibrationProgram.cards, "DAQ": (SAMPLE_RATE_MHZ,)}
+    fixed = [*CalibrationProgram.fixed, SAMPLE_RATE_MHZ]
 
     def microscope(self, ctx: RunContext) -> Microscope:
         return RigMicroscope(ctx)

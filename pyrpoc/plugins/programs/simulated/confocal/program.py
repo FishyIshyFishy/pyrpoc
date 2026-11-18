@@ -4,8 +4,9 @@ from __future__ import annotations
 
 from pyrpoc.core.program import Program, RunContext, program_registry
 from pyrpoc.plugins.devices.simulated import SimulatedDish, SimulatedScanner
-from pyrpoc.plugins.program_io.inputs import NUM_FRAMES, SCAN_GEOMETRY_INPUTS, ScanGeometry
+from pyrpoc.plugins.program_io.inputs import NUM_FRAMES
 from pyrpoc.plugins.program_io.outputs import ImageOutput
+from pyrpoc.plugins.programs.building_blocks.settings import SCAN_GEOMETRY_INPUTS, ScanGeometry
 
 from ...building_blocks.functions.run_loops import count_off
 from ...building_blocks.runners import Continuous, Single
@@ -20,6 +21,8 @@ class SimulatedConfocal(Program):
     devices = [SimulatedScanner]
     inputs = [*SCAN_GEOMETRY_INPUTS, NUM_FRAMES]
     cards = {"Scan": SCAN_GEOMETRY_INPUTS, "Frames": (NUM_FRAMES,)}
+    # What sets the shape of each image.
+    fixed = [*SCAN_GEOMETRY_INPUTS]
     emits = {"intensity": ImageOutput}
     runners = [Single(), Continuous()]
 

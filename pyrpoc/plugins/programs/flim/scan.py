@@ -11,7 +11,7 @@ import nidaqmx.errors
 from nidaqmx.constants import AcquisitionType, Signal
 
 from pyrpoc.plugins.devices import DAQ, DaqError, Galvo
-from pyrpoc.plugins.program_io.inputs import ScanGeometry, TriggerLines
+from pyrpoc.plugins.programs.building_blocks.settings import ScanGeometry, TriggerLines
 
 from ..building_blocks.functions.daq_tasks import clock_galvos, play, scan_timeout
 from ..building_blocks.functions.galvo_raster import raster_waveform

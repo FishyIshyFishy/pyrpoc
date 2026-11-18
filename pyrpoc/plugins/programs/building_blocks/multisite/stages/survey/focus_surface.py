@@ -13,8 +13,8 @@ import math
 
 import numpy as np
 
-from pyrpoc.plugins.program_io.inputs import FocusSearch
 from pyrpoc.plugins.program_io.outputs import FocusPlane
+from pyrpoc.plugins.programs.building_blocks.settings import FocusSearch
 
 from ...analysis.plane_fit import DriftingPlane, PlaneFit, fit_drifting_plane, fit_plane
 

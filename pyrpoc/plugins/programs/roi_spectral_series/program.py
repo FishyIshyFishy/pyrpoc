@@ -22,13 +22,15 @@ from pyrpoc.plugins.program_io.inputs import (
     MASKS,
     NUM_FRAMES,
     SAMPLE_RATE_MHZ,
-    SCAN_GEOMETRY_INPUTS,
     Mask,
-    ScanGeometry,
-    rate_hz,
 )
 from pyrpoc.plugins.program_io.outputs import SpectrumSeriesOutput
 from pyrpoc.plugins.programs.building_blocks.functions.ccd_read import spectrum_readout
+from pyrpoc.plugins.programs.building_blocks.settings import (
+    SCAN_GEOMETRY_INPUTS,
+    ScanGeometry,
+    rate_hz,
+)
 
 from ..building_blocks.functions.ccd_read import configure_spectrum, read_spectrum
 from ..building_blocks.functions.daq_tasks import sweeping
@@ -77,6 +79,9 @@ class RoiSpectralSeries(Program):
             CCD_FRAMES_TO_AVERAGE,
         ),
     }
+    # The region the spectra are taken over, as the run began.
+    fixed = [*SCAN_GEOMETRY_INPUTS, SAMPLE_RATE_MHZ, MASKS, CENTER_REGION_FRACTION]
+    saves = [MASKS]
     emits = {"spectrum": SpectrumSeriesOutput}
     # Once only: each start is one bleaching series of a set length.
     runners = [Single()]

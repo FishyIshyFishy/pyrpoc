@@ -8,9 +8,9 @@ import numpy as np
 
 from pyrpoc.core.program_output import program_output_registry
 from pyrpoc.core.recording import Recording
+from pyrpoc.utils.file_formats.tiff import append_pages, channel_paths, read_pages
 
 from .building_blocks.array_stack import ArrayStack
-from .building_blocks.tiff import append_pages, channel_paths, read_pages
 
 
 @program_output_registry.register("image")

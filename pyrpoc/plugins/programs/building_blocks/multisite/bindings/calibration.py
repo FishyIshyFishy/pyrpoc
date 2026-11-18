@@ -6,13 +6,13 @@ import numpy as np
 
 from pyrpoc.core.program import RunContext
 from pyrpoc.core.program_output import ProgramOutput
-from pyrpoc.plugins.program_io.inputs import ScanGeometry
 from pyrpoc.plugins.program_io.outputs import (
     CalibrationEvent,
     CalibrationLogOutput,
     GalvoCalibrationOutput,
     ImageOutput,
 )
+from pyrpoc.plugins.programs.building_blocks.settings import ScanGeometry
 
 from ..interfaces.microscope import Microscope
 from ..stages.calibration.measuring import calibrate

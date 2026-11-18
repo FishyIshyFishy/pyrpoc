@@ -9,7 +9,12 @@ from pathlib import Path
 from typing import Any, Protocol, TypeVar
 
 from pyrpoc.core.device import Device
-from pyrpoc.core.program_input import ProgramInput, ProgramInputValues
+from pyrpoc.core.program_input import (
+    InputReader,
+    ProgramInput,
+    ProgramInputValues,
+    SidecarProgramInput,
+)
 from pyrpoc.core.program_output import ProgramOutput
 from pyrpoc.core.registry import Registry
 
@@ -17,7 +22,6 @@ from .runner import Runner
 
 D = TypeVar("D", bound=Device)
 OutputT = TypeVar("OutputT", bound=ProgramOutput)
-T = TypeVar("T")
 
 
 class Cancelled(Exception):
@@ -71,9 +75,13 @@ class Program:
     # row, and with no cards every input is shown.
     cards: dict[str, Sequence[ProgramInput[Any]]] = {}
 
-    # Its inputs that a run may read again while it runs, to follow edits made after it
-    # started. The rest stay as they were when it started.
-    live: list[ProgramInput[Any]] = []
+    # Its inputs a pass cannot follow an edit to, such as what sets the shape of an output: an
+    # edit waits for the next pass of a repeating run and begins a new part. Every other input
+    # is live: the run takes an edit to it the next time the program reads it.
+    fixed: list[ProgramInput[Any]] = []
+
+    # Its sidecar inputs saved beside its recording, each in a file of its own.
+    saves: list[SidecarProgramInput[Any]] = []
 
     # Named outputs, and the type of each.
     emits: dict[str, type[ProgramOutput]] = {}
@@ -83,12 +91,16 @@ class Program:
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
         super().__init_subclass__(**kwargs)
-        # A card showing an input the program does not read would edit a value no run gets.
-        unread = [
-            each.key for card in cls.cards.values() for each in card if each not in cls.inputs
-        ]
-        if unread:
-            raise TypeError(f"{cls.__name__}'s cards show inputs it does not read: {unread}")
+        # Each would name a value no run of it gets.
+        unread = {
+            "cards show": [each for card in cls.cards.values() for each in card],
+            "fixed lists": cls.fixed,
+            "saves lists": cls.saves,
+        }
+        for what, listed in unread.items():
+            keys = [each.key for each in listed if each not in cls.inputs]
+            if keys:
+                raise TypeError(f"{cls.__name__}'s {what} inputs it does not read: {keys}")
 
     def preflight(self, ctx: PreflightContext) -> list[str]:
         """What a run of it needs beyond its devices and valid input values, each said as what it
@@ -119,49 +131,26 @@ class PreflightContext(Protocol):
         ...
 
 
-# note to self: python protocols are useful just for type checkers
-class RunInbox(Protocol):
-    """What has been posted to one run and not yet taken, safe to take from the run's thread:
-    the changes to its live inputs."""
-
-    def live_keys(self) -> frozenset[str]: ...
-
-    def current(self, key: str) -> Any:
-        """A live input's value now, taking a change posted since it was last asked for."""
-        ...
-
-
 class RunContext:
-    """What a running program is handed for one part of its recording: its input values as
-    they were when the part began, its inbox, which gives the current values of its live inputs,
-    its devices, the part's outputs, status and cancel."""
+    """What a running program is handed for one part of its recording: its inputs, each live
+    one as it is now and each fixed one as it was when the part began, its devices, the part's
+    outputs, status and cancel."""
 
     def __init__(
         self,
         *,
-        inputs: ProgramInputValues,
-        inbox: RunInbox,
+        inputs: InputReader,
         devices: Mapping[type[Device], Device],
         outputs: dict[str, ProgramOutput],
         cancel: threading.Event,
         on_status: Callable[[str], None],
     ):
+        # A live input's edit is taken when it is read, so a program reads each once per step.
         self.inputs = inputs
-        self._inbox = inbox
         self.devices = DeviceMap(devices)
         self.outputs = outputs
         self._cancel = cancel
         self._on_status = on_status
-
-    def current(self, program_input: ProgramInput[T]) -> T:
-        """The value of a live input now, which may have changed since the run started."""
-        # Read between a program's own steps, so a value never changes under it mid-step.
-        if program_input.key not in self._inbox.live_keys():
-            raise KeyError(
-                f"{program_input.key!r} is not declared in live; this program declares "
-                f"{sorted(self._inbox.live_keys())}"
-            )
-        return self._inbox.current(program_input.key)
 
     def output(self, name: str, output_type: type[OutputT]) -> OutputT:
         """This run's output ``name``, which ``emits`` declares as ``output_type``."""
