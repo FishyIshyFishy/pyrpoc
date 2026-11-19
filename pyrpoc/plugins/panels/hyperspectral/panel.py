@@ -23,6 +23,7 @@ from pyrpoc.core.program_input import ProgramInputs
 from pyrpoc.plugins.program_io.outputs import HyperspectralOutput
 from pyrpoc.utils.widgets.data_panel import DataPanel, data_panel_registry
 from pyrpoc.utils.widgets.levels import autoscale_levels
+from pyrpoc.utils.widgets.stage_link import StageLink
 
 from .views import RegionImage, SpectrumPlot
 
@@ -34,8 +35,8 @@ class HyperspectralPanel(DataPanel[HyperspectralOutput]):
     order = 20
     renders = HyperspectralOutput
 
-    def __init__(self, library: Library, inputs: ProgramInputs):
-        super().__init__(library, inputs)
+    def __init__(self, library: Library, inputs: ProgramInputs, stage: StageLink):
+        super().__init__(library, inputs, stage)
         pg.setConfigOptions(imageAxisOrder="row-major")
         self.delays: tuple[float, ...] = ()
         self.images: tuple[np.ndarray, ...] = ()

@@ -140,7 +140,7 @@ class SurveyEnded:
     time_s: float
 
     def text(self) -> str:
-        return "survey done, back at its start"
+        return "overview done, the stage back where it started"
 
 
 SurveyEvent = (

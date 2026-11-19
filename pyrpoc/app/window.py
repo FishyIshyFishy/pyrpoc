@@ -152,7 +152,9 @@ class MainWindow(QWidget):
 
     def add_panel_of_type(self, key: str) -> None:
         """Add one, from the menu."""
-        self.add_panel(data_panel_registry.get(key)(self.app.library, self.app.inputs))
+        self.add_panel(
+            data_panel_registry.get(key)(self.app.library, self.app.inputs, self.app.stage)
+        )
 
     def add_panel(self, panel: DataPanel) -> None:
         self.add_panel_dock(panel)

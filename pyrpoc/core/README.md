@@ -176,6 +176,9 @@ its base, in core or, for panels, in `utils/widgets/`. Nothing else lists them.
 
 The bases panels build on live in `utils/widgets/`: `DataPanel` with its
 `SourcePicker`, and `DevicePanel`, given its device and a `DeviceLink` to it.
+A `DataPanel` is also given a `StageLink`, the one thing it may do to hardware
+outside a run: send the XY stage somewhere. It never sees the device, and the
+engine refuses the move while a run holds the stage.
 Each keeps its own registry, since each is built from different collections.
 
 ## The files

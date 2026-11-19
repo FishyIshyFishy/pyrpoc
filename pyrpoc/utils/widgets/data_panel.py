@@ -13,6 +13,7 @@ from pyrpoc.core.program_input import ProgramInputs
 from pyrpoc.core.registry import Registry
 
 from .source_picker import OutputT, SourcePicker
+from .stage_link import StageLink
 
 
 class DataPanel(Panel, Generic[OutputT]):
@@ -29,9 +30,10 @@ class DataPanel(Panel, Generic[OutputT]):
     # on data, not a way to look at it.
     misc: ClassVar[bool] = False
 
-    def __init__(self, library: Library, inputs: ProgramInputs):
+    def __init__(self, library: Library, inputs: ProgramInputs, stage: StageLink):
         super().__init__()
         self.inputs = inputs
+        self.stage = stage
         root = QVBoxLayout(self)
         root.setContentsMargins(4, 4, 4, 4)
         root.setSpacing(4)

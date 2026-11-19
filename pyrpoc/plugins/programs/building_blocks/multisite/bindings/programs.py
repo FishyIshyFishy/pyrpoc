@@ -1,6 +1,7 @@
-"""``CalibrationProgram``, ``SurveyProgram`` and ``LoopProgram``: the three kinds of multisite
-program. Each declares what every program of its kind reads and fills, what it needs before it
-starts, and runs its stage; a program subclasses one and gives its microscope and its own inputs."""
+"""``CalibrationProgram``, ``SurveyProgram``, ``MosaicProgram`` and ``LoopProgram``: the kinds
+of multisite program. Each declares what every program of its kind reads and fills, what it
+needs before it starts, and runs its stage; a program subclasses one and gives its microscope and
+its own inputs."""
 
 from __future__ import annotations
 
@@ -17,6 +18,7 @@ from ..interfaces.microscope import Microscope
 from ..stages.loop.routine import RoutineSpec
 from .calibration import CALIBRATION_EMITS, run_calibration
 from .loop import LOOP_EMITS, LOOP_FOCUS_INPUTS, LOOP_READS, run_loop
+from .mosaic import GRID_INPUTS, MOSAIC_EMITS, MOSAIC_READS, MOSAIC_TILE_INPUTS, run_mosaic
 from .preflight import clean_folder, starting_units
 from .survey import (
     REGION_INPUTS,
@@ -80,6 +82,31 @@ class SurveyProgram(Program):
 
     def run(self, ctx: RunContext) -> None:
         run_survey(ctx, self.microscope(ctx), self.overscan(ctx))
+
+
+class MosaicProgram(Program):
+    """Images a grid of tiles around the stage and places them into an overview, with the
+    calibration read. Not a step of the pipeline: a loop never reads it."""
+
+    # The calibration has no row: the engine sets it from the save folder.
+    inputs: list[ProgramInput[Any]] = [*GRID_INPUTS, *MOSAIC_TILE_INPUTS, *MOSAIC_READS]
+    cards = {"Grid": GRID_INPUTS, "Tiles": MOSAIC_TILE_INPUTS}
+    # What sets the grid of tiles and each tile's scan, and the calibration it began on.
+    fixed: list[ProgramInput[Any]] = [*GRID_INPUTS, *MOSAIC_TILE_INPUTS, *MOSAIC_READS]
+    emits = MOSAIC_EMITS
+    # Once only: a mosaic is one pass over the grid. The folder may hold anything else.
+    runners = RUNNERS
+
+    def microscope(self, ctx: RunContext) -> Microscope:
+        """The instrument the run claimed."""
+        raise NotImplementedError
+
+    def overscan(self, ctx: RunContext) -> tuple[int, int]:
+        """Extra pixels scanned left and right of each line, for the mirrors to turn around."""
+        raise NotImplementedError
+
+    def run(self, ctx: RunContext) -> None:
+        run_mosaic(ctx, self.microscope(ctx), self.overscan(ctx))
 
 
 class LoopProgram(Program):

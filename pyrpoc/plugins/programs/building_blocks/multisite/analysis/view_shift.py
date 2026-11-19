@@ -44,7 +44,7 @@ def ambiguity_px(plane: np.ndarray, within: float) -> float:
     # A regular sample (a lattice of beads) matches itself one spacing over nearly as well as in
     # place, so a shift searched for any further than half that from its prediction could be read
     # a spacing off. The plane's own correlation says how far that is.
-    scores = np.fft.fftshift(overlap_scores(plane, plane))
+    scores = np.fft.fftshift(overlap_scores(plane, plane, (plane.shape[0], plane.shape[1])))
     centre_y, centre_x = scores.shape[0] // 2, scores.shape[1] // 2
     high = (scores >= AMBIGUOUS_SCORE).astype(np.uint8)
     # The peak at no shift is as broad as the features are; everything joined to it is that peak.
@@ -64,7 +64,7 @@ def view_shift(
     None when the frames do not match anywhere in that range."""
     # ``overlap_scores`` gives where ``after``'s corner sits in ``before``'s pixels, which is
     # the content's shift with its sign turned.
-    scores = overlap_scores(before, after)
+    scores = overlap_scores(before, after, (before.shape[0], before.shape[1]))
     (dy, dx), score = best_near(scores, (-predicted[1], -predicted[0]), radius)
     if not np.isfinite(score) or score < MATCH_FLOOR:
         return None

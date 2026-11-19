@@ -46,7 +46,7 @@ from .loop_events import (
 )
 from .loop_log import LoopLogOutput
 from .loop_view import LoopFold, LoopView, QueueEntry, Series, UnitState, UnitView
-from .mosaic import MosaicOutput, MosaicTile
+from .mosaic import MosaicOutput, MosaicTile, Placement
 from .samples import SamplesOutput
 from .spectrum import SpectrumOutput
 from .spectrum_series import SpectrumSeriesOutput
@@ -54,7 +54,6 @@ from .survey import (
     FocusDrift,
     FocusPlane,
     MotionRate,
-    Placement,
     SurveyFinding,
     SurveyOutput,
     SurveyTile,

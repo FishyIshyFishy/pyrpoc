@@ -36,6 +36,7 @@ from pyrpoc.plugins.panels.mask_editor.transforms import normalize_channels
 from pyrpoc.plugins.program_io.inputs import MASKS, Mask
 from pyrpoc.plugins.program_io.outputs import ImageOutput
 from pyrpoc.utils.widgets.data_panel import DataPanel, data_panel_registry
+from pyrpoc.utils.widgets.stage_link import StageLink
 
 from .canvas import MaskImageView, MaskRoi, Threshold
 from .dialog import RoiThresholdDialog
@@ -86,8 +87,8 @@ class MaskEditorPanel(DataPanel[ImageOutput]):
     misc = True
     renders = ImageOutput
 
-    def __init__(self, library: Library, inputs: ProgramInputs):
-        super().__init__(library, inputs)
+    def __init__(self, library: Library, inputs: ProgramInputs, stage: StageLink):
+        super().__init__(library, inputs, stage)
         # The ROIs of each mask, by id, and the mask being drawn on: "" until one is chosen.
         self.drafts: dict[str, list[MaskRoi]] = {}
         self.current = ""
