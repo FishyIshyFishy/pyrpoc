@@ -7,7 +7,7 @@ Multisite imaging of a dish in three stages:
 
 Units can be drawn by a person or found by software; the stages don't care which.
 
-A **mosaic** uses the same calibration outside the pipeline: a grid of tiles around the stage, taken without focusing and placed into one overview by the survey's stitching. No loop reads it.
+A **mosaic** uses the same calibration outside the pipeline: a grid of tiles around the stage, taken without focusing. Each tile is blended into the overview as it is taken, where the stage put it at the calibration's pixel size; nothing is registered from the images, since a mosaic has no motion or drift to correct for. No loop reads it.
 
 Programs import only this package's root (`__init__.py`). Everything below it is internal.
 
@@ -59,7 +59,7 @@ Every stage logs typed events through its sink as it works, and each binding wri
 |---|---|---|
 | Calibration | `CalibrationLogOutput` | `FeatureFound`, `AxisMeasuring`, a `StageMoved` per move, then `AxisPrecision` and `AxisMeasured` |
 | Survey | `SurveyLogOutput` | `TileVisiting`, `TileFocusing` and `TileTaken` per tile; `MotionRevisiting`, `MotionMeasured`, `FocusDrift`, `Stitching`, `SurveyEnded` |
-| Mosaic | `SurveyLogOutput` | `TileVisiting` and `TileTaken` per tile; `Stitching`, `SurveyEnded` |
+| Mosaic | `SurveyLogOutput` | `TileVisiting` and `TileTaken` per tile; `SurveyEnded` |
 | Loop | `LoopLogOutput` | `FocusingBeside` (or `FocusingAtUnit`) when a focus check is due, then `MovingToUnit` and `ScanningUnit`, ended by the scan's `UnitScanned` |
 
 A loop is doing the latest `LoopActivity` until the `UnitScanned` after it; with none since, it is waiting for the next step due. `LoopLogOutput.view().doing` works this out.

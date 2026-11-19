@@ -1,6 +1,6 @@
 # Mosaic panel
 
-Shows a mosaic on the dish, in µm: each tile where the stage put it while the mosaic is taken, then the stitched overview once it is done. Every channel is overlaid in its own colour, with its levels in the strip on the right. The source picker lists every `MosaicOutput`, so a survey can be shown too.
+Shows a mosaic on the dish, in µm: each tile where the stage put it while the mosaic is taken, then the overview they were blended into once the last is taken. Every channel is overlaid in its own colour, with its levels in the strip on the right. The source picker lists every `MosaicOutput`, so a survey can be shown too.
 
 ## Regions
 The pencil button (or right-click the empty mosaic) marks one region: drag round what to come back to. The dotted square is one field across, centred on what was drawn, and it is what is kept; a shape larger than it is not added.

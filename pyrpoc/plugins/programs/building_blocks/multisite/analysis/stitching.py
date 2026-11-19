@@ -1,5 +1,6 @@
 """Stitching tiles whose positions are roughly known: registering overlapping neighbours, solving
-for every tile's position at once, and blending them into one image."""
+for every tile's position at once, and blending them into one image, all at once or tile by
+tile."""
 
 # Neighbouring tiles are registered pairwise by the normalised cross-correlation over their
 # overlap, computed for every integer offset at once (Padfield's masked NCC): the cross term by
@@ -82,10 +83,10 @@ def region_sums(
     return across[:, c1] - across[:, c0]
 
 
-def overlap_scores(a: np.ndarray, b: np.ndarray) -> np.ndarray:
+def overlap_scores(a: np.ndarray, b: np.ndarray, tile: tuple[int, int]) -> np.ndarray:
     """The normalised cross-correlation of ``a`` and ``b`` over their overlap for every
     integer offset at once, indexed as ``padded_offsets`` says; offsets too small or flat to
-    judge are -inf."""
+    judge, against the ``(height, width)`` of the tiles they come from, are -inf."""
     height, width = a.shape
     a = a.astype(np.float64) - a.mean()
     b = b.astype(np.float64) - b.mean()
@@ -97,7 +98,7 @@ def overlap_scores(a: np.ndarray, b: np.ndarray) -> np.ndarray:
 
     rows, cols = a_rows[1] - a_rows[0], a_cols[1] - a_cols[0]
     count = np.outer(rows, cols).astype(np.float64)
-    enough = enough_overlap(rows[:, None], cols[None, :], height, width)
+    enough = enough_overlap(rows[:, None], cols[None, :], *tile)
     count[~enough] = 1.0
     sum_a, sum_b = region_sums(a, a_rows, a_cols), region_sums(b, b_rows, b_cols)
     variance_a = region_sums(a * a, a_rows, a_cols) - sum_a**2 / count
@@ -136,17 +137,39 @@ def best_near(scores: np.ndarray, predicted: Offset, radius: float) -> tuple[Off
     return (float(dy[y, 0]) + sub_y, float(dx[0, x]) + sub_x), score
 
 
+def overlap_window(size: int, predicted: float, radius: float) -> tuple[slice, slice, int]:
+    """Along one axis of two tiles ``size`` long, the equal stretches of the first and the
+    second that can overlap when the second sits within ``radius`` of ``predicted``, and what
+    an offset between the stretches adds to be one between the tiles."""
+    # One more than the radius, so the sub-pixel fit still has the samples beside the peak.
+    reach = math.ceil(radius) + 1
+    shift = round(predicted)
+    if shift - reach > 0:
+        return slice(shift - reach, size), slice(0, size - shift + reach), shift - reach
+    if shift + reach < 0:
+        return slice(0, size + shift + reach), slice(-shift - reach, size), shift + reach
+    return slice(0, size), slice(0, size), 0
+
+
 def register_near(
     first: int, second: int, frames: Sequence[np.ndarray], predicted: Offset, radius: float
 ) -> Registration | None:
     """Where ``(C, H, W)`` tile ``second`` sits relative to ``first``, within ``radius`` pixels
     of ``predicted``, on the channel that overlays them best; None when none is convincing."""
+    # Only the strips that can overlap within the search are correlated: every offset searched
+    # overlaps inside them, so the scores are the same as over whole tiles, at a fraction of
+    # the cost.
+    tile = (frames[first].shape[-2], frames[first].shape[-1])
+    a_rows, b_rows, shift_y = overlap_window(tile[0], predicted[0], radius)
+    a_cols, b_cols, shift_x = overlap_window(tile[1], predicted[1], radius)
+    near = (predicted[0] - shift_y, predicted[1] - shift_x)
     best: Registration | None = None
     for channel in range(frames[first].shape[0]):
-        scores = overlap_scores(frames[first][channel], frames[second][channel])
-        offset, score = best_near(scores, predicted, radius)
+        a = frames[first][channel][a_rows, a_cols]
+        b = frames[second][channel][b_rows, b_cols]
+        (dy, dx), score = best_near(overlap_scores(a, b, tile), near, radius)
         if score >= MIN_SCORE and (best is None or score > best.score):
-            best = Registration(first, second, offset, score)
+            best = Registration(first, second, (dy + shift_y, dx + shift_x), score)
     return best
 
 
@@ -178,22 +201,48 @@ def edge_weights(height: int, width: int) -> np.ndarray:
     return np.outer(rows, cols)
 
 
+class Blend:
+    """``(C, H, W)`` tiles of one size, added one at a time at known pixel positions, shrunk by
+    ``factor``, each faded into the tiles it overlaps."""
+
+    def __init__(
+        self, channels: int, tile: tuple[int, int], reach_px: tuple[float, float], factor: int
+    ):
+        """``reach_px`` is how far down and across, in tile pixels, the furthest tile's
+        top-left corner lies."""
+        self.factor = factor
+        height, width = tile[0] // factor, tile[1] // factor
+        self.ramp = edge_weights(height, width)
+        rows = round(reach_px[0] / factor) + height
+        cols = round(reach_px[1] / factor) + width
+        self.total = np.zeros((channels, rows, cols), dtype=np.float32)
+        self.weight = np.zeros((rows, cols), dtype=np.float32)
+
+    def add(self, frame: np.ndarray, top_px: float, left_px: float) -> None:
+        """Fade in ``frame`` with its top-left corner at (``top_px``, ``left_px``)."""
+        shrunk = downsample(np.asarray(frame, dtype=np.float32), self.factor)
+        y, x = round(top_px / self.factor), round(left_px / self.factor)
+        height, width = shrunk.shape[1:]
+        self.total[:, y : y + height, x : x + width] += self.ramp * shrunk
+        self.weight[y : y + height, x : x + width] += self.ramp
+
+    def image(self) -> np.ndarray:
+        """The tiles added so far as one image; 0 where none lies."""
+        return np.divide(
+            self.total, self.weight, out=np.zeros_like(self.total), where=self.weight > 0
+        )
+
+
 def composite(
     frames: Sequence[np.ndarray], positions_px: np.ndarray, factor: int
 ) -> tuple[np.ndarray, tuple[float, float]]:
     """The ``(C, H, W)`` frames, at ``(top, left)`` ``positions_px``, shrunk by ``factor`` and
     blended into one image, and the ``(top, left)`` of its corner in the frames' pixels."""
-    shrunk = [downsample(np.asarray(frame, dtype=np.float32), factor) for frame in frames]
-    channels, height, width = shrunk[0].shape
     corner = positions_px.min(axis=0)
-    placed = np.rint((positions_px - corner) / factor).astype(int)
-    extent_y = int(placed[:, 0].max()) + height
-    extent_x = int(placed[:, 1].max()) + width
-    total = np.zeros((channels, extent_y, extent_x), dtype=np.float32)
-    weight = np.zeros((extent_y, extent_x), dtype=np.float32)
-    ramp = edge_weights(height, width)
-    for frame, (y, x) in zip(shrunk, placed, strict=True):
-        total[:, y : y + height, x : x + width] += ramp * frame
-        weight[y : y + height, x : x + width] += ramp
-    blended = np.divide(total, weight, out=np.zeros_like(total), where=weight > 0)
-    return blended, (float(corner[0]), float(corner[1]))
+    placed = positions_px - corner
+    reach = placed.max(axis=0)
+    tile = (frames[0].shape[-2], frames[0].shape[-1])
+    blend = Blend(frames[0].shape[0], tile, (float(reach[0]), float(reach[1])), factor)
+    for frame, (y, x) in zip(frames, placed, strict=True):
+        blend.add(frame, float(y), float(x))
+    return blend.image(), (float(corner[0]), float(corner[1]))

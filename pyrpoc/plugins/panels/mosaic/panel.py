@@ -135,10 +135,10 @@ class MosaicPanel(DataPanel[MosaicOutput]):
             return ""
         taken = f"{len(mosaic)}/{len(mosaic.tiles)} tiles"
         if mosaic.is_stitched:
-            return f"{taken}, stitched · {mosaic.field_um:.0f} µm fields"
+            return f"{taken}, blended · {mosaic.field_um:.0f} µm fields"
         if mosaic.recording.finished:
-            return f"{taken}, cut short: shown where the stage put them"
-        return f"{taken}, shown where the stage put them until stitched"
+            return f"{taken}, cut short: each where the stage put it"
+        return f"{taken}, each where the stage put it, blended once the last is taken"
 
     def note(self, text: str) -> None:
         self.notice = (text, time.monotonic())

@@ -1,5 +1,5 @@
-"""Mosaic: a grid of tiles around the stage, scanned with the galvo calibration and placed into
-one overview by where the stage put them and what neighbours share."""
+"""Mosaic: a grid of tiles around the stage, scanned with the galvo calibration and blended into
+one overview, each where the stage put it."""
 
 from __future__ import annotations
 
