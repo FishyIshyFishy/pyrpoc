@@ -58,6 +58,11 @@ class FocusStackOutput(ImageOutput):
             self.write_search()
         self.changed()
 
+    def save_to(self, root: Path) -> None:
+        with self.lock:
+            super().save_to(root)
+            self.write_search()
+
     def write_search(self) -> None:
         if self.root is None:
             return

@@ -72,6 +72,15 @@ class LogOutput(ProgramOutput, Generic[E]):
                 self.paths = {self.name: path}
         self.changed()
 
+    def save_to(self, root: Path) -> None:
+        with self.lock:
+            self.root = root
+            if self.events:
+                path = root.with_name(f"{root.name}_{self.name}.jsonl")
+                lines = (json.dumps(event_to_dict(event)) + "\n" for event in self.events)
+                path.write_text("".join(lines), encoding="utf-8")
+                self.paths = {self.name: path}
+
     def since(self, start: int) -> list[E]:
         """The events from the ``start``-th on, oldest first."""
         with self.lock:

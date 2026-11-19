@@ -47,6 +47,11 @@ class ProgramOutput:
     def close(self) -> None:
         """Finish its files: nothing more will be added."""
 
+    def save_to(self, root: Path) -> None:
+        """Write everything it holds beside ``root``, the files a run saving it from the start
+        would have left, and save there from then on."""
+        raise NotImplementedError
+
     def subscribe(self, callback: Callable[[ProgramOutput], None]) -> None:
         with self.lock:
             if callback not in self._subscribers:

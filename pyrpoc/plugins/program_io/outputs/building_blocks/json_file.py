@@ -20,13 +20,24 @@ class JsonFile(ProgramOutput):
     def __init__(self, *, name: str, recording: Recording, root: Path | None):
         super().__init__(name=name, recording=recording, root=root)
         self.nbytes_saved = 0
+        # Kept so a recording saved after its run can still write it.
+        self.content: dict[str, Any] | None = None
 
     def save(self, content: dict[str, Any]) -> None:
         """Write ``content`` as the file, when saving."""
+        self.content = content
         self.nbytes_saved = len(json.dumps(content, indent=2))
-        if self.root is None:
-            return
-        path = self.root.with_name(f"{self.root.name}_{self.name}.json")
+        if self.root is not None:
+            self.write_file(self.root, content)
+
+    def save_to(self, root: Path) -> None:
+        with self.lock:
+            self.root = root
+            if self.content is not None:
+                self.write_file(root, self.content)
+
+    def write_file(self, root: Path, content: dict[str, Any]) -> None:
+        path = root.with_name(f"{root.name}_{self.name}.json")
         write_json(path, content)
         self.paths = {self.name: path}
 

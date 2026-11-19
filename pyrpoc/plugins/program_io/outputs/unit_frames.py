@@ -58,9 +58,18 @@ class UnitFramesOutput(ImageOutput):
             self.add(array, channels)
 
     def write(self, root: Path, array: np.ndarray) -> None:
+        # Called as each frame is added, so its tag is the newest.
+        self.write_tagged(root, array, self.tags[len(self.arrays) - 1])
+
+    def save_to(self, root: Path) -> None:
+        with self.lock:
+            self.root = root
+            for array, tag in zip(self.arrays, self.tags, strict=True):
+                self.write_tagged(root, array, tag)
+
+    def write_tagged(self, root: Path, array: np.ndarray, tag: FrameTag) -> None:
         if not self.stacks:
             self.write_channels(root)
-        tag = self.tags[len(self.arrays) - 1]
         key = (tag.unit, tag.routine)
         if key not in self.stacks:
             self.open_stack(root, key)

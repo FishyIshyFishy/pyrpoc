@@ -9,6 +9,8 @@ import random
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+import cv2
+import numpy as np
 from PyQt6.QtCore import QEvent, QPointF, Qt
 from PyQt6.QtGui import (
     QColor,
@@ -42,13 +44,16 @@ class Threshold:
     active_channels: list[bool]
 
 
-@dataclass
+# ``eq=False`` because comparing arrays in a dataclass's ``__eq__`` raises.
+@dataclass(eq=False)
 class MaskRoi:
-    """One drawn region and its threshold; without a threshold, every pixel of the shape
-    counts."""
+    """One region and its threshold; without a threshold, every pixel of the shape counts. The
+    shape is a drawn polygon, ``points``, or the lit ``pixels`` of a loaded mask."""
 
     points: list[tuple[float, float]]
     threshold: Threshold | None
+    # On the image's grid; None for a drawn polygon.
+    pixels: np.ndarray | None
 
 
 class MaskImageView(QGraphicsView):
@@ -157,12 +162,7 @@ class MaskImageView(QGraphicsView):
 
     def draw_roi(self, index: int, roi: MaskRoi) -> None:
         color = color_for_index(index)
-        path = QPainterPath(QPointF(*roi.points[0]))
-        for x, y in roi.points[1:]:
-            path.lineTo(QPointF(x, y))
-        path.closeSubpath()
-
-        outline = QGraphicsPathItem(path)
+        outline = QGraphicsPathItem(outline_path(roi))
         outline.setPen(QPen(color, 2))
         outline.setBrush(QColor(color.red(), color.green(), color.blue(), 80))
         self.gscene.addItem(outline)
@@ -171,12 +171,44 @@ class MaskImageView(QGraphicsView):
         label = QGraphicsTextItem(str(index + 1))
         label.setDefaultTextColor(Qt.GlobalColor.white)
         bounds = label.boundingRect()
-        cx = sum(p[0] for p in roi.points) / len(roi.points)
-        cy = sum(p[1] for p in roi.points) / len(roi.points)
+        cx, cy = roi_center(roi)
         label.setPos(cx - bounds.width() / 2, cy - bounds.height() / 2)
         label.setZValue(10_000)
         self.gscene.addItem(label)
         self._roi_labels.append(label)
+
+
+def outline_path(roi: MaskRoi) -> QPainterPath:
+    """The region's outline: its polygon, or every edge of its pixels, holes included."""
+    if roi.pixels is None:
+        path = QPainterPath(QPointF(*roi.points[0]))
+        for x, y in roi.points[1:]:
+            path.lineTo(QPointF(x, y))
+        path.closeSubpath()
+        return path
+    contours, _ = cv2.findContours(
+        roi.pixels.astype(np.uint8), cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE
+    )
+    path = QPainterPath()
+    # Odd-even, so a hole inside a region is left unfilled.
+    path.setFillRule(Qt.FillRule.OddEvenFill)
+    for contour in contours:
+        # Through the pixels' centres, where the scene puts them.
+        points = [QPointF(x + 0.5, y + 0.5) for x, y in contour.reshape(-1, 2)]
+        path.moveTo(points[0])
+        for point in points[1:]:
+            path.lineTo(point)
+        path.closeSubpath()
+    return path
+
+
+def roi_center(roi: MaskRoi) -> tuple[float, float]:
+    """Where the region's number goes: the mean of its points, or of its lit pixels."""
+    if roi.pixels is None:
+        xs, ys = zip(*roi.points, strict=True)
+        return sum(xs) / len(xs), sum(ys) / len(ys)
+    rows, cols = np.nonzero(roi.pixels)
+    return float(cols.mean()) + 0.5, float(rows.mean()) + 0.5
 
 
 def color_for_index(index: int) -> QColor:

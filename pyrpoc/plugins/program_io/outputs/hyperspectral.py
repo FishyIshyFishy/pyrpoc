@@ -43,6 +43,11 @@ class HyperspectralOutput(ImageOutput):
             count = len(self.arrays)
             return tuple(self.delays_um[:count]), tuple(self.arrays)
 
+    def save_to(self, root: Path) -> None:
+        with self.lock:
+            super().save_to(root)
+            self.write_delays()
+
     def write_delays(self) -> None:
         if self.root is None:
             return

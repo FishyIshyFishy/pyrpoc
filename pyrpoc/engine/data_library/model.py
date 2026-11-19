@@ -12,6 +12,7 @@ from pyrpoc.core.recording import Recording
 
 from .format import RecordingError, load_recording, recordings_in
 from .notes import save_note
+from .saving import save_finished, save_location
 from .store import LibraryFull, LibraryStore
 
 
@@ -131,6 +132,21 @@ class LibraryModel(QObject):
             save_note(recording)
         except (RecordingError, OSError) as exc:
             return str(exc)
+        return None
+
+    def save(self, recording: Recording, root: Path) -> str | None:
+        """Save a finished recording that was not saved at the first free stem from ``root``,
+        returning why it could not be written, or None."""
+        # A recording still open keeps its name even once its files have left the folder.
+        taken = {each.location for each in self.store.recordings() if each.location}
+        free, _ = save_location(root, taken)
+        try:
+            save_finished(recording, free)
+        except (RecordingError, OSError, ValueError) as exc:
+            return str(exc)
+        finally:
+            # Redrawn either way: saved, it moves to its Experiment; failing, it may be renamed.
+            self.store.notify()
         return None
 
     def close(self, recording: Recording) -> None:

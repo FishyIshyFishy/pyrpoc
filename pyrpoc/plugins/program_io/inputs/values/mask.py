@@ -1,9 +1,10 @@
 """``Mask``: a drawn region, with a label and an id that stays the same through edits; the
-rules for the drawn masks, their thumbnail, and their file beside a recording."""
+rules for the drawn masks, their thumbnail, and their files beside a recording."""
 
 from __future__ import annotations
 
 import base64
+import re
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
@@ -15,7 +16,10 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor, QGuiApplication, QImage, QPainter, QPalette, QPixmap
 
 from pyrpoc.core.program_input import Field, ParameterError
-from pyrpoc.utils.file_formats.npz import write_npz
+from pyrpoc.utils.file_formats.png import write_png
+
+# What a file name may not hold on any common system.
+UNSAFE_IN_NAME = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
 
 
 # ``eq=False`` because comparing arrays in a dataclass's ``__eq__`` raises.
@@ -42,6 +46,10 @@ class Mask:
         """The mask's label and size, in one line."""
         height, width = self.array.shape
         return f"{self.label or 'mask'} ({width} × {height})"
+
+    def as_image(self) -> np.ndarray:
+        """The mask as an 8-bit picture: lit pixels white, the rest black."""
+        return np.where(self.array > 0, 255, 0).astype(np.uint8)
 
     def on_grid(self, height: int, width: int) -> np.ndarray:
         """The lit pixels as booleans, resized nearest-neighbour to ``(height, width)``."""
@@ -118,18 +126,27 @@ class MasksField(Field):
         return [mask.to_dict() for mask in value]
 
 
-class MasksNpz:
-    """The drawn masks as one ``.npz``: mask ``i``'s pixels as ``mask_<i>``, and every mask's
-    ``ids`` and ``labels`` in the same order."""
+class MasksPng:
+    """The drawn masks as a folder of PNGs, one per mask named by its label, each as
+    ``as_image`` draws it, so they are the same files the Mask Editor exports."""
 
-    suffix = ".npz"
+    # A folder, so the recording names one sidecar however many masks it holds.
+    suffix = ""
 
     def write(self, path: Path, value: tuple[Mask, ...]) -> None:
-        write_npz(
-            path,
-            {
-                **{f"mask_{index}": mask.array for index, mask in enumerate(value)},
-                "ids": np.asarray([mask.id for mask in value], dtype=str),
-                "labels": np.asarray([mask.label for mask in value], dtype=str),
-            },
-        )
+        path.mkdir(exist_ok=True)
+        for name, mask in zip(png_names(value), value, strict=True):
+            write_png(path / name, mask.as_image())
+
+
+def png_names(masks: tuple[Mask, ...]) -> list[str]:
+    """A file name for each mask from its label, made safe and distinct."""
+    names: list[str] = []
+    for mask in masks:
+        stem = UNSAFE_IN_NAME.sub("_", mask.label).strip(" .") or "mask"
+        name, count = f"{stem}.png", 1
+        while name.lower() in (taken.lower() for taken in names):
+            count += 1
+            name = f"{stem} ({count}).png"
+        names.append(name)
+    return names

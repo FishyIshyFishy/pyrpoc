@@ -119,6 +119,15 @@ class MosaicOutput(ImageOutput):
         extra = 0 if self.overview_planes is None else self.overview_planes.nbytes
         return super().nbytes + extra
 
+    def save_to(self, root: Path) -> None:
+        with self.lock:
+            # The grid first, as a run writes it before any image.
+            self.root = root
+            self.write_grid()
+            super().save_to(root)
+            if self.overview_planes is not None:
+                self.write_overview(root, self.overview_planes)
+
     def write_grid(self) -> None:
         if self.root is None:
             return
