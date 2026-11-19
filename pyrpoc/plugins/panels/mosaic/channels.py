@@ -19,8 +19,6 @@ from pyrpoc.utils.widgets.levels import autoscale_levels, mono_levels
 
 # Columns the strip makes room for before scrolling the rest sideways.
 COLUMNS_WITHOUT_SCROLLING = 4
-# Room left past the data and the levels in a histogram's view, as a share of what it spans.
-RANGE_PADDING = 0.05
 
 
 @dataclass
@@ -72,7 +70,6 @@ class ChannelStrip(QScrollArea):
             column.source.setImage(plane, autoLevels=False)
             if column.autoscale.isChecked():
                 self.apply_levels(column, *autoscale_levels(plane))
-            self.fit_range(column)
 
     def colour(self, planes: np.ndarray) -> np.ndarray:
         """A ``(C, H, W)`` image of these channels as ``(H, W, 3)`` in 0..1: the shown
@@ -92,16 +89,6 @@ class ChannelStrip(QScrollArea):
         column.histogram.item.blockSignals(True)
         column.histogram.item.setLevels(low, max(high, low + 1e-12))
         column.histogram.item.blockSignals(False)
-
-    def fit_range(self, column: ChannelColumn) -> None:
-        """Fit the column's histogram view to its data and both level handles."""
-        # The view never moves on its own, and data from tile to overview changes scale, so
-        # without this the handles could sit outside it.
-        low, high = mono_levels(column.histogram)
-        if self.planes:
-            plane = self.planes[self.columns.index(column)]
-            low, high = min(low, float(np.min(plane))), max(high, float(np.max(plane)))
-        column.histogram.item.setHistogramRange(low, high, padding=RANGE_PADDING)
 
     def sync_columns(self, labels: list[str]) -> None:
         """One column per channel, renamed in place; columns that stay keep
@@ -153,24 +140,18 @@ class ChannelStrip(QScrollArea):
         histogram = pg.HistogramLUTWidget(root)
         histogram.setImageItem(source)
         histogram.item.gradient.setColorMap(color_map_from_rgb(rgb))
-        # Zooming or panning the view would leave it where the next data's handles may not be;
-        # it is fitted instead, and the handles still drag.
-        histogram.item.vb.setMouseEnabled(x=False, y=False)
         layout.addWidget(histogram, 1)
 
         column = ChannelColumn(root, shown, autoscale, histogram, source, rgb)
         shown.toggled.connect(lambda _checked: self.changed.emit())
         autoscale.toggled.connect(lambda _checked, c=column: self.on_autoscale_toggled(c))
         histogram.item.sigLevelsChanged.connect(lambda _item: self.changed.emit())
-        # Fitted once a drag ends, so a handle taken to the edge widens the view.
-        histogram.item.sigLevelChangeFinished.connect(lambda _item, c=column: self.fit_range(c))
         return column
 
     def on_autoscale_toggled(self, column: ChannelColumn) -> None:
         if column.autoscale.isChecked() and self.planes:
             plane = self.planes[self.columns.index(column)]
             self.apply_levels(column, *autoscale_levels(plane))
-            self.fit_range(column)
         self.changed.emit()
 
     def clear_planes(self) -> None:
@@ -217,5 +198,4 @@ class ChannelStrip(QScrollArea):
                 box.setChecked(value)
                 box.blockSignals(False)
             self.apply_levels(column, saved.min_val, saved.max_val)
-            self.fit_range(column)
         self._pending = []
