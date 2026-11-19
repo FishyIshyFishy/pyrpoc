@@ -24,6 +24,7 @@ from pyrpoc.plugins.program_io.outputs import ImageOutput
 from pyrpoc.utils.widgets.colors import color_for_index, color_map_from_rgb
 from pyrpoc.utils.widgets.data_panel import DataPanel, data_panel_registry
 from pyrpoc.utils.widgets.levels import autoscale_levels, mono_levels
+from pyrpoc.utils.widgets.stage_link import StageLink
 
 
 @dataclass
@@ -60,8 +61,8 @@ class OverlayPanel(DataPanel[ImageOutput]):
     order = 20
     renders = ImageOutput
 
-    def __init__(self, library: Library, inputs: ProgramInputs):
-        super().__init__(library, inputs)
+    def __init__(self, library: Library, inputs: ProgramInputs, stage: StageLink):
+        super().__init__(library, inputs, stage)
         pg.setConfigOptions(imageAxisOrder="row-major")
         self._controls: list[ChannelControl] = []
         self._pending_state: list[ControlState] = []

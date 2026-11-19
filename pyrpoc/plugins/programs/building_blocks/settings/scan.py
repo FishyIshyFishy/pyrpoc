@@ -1,5 +1,5 @@
 """The scan, read from its program inputs: ``ScanGeometry``, which turns them into volts, the
-DAQ's rate and FLIM's trigger lines, the mosaic grid, and the focus search."""
+DAQ's rate and FLIM's trigger lines, and the focus search."""
 
 from __future__ import annotations
 
@@ -30,13 +30,9 @@ from pyrpoc.plugins.program_io.inputs import (
     SAMPLE_RATE_MHZ,
     SLOW_AXIS_AMPLITUDE,
     SLOW_AXIS_OFFSET,
-    TILE_SPACING_UM,
     X_PIXELS,
-    X_TILES,
     Y_PIXELS,
-    Y_TILES,
 )
-from pyrpoc.plugins.program_io.outputs import MosaicTile
 
 
 def values_from_parameters(
@@ -144,33 +140,6 @@ class TriggerLines:
     @classmethod
     def from_inputs(cls, values: InputReader) -> TriggerLines:
         return cls(values[FRAME_TRIGGER_PFI], values[PIXEL_CLOCK_CTR], values[PIXEL_CLOCK_PFI])
-
-
-@dataclass(frozen=True)
-class MosaicGrid:
-    """Tiles along each stage axis and the stage step between them."""
-
-    x_tiles: int
-    y_tiles: int
-    spacing_um: float
-
-    @classmethod
-    def from_inputs(cls, values: InputReader) -> MosaicGrid:
-        return cls(values[X_TILES], values[Y_TILES], values[TILE_SPACING_UM])
-
-    def snake(self, centre_um: tuple[float, float]) -> tuple[MosaicTile, ...]:
-        """The grid centred on ``centre_um``, rows in turn and each the reverse
-        of the last."""
-        # Reversing each row means the stage never makes a long return move.
-        centre_x, centre_y = centre_um
-        tiles: list[MosaicTile] = []
-        for row in range(self.y_tiles):
-            cols = range(self.x_tiles) if row % 2 == 0 else range(self.x_tiles - 1, -1, -1)
-            for col in cols:
-                x_um = centre_x + (col - (self.x_tiles - 1) / 2) * self.spacing_um
-                y_um = centre_y + (row - (self.y_tiles - 1) / 2) * self.spacing_um
-                tiles.append(MosaicTile(row, col, x_um, y_um))
-        return tuple(tiles)
 
 
 @dataclass(frozen=True)

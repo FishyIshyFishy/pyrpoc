@@ -15,6 +15,7 @@ from pyrpoc.core.program_input import ProgramInputs
 from pyrpoc.plugins.program_io.outputs import SpectrumOutput
 from pyrpoc.utils.widgets.colors import color_for_index
 from pyrpoc.utils.widgets.data_panel import DataPanel, data_panel_registry
+from pyrpoc.utils.widgets.stage_link import StageLink
 
 
 @data_panel_registry.register("spectrum")
@@ -24,8 +25,8 @@ class SpectrumPanel(DataPanel[SpectrumOutput]):
     order = 10
     renders = SpectrumOutput
 
-    def __init__(self, library: Library, inputs: ProgramInputs):
-        super().__init__(library, inputs)
+    def __init__(self, library: Library, inputs: ProgramInputs, stage: StageLink):
+        super().__init__(library, inputs, stage)
         self._curves: list[pg.PlotDataItem] = []
         self._legend_labels: list[str] = []
 

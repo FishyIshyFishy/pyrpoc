@@ -88,19 +88,12 @@ CENTER_REGION_FRACTION = float_input(
     "when no mask is drawn",
 )
 
-X_TILES = int_input("x_tiles", "X Tiles", 3, minimum=1, tooltip="Tiles along the stage's x axis")
-Y_TILES = int_input("y_tiles", "Y Tiles", 3, minimum=1, tooltip="Tiles along the stage's y axis")
-# One spacing serves both axes; the display finds the overlap from the images.
-TILE_SPACING_UM = float_input(
-    "tile_spacing_um",
-    "Spacing (um)",
-    100.0,
-    minimum=0.001,
-    step=10.0,
-    decimals=3,
-    tooltip="Stage step between neighbouring tiles, in both x and y",
+X_TILES = int_input(
+    "x_tiles", "X Tiles", 3, minimum=1, tooltip="Tiles along the stage's x axis, around where it is"
 )
-
+Y_TILES = int_input(
+    "y_tiles", "Y Tiles", 3, minimum=1, tooltip="Tiles along the stage's y axis, around where it is"
+)
 NUM_FRAMES = int_input("num_frames", "Frames", 1, minimum=1, tooltip="Number of frames to capture")
 
 FOCUS_SEARCH_RANGE_UM = float_input(

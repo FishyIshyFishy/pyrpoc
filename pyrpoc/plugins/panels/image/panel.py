@@ -25,6 +25,7 @@ from pyrpoc.plugins.program_io.outputs import ImageOutput
 from pyrpoc.utils.widgets.data_panel import DataPanel, data_panel_registry
 from pyrpoc.utils.widgets.icons import asset_icon
 from pyrpoc.utils.widgets.levels import autoscale_levels, mono_levels
+from pyrpoc.utils.widgets.stage_link import StageLink
 
 from .measure import Shape, TileMeasurement, Tool
 from .measure_settings import MeasureSettings
@@ -64,8 +65,8 @@ class ImagePanel(DataPanel[ImageOutput]):
     order = 21
     renders = ImageOutput
 
-    def __init__(self, library: Library, inputs: ProgramInputs):
-        super().__init__(library, inputs)
+    def __init__(self, library: Library, inputs: ProgramInputs, stage: StageLink):
+        super().__init__(library, inputs, stage)
         pg.setConfigOptions(imageAxisOrder="row-major")
         self._tiles: list[ChannelTile] = []
         self._pending_state: list[TileState] = []

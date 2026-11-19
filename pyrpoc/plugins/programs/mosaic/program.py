@@ -1,88 +1,31 @@
-"""Mosaic: a confocal frame at each stop of a stage grid, walked as a snake."""
+"""Mosaic: a grid of tiles around the stage, scanned with the galvo calibration and placed into
+one overview by where the stage put them and what neighbours share."""
 
 from __future__ import annotations
 
-from pyrpoc.core.program import (
-    Cancelled,
-    Program,
-    RunContext,
-    program_registry,
-)
+from pyrpoc.core.program import RunContext, program_registry
 from pyrpoc.plugins.devices import DAQ, Galvo, PriorStage
-from pyrpoc.plugins.program_io.inputs import (
-    MASK_LINES,
-    MASKS,
-    SAMPLE_RATE_MHZ,
-    TILE_SPACING_UM,
-    X_TILES,
-    Y_TILES,
-)
-from pyrpoc.plugins.program_io.outputs import MosaicOutput, MosaicTile
-from pyrpoc.plugins.programs.building_blocks.settings import SCAN_GEOMETRY_INPUTS, MosaicGrid
+from pyrpoc.plugins.program_io.inputs import EXTRA_LEFT, EXTRA_RIGHT, SAMPLE_RATE_MHZ
 
-from ..building_blocks.functions.galvo_raster import Raster
-from ..building_blocks.functions.run_loops import walk
-from ..building_blocks.runners import Single
-
-
-def move_stage(ctx: RunContext, stage: PriorStage, x_um: float, y_um: float) -> None:
-    """Move and wait for the stage to stop; a stopped run interrupts the wait."""
-    stage.move_xy_to(x_um, y_um)
-    stage.wait_until_stopped("xy", ctx.sleep)
-
-
-def image_tiles(ctx: RunContext, stage: PriorStage, tiles: tuple[MosaicTile, ...]) -> None:
-    """Image every tile, adding each image to the mosaic as it is taken."""
-    raster = Raster.for_run(ctx)
-    mosaic = ctx.output("mosaic", MosaicOutput)
-    mosaic.plan(tiles)
-    for _, tile in walk(ctx, tiles):
-        move_stage(ctx, stage, tile.x_um, tile.y_um)
-        mosaic.add(raster.frame(), raster.channel_labels)
+from ..building_blocks.multisite import Microscope, MosaicProgram, RigMicroscope
 
 
 @program_registry.register("mosaic")
-class StageMosaic(Program):
+class StageMosaic(MosaicProgram):
     display_name = "Mosaic"
     group = "Confocal Fluorescence"
     order = 12
     devices = [Galvo, DAQ, PriorStage]
-    inputs = [
-        *SCAN_GEOMETRY_INPUTS,
-        SAMPLE_RATE_MHZ,
-        MASKS,
-        MASK_LINES,
-        X_TILES,
-        Y_TILES,
-        TILE_SPACING_UM,
-    ]
-    # MASKS has no row: masks are drawn and edited in a Mask Editor.
+    inputs = [*MosaicProgram.inputs, EXTRA_LEFT, EXTRA_RIGHT, SAMPLE_RATE_MHZ]
+    fixed = [*MosaicProgram.fixed, EXTRA_LEFT, EXTRA_RIGHT, SAMPLE_RATE_MHZ]
     cards = {
-        "Scan": SCAN_GEOMETRY_INPUTS,
+        **MosaicProgram.cards,
+        "Scan": (EXTRA_LEFT, EXTRA_RIGHT),
         "DAQ": (SAMPLE_RATE_MHZ,),
-        "Modulation": (MASK_LINES,),
-        "Mosaic": (
-            X_TILES,
-            Y_TILES,
-            TILE_SPACING_UM,
-        ),
     }
-    # What sets the shape of each image, and the grid of tiles.
-    fixed = [*SCAN_GEOMETRY_INPUTS, SAMPLE_RATE_MHZ, X_TILES, Y_TILES, TILE_SPACING_UM]
-    saves = [MASKS]
-    emits = {"mosaic": MosaicOutput}
-    # Once only: a mosaic is one pass over the grid, never repeated or looped.
-    runners = [Single()]
 
-    def run(self, ctx: RunContext) -> None:
-        stage = ctx.devices[PriorStage]
-        origin = stage.xy_position()
-        tiles = MosaicGrid.from_inputs(ctx.inputs).snake(origin)
-        try:
-            image_tiles(ctx, stage, tiles)
-        except Cancelled:
-            stage.stop_smoothly()
-            raise
-        # Back where it started, so a repeat run images the same area.
-        ctx.status("returning to the start position")
-        move_stage(ctx, stage, *origin)
+    def microscope(self, ctx: RunContext) -> Microscope:
+        return RigMicroscope(ctx)
+
+    def overscan(self, ctx: RunContext) -> tuple[int, int]:
+        return (ctx.inputs[EXTRA_LEFT], ctx.inputs[EXTRA_RIGHT])

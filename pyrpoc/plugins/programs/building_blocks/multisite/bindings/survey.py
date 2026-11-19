@@ -82,7 +82,7 @@ class SurveyOutputs:
         self.ctx.status(event.text())
 
     def plan(self, tiles: tuple[MosaicTile, ...], um_per_px: float) -> None:
-        self.tiles.plan_survey(tiles, um_per_px)
+        self.tiles.plan(tiles, um_per_px)
 
     def add_tile(self, frame: np.ndarray, channels: Sequence[str], taken: SurveyTile) -> None:
         self.tiles.add_tile(frame, channels, taken)

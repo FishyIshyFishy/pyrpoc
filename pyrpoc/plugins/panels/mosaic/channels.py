@@ -43,8 +43,8 @@ class ColumnState:
 
 
 class ChannelStrip(QScrollArea):
-    """Holds the planes being shown, one per channel, and colours them into
-    one RGB image with each channel's levels."""
+    """Holds the planes the levels are judged on, one per channel, and colours images of these
+    channels with each channel's levels."""
 
     # The user changed a channel's levels, visibility or autoscale.
     changed = pyqtSignal()
@@ -63,7 +63,7 @@ class ChannelStrip(QScrollArea):
         self.setWidget(self._content)
 
     def set_planes(self, planes: list[np.ndarray], labels: list[str]) -> None:
-        """Show new data: one ``(H, W)`` plane per channel."""
+        """Judge levels on new data: one ``(H, W)`` plane per channel."""
         self.planes = planes
         self.sync_columns(labels)
         for column, plane in zip(self.columns, planes, strict=True):
@@ -71,11 +71,12 @@ class ChannelStrip(QScrollArea):
             if column.autoscale.isChecked():
                 self.apply_levels(column, *autoscale_levels(plane))
 
-    def rgb(self) -> np.ndarray:
-        """The shown channels, each scaled by its levels and tinted its colour."""
-        height, width = self.planes[0].shape
+    def colour(self, planes: np.ndarray) -> np.ndarray:
+        """A ``(C, H, W)`` image of these channels as ``(H, W, 3)`` in 0..1: the shown
+        channels, each scaled by its levels and tinted its colour."""
+        height, width = planes.shape[1:]
         out = np.zeros((height, width, 3), dtype=np.float32)
-        for column, plane in zip(self.columns, self.planes, strict=True):
+        for column, plane in zip(self.columns, planes, strict=True):
             if not column.shown.isChecked():
                 continue
             low, high = mono_levels(column.histogram)
@@ -154,7 +155,7 @@ class ChannelStrip(QScrollArea):
         self.changed.emit()
 
     def clear_planes(self) -> None:
-        """Nothing is shown; columns stay, keeping their levels for the next data."""
+        """Nothing is judged; columns stay, keeping their levels for the next data."""
         self.planes = []
 
     def export_state(self) -> list[dict[str, Any]]:

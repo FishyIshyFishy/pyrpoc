@@ -15,6 +15,7 @@ from pyrpoc.core.program_input import ProgramInputs
 from pyrpoc.plugins.program_io.outputs import Outline, SurveyOutput, UnitState
 from pyrpoc.utils.widgets.data_panel import DataPanel, data_panel_registry
 from pyrpoc.utils.widgets.empty_state import EmptyState
+from pyrpoc.utils.widgets.stage_link import StageLink
 
 from .dish import DishCanvas
 from .feed import LoopFeed
@@ -39,8 +40,8 @@ class MultisitePanel(DataPanel[SurveyOutput]):
     order = 40
     renders = SurveyOutput
 
-    def __init__(self, library: Library, inputs: ProgramInputs):
-        super().__init__(library, inputs)
+    def __init__(self, library: Library, inputs: ProgramInputs, stage: StageLink):
+        super().__init__(library, inputs, stage)
         self.feed: LoopFeed | None = None
         self.dish: DishCanvas | None = None
         self.snapshot: Snapshot | None = None

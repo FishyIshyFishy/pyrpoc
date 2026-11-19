@@ -39,3 +39,14 @@ def snake(
             y = corner[1] + field_um / 2.0 + row * step
             tiles.append(Tile(len(tiles), row, col, x, y))
     return tuple(tiles)
+
+
+def centred(
+    centre: tuple[float, float], columns: int, rows: int, field_um: float, overlap: float
+) -> tuple[Tile, ...]:
+    """``columns`` by ``rows`` tiles centred on ``centre``, walked as ``snake`` walks them."""
+    step = field_um * (1.0 - overlap)
+    width = field_um + (columns - 1) * step
+    height = field_um + (rows - 1) * step
+    corner = (centre[0] - width / 2.0, centre[1] - height / 2.0)
+    return snake(corner, (width, height), field_um, overlap)

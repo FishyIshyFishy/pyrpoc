@@ -10,10 +10,12 @@ from pyrpoc.engine.acquisition.runs import Runs
 from pyrpoc.engine.data_library.model import LibraryModel
 from pyrpoc.engine.data_library.store import LIBRARY_LIMIT_BYTES, LibraryStore
 from pyrpoc.engine.device_inventory.inventory import DeviceInventory
+from pyrpoc.engine.device_inventory.stage import InventoryStage
 
 
 class Application(QObject):
-    """The app's working state: its three collections and the runs."""
+    """The app's working state: its three collections, the runs, and the stage as panels may
+    move it."""
 
     # Working state worth autosaving changed.
     state_changed = pyqtSignal()
@@ -24,6 +26,7 @@ class Application(QObject):
         self.library = LibraryModel(LibraryStore(LIBRARY_LIMIT_BYTES), self)
         self.inputs = ProgramInputsStore()
         self.runs = Runs(self.inventory, self.library, self.inputs, self)
+        self.stage = InventoryStage(self.inventory)
 
         self.inventory.edited.connect(self.state_changed.emit)
         self.library.auto_purge_changed.connect(lambda _on: self.state_changed.emit())

@@ -7,17 +7,20 @@ Multisite imaging of a dish in three stages:
 
 Units can be drawn by a person or found by software; the stages don't care which.
 
+A **mosaic** uses the same calibration outside the pipeline: a grid of tiles around the stage, taken without focusing and placed into one overview by the survey's stitching. No loop reads it.
+
 Programs import only this package's root (`__init__.py`). Everything below it is internal.
 
 The methods each stage uses, why, how they were validated against a ground-truth simulation, what remains limited, and their references are in `METHODS.md`.
 
 ## Programs
-A multisite program subclasses one of three bases in `bindings/programs.py`:
+A multisite program subclasses one of four bases in `bindings/programs.py`:
 
 | Base | Reads | Fills | Needs before it starts | The program gives |
 |---|---|---|---|---|
 | `CalibrationProgram` | | `calibration`, `view`, `log` | `clean_folder` | `microscope` |
 | `SurveyProgram` | `calibration` | `survey`, `log` | `clean_folder` | `microscope`, `overscan` |
+| `MosaicProgram` | `calibration` | `mosaic`, `log` | | `microscope`, `overscan` |
 | `LoopProgram` | `survey`, `calibration` | `log`, `units`, `frames` | both below | `microscope`, `overscan`, `routines` |
 
 "Reads" are program inputs too (`CALIBRATION`, `SURVEY`), with no card: the engine sets each to the newest output of its type in the save folder whose run completed, so a step stopped partway is never read. Each base also declares the inputs its stage reads, with their cards, and `run`s its stage. A program adds its devices, its own inputs (extending the base's `inputs`, `cards` and `fixed`), and where it is listed. Two programs of a kind therefore always read, fill and refuse the same things, so a panel can rely on what every multisite program publishes.
@@ -44,6 +47,7 @@ A stage is given:
 |---|---|---|
 | Calibration | `CalibrationSink` (and it returns a `GalvoCalibration`) | |
 | Survey | `SurveySink` | |
+| Mosaic (in `stages/survey/`) | `MosaicSink` | |
 | Loop | `LoopSink` | a `Steering` protocol and a `SurveyMap` |
 
 A stage never sees a run, a device or a ProgramOutput. It can be driven by fakes, and the outputs can change without touching the stage.
@@ -55,6 +59,7 @@ Every stage logs typed events through its sink as it works, and each binding wri
 |---|---|---|
 | Calibration | `CalibrationLogOutput` | `FeatureFound`, `AxisMeasuring`, a `StageMoved` per move, then `AxisPrecision` and `AxisMeasured` |
 | Survey | `SurveyLogOutput` | `TileVisiting`, `TileFocusing` and `TileTaken` per tile; `MotionRevisiting`, `MotionMeasured`, `FocusDrift`, `Stitching`, `SurveyEnded` |
+| Mosaic | `SurveyLogOutput` | `TileVisiting` and `TileTaken` per tile; `Stitching`, `SurveyEnded` |
 | Loop | `LoopLogOutput` | `FocusingBeside` (or `FocusingAtUnit`) when a focus check is due, then `MovingToUnit` and `ScanningUnit`, ended by the scan's `UnitScanned` |
 
 A loop is doing the latest `LoopActivity` until the `UnitScanned` after it; with none since, it is waiting for the next step due. `LoopLogOutput.view().doing` works this out.
