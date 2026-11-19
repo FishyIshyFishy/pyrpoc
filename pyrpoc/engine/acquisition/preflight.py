@@ -7,7 +7,7 @@ from collections.abc import Collection, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
-from pyrpoc.core.device import Device
+from pyrpoc.core.device import Connection, Device
 from pyrpoc.core.program import Program
 from pyrpoc.core.program_input import ParameterError, ProgramInputValues
 from pyrpoc.engine.acquisition.save_target import SaveTarget
@@ -24,7 +24,13 @@ class NotReady(Exception):
 
     def __init__(self, missing: list[str]):
         self.missing = list(missing)
-        super().__init__("needs " + ", ".join(missing))
+        super().__init__(needs_text(missing))
+
+
+def needs_text(missing: list[str]) -> str:
+    """What a run needs, as one line."""
+    # Semicolons, since one need may itself list several things with commas.
+    return "; ".join(f"needs {each}" for each in missing)
 
 
 @dataclass(frozen=True)
@@ -64,11 +70,18 @@ class Preflight:
         required = list(self.start.program.devices)
         absent = claims.missing(required, self.start.inventory)
         if absent:
-            return [cls.display_name for cls in absent]
+            return [f"{cls.display_name} added in Devices" for cls in absent]
         claimed = claims.resolve(required, self.start.inventory).values()
-        return [
+        # A run never opens a session itself, so one closed now would fail at its first call.
+        closed = [
+            f"{each.display_name} connected"
+            for each in claimed
+            if each.connection is Connection.SESSION and not each.session_open
+        ]
+        busy = [
             f"{each.display_name} free of the run using it" for each in claimed if each in self.held
         ]
+        return [*closed, *busy]
 
     def saving(self) -> list[str]:
         save = self.start.save

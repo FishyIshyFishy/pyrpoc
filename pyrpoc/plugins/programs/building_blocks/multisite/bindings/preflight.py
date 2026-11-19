@@ -29,7 +29,14 @@ def clean_folder(
     extra = [name for name in ctx.recordings_in_folder() if name not in allowed]
     if not extra:
         return []
-    return [f"a folder holding only what it reads (move out {', '.join(extra)})"]
+    return [f"{named(extra)} moved out of the save folder"]
+
+
+def named(names: Sequence[str]) -> str:
+    """``names`` as a phrase: "a", "a and b", "a, b and c"."""
+    if len(names) == 1:
+        return names[0]
+    return f"{', '.join(names[:-1])} and {names[-1]}"
 
 
 def starting_units(ctx: PreflightContext) -> list[str]:
