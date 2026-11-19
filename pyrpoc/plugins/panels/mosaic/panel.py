@@ -10,12 +10,13 @@ from typing import Any
 
 from PyQt6.QtCore import QPoint, Qt, QTimer
 from PyQt6.QtGui import QAction
-from PyQt6.QtWidgets import QLabel, QMenu, QPushButton, QSplitter, QVBoxLayout
+from PyQt6.QtWidgets import QLabel, QMenu, QSizePolicy, QSplitter, QToolButton, QVBoxLayout
 
 from pyrpoc.core.library import Library
 from pyrpoc.core.program_input import ProgramInputs
 from pyrpoc.plugins.program_io.outputs import MosaicOutput
 from pyrpoc.utils.widgets.data_panel import DataPanel, data_panel_registry
+from pyrpoc.utils.widgets.icons import asset_icon
 from pyrpoc.utils.widgets.stage_link import StageLink
 
 from .canvas import MosaicCanvas
@@ -48,7 +49,10 @@ class MosaicPanel(DataPanel[MosaicOutput]):
         root = QVBoxLayout(self.body)
         root.setContentsMargins(0, 0, 0, 0)
         self.status = QLabel("", self.body)
-        self.status.setWordWrap(True)
+        # One line, and never widening the panel: a wrapping label gives the layout a height for
+        # each width, which the dock's scroll area sizes to the canvas's preferred height, not
+        # to the room it has.
+        self.status.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
         root.addWidget(self.status)
         splitter = QSplitter(Qt.Orientation.Horizontal, self.body)
         splitter.setChildrenCollapsible(False)
@@ -68,16 +72,22 @@ class MosaicPanel(DataPanel[MosaicOutput]):
         self.connect_source()
 
     def build_buttons(self) -> None:
-        row = self.source.row
-        self.draw_button = QPushButton("Mark region", self)
-        self.draw_button.setCheckable(True)
-        self.draw_button.setToolTip(
-            "Drag on the mosaic round what to come back to; the region kept is the dotted square "
-            "one field across. Esc stops"
+        self.draw_button = self.tool_button(
+            "draw",
+            "Mark a region: drag on the mosaic round what to come back to. The region kept is the "
+            "dotted square one field across. Esc stops",
         )
-        self.fit_button = QPushButton("Whole mosaic", self)
-        for button in (self.draw_button, self.fit_button):
-            row.addWidget(button)
+        self.draw_button.setCheckable(True)
+        self.fit_button = self.tool_button("fit", "Show the whole mosaic and every region")
+
+    def tool_button(self, icon: str, tip: str) -> QToolButton:
+        """A small icon button beside the source picker."""
+        button = QToolButton(self)
+        button.setAutoRaise(True)
+        button.setIcon(asset_icon(icon))
+        button.setToolTip(tip)
+        self.source.row.addWidget(button)
+        return button
 
     def connect_canvas(self) -> None:
         canvas = self.canvas
