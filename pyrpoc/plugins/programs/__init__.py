@@ -10,6 +10,7 @@ from pyrpoc.core.program import program_registry
 from .autofocus.program import Autofocus
 from .brightfield.program import Brightfield
 from .confocal.program import Confocal
+from .confocal_new_rpoc.program import ConfocalNewRpoc
 from .flim.program import FLIM
 from .galvo_calibration.program import GalvoCalibrationProgram
 from .galvo_pinpoint.program import GalvoPinpoint
@@ -25,6 +26,7 @@ from .survey.program import Survey
 __all__ = [
     "program_registry",
     "Confocal",
+    "ConfocalNewRpoc",
     "SplitConfocal",
     "FLIM",
     "GalvoPinpoint",

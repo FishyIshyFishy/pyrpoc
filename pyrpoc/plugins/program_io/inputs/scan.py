@@ -1,9 +1,13 @@
 """The program inputs of a scan: the beam's path and pixels, the DAQ's rate and lines, the
-region scanned when no mask is drawn, the mosaic grid, frames per run, and the focus search."""
+status and static digital lines, the region scanned when no mask is drawn, the mosaic grid,
+frames per run, and the focus search."""
 
 from __future__ import annotations
 
+from pyrpoc.core.program_input import declare
 from pyrpoc.utils.value_rules import float_input, int_input
+
+from .values.digital_line import DigitalLine, DigitalLineField
 
 X_PIXELS = int_input("x_pixels", "X Pixels", 512, minimum=8, tooltip="Number of pixels in X")
 Y_PIXELS = int_input("y_pixels", "Y Pixels", 512, minimum=8, tooltip="Number of pixels in Y")
@@ -74,6 +78,43 @@ PIXEL_CLOCK_PFI = int_input(
     1,
     minimum=0,
     tooltip="PFI line that outputs the pixel clock",
+)
+
+# Status lines follow the scan on port 0; the defaults are the LabVIEW imager's lines.
+ACTIVE_LINE = declare(
+    "active_line",
+    DigitalLineField("Active", "Drive this line high for the whole frame"),
+    DigitalLine(0, 0, True),
+)
+IN_IMAGE_LINE = declare(
+    "in_image_line",
+    DigitalLineField(
+        "In Image", "Drive this line high while the beam is on the image, not the extra steps"
+    ),
+    DigitalLine(0, 1, True),
+)
+NEW_LINE_LINE = declare(
+    "new_line_line",
+    DigitalLineField("New Line", "Drive this line high for the first samples of each line"),
+    DigitalLine(0, 2, True),
+)
+NEW_PIXEL_LINE = declare(
+    "new_pixel_line",
+    DigitalLineField("New Pixel", "Drive this line high for the first half of each pixel"),
+    DigitalLine(0, 3, True),
+)
+STATUS_LINES = (ACTIVE_LINE, IN_IMAGE_LINE, NEW_LINE_LINE, NEW_PIXEL_LINE)
+
+# Static lines are set once before the scan and keep their level after it.
+STATIC_LINES = tuple(
+    declare(
+        f"static_line_{index}",
+        DigitalLineField(
+            f"Static Line {index + 1}", "Checked, the line is held high; unchecked, low"
+        ),
+        DigitalLine(1, index, False),
+    )
+    for index in range(3)
 )
 
 CENTER_REGION_FRACTION = float_input(

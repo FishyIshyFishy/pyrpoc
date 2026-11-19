@@ -12,10 +12,12 @@ from contextlib import ExitStack, contextmanager
 import nidaqmx as nx
 import nidaqmx.errors
 import numpy as np
-from nidaqmx.constants import AcquisitionType
+from nidaqmx.constants import AcquisitionType, LineGrouping
 from nidaqmx.stream_readers import AnalogMultiChannelReader
+from nidaqmx.stream_writers import DigitalSingleChannelWriter
 
 from pyrpoc.plugins.devices import DAQ, DaqError, Galvo
+from pyrpoc.plugins.program_io.inputs import DigitalLine
 
 # Allowed beyond the scan's own length before a wait gives up.
 TIMEOUT_MARGIN_S = 5.0
@@ -124,6 +126,68 @@ def acquire(
                 followers.append(lines)
             play(galvos, followers, waveform, scan_timeout(total, sample_rate_hz))
             return read_inputs(inputs, total)
+    except nidaqmx.errors.Error as exc:
+        raise DaqError(f"NI-DAQ acquisition failed: {exc}") from exc
+
+
+def hold_static_lines(device_name: str, lines: tuple[DigitalLine, ...]) -> None:
+    """Set each line to its level once, untimed; the lines keep it after the task closes."""
+    try:
+        with nx.Task() as task:
+            for line in lines:
+                task.do_channels.add_do_chan(line.channel(device_name))
+            # One sample per line, so write() auto-starts.
+            task.write([line.on for line in lines])
+    except nidaqmx.errors.Error as exc:
+        raise DaqError(f"NI-DAQ static lines failed: {exc}") from exc
+
+
+def add_port_words(
+    task: nx.Task,
+    device_name: str,
+    port_channel: str,
+    words: np.ndarray,
+    sample_rate_hz: float,
+    total_samples: int,
+) -> None:
+    """The whole port as one channel on the galvo clock, each sample a word of every line."""
+    task.do_channels.add_do_chan(port_channel, line_grouping=LineGrouping.CHAN_FOR_ALL_LINES)
+    follow_galvo_clock(task, device_name, sample_rate_hz, total_samples)
+    DigitalSingleChannelWriter(task.out_stream).write_many_sample_port_uint32(words)
+
+
+def write_port_word(port_channel: str, word: int) -> None:
+    """Set every line of the port at once, untimed; the lines keep the word after."""
+    with nx.Task() as task:
+        task.do_channels.add_do_chan(port_channel, line_grouping=LineGrouping.CHAN_FOR_ALL_LINES)
+        # One sample, so write() auto-starts.
+        task.write(word)
+
+
+def acquire_port(
+    daq: DAQ,
+    galvo: Galvo,
+    waveform: np.ndarray,
+    port_channel: str,
+    words: np.ndarray,
+    sample_rate_hz: float,
+) -> np.ndarray:
+    """Play ``waveform`` on the galvos with ``words`` on the whole digital port, read every
+    analog input on the same clock, then leave every line of the port low."""
+    device = daq.config.device_name
+    total = waveform.shape[1]
+    try:
+        with nx.Task() as galvos, nx.Task() as inputs, nx.Task() as lines:
+            clock_galvos(galvos, device, galvo, sample_rate_hz, total)
+            for index in daq.config.ai_channels:
+                inputs.ai_channels.add_ai_voltage_chan(f"{device}/ai{index}")
+            follow_galvo_clock(inputs, device, sample_rate_hz, total)
+            add_port_words(lines, device, port_channel, words, sample_rate_hz, total)
+            play(galvos, [inputs, lines], waveform, scan_timeout(total, sample_rate_hz))
+            raw = read_inputs(inputs, total)
+        # The port's task is closed by now, so the idle word can be written.
+        write_port_word(port_channel, 0)
+        return raw
     except nidaqmx.errors.Error as exc:
         raise DaqError(f"NI-DAQ acquisition failed: {exc}") from exc
 

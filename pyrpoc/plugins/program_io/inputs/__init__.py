@@ -25,6 +25,7 @@ from .multisite import (
     UNITS,
 )
 from .scan import (
+    ACTIVE_LINE,
     CENTER_REGION_FRACTION,
     DWELL_TIME_US,
     EXTRA_LEFT,
@@ -35,12 +36,17 @@ from .scan import (
     FOCUS_INITIAL_STEP_UM,
     FOCUS_SEARCH_RANGE_UM,
     FRAME_TRIGGER_PFI,
+    IN_IMAGE_LINE,
+    NEW_LINE_LINE,
+    NEW_PIXEL_LINE,
     NUM_FRAMES,
     PIXEL_CLOCK_CTR,
     PIXEL_CLOCK_PFI,
     SAMPLE_RATE_MHZ,
     SLOW_AXIS_AMPLITUDE,
     SLOW_AXIS_OFFSET,
+    STATIC_LINES,
+    STATUS_LINES,
     TILE_SPACING_UM,
     X_PIXELS,
     X_TILES,
@@ -60,6 +66,7 @@ from .spectroscopy import (
     T0_SAMPLES,
     T1_SAMPLES,
 )
+from .values.digital_line import DigitalLine
 from .values.mask import Mask, MasksField, thumbnail
 from .values.mask_line import MaskLine, lines_for
 from .values.pixel_pick import PickField, PixelPick
@@ -67,6 +74,7 @@ from .values.point import Point, PointField
 from .values.units import UnitsField
 
 __all__ = [
+    "ACTIVE_LINE",
     "CALIBRATION",
     "CAMERA_BINNED",
     "CAMERA_EXPOSURE_MS",
@@ -93,10 +101,13 @@ __all__ = [
     "FRAME_TRIGGER_PFI",
     "GALVO_TARGET",
     "HISTOGRAM_BINS",
+    "IN_IMAGE_LINE",
     "HISTOGRAM_BINWIDTH_PS",
     "LASER_FREQUENCY_MHZ",
     "MASKS",
     "MASK_LINES",
+    "NEW_LINE_LINE",
+    "NEW_PIXEL_LINE",
     "NUM_FRAMES",
     "PERIOD_S",
     "PICK",
@@ -105,6 +116,8 @@ __all__ = [
     "SAMPLE_RATE_MHZ",
     "SLOW_AXIS_AMPLITUDE",
     "SLOW_AXIS_OFFSET",
+    "STATIC_LINES",
+    "STATUS_LINES",
     "SURVEY",
     "SURVEY_HEIGHT_UM",
     "SURVEY_WIDTH_UM",
@@ -121,6 +134,7 @@ __all__ = [
     "X_TILES",
     "Y_PIXELS",
     "Y_TILES",
+    "DigitalLine",
     "Mask",
     "MaskLine",
     "MasksField",
