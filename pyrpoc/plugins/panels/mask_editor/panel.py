@@ -119,23 +119,14 @@ class MaskEditorPanel(DataPanel[ImageOutput]):
         self.arrange()
 
     def build_views(self) -> QWidget:
-        """The image to draw on and the preview of the mask, each under its title, sharing the
-        space equally."""
+        """The image to draw on and the preview of the mask, sharing the space equally."""
         views = QWidget(self.body)
         self.pair = QBoxLayout(QBoxLayout.Direction.LeftToRight, views)
         self.pair.setContentsMargins(0, 0, 0, 0)
         self.pair.setSpacing(12)
-        self.preview_title = section_title("Mask", views)
-        for title, view in (
-            (section_title("Draw", views), self.image_view),
-            (self.preview_title, self.preview),
-        ):
+        for view in (self.image_view, self.preview):
             view.setMinimumSize(MIN_VIEW_SIDE, MIN_VIEW_SIDE)
-            column = QVBoxLayout()
-            column.setSpacing(4)
-            column.addWidget(title)
-            column.addWidget(view, 1)
-            self.pair.addLayout(column, 1)
+            self.pair.addWidget(view, 1)
         return views
 
     def build_sidebar_scroll(self) -> QScrollArea:
@@ -452,7 +443,6 @@ class MaskEditorPanel(DataPanel[ImageOutput]):
         """Show the mask being drawn as it is saved, or the image's grid blank when there is
         none."""
         mask = self.current_mask()
-        self.preview_title.setText(f"MASK · {mask.label}".upper() if mask else "MASK")
         blank = np.zeros((self._h, self._w), dtype=np.uint8)
         self.preview.show_image(blank if mask is None else mask.as_image())
 
