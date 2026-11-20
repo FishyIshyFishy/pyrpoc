@@ -1,6 +1,5 @@
-"""The NI-DAQ card: its device name, and which analog inputs are wired."""
+"""The NI-DAQ card, known by its device name."""
 
-# Analog inputs are a property of the card, not the scanner, so they live here.
 # ``TESTABLE``, not ``SESSION``: the card can be verified, but holds no handle. NI tasks are
 # created per scan by the programs that use them.
 
@@ -9,7 +8,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from pyrpoc.core.device import Connection, Device, DeviceConfig, DeviceError, device_registry
-from pyrpoc.utils.value_rules import channels_field, text_field
+from pyrpoc.utils.value_rules import text_field
 
 
 class DaqError(DeviceError):
@@ -19,11 +18,6 @@ class DaqError(DeviceError):
 @dataclass
 class DaqConfig(DeviceConfig):
     device_name: str = text_field("DAQ Device", "Dev1", tooltip="NI-DAQ device name (e.g. Dev1)")
-    ai_channels: tuple[int, ...] = channels_field(
-        "Active AI Channels",
-        num_channels=9,
-        tooltip="Which analog input channels are connected and should be read",
-    )
 
 
 @device_registry.register("daq")

@@ -25,6 +25,7 @@ from .multisite import (
     UNITS,
 )
 from .scan import (
+    AI_CHANNELS,
     CENTER_REGION_FRACTION,
     DWELL_TIME_US,
     EXTRA_LEFT,
@@ -66,6 +67,7 @@ from .values.point import Point, PointField
 from .values.units import UnitsField
 
 __all__ = [
+    "AI_CHANNELS",
     "CALIBRATION",
     "CAMERA_BINNED",
     "CAMERA_EXPOSURE_MS",

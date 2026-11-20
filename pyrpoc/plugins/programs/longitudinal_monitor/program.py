@@ -7,6 +7,7 @@ from __future__ import annotations
 from pyrpoc.core.program import RunContext, program_registry
 from pyrpoc.plugins.devices import DAQ, Galvo, PriorStage
 from pyrpoc.plugins.program_io.inputs import (
+    AI_CHANNELS,
     EXTRA_LEFT,
     EXTRA_RIGHT,
     SAMPLE_RATE_MHZ,
@@ -41,13 +42,14 @@ class LongitudinalMonitor(LoopProgram):
         EXTRA_LEFT,
         EXTRA_RIGHT,
         SAMPLE_RATE_MHZ,
+        AI_CHANNELS,
     ]
     cards = {
         "Monitor": MONITOR_INPUTS,
         "Treatment": RIG_TREATMENT,
         **LoopProgram.cards,
         "Scan": (EXTRA_LEFT, EXTRA_RIGHT),
-        "DAQ": (SAMPLE_RATE_MHZ,),
+        "DAQ": (SAMPLE_RATE_MHZ, AI_CHANNELS),
     }
     # How every unit is scanned, and the line treatment drives, as the loop began.
     fixed = [
@@ -55,6 +57,7 @@ class LongitudinalMonitor(LoopProgram):
         EXTRA_LEFT,
         EXTRA_RIGHT,
         SAMPLE_RATE_MHZ,
+        AI_CHANNELS,
         TREATMENT_PORT,
         TREATMENT_LINE,
     ]

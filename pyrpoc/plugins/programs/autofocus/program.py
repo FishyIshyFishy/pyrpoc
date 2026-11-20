@@ -16,6 +16,7 @@ from pyrpoc.core.program import (
 )
 from pyrpoc.plugins.devices import DAQ, DaqError, Galvo, PriorError, PriorStage
 from pyrpoc.plugins.program_io.inputs import (
+    AI_CHANNELS,
     CENTER_REGION_FRACTION,
     FOCUS_FINAL_STEP_UM,
     FOCUS_INITIAL_STEP_UM,
@@ -88,6 +89,7 @@ class Autofocus(Program):
     inputs = [
         *SCAN_GEOMETRY_INPUTS,
         SAMPLE_RATE_MHZ,
+        AI_CHANNELS,
         MASKS,
         CENTER_REGION_FRACTION,
         FOCUS_SEARCH_RANGE_UM,
@@ -97,7 +99,7 @@ class Autofocus(Program):
     # MASKS has no row: masks are drawn and edited in a Mask Editor.
     cards = {
         "Scan": SCAN_GEOMETRY_INPUTS,
-        "DAQ": (SAMPLE_RATE_MHZ,),
+        "DAQ": (SAMPLE_RATE_MHZ, AI_CHANNELS),
         "Region": (CENTER_REGION_FRACTION,),
         "Focus Search": (
             FOCUS_SEARCH_RANGE_UM,
@@ -109,6 +111,7 @@ class Autofocus(Program):
     fixed = [
         *SCAN_GEOMETRY_INPUTS,
         SAMPLE_RATE_MHZ,
+        AI_CHANNELS,
         MASKS,
         CENTER_REGION_FRACTION,
         FOCUS_SEARCH_RANGE_UM,

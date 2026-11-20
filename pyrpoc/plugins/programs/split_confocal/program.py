@@ -8,6 +8,7 @@ from dataclasses import replace
 from pyrpoc.core.program import Program, RunContext, program_registry
 from pyrpoc.plugins.devices import DAQ, Galvo
 from pyrpoc.plugins.program_io.inputs import (
+    AI_CHANNELS,
     MASK_LINES,
     MASKS,
     NUM_FRAMES,
@@ -34,6 +35,7 @@ class SplitConfocal(Program):
         *SCAN_GEOMETRY_INPUTS,
         NUM_FRAMES,
         SAMPLE_RATE_MHZ,
+        AI_CHANNELS,
         T0_SAMPLES,
         T1_SAMPLES,
         MASKS,
@@ -43,7 +45,7 @@ class SplitConfocal(Program):
     cards = {
         "Scan": SCAN_GEOMETRY_INPUTS,
         "Frames": (NUM_FRAMES,),
-        "DAQ": (SAMPLE_RATE_MHZ,),
+        "DAQ": (SAMPLE_RATE_MHZ, AI_CHANNELS),
         "Split": (
             T0_SAMPLES,
             T1_SAMPLES,
@@ -51,7 +53,7 @@ class SplitConfocal(Program):
         "Modulation": (MASK_LINES,),
     }
     # What sets the shape of each image and of each pixel's samples.
-    fixed = [*SCAN_GEOMETRY_INPUTS, SAMPLE_RATE_MHZ, T0_SAMPLES, T1_SAMPLES]
+    fixed = [*SCAN_GEOMETRY_INPUTS, SAMPLE_RATE_MHZ, AI_CHANNELS, T0_SAMPLES, T1_SAMPLES]
     saves = [MASKS]
     emits = {"intensity": ImageOutput, "raw_pixel_stream": SamplesOutput}
     runners = [Single(), Continuous()]

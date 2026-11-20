@@ -4,7 +4,13 @@ from __future__ import annotations
 
 from pyrpoc.core.program import Program, RunContext, program_registry
 from pyrpoc.plugins.devices import DAQ, Galvo
-from pyrpoc.plugins.program_io.inputs import MASK_LINES, MASKS, NUM_FRAMES, SAMPLE_RATE_MHZ
+from pyrpoc.plugins.program_io.inputs import (
+    AI_CHANNELS,
+    MASK_LINES,
+    MASKS,
+    NUM_FRAMES,
+    SAMPLE_RATE_MHZ,
+)
 from pyrpoc.plugins.program_io.outputs import ImageOutput
 from pyrpoc.plugins.programs.building_blocks.settings import SCAN_GEOMETRY_INPUTS
 
@@ -19,16 +25,16 @@ class Confocal(Program):
     group = "Confocal Fluorescence"
     order = 10
     devices = [Galvo, DAQ]
-    inputs = [*SCAN_GEOMETRY_INPUTS, NUM_FRAMES, SAMPLE_RATE_MHZ, MASKS, MASK_LINES]
+    inputs = [*SCAN_GEOMETRY_INPUTS, NUM_FRAMES, SAMPLE_RATE_MHZ, AI_CHANNELS, MASKS, MASK_LINES]
     # MASKS has no row: masks are drawn and edited in a Mask Editor.
     cards = {
         "Scan": SCAN_GEOMETRY_INPUTS,
         "Frames": (NUM_FRAMES,),
-        "DAQ": (SAMPLE_RATE_MHZ,),
+        "DAQ": (SAMPLE_RATE_MHZ, AI_CHANNELS),
         "Modulation": (MASK_LINES,),
     }
     # What sets the shape of each image.
-    fixed = [*SCAN_GEOMETRY_INPUTS, SAMPLE_RATE_MHZ]
+    fixed = [*SCAN_GEOMETRY_INPUTS, SAMPLE_RATE_MHZ, AI_CHANNELS]
     saves = [MASKS]
     emits = {"intensity": ImageOutput}
     runners = [Single(), Continuous()]

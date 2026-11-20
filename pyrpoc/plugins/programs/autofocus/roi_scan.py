@@ -11,11 +11,11 @@ import numpy as np
 from pyrpoc.core.program import RunContext
 from pyrpoc.core.program_input import ParameterError
 from pyrpoc.plugins.devices import DAQ, Galvo
-from pyrpoc.plugins.program_io.inputs import CENTER_REGION_FRACTION, MASKS
+from pyrpoc.plugins.program_io.inputs import AI_CHANNELS, CENTER_REGION_FRACTION, MASKS
 from pyrpoc.plugins.programs.building_blocks.settings import ScanGeometry, rate_hz
 
 from ..building_blocks.functions.daq_tasks import acquire
-from ..building_blocks.functions.galvo_raster import pixel_samples
+from ..building_blocks.functions.galvo_raster import ai_labels, pixel_samples
 from ..building_blocks.functions.roi_scan import (
     Box,
     RowSpan,
@@ -65,6 +65,7 @@ class RoiRaster:
 
     daq: DAQ
     galvo: Galvo
+    channels: tuple[int, ...]
     scan: ScanGeometry
     sample_rate_hz: float
     samples_per_pixel: int
@@ -84,6 +85,7 @@ class RoiRaster:
         return cls(
             ctx.devices[DAQ],
             ctx.devices[Galvo],
+            ctx.inputs[AI_CHANNELS],
             scan,
             sample_rate_hz,
             samples_per_pixel,
@@ -95,9 +97,9 @@ class RoiRaster:
 
     @property
     def channel_labels(self) -> list[str]:
-        return [f"ai{index}" for index in self.daq.config.ai_channels]
+        return ai_labels(self.channels)
 
     def frame(self) -> np.ndarray:
         """One region scan as a ``(C, H, W)`` frame of the bounding box."""
-        raw = acquire(self.daq, self.galvo, self.waveform, {}, self.sample_rate_hz)
+        raw = acquire(self.daq, self.galvo, self.channels, self.waveform, {}, self.sample_rate_hz)
         return place_rows(raw, self.scan, self.spans, self.samples_per_pixel, self.box)

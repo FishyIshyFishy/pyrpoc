@@ -28,6 +28,12 @@ def choice_input(key, label, default, *, choices, tooltip="") -> ProgramInput[st
     return declare(key, ChoiceField(label, tooltip, tuple(choices)), default)
 
 
+def channels_input(
+    key, label, default, *, num_channels, tooltip=""
+) -> ProgramInput[tuple[int, ...]]:
+    return declare(key, ChannelsField(label, tooltip, num_channels), tuple(default))
+
+
 def int_field(label, default, *, minimum=None, maximum=None, step=1, tooltip=""):
     return spec_field(default, IntField(label, tooltip, minimum, maximum, step))
 
@@ -42,8 +48,3 @@ def text_field(label, default="", *, tooltip=""):
 
 def path_field(label, default="", *, dialog_filter="All Files (*)", tooltip=""):
     return spec_field(default, PathField(label, tooltip, dialog_filter))
-
-
-def channels_field(label, *, num_channels=9, default=None, tooltip=""):
-    resolved = tuple(range(num_channels)) if default is None else tuple(default)
-    return spec_field(None, ChannelsField(label, tooltip, num_channels), factory=lambda: resolved)

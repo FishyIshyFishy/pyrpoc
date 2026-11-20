@@ -8,7 +8,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol, TypeVar
 
-from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -18,12 +17,13 @@ from PyQt6.QtWidgets import (
     QLineEdit,
     QPushButton,
     QSpinBox,
-    QToolButton,
     QWidget,
 )
 
 from pyrpoc.core.program_input import Field
 from pyrpoc.utils import value_rules as R
+
+from .channel_keys import ChannelKeys
 
 FieldT = TypeVar("FieldT", bound=Field)
 
@@ -92,21 +92,6 @@ def build_editor(spec: Field, parent: QWidget, values: FieldValues) -> Editor:
 
 # Enough for a few digits and the arrow buttons.
 SPIN_MIN_PX = 64
-
-CHANNEL_BUTTON_CSS = (
-    "QToolButton {"
-    "padding: 4px 8px;"
-    "border: 1px solid palette(mid);"
-    "border-radius: 10px;"
-    "background: palette(base);"
-    "}"
-    "QToolButton:checked {"
-    "background: palette(highlight);"
-    "color: palette(highlighted-text);"
-    "border: 1px solid palette(highlight);"
-    "font-weight: 700;"
-    "}"
-)
 
 
 @editor_for(R.IntField)
@@ -233,41 +218,24 @@ def build_choice(spec: R.ChoiceField, parent: QWidget, values: FieldValues) -> E
 @editor_for(R.ChannelsField)
 def build_channels(spec: R.ChannelsField, parent: QWidget, values: FieldValues) -> Editor:
     del values
-    root = QWidget(parent)
-    layout = QHBoxLayout(root)
-    layout.setContentsMargins(0, 0, 0, 0)
-    layout.setSpacing(4)
-    layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
-
-    buttons: list[QToolButton] = []
-    for index in range(spec.num_channels):
-        button = QToolButton(root)
-        button.setCheckable(True)
-        button.setText(f"AI{index}")
-        button.setToolTip(f"Toggle AI{index}")
-        button.setStyleSheet(CHANNEL_BUTTON_CSS)
-        layout.addWidget(button)
-        buttons.append(button)
-
-    def get() -> tuple[int, ...]:
-        return tuple(i for i, button in enumerate(buttons) if button.isChecked())
-
-    def set_value(value: tuple[int, ...]) -> None:
-        for index, button in enumerate(buttons):
-            button.blockSignals(True)
-            button.setChecked(index in value)
-            button.blockSignals(False)
-
-    def connect(cb: Callable[[], None]) -> None:
-        for button in buttons:
-            button.toggled.connect(lambda *_: cb())
-
+    keys = ChannelKeys(spec.num_channels, parent)
     return Editor(
-        root,
-        get=get,
-        set=set_value,
-        connect=connect,
-        summary=lambda: ", ".join(f"AI{i}" for i in get()) or "none",
+        keys,
+        get=keys.channels,
+        set=keys.set_lit,
+        connect=keys.toggled.connect,
+        summary=lambda: channel_ranges(keys.channels()),
         spec=spec,
-        wide=True,
     )
+
+
+def channel_ranges(channels: tuple[int, ...]) -> str:
+    """``(0, 1, 2, 3, 8)`` as ``0–3, 8``: runs of three or more as a range."""
+    runs: list[list[int]] = []
+    for channel in channels:
+        if runs and channel == runs[-1][-1] + 1:
+            runs[-1].append(channel)
+        else:
+            runs.append([channel])
+    parts = [f"{run[0]}–{run[-1]}" if len(run) >= 3 else ", ".join(map(str, run)) for run in runs]
+    return ", ".join(parts)

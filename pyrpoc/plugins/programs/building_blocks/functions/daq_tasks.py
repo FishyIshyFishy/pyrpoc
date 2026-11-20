@@ -99,9 +99,14 @@ def add_clocked_lines(
 
 
 def acquire(
-    daq: DAQ, galvo: Galvo, waveform: np.ndarray, ttl: dict[str, np.ndarray], sample_rate_hz: float
+    daq: DAQ,
+    galvo: Galvo,
+    channels: tuple[int, ...],
+    waveform: np.ndarray,
+    ttl: dict[str, np.ndarray],
+    sample_rate_hz: float,
 ) -> np.ndarray:
-    """Play ``waveform`` on the galvos and read every analog input on its clock,
+    """Play ``waveform`` on the galvos and read the analog inputs ``channels`` on its clock,
     with ``ttl`` on the digital lines: the raw ``(channels, samples)`` stream."""
     device = daq.config.device_name
     total = waveform.shape[1]
@@ -114,7 +119,7 @@ def acquire(
             galvos = stack.enter_context(nx.Task())
             clock_galvos(galvos, device, galvo, sample_rate_hz, total)
             inputs = stack.enter_context(nx.Task())
-            for index in daq.config.ai_channels:
+            for index in channels:
                 inputs.ai_channels.add_ai_voltage_chan(f"{device}/ai{index}")
             follow_galvo_clock(inputs, device, sample_rate_hz, total)
             followers = [inputs]

@@ -100,19 +100,19 @@ class ChoiceField(Field):
 
 @dataclass(frozen=True)
 class ChannelsField(Field):
-    """A row of toggleable channel buttons. The value is a sorted int tuple."""
+    """A set of numbered channels, at least one of them. The value is a sorted int tuple."""
 
-    num_channels: int = 9
+    num_channels: int = 16
 
     def coerce(self, value: Any) -> tuple[int, ...]:
-        if value is None:
-            return ()
         if isinstance(value, (str, bytes)) or not isinstance(value, Iterable):
             raise ParameterError(f"{self.label}: expected a list of channel indices")
         try:
             out = sorted({int(item) for item in value})
         except (TypeError, ValueError) as exc:
             raise ParameterError(f"{self.label}: channel indices must be integers") from exc
+        if not out:
+            raise ParameterError(f"{self.label}: choose at least one channel")
         for index in out:
             if index < 0 or index >= self.num_channels:
                 raise ParameterError(

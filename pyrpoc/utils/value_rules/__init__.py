@@ -14,7 +14,7 @@ from .rules import (
 )
 from .shorthands import (
     bool_input,
-    channels_field,
+    channels_input,
     choice_input,
     float_field,
     float_input,
@@ -34,7 +34,7 @@ __all__ = [
     "PathField",
     "TextField",
     "bool_input",
-    "channels_field",
+    "channels_input",
     "choice_input",
     "float_field",
     "float_input",
