@@ -20,13 +20,16 @@ OutputT = TypeVar("OutputT", bound=ProgramOutput)
 
 def outputs_of_type(library: Library, output_type: type[OutputT]) -> list[OutputT]:
     """Every open output that is an ``output_type``, its daughter types included, newest
-    recording first."""
+    recording first and, within one, newest part first."""
+    # By part, so "Latest" moves to the outputs a fixed-input edit begins. A part's names are
+    # always in ``outputs``, which a new part sets before it is added to ``parts``.
     # isinstance picks one type out of every open output, and narrows them to it.
     return [
         output
         for recording in reversed(library.recordings())
-        for output in recording.outputs.values()
-        if isinstance(output, output_type)
+        for part in reversed(recording.parts)
+        for name in part.outputs
+        if isinstance(output := recording.outputs[name], output_type)
     ]
 
 
