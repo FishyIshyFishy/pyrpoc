@@ -23,6 +23,7 @@ from pyrpoc.core.program_input import ProgramInputs
 from pyrpoc.plugins.program_io.outputs import ImageOutput
 from pyrpoc.utils.widgets.colors import color_for_index, color_map_from_rgb
 from pyrpoc.utils.widgets.data_panel import DataPanel, data_panel_registry
+from pyrpoc.utils.widgets.frame_slider import FrameSlider
 from pyrpoc.utils.widgets.levels import autoscale_levels, mono_levels
 from pyrpoc.utils.widgets.stage_link import StageLink
 
@@ -56,7 +57,7 @@ def channel_lut(hist_widget: pg.HistogramLUTWidget) -> np.ndarray:
 
 @data_panel_registry.register("overlay")
 class OverlayPanel(DataPanel[ImageOutput]):
-    display_name = "Merged Channels"
+    display_name = "Overlaid"
     group = "Images"
     order = 20
     renders = ImageOutput
@@ -68,7 +69,7 @@ class OverlayPanel(DataPanel[ImageOutput]):
         self._pending_state: list[ControlState] = []
         self._suspend_lut_signal = False
 
-        root = QHBoxLayout(self.body)
+        root = QVBoxLayout(self.body)
         root.setContentsMargins(6, 6, 6, 6)
         root.setSpacing(8)
         splitter = QSplitter(Qt.Orientation.Horizontal, self.body)
@@ -79,6 +80,9 @@ class OverlayPanel(DataPanel[ImageOutput]):
         splitter.setStretchFactor(0, 1)
         splitter.setStretchFactor(1, 0)
         splitter.setSizes([900, 300])
+        self.frames = FrameSlider(self.body)
+        self.frames.moved.connect(self.refresh)
+        root.addWidget(self.frames)
         self.connect_source()
 
     def build_plot(self, parent: QWidget) -> pg.PlotWidget:
@@ -105,14 +109,17 @@ class OverlayPanel(DataPanel[ImageOutput]):
         return scroll
 
     def frame(self) -> np.ndarray | None:
+        """The image the frame slider is on, if there is one."""
         shown = self.shown_output
-        return None if shown is None or not len(shown) else shown[-1]
+        return None if shown is None or not len(shown) else shown[self.frames.index()]
 
     def draw(self, program_output: ImageOutput) -> None:
-        """Composite its newest image."""
+        """Composite the image the frame slider is on, which follows the newest while on the
+        last."""
         if not len(program_output):
             return
-        arr = program_output[-1]
+        self.frames.take_count(len(program_output))
+        arr = program_output[self.frames.index()]
         self.sync_controls(arr.shape[0])
         for index in range(arr.shape[0]):
             self.update_channel(index, arr[index])
@@ -122,6 +129,7 @@ class OverlayPanel(DataPanel[ImageOutput]):
         self._overlay_item.setImage(
             np.zeros((1, 1, 3), dtype=np.float32), autoLevels=False, levels=(0.0, 1.0)
         )
+        self.frames.reset()
         self.sync_controls(0)
 
     def sync_controls(self, count: int) -> None:

@@ -23,6 +23,7 @@ from pyrpoc.core.program_input import ProgramInputs
 from pyrpoc.plugins.program_io.inputs import PICK, PixelPick
 from pyrpoc.plugins.program_io.outputs import ImageOutput
 from pyrpoc.utils.widgets.data_panel import DataPanel, data_panel_registry
+from pyrpoc.utils.widgets.frame_slider import FrameSlider
 from pyrpoc.utils.widgets.icons import asset_icon
 from pyrpoc.utils.widgets.levels import autoscale_levels, mono_levels
 from pyrpoc.utils.widgets.stage_link import StageLink
@@ -60,7 +61,7 @@ class TileState:
 
 @data_panel_registry.register("image")
 class ImagePanel(DataPanel[ImageOutput]):
-    display_name = "Channels Side by Side"
+    display_name = "Tiled"
     group = "Images"
     order = 21
     renders = ImageOutput
@@ -89,6 +90,9 @@ class ImagePanel(DataPanel[ImageOutput]):
         self._grid.setHorizontalSpacing(10)
         self._grid.setVerticalSpacing(10)
         scroll.setWidget(self._content)
+        self.frames = FrameSlider(self.body)
+        self.frames.moved.connect(self.refresh)
+        outer.addWidget(self.frames)
         self.connect_source()
 
     def build_tool_buttons(self) -> dict[Tool, QToolButton]:
@@ -136,16 +140,18 @@ class ImagePanel(DataPanel[ImageOutput]):
                 tile.measure.apply_shape(shape)
 
     def draw(self, program_output: ImageOutput) -> None:
-        """Draw its newest image."""
+        """Draw the image the frame slider is on, which follows the newest while on the last."""
         if not len(program_output):
             return
-        self.shown_image = program_output[-1]
+        self.frames.take_count(len(program_output))
+        self.shown_image = program_output[self.frames.index()]
         self.sync_channel_tiles(len(program_output.channels))
         for index, plane in enumerate(self.shown_image):
             self.update_channel_image(index, plane)
 
     def clear(self) -> None:
         self.shown_image = None
+        self.frames.reset()
         self.sync_channel_tiles(0)
 
     def sync_channel_tiles(self, count: int) -> None:
