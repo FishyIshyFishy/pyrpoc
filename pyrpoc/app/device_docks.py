@@ -1,5 +1,5 @@
 """Device panels in the dock area: at most one per device, and a Panels menu
-entry per device that opens or closes it.
+entry per device with a panel that opens or closes it.
 
 A panel exists exactly as long as its dock; closing it leaves the device in
 the inventory, connected, and reopening builds a fresh panel.
@@ -119,9 +119,10 @@ class DeviceDocks(QObject):
             action.blockSignals(False)
 
     def on_inventory_changed(self) -> None:
-        """Close the panels of removed devices, keep one menu entry per device,
-        and let open panels re-read their devices."""
-        devices = self.inventory.devices
+        """Close the panels of removed devices, keep one menu entry per device that
+        has a panel, and let open panels re-read their devices."""
+        # The Panels menu is where to find panels, so devices without one are left out.
+        devices = [d for d in self.inventory.devices if has_panel(d)]
         for device in [d for d in self.docks if d not in devices]:
             self.close(device)
         for device in [d for d in self.actions if d not in devices]:
@@ -139,8 +140,6 @@ class DeviceDocks(QObject):
         action = QAction(self.inventory.name(device), self)
         action.setCheckable(True)
         action.setChecked(device in self.docks)
-        # Listed even without a panel, so the menu shows every device there is.
-        action.setEnabled(has_panel(device))
         action.toggled.connect(lambda checked, d=device: self.on_panel_requested(d, checked))
         return action
 

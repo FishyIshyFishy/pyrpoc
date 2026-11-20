@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from pyrpoc.core.program_input import SidecarProgramInput, declare, declare_sidecar
 
-from .values.mask import Mask, MasksField, MasksNpz
+from .values.mask import Mask, MasksField, MasksPng
 from .values.mask_line import MaskLinesField
 from .values.pixel_pick import PickField
 from .values.point import Point, PointField
@@ -17,7 +17,7 @@ MASKS: SidecarProgramInput[tuple[Mask, ...]] = declare_sidecar(
     MasksField("Masks", "The masks drawn in a Mask Editor, which is where they are edited"),
     (),
     restored=False,
-    file=MasksNpz(),
+    file=MasksPng(),
 )
 MASK_LINES = declare(
     "mask_lines",

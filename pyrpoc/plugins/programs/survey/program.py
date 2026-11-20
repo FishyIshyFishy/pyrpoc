@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from pyrpoc.core.program import RunContext, program_registry
 from pyrpoc.plugins.devices import DAQ, Galvo, PriorStage
-from pyrpoc.plugins.program_io.inputs import EXTRA_LEFT, EXTRA_RIGHT, SAMPLE_RATE_MHZ
+from pyrpoc.plugins.program_io.inputs import AI_CHANNELS, EXTRA_LEFT, EXTRA_RIGHT, SAMPLE_RATE_MHZ
 
 from ..building_blocks.multisite import Microscope, RigMicroscope, SurveyProgram
 
@@ -16,12 +16,12 @@ class Survey(SurveyProgram):
     group = "Autonomous"
     order = 31
     devices = [Galvo, DAQ, PriorStage]
-    inputs = [*SurveyProgram.inputs, EXTRA_LEFT, EXTRA_RIGHT, SAMPLE_RATE_MHZ]
-    fixed = [*SurveyProgram.fixed, EXTRA_LEFT, EXTRA_RIGHT, SAMPLE_RATE_MHZ]
+    inputs = [*SurveyProgram.inputs, EXTRA_LEFT, EXTRA_RIGHT, SAMPLE_RATE_MHZ, AI_CHANNELS]
+    fixed = [*SurveyProgram.fixed, EXTRA_LEFT, EXTRA_RIGHT, SAMPLE_RATE_MHZ, AI_CHANNELS]
     cards = {
         **SurveyProgram.cards,
         "Scan": (EXTRA_LEFT, EXTRA_RIGHT),
-        "DAQ": (SAMPLE_RATE_MHZ,),
+        "DAQ": (SAMPLE_RATE_MHZ, AI_CHANNELS),
     }
 
     def microscope(self, ctx: RunContext) -> Microscope:

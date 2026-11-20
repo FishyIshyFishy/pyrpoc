@@ -8,8 +8,9 @@ from PyQt6.QtWidgets import QLayout, QLayoutItem, QWidget
 
 
 class FlowGrid(QLayout):
-    """Cells at least ``min_cell`` wide, in as many columns as fit. A wide cell takes a whole
-    row. Taller rows follow from the width, so it reports a height for any width."""
+    """Cells at least ``min_cell`` wide, in as many columns as fit. A cell wider than a column
+    spans as many as it needs, and a wide cell takes a whole row. Taller rows follow from the
+    width, so it reports a height for any width."""
 
     def __init__(self, parent: QWidget, min_cell: int, spacing: int):
         super().__init__(parent)
@@ -72,32 +73,36 @@ class FlowGrid(QLayout):
         columns = self.columns(rect.width())
         cell = (rect.width() - (columns - 1) * self.gap) // columns
         y = 0
-        row: list[QLayoutItem] = []
+        row: list[tuple[QLayoutItem, int]] = []
+        used = 0
         for index, item in enumerate(self.items):
-            if index in self.wide:
+            span = columns if index in self.wide else self.span(item, cell, columns)
+            if used + span > columns:
                 y = self.place_row(row, rect, y, cell, apply)
-                row = []
-                y = self.place_row([item], rect, y, rect.width(), apply)
-                continue
-            row.append(item)
-            if len(row) == columns:
-                y = self.place_row(row, rect, y, cell, apply)
-                row = []
+                row, used = [], 0
+            row.append((item, span))
+            used += span
         y = self.place_row(row, rect, y, cell, apply)
         return max(0, y - self.gap)
 
+    def span(self, item: QLayoutItem, cell: int, columns: int) -> int:
+        """The columns ``item`` needs to be shown whole, up to the whole row."""
+        needed = -(-(item.minimumSize().width() + self.gap) // (cell + self.gap))
+        return max(1, min(columns, needed))
+
     def place_row(
-        self, row: list[QLayoutItem], rect: QRect, y: int, width: int, apply: bool
+        self, row: list[tuple[QLayoutItem, int]], rect: QRect, y: int, cell: int, apply: bool
     ) -> int:
         if not row:
             return y
+        widths = [span * cell + (span - 1) * self.gap for _, span in row]
         height = max(
             item.heightForWidth(width) if item.hasHeightForWidth() else item.sizeHint().height()
-            for item in row
+            for (item, _), width in zip(row, widths, strict=True)
         )
         if apply:
-            for column, item in enumerate(row):
-                item.setGeometry(
-                    QRect(rect.x() + column * (width + self.gap), rect.y() + y, width, height)
-                )
+            x = rect.x()
+            for (item, _), width in zip(row, widths, strict=True):
+                item.setGeometry(QRect(x, rect.y() + y, width, height))
+                x += width + self.gap
         return y + height + self.gap

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pyrpoc.core.program import RunContext, program_registry
 from pyrpoc.plugins.devices import DAQ, Galvo, PriorStage
-from pyrpoc.plugins.program_io.inputs import SAMPLE_RATE_MHZ
+from pyrpoc.plugins.program_io.inputs import AI_CHANNELS, SAMPLE_RATE_MHZ
 
 from ..building_blocks.multisite import CalibrationProgram, Microscope, RigMicroscope
 
@@ -15,9 +15,9 @@ class GalvoCalibrationProgram(CalibrationProgram):
     group = "Autonomous"
     order = 30
     devices = [Galvo, DAQ, PriorStage]
-    inputs = [*CalibrationProgram.inputs, SAMPLE_RATE_MHZ]
-    cards = {**CalibrationProgram.cards, "DAQ": (SAMPLE_RATE_MHZ,)}
-    fixed = [*CalibrationProgram.fixed, SAMPLE_RATE_MHZ]
+    inputs = [*CalibrationProgram.inputs, SAMPLE_RATE_MHZ, AI_CHANNELS]
+    cards = {**CalibrationProgram.cards, "DAQ": (SAMPLE_RATE_MHZ, AI_CHANNELS)}
+    fixed = [*CalibrationProgram.fixed, SAMPLE_RATE_MHZ, AI_CHANNELS]
 
     def microscope(self, ctx: RunContext) -> Microscope:
         return RigMicroscope(ctx)

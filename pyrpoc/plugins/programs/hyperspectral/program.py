@@ -6,6 +6,7 @@ from __future__ import annotations
 from pyrpoc.core.program import Cancelled, Program, RunContext, program_registry
 from pyrpoc.plugins.devices import DAQ, Galvo, ZaberStage
 from pyrpoc.plugins.program_io.inputs import (
+    AI_CHANNELS,
     DELAY_START_UM,
     DELAY_STEPS,
     DELAY_STOP_UM,
@@ -56,6 +57,7 @@ class Hyperspectral(Program):
     inputs = [
         *SCAN_GEOMETRY_INPUTS,
         SAMPLE_RATE_MHZ,
+        AI_CHANNELS,
         MASKS,
         MASK_LINES,
         *DELAY_SWEEP_INPUTS,
@@ -64,11 +66,11 @@ class Hyperspectral(Program):
     cards = {
         "Delay Sweep": DELAY_SWEEP_INPUTS,
         "Scan": SCAN_GEOMETRY_INPUTS,
-        "DAQ": (SAMPLE_RATE_MHZ,),
+        "DAQ": (SAMPLE_RATE_MHZ, AI_CHANNELS),
         "Modulation": (MASK_LINES,),
     }
     # What sets the shape of each image, and the delays the sweep stops at.
-    fixed = [*SCAN_GEOMETRY_INPUTS, SAMPLE_RATE_MHZ, *DELAY_SWEEP_INPUTS]
+    fixed = [*SCAN_GEOMETRY_INPUTS, SAMPLE_RATE_MHZ, AI_CHANNELS, *DELAY_SWEEP_INPUTS]
     saves = [MASKS]
     emits = {"hyperspectral": HyperspectralOutput}
     # Once only: a sweep is one pass over the delays, never repeated or looped.

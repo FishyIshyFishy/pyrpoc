@@ -22,17 +22,26 @@ class NpzStack(ArrayStack):
 
     def close(self) -> None:
         if self.root is not None and self.arrays:
-            path = self.root.with_name(f"{self.root.name}_{self.name}.npz")
-            write_npz(
-                path,
-                {
-                    "data": np.stack(self.arrays, axis=0),
-                    "channels": np.asarray(self.channels, dtype=str),
-                    **self.extra(),
-                },
-            )
-            self.paths = {self.name: path}
+            self.write_file(self.root)
         super().close()
+
+    def save_to(self, root: Path) -> None:
+        with self.lock:
+            self.root = root
+            if self.arrays:
+                self.write_file(root)
+
+    def write_file(self, root: Path) -> None:
+        path = root.with_name(f"{root.name}_{self.name}.npz")
+        write_npz(
+            path,
+            {
+                "data": np.stack(self.arrays, axis=0),
+                "channels": np.asarray(self.channels, dtype=str),
+                **self.extra(),
+            },
+        )
+        self.paths = {self.name: path}
 
     def extra(self) -> dict[str, np.ndarray]:
         """More arrays to save beside the data, read back by ``take_extra``."""

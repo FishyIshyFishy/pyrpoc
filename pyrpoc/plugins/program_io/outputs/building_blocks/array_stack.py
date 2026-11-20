@@ -37,6 +37,12 @@ class ArrayStack(ProgramOutput):
                 self.write(self.root, frozen)
         self.changed()
 
+    def save_to(self, root: Path) -> None:
+        with self.lock:
+            self.root = root
+            for array in self.arrays:
+                self.write(root, array)
+
     def write(self, root: Path, array: np.ndarray) -> None:
         """Save one array beside ``root`` as it is added; a type that writes only at close
         does nothing."""

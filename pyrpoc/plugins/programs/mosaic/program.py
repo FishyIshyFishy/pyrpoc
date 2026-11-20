@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from pyrpoc.core.program import RunContext, program_registry
 from pyrpoc.plugins.devices import DAQ, Galvo, PriorStage
-from pyrpoc.plugins.program_io.inputs import EXTRA_LEFT, EXTRA_RIGHT, SAMPLE_RATE_MHZ
+from pyrpoc.plugins.program_io.inputs import AI_CHANNELS, EXTRA_LEFT, EXTRA_RIGHT, SAMPLE_RATE_MHZ
 
 from ..building_blocks.multisite import Microscope, MosaicProgram, RigMicroscope
 
@@ -16,12 +16,12 @@ class StageMosaic(MosaicProgram):
     group = "Confocal Fluorescence"
     order = 12
     devices = [Galvo, DAQ, PriorStage]
-    inputs = [*MosaicProgram.inputs, EXTRA_LEFT, EXTRA_RIGHT, SAMPLE_RATE_MHZ]
-    fixed = [*MosaicProgram.fixed, EXTRA_LEFT, EXTRA_RIGHT, SAMPLE_RATE_MHZ]
+    inputs = [*MosaicProgram.inputs, EXTRA_LEFT, EXTRA_RIGHT, SAMPLE_RATE_MHZ, AI_CHANNELS]
+    fixed = [*MosaicProgram.fixed, EXTRA_LEFT, EXTRA_RIGHT, SAMPLE_RATE_MHZ, AI_CHANNELS]
     cards = {
         **MosaicProgram.cards,
         "Scan": (EXTRA_LEFT, EXTRA_RIGHT),
-        "DAQ": (SAMPLE_RATE_MHZ,),
+        "DAQ": (SAMPLE_RATE_MHZ, AI_CHANNELS),
     }
 
     def microscope(self, ctx: RunContext) -> Microscope:

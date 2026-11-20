@@ -105,6 +105,22 @@ class RecordingSaver:
         )
 
 
+def save_finished(recording: Recording, root: Path) -> None:
+    """Write a finished recording that was never saved beside the stem ``root``, as if its run
+    had saved it: every output's files, then the metadata, then its note."""
+    saver = RecordingSaver(recording, root)
+    saver.meta_path.parent.mkdir(parents=True, exist_ok=True)
+    for program_output in recording.outputs.values():
+        program_output.save_to(root)
+    # A run not saved logged no edits and kept no sidecar inputs, so neither can be written now.
+    saver.edits_path.write_text("", encoding="utf-8")
+    recording.name = root.name
+    # When the run ended and its first failure were not kept, so they are left unknown.
+    saver.write_metadata(ended_at=None, last_error=None)
+    recording.location = saver.meta_path
+    save_note(recording)
+
+
 def output_record(program_output: ProgramOutput, folder: Path) -> OutputRecord:
     """Its type and files, each named from ``folder``, so an output may keep files in folders
     of its own."""

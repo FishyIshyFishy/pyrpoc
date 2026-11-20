@@ -3,7 +3,7 @@ region scanned when no mask is drawn, the mosaic grid, frames per run, and the f
 
 from __future__ import annotations
 
-from pyrpoc.utils.value_rules import float_input, int_input
+from pyrpoc.utils.value_rules import channels_input, float_input, int_input
 
 X_PIXELS = int_input("x_pixels", "X Pixels", 512, minimum=8, tooltip="Number of pixels in X")
 Y_PIXELS = int_input("y_pixels", "Y Pixels", 512, minimum=8, tooltip="Number of pixels in Y")
@@ -53,6 +53,13 @@ SAMPLE_RATE_MHZ = float_input(
     maximum=5.0,
     step=0.1,
     tooltip="DAQ AO sample rate in MHz; the FLIM pixel clock divides down from it",
+)
+AI_CHANNELS = channels_input(
+    "ai_channels",
+    "AI Channels",
+    (0, 1),
+    num_channels=16,
+    tooltip="The DAQ's analog inputs to read, one image channel each",
 )
 FRAME_TRIGGER_PFI = int_input(
     "frame_trigger_pfi",

@@ -8,9 +8,10 @@ import numpy as np
 
 from pyrpoc.core.program import RunContext
 from pyrpoc.plugins.devices import DAQ, Galvo, PriorStage
+from pyrpoc.plugins.program_io.inputs import AI_CHANNELS
 from pyrpoc.plugins.programs.building_blocks.settings import ScanGeometry, rate_hz
 
-from ...functions.galvo_raster import Raster, pixel_samples, raster_waveform
+from ...functions.galvo_raster import Raster, ai_labels, pixel_samples, raster_waveform
 from ..interfaces.microscope import DigitalLine
 
 
@@ -23,11 +24,12 @@ class RigMicroscope:
         self.galvo = ctx.devices[Galvo]
         self.stage = ctx.devices[PriorStage]
         self.sample_rate_hz = rate_hz(ctx.inputs)
+        self.channels = ctx.inputs[AI_CHANNELS]
         self.rasters: dict[tuple[ScanGeometry, tuple[DigitalLine, ...]], Raster] = {}
 
     @property
     def channel_labels(self) -> list[str]:
-        return [f"ai{index}" for index in self.daq.config.ai_channels]
+        return ai_labels(self.channels)
 
     def raster(self, scan: ScanGeometry, lines: tuple[DigitalLine, ...]) -> Raster:
         key = (scan, lines)
@@ -38,7 +40,14 @@ class RigMicroscope:
             high = np.ones(waveform.shape[1], dtype=bool)
             ttl = {f"{device}/port{each.port}/line{each.line}": high for each in lines}
             self.rasters[key] = Raster(
-                self.daq, self.galvo, scan, self.sample_rate_hz, samples, waveform, ttl
+                self.daq,
+                self.galvo,
+                self.channels,
+                scan,
+                self.sample_rate_hz,
+                samples,
+                waveform,
+                ttl,
             )
         return self.rasters[key]
 

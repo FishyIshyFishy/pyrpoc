@@ -6,6 +6,7 @@ from PyQt6.QtCore import QEvent, QPoint, QSize, Qt, pyqtSignal
 from PyQt6.QtGui import QAction, QColor, QFont, QIcon, QPixmap
 from PyQt6.QtWidgets import (
     QAbstractItemView,
+    QHBoxLayout,
     QLabel,
     QListWidget,
     QListWidgetItem,
@@ -44,13 +45,15 @@ def hint(text: str, parent: QWidget) -> QLabel:
 
 
 class MaskPicker(QListWidget):
-    """The drawn masks, each its thumbnail and name, then a wide plus button that adds another. The
-    selected one is drawn on; a double-click renames it and a right-click offers the rest."""
+    """The drawn masks, each its thumbnail and name, then a wide plus button that adds another
+    beside one that loads one. The selected one is drawn on; a double-click renames it and a
+    right-click offers the rest."""
 
     # The mask chosen to draw on, by id, or "" for none.
     chosen = pyqtSignal(str)
     renamed = pyqtSignal(str, str)
     new_requested = pyqtSignal()
+    load_requested = pyqtSignal()
     export_requested = pyqtSignal(str)
     delete_requested = pyqtSignal(str)
 
@@ -99,19 +102,28 @@ class MaskPicker(QListWidget):
             self.blockSignals(False)
 
     def build_add_row(self) -> QListWidgetItem:
-        """The row after the last mask: a full-width button with a centred plus. The item
-        itself is never selected; the button inside it adds a mask."""
+        """The row after the last mask: a wide button with a centred plus, and one that loads a
+        saved mask. The item itself is never selected; the buttons inside it act."""
         item = QListWidgetItem()
         item.setFlags(Qt.ItemFlag.ItemIsEnabled)
         item.setSizeHint(QSize(0, ICON_PX + 12))
-        button = QPushButton(self)
-        button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        button.setIcon(asset_icon("add"))
-        button.setIconSize(QSize(ICON_PX, ICON_PX))
-        button.setToolTip("Start another mask")
-        button.clicked.connect(self.new_requested)
+        row = QWidget(self)
+        layout = QHBoxLayout(row)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(4)
+        add = QPushButton(row)
+        add.setIcon(asset_icon("add"))
+        add.setIconSize(QSize(ICON_PX, ICON_PX))
+        add.setToolTip("Start another mask")
+        add.clicked.connect(self.new_requested)
+        load = QPushButton("Load…", row)
+        load.setToolTip("Add a mask saved as a PNG, as one region")
+        load.clicked.connect(self.load_requested)
+        for button, stretch in ((add, 1), (load, 0)):
+            button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+            layout.addWidget(button, stretch)
         self.addItem(item)
-        self.setItemWidget(item, button)
+        self.setItemWidget(item, row)
         return item
 
     def show_menu(self, pos: QPoint) -> None:
@@ -161,8 +173,11 @@ def swatch(color: QColor) -> QIcon:
 
 
 def region_text(index: int, roi: MaskRoi) -> str:
-    """A region's number and what it keeps: its whole shape, or a range on some channels."""
+    """A region's number and what it keeps: a loaded mask, its whole shape, or a range on some
+    channels."""
     threshold = roi.threshold
+    if roi.pixels is not None:
+        return f"Region {index + 1} · loaded"
     if threshold is None:
         return f"Region {index + 1} · whole shape"
     channels = ", ".join(f"C{i + 1}" for i, on in enumerate(threshold.active_channels) if on)

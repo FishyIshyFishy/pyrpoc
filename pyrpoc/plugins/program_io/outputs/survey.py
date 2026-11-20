@@ -104,6 +104,11 @@ class SurveyOutput(MosaicOutput):
             raise ValueError(f"{self.name} was not finished, so it found nothing to start from")
         return self.finding
 
+    def save_to(self, root: Path) -> None:
+        with self.lock:
+            super().save_to(root)
+            self.write_survey()
+
     def write_survey(self) -> None:
         if self.root is None:
             return

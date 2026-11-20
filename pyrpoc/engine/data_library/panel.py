@@ -85,7 +85,7 @@ class DataLibraryPanel(Panel):
     display_name = "Data Library"
 
     def __init__(self, library: LibraryModel, save_folder: Callable[[], Path | None]):
-        """``save_folder`` is where Open… starts: the current save folder, if one is set."""
+        """``save_folder`` is where Open… and Save start: the current save folder, if one is set."""
         super().__init__()
         self.library = library
         self.save_folder = save_folder
@@ -352,10 +352,10 @@ class DataLibraryPanel(Panel):
         if not isinstance(node, ExperimentNode):
             menu.addAction("Details…", lambda: self.open_details(item))
         folder = folder_of(node)
-        show = QAction("Show in folder", menu)
-        show.setEnabled(folder is not None)
-        show.triggered.connect(lambda: self.show_in_folder(folder))
-        menu.addAction(show)
+        if folder is None:
+            menu.addAction(self.save_action(node, menu))
+        else:
+            menu.addAction("Show in folder", lambda: self.show_in_folder(folder))
         menu.addSeparator()
         menu.addAction(close_label(node), lambda: self.close_node(node))
         menu.exec(viewport_of(self.tree).mapToGlobal(position))
@@ -370,9 +370,45 @@ class DataLibraryPanel(Panel):
             # The note shows in the recording's tooltip.
             self.rebuild()
 
-    def show_in_folder(self, folder: Path | None) -> None:
-        if folder is not None:
-            QDesktopServices.openUrl(QUrl.fromLocalFile(str(folder)))
+    def save_action(self, node: Node, menu: QMenu) -> QAction:
+        """Save a recording that was not saved, or every one of them, once its run has ended."""
+        if isinstance(node, ExperimentNode):
+            action = QAction("Save all to folder…", menu)
+            action.setEnabled(any(recording.finished for recording in node.recordings))
+            action.triggered.connect(lambda: self.save_all(node.recordings))
+            return action
+        recording = node if isinstance(node, Recording) else node.recording
+        action = QAction("Save as…", menu)
+        action.setEnabled(recording.finished)
+        action.triggered.connect(lambda: self.save_as(recording))
+        return action
+
+    def save_as(self, recording: Recording) -> None:
+        start = Path(self.start_folder()) / default_name(recording)
+        path, _ = QFileDialog.getSaveFileName(self, "Save recording as", str(start))
+        if path:
+            self.report_save_errors([self.library.save(recording, Path(path))])
+
+    def save_all(self, recordings: list[Recording]) -> None:
+        """Save every finished recording into one folder, each under its own name."""
+        folder = QFileDialog.getExistingDirectory(self, "Save all to folder", self.start_folder())
+        if not folder:
+            return
+        self.report_save_errors(
+            [
+                self.library.save(recording, Path(folder) / default_name(recording))
+                for recording in recordings
+                if recording.finished
+            ]
+        )
+
+    def report_save_errors(self, errors: list[str | None]) -> None:
+        problems = [error for error in errors if error is not None]
+        if problems:
+            QMessageBox.warning(self, "Could Not Save Recording", "\n\n".join(problems))
+
+    def show_in_folder(self, folder: Path) -> None:
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(folder)))
 
     def start_folder(self) -> str:
         folder = self.save_folder()
@@ -414,6 +450,11 @@ def folder_of(node: Node) -> Path | None:
     if isinstance(node, ExperimentNode):
         return node.folder
     return node.folder if isinstance(node, Recording) else node.recording.folder
+
+
+def default_name(recording: Recording) -> str:
+    """What a recording is saved as unless renamed: its run's name, or its program's."""
+    return recording.name or recording.program_key
 
 
 def close_label(node: Node) -> str:

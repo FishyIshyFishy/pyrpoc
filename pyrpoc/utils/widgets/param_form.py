@@ -137,6 +137,8 @@ class ParamForm(QWidget):
         title.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         column.addWidget(title)
         column.addWidget(widget)
+        # A row is as tall as its tallest cell; the others keep their label and field at the top.
+        column.addStretch(1)
         widget.setParent(cell)
         return cell
 

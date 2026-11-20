@@ -8,7 +8,7 @@ import numpy as np
 
 from pyrpoc.core.program import RunContext
 from pyrpoc.plugins.devices import DAQ, Galvo
-from pyrpoc.plugins.program_io.inputs import MASK_LINES, MASKS, lines_for
+from pyrpoc.plugins.program_io.inputs import AI_CHANNELS, MASK_LINES, MASKS, lines_for
 from pyrpoc.plugins.programs.building_blocks.settings import ScanGeometry, rate_hz
 
 from .daq_tasks import acquire
@@ -20,6 +20,11 @@ def pixel_samples(dwell_time_us: float, sample_rate_hz: float) -> int:
     # FLIM's rounds with a floor of 2, since its counter needs a high and a low tick; do not unify
     # them.
     return max(1, int(dwell_time_us * 1e-6 * sample_rate_hz))
+
+
+def ai_labels(channels: tuple[int, ...]) -> list[str]:
+    """The image channels' names: one per analog input read."""
+    return [f"ai{index}" for index in channels]
 
 
 def raster_waveform(scan: ScanGeometry, samples_per_pixel: int) -> np.ndarray:
@@ -41,6 +46,7 @@ class Raster:
 
     daq: DAQ
     galvo: Galvo
+    channels: tuple[int, ...]
     scan: ScanGeometry
     sample_rate_hz: float
     samples_per_pixel: int
@@ -57,16 +63,27 @@ class Raster:
         lines = lines_for(masks, ctx.inputs[MASK_LINES])
         ttl = mask_ttl(masks, lines, scan, samples_per_pixel, daq.config.device_name)
         waveform = raster_waveform(scan, samples_per_pixel)
-        return cls(daq, ctx.devices[Galvo], scan, sample_rate_hz, samples_per_pixel, waveform, ttl)
+        return cls(
+            daq,
+            ctx.devices[Galvo],
+            ctx.inputs[AI_CHANNELS],
+            scan,
+            sample_rate_hz,
+            samples_per_pixel,
+            waveform,
+            ttl,
+        )
 
     @property
     def channel_labels(self) -> list[str]:
-        return [f"ai{index}" for index in self.daq.config.ai_channels]
+        return ai_labels(self.channels)
 
     def samples(self) -> np.ndarray:
         """One scan as ``(C, H, W, S)``: every displayed pixel's raw samples,
         with the overscan columns dropped."""
-        raw = acquire(self.daq, self.galvo, self.waveform, self.ttl, self.sample_rate_hz)
+        raw = acquire(
+            self.daq, self.galvo, self.channels, self.waveform, self.ttl, self.sample_rate_hz
+        )
         scan = self.scan
         cube = raw.astype(np.float32).reshape(
             len(raw), scan.y_pixels, scan.total_x, self.samples_per_pixel

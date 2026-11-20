@@ -35,11 +35,13 @@ from pyrpoc.plugins.panels.mask_editor.range_slider import RangeSlider
 from pyrpoc.plugins.panels.mask_editor.transforms import normalize_channels
 from pyrpoc.plugins.program_io.inputs import MASKS, Mask
 from pyrpoc.plugins.program_io.outputs import ImageOutput
+from pyrpoc.utils.file_formats.png import read_png, write_png
 from pyrpoc.utils.widgets.data_panel import DataPanel, data_panel_registry
 from pyrpoc.utils.widgets.stage_link import StageLink
 
 from .canvas import MaskImageView, MaskRoi, Threshold
 from .dialog import RoiThresholdDialog
+from .preview import MaskPreview
 from .sidebar import MaskPicker, RegionList, hint, section_title
 
 CHANNEL_COLORS = tuple(
@@ -56,30 +58,26 @@ CHANNEL_COLORS = tuple(
     )
 )
 
-# The sidebar's width beside the image, and the narrowest the image may get beside it.
+# The sidebar's width beside the views, and the narrowest the two views may get beside it.
 SIDEBAR_WIDTH = 260
-MIN_CANVAS_WIDTH = 320
+MIN_VIEWS_WIDTH = 320
+# The smallest either view may get, so a small dock still shows both.
+MIN_VIEW_SIDE = 120
 # Below this width, a sidebar under the image stacks its two columns.
 TWO_COLUMN_WIDTH = 480
 # While the sidebar is under the image: the tallest a list may get, and the share of the
 # panel's height the sidebar may take before it scrolls.
 LIST_HEIGHT_BELOW = 140
 SIDEBAR_SHARE_BELOW = 0.45
-
-
-def write_mask(path: str, mask: np.ndarray) -> Path:
-    """Export a 2-D mask to an image file; nothing here reads it back."""
-    resolved = Path(path).expanduser()
-    resolved.parent.mkdir(parents=True, exist_ok=True)
-    if not cv2.imwrite(str(resolved), np.asarray(mask, dtype=np.uint8)):
-        raise OSError(f"failed to write a mask to '{resolved}'")
-    return resolved
+# A loaded picture is lit where brighter than mid-grey.
+LIT_ABOVE = 127
 
 
 @data_panel_registry.register("mask_editor")
 class MaskEditorPanel(DataPanel[ImageOutput]):
-    """Draw thresholded polygon ROIs over an acquired image, one set per mask. Every edit
-    rewrites the mask being drawn in the drawn masks, which programs read."""
+    """Draw thresholded polygon ROIs over an acquired image, one set per mask, beside a preview
+    of the mask being drawn. Every edit rewrites that mask in the drawn masks, which programs
+    read."""
 
     display_name = "Mask Editor"
     group = "Mask editors"
@@ -99,7 +97,7 @@ class MaskEditorPanel(DataPanel[ImageOutput]):
         self.image_item = QGraphicsPixmapItem()
         self.scene.addItem(self.image_item)
         self.image_view = MaskImageView(self.scene, self)
-        self.image_view.setMinimumSize(200, 200)
+        self.preview = MaskPreview(self)
         self.sidebar = QWidget()
         self.columns = QBoxLayout(QBoxLayout.Direction.TopToBottom, self.sidebar)
         self.columns.setContentsMargins(0, 0, 0, 0)
@@ -109,7 +107,7 @@ class MaskEditorPanel(DataPanel[ImageOutput]):
         self.split = QBoxLayout(QBoxLayout.Direction.LeftToRight, self.body)
         self.split.setContentsMargins(0, 4, 0, 0)
         self.split.setSpacing(12)
-        self.split.addWidget(self.image_view, 1)
+        self.split.addWidget(self.build_views(), 1)
         self.split.addWidget(self.build_sidebar_scroll())
 
         self.rebuild_channel_boxes()
@@ -119,6 +117,17 @@ class MaskEditorPanel(DataPanel[ImageOutput]):
         self.show_masks()
         self.connect_source()
         self.arrange()
+
+    def build_views(self) -> QWidget:
+        """The image to draw on and the preview of the mask, sharing the space equally."""
+        views = QWidget(self.body)
+        self.pair = QBoxLayout(QBoxLayout.Direction.LeftToRight, views)
+        self.pair.setContentsMargins(0, 0, 0, 0)
+        self.pair.setSpacing(12)
+        for view in (self.image_view, self.preview):
+            view.setMinimumSize(MIN_VIEW_SIDE, MIN_VIEW_SIDE)
+            self.pair.addWidget(view, 1)
+        return views
 
     def build_sidebar_scroll(self) -> QScrollArea:
         """The sidebar in a frameless scroll area, so a small dock scrolls it rather than
@@ -144,6 +153,7 @@ class MaskEditorPanel(DataPanel[ImageOutput]):
         self.mask_picker.chosen.connect(self.choose_mask)
         self.mask_picker.renamed.connect(self.rename_mask)
         self.mask_picker.new_requested.connect(self.new_mask)
+        self.mask_picker.load_requested.connect(self.load_mask)
         self.mask_picker.export_requested.connect(self.save_mask)
         self.mask_picker.delete_requested.connect(self.delete_mask)
         layout.addWidget(self.mask_picker, 1)
@@ -208,10 +218,23 @@ class MaskEditorPanel(DataPanel[ImageOutput]):
         self.arrange()
 
     def arrange(self) -> None:
-        """Put the sidebar beside the image in a wide dock, and under it in a tall one."""
+        """Put the sidebar beside the views or under them, and the two views side by side or
+        one above the other: whichever leaves the views largest."""
         # The panel's size, not the body's, which is laid out only after this runs.
         width, height = self.width(), self.height() - self.source.height()
-        beside = width >= SIDEBAR_WIDTH + MIN_CANVAS_WIDTH and width >= 0.9 * height
+        beside_area = (width - SIDEBAR_WIDTH, height)
+        below_area = (width, height * (1 - SIDEBAR_SHARE_BELOW))
+        roomier = view_side(*beside_area) >= view_side(*below_area)
+        beside = width >= SIDEBAR_WIDTH + MIN_VIEWS_WIDTH and roomier
+        across = side_by_side(*(beside_area if beside else below_area))
+        self.pair.setDirection(
+            QBoxLayout.Direction.LeftToRight if across else QBoxLayout.Direction.TopToBottom
+        )
+        self.arrange_sidebar(beside, width, height)
+
+    def arrange_sidebar(self, beside: bool, width: int, height: int) -> None:
+        """A sidebar beside the views is one tall column; under them, two columns side by side
+        when wide enough, kept to a share of the height."""
         if beside:
             self.split.setDirection(QBoxLayout.Direction.LeftToRight)
             self.columns.setDirection(QBoxLayout.Direction.TopToBottom)
@@ -400,6 +423,7 @@ class MaskEditorPanel(DataPanel[ImageOutput]):
             display += norm[..., None] * CHANNEL_COLORS[idx % len(CHANNEL_COLORS)] * 0.65
             active |= (channel >= low) & (channel <= high)
         display = np.clip(display, 0, 255)
+        self.show_preview()
         # Whitening shows what a threshold keeps; with none, the image is left plain.
         if self.apply_thresholds.isChecked():
             display[active] = 255
@@ -415,9 +439,19 @@ class MaskEditorPanel(DataPanel[ImageOutput]):
         self.image_item.setPixmap(QPixmap.fromImage(self._display_qimage))
         self.scene.setSceneRect(QRectF(self._display_qimage.rect()))
 
+    def show_preview(self) -> None:
+        """Show the mask being drawn as it is saved, or the image's grid blank when there is
+        none."""
+        mask = self.current_mask()
+        blank = np.zeros((self._h, self._w), dtype=np.uint8)
+        self.preview.show_image(blank if mask is None else mask.as_image())
+
+    def current_mask(self) -> Mask | None:
+        return next((m for m in self.masks() if m.id == self.current), None)
+
     def current_pixels(self) -> np.ndarray | None:
         """The lit pixels of the mask being drawn, if it is on this image's grid."""
-        mask = next((m for m in self.masks() if m.id == self.current), None)
+        mask = self.current_mask()
         if mask is None or mask.array.shape != (self._h, self._w):
             return None
         return mask.array > 0
@@ -433,7 +467,7 @@ class MaskEditorPanel(DataPanel[ImageOutput]):
         if self.apply_thresholds.isChecked():
             low, high = self.coerced_thresholds()
             threshold = Threshold(float(low), float(high), self._channel_visibility.copy())
-        self._rois.append(MaskRoi(points=points, threshold=threshold))
+        self._rois.append(MaskRoi(points=points, threshold=threshold, pixels=None))
         self.sync_rois()
         self.put_mask()
 
@@ -522,17 +556,45 @@ class MaskEditorPanel(DataPanel[ImageOutput]):
     def save_mask(self, mask_id: str) -> None:
         mask = next(m for m in self.masks() if m.id == mask_id)
         path, _ = QFileDialog.getSaveFileName(
-            self, "Export Mask", mask.label, "PNG (*.png);;TIFF (*.tif *.tiff);;All Files (*)"
+            self, "Export Mask", f"{mask.label}.png", "PNG (*.png)"
         )
         if not path:
             return
-        # A file boundary: an unwritable path or an unknown extension.
+        written = Path(path).expanduser()
+        if written.suffix.lower() != ".png":
+            written = written.with_name(f"{written.name}.png")
+        # A file boundary: an unwritable path.
         try:
-            written = write_mask(path, np.where(mask.array > 0, 255, 0).astype(np.uint8))
-        except (OSError, cv2.error) as exc:
-            QMessageBox.critical(self, "Export Failed", f"Failed to save mask to {path}: {exc}")
+            written.parent.mkdir(parents=True, exist_ok=True)
+            write_png(written, mask.as_image())
+        except OSError as exc:
+            QMessageBox.critical(self, "Export Failed", f"Failed to save mask to {written}: {exc}")
             return
         QMessageBox.information(self, "Mask Exported", f"Wrote a mask to {written}.")
+
+    def load_mask(self) -> None:
+        """Add a mask saved as a picture, fitted to the image's grid as one region, and draw
+        on it."""
+        path, _ = QFileDialog.getOpenFileName(self, "Load Mask", "", "PNG (*.png);;All Files (*)")
+        if not path:
+            return
+        # A file boundary: a missing or unreadable picture.
+        try:
+            lit = read_png(Path(path)) > LIT_ABOVE
+        except (OSError, ValueError) as exc:
+            QMessageBox.critical(self, "Load Failed", f"Could not load a mask from {path}: {exc}")
+            return
+        loaded = Mask(lit, Path(path).stem, Mask.new_id())
+        pixels = loaded.on_grid(self._h, self._w)
+        if not pixels.any():
+            QMessageBox.warning(self, "Nothing to Load", f"{Path(path).name} has no lit pixels.")
+            return
+        region = MaskRoi(points=[], threshold=None, pixels=pixels)
+        mask = replace(loaded, array=mask_from_rois([region], self._data))
+        # Chosen before it is written, so the list selects it when it hears of it.
+        self.drafts[mask.id] = [region]
+        self.choose_mask(mask.id)
+        self.inputs.set(MASKS.key, (*self.masks(), mask))
 
 
 def mask_from_rois(rois: list[MaskRoi], data: np.ndarray) -> np.ndarray:
@@ -541,16 +603,35 @@ def mask_from_rois(rois: list[MaskRoi], data: np.ndarray) -> np.ndarray:
     height, width = data.shape[1:]
     mask = np.zeros((height, width), dtype=np.uint8)
     for roi in rois:
-        polygon = np.array(
-            [[int(round(x)), int(round(y))] for x, y in roi.points], dtype=np.int32
-        ).reshape(-1, 1, 2)
-        shape = np.zeros((height, width), dtype=np.uint8)
-        cv2.fillPoly(shape, [polygon], 255)
-        inside = shape == 255
+        inside = roi_shape(roi, height, width)
         if roi.threshold is not None:
             inside &= in_range(data, roi.threshold)
         mask[inside] = 255
     return mask
+
+
+def roi_shape(roi: MaskRoi, height: int, width: int) -> np.ndarray:
+    """The pixels inside a region's shape, before any threshold: its loaded pixels, or its
+    polygon filled."""
+    if roi.pixels is not None:
+        return roi.pixels.copy()
+    polygon = np.array(
+        [[int(round(x)), int(round(y))] for x, y in roi.points], dtype=np.int32
+    ).reshape(-1, 1, 2)
+    shape = np.zeros((height, width), dtype=np.uint8)
+    cv2.fillPoly(shape, [polygon], 255)
+    return shape == 255
+
+
+def view_side(width: float, height: float) -> float:
+    """The side of the largest square each of two views gets in an area, laid out the better
+    way."""
+    return max(min(width / 2, height), min(width, height / 2))
+
+
+def side_by_side(width: float, height: float) -> bool:
+    """Whether two views get more room side by side in an area than one above the other."""
+    return min(width / 2, height) >= min(width, height / 2)
 
 
 def in_range(data: np.ndarray, threshold: Threshold) -> np.ndarray:

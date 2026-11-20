@@ -137,15 +137,25 @@ class UnitsOutput(ProgramOutput):
         self.nbytes_saved = 0
 
     def keep(self, records: tuple[UnitRecord, ...]) -> None:
-        text = json.dumps({"units": [record.to_dict() for record in records]}, indent=2)
+        text = units_text(records)
         with self.lock:
             self.records = records
             self.nbytes_saved = len(text)
             if self.root is not None:
-                path = self.root.with_name(f"{self.root.name}_{self.name}.json")
-                path.write_text(text, encoding="utf-8")
-                self.paths = {self.name: path}
+                self.write_file(self.root, text)
         self.changed()
+
+    def save_to(self, root: Path) -> None:
+        with self.lock:
+            self.root = root
+            # Set once the loop kept its units; a run that never did wrote no file.
+            if self.nbytes_saved:
+                self.write_file(root, units_text(self.records))
+
+    def write_file(self, root: Path, text: str) -> None:
+        path = root.with_name(f"{root.name}_{self.name}.json")
+        path.write_text(text, encoding="utf-8")
+        self.paths = {self.name: path}
 
     @property
     def nbytes(self) -> int:
@@ -160,3 +170,7 @@ class UnitsOutput(ProgramOutput):
             output.records = tuple(UnitRecord.from_dict(each) for each in raw["units"])
             output.nbytes_saved = path.stat().st_size
         return output
+
+
+def units_text(records: tuple[UnitRecord, ...]) -> str:
+    return json.dumps({"units": [record.to_dict() for record in records]}, indent=2)
