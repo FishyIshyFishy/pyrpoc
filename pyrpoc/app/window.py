@@ -17,6 +17,7 @@ from pyrpoc.app.application import Application
 from pyrpoc.app.device_docks import DeviceDocks
 from pyrpoc.app.dock_placement import DockPlacement
 from pyrpoc.app.menubar import MainMenuBar
+from pyrpoc.app.shortcuts import ShortcutController, ShortcutsDialog
 from pyrpoc.app.theme.manager import ThemeController
 from pyrpoc.core.panels import Panel
 from pyrpoc.core.program_output import ProgramOutput
@@ -99,6 +100,9 @@ class MainWindow(QWidget):
         self.refresh_panels_menu()
         self.menubar.populate_style_menu(self.theme_controller.get_saved_mode())
         self.menubar.style_selected.connect(self.set_style)
+        # Commands are registered here, each with what it runs.
+        self.shortcuts = ShortcutController(self)
+        self.menubar.shortcuts_requested.connect(self.edit_shortcuts)
 
     def bind_session(self, save_now: Callable[[], None]) -> None:
         """Save the session when the window closes."""
@@ -285,6 +289,9 @@ class MainWindow(QWidget):
 
     def set_style(self, theme_mode: str) -> None:
         self.menubar.set_active_style(self.theme_controller.apply(theme_mode, persist=True))
+
+    def edit_shortcuts(self) -> None:
+        ShortcutsDialog(self.shortcuts, self).exec()
 
     def closeEvent(self, event: QCloseEvent | None) -> None:
         self.shutting_down = self.device_docks.frozen = True

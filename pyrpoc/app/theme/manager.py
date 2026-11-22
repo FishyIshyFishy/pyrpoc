@@ -4,15 +4,15 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
-from PyQt6.QtCore import QFile, QSettings, QStandardPaths, QTextStream
+from PyQt6.QtCore import QFile, QStandardPaths, QTextStream
 from PyQt6.QtGui import QColor, QPalette
 from PyQt6.QtWidgets import QApplication
+
+from pyrpoc.app.settings import app_settings
 
 from . import breeze_all
 from .mcolors import MCOLORS, MColor, recolor
 
-_SETTINGS_ORG = "pyrpoc"
-_SETTINGS_APP = "pyrpoc"
 _SETTINGS_KEY_THEME_MODE = "ui/theme_mode"
 DEFAULT_THEME = "dark-blueberry"
 available_themes = [f"{mode}-{color.key}" for mode in ("dark", "light") for color in MCOLORS]
@@ -132,7 +132,7 @@ class ThemeController:
     def __init__(self, app: QApplication):
         self.app = app
         breeze_all.qInitResources()
-        self.settings = QSettings(_SETTINGS_ORG, _SETTINGS_APP)
+        self.settings = app_settings()
 
     def get_saved_mode(self) -> str:
         """The saved theme, or the default if settings hold something unknown."""
