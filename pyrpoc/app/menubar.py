@@ -12,6 +12,8 @@ from pyrpoc.app.theme.mcolors import MCOLORS
 
 class MainMenuBar(QMenuBar):
     style_selected = pyqtSignal(str)
+    # Preferences > Keyboard Shortcuts was chosen.
+    shortcuts_requested = pyqtSignal()
     # A display or misc panel type was chosen to add, by registry key.
     panel_requested = pyqtSignal(str)
     # A device type was chosen to add, by registry key.
@@ -27,8 +29,13 @@ class MainMenuBar(QMenuBar):
         self.instruments_menu = QMenu("&Instruments", self)
         self.addMenu(self.instruments_menu)
 
-        self.style_menu = QMenu("&Style", self)
-        self.addMenu(self.style_menu)
+        self.preferences_menu = QMenu("P&references", self)
+        self.addMenu(self.preferences_menu)
+        self.style_menu = QMenu("&Style", self.preferences_menu)
+        self.preferences_menu.addMenu(self.style_menu)
+        shortcuts = QAction("&Keyboard Shortcuts…", self.preferences_menu)
+        shortcuts.triggered.connect(lambda _checked=False: self.shortcuts_requested.emit())
+        self.preferences_menu.addAction(shortcuts)
         self._style_actions: dict[str, QAction] = {}
         self._style_group = QActionGroup(self)
         self._style_group.setExclusive(True)

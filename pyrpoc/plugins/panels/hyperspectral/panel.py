@@ -16,16 +16,17 @@ from PyQt6.QtWidgets import (
     QSlider,
     QSplitter,
     QVBoxLayout,
+    QWidget,
 )
 
 from pyrpoc.core.library import Library
 from pyrpoc.core.program_input import ProgramInputs
 from pyrpoc.plugins.program_io.outputs import HyperspectralOutput
 from pyrpoc.utils.widgets.data_panel import DataPanel, data_panel_registry
-from pyrpoc.utils.widgets.levels import autoscale_levels
+from pyrpoc.utils.widgets.levels import LevelsControl, LevelsState, autoscale_levels
 from pyrpoc.utils.widgets.stage_link import StageLink
 
-from .views import RegionImage, SpectrumPlot
+from .views import GREY, RegionImage, SpectrumPlot
 
 
 @data_panel_registry.register("hyperspectral")
@@ -47,9 +48,7 @@ class HyperspectralPanel(DataPanel[HyperspectralOutput]):
         root.setContentsMargins(6, 6, 6, 6)
         root.addLayout(self.build_controls())
         split = QSplitter(Qt.Orientation.Vertical, self.body)
-        self.image = RegionImage(split)
-        self.image.region_moved.connect(self.show_spectrum)
-        split.addWidget(self.image)
+        split.addWidget(self.build_image_row(split))
         self.spectrum = SpectrumPlot(split)
         self.spectrum.picked.connect(self.slider_to)
         split.addWidget(self.spectrum)
@@ -68,6 +67,23 @@ class HyperspectralPanel(DataPanel[HyperspectralOutput]):
         self.region_box.setChecked(True)
         self.region_box.toggled.connect(self.on_region_toggled)
         row.addWidget(self.region_box)
+        return row
+
+    def build_image_row(self, parent: QWidget) -> QWidget:
+        """The image beside the histogram that sets its levels."""
+        row = QWidget(parent)
+        layout = QHBoxLayout(row)
+        layout.setContentsMargins(0, 0, 0, 0)
+        self.image = RegionImage(row)
+        self.image.region_moved.connect(self.show_spectrum)
+        layout.addWidget(self.image, 1)
+        self.levels = LevelsControl(row, self.image.item, GREY)
+        self.levels.autoscale.setToolTip(
+            "Rescale the levels to each new image, over the whole sweep so the spectrum's rise "
+            "and fall shows as brightness"
+        )
+        self.levels.changed.connect(self.state_changed.emit)
+        layout.addWidget(self.levels)
         return row
 
     def build_slider_row(self) -> QHBoxLayout:
@@ -124,15 +140,15 @@ class HyperspectralPanel(DataPanel[HyperspectralOutput]):
         self.slider.setValue(index)
 
     def show_step(self) -> None:
-        """The image under the slider, levelled over the whole sweep so the spectrum's rise and
-        fall shows as brightness."""
+        """The image under the slider, autoscaled over the whole sweep."""
         if not self.images:
             return
         index = self.slider.value()
         planes = [image[self.channel] for image in self.images]
         low = min(autoscale_levels(plane)[0] for plane in planes)
         high = max(autoscale_levels(plane)[1] for plane in planes)
-        self.image.show_plane(planes[index], (low, high))
+        self.levels.take(planes[index], (low, high))
+        self.image.fit_region(*planes[index].shape)
         self.spectrum.mark(self.delays[index])
         self.position.setText(f"{index + 1}/{len(self.images)} · {self.delays[index]:.1f} µm")
 
@@ -165,10 +181,17 @@ class HyperspectralPanel(DataPanel[HyperspectralOutput]):
         self.spectrum.clear_spectrum()
 
     def export_persistence_state(self) -> dict[str, Any]:
-        return {"channel": self.channel, "region": self.region_box.isChecked()}
+        return {
+            "channel": self.channel,
+            "region": self.region_box.isChecked(),
+            "levels": self.levels.export_state().to_json(),
+        }
 
     def import_persistence_state(self, state: dict[str, Any]) -> None:
         self.wanted_channel = int(state.get("channel", 0))
         if self.wanted_channel < self.channel_box.count():
             self.channel_box.setCurrentIndex(self.wanted_channel)
         self.region_box.setChecked(bool(state.get("region", True)))
+        levels = state.get("levels")
+        if isinstance(levels, dict):
+            self.levels.restore(LevelsState.from_json(levels))

@@ -22,7 +22,8 @@ REGION_FRACTION = 0.5
 
 class RegionImage(pg.PlotWidget):
     """One channel of one image, aspect-locked with y growing downward, and a box that picks the
-    region the spectrum is taken over."""
+    region the spectrum is taken over. The image's levels and colour map are set by a
+    ``LevelsControl`` on ``item``."""
 
     # The region was moved or resized.
     region_moved = pyqtSignal()
@@ -34,7 +35,6 @@ class RegionImage(pg.PlotWidget):
         self.setAspectLocked(True)
         self.invertY(True)
         self.item = pg.ImageItem()
-        self.item.setColorMap(GREY)
         self.addItem(self.item)
         self.region = pg.RectROI((0, 0), (1, 1), pen=pg.mkPen("y", width=2))
         self.region.setZValue(10)
@@ -43,11 +43,10 @@ class RegionImage(pg.PlotWidget):
         # The shape the region was last placed for, so a new shape gets a fresh region.
         self.placed_for: tuple[int, int] | None = None
 
-    def show_plane(self, plane: np.ndarray, levels: tuple[float, float]) -> None:
-        """Show a ``(H, W)`` plane, placing the region over its middle if its shape is new."""
-        self.item.setImage(plane, autoLevels=False, levels=levels)
-        if plane.shape != self.placed_for:
-            self.place_region(plane.shape[0], plane.shape[1])
+    def fit_region(self, height: int, width: int) -> None:
+        """Place the region over the middle of a ``(height, width)`` image, if that shape is new."""
+        if (height, width) != self.placed_for:
+            self.place_region(height, width)
 
     def place_region(self, height: int, width: int) -> None:
         self.placed_for = (height, width)

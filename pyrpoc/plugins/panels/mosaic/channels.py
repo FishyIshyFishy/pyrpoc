@@ -1,8 +1,8 @@
 """Every channel overlaid in its own colour, with a LUT per channel."""
 
-# Each channel is one column: a swatch and its name as a show/hide box, an autoscale box, and a
-# vertical histogram filling the rest of the height. The columns share the strip's width equally,
-# so a few channels fill it; many scroll sideways.
+# Each channel is one column: a swatch and its name as a show/hide box above its levels control, an
+# autoscale box and a vertical histogram filling the rest of the height. The columns share the
+# strip's width equally, so a few channels fill it; many scroll sideways.
 
 from __future__ import annotations
 
@@ -12,10 +12,10 @@ from typing import Any
 import numpy as np
 import pyqtgraph as pg
 from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtWidgets import QCheckBox, QHBoxLayout, QLabel, QScrollArea, QVBoxLayout, QWidget
+from PyQt6.QtWidgets import QCheckBox, QHBoxLayout, QLabel, QScrollArea, QWidget
 
 from pyrpoc.utils.widgets.colors import color_for_index, color_map_from_rgb
-from pyrpoc.utils.widgets.levels import autoscale_levels, mono_levels
+from pyrpoc.utils.widgets.levels import LevelsControl, LevelsState, autoscale_levels
 
 # Columns the strip makes room for before scrolling the rest sideways.
 COLUMNS_WITHOUT_SCROLLING = 4
@@ -23,12 +23,8 @@ COLUMNS_WITHOUT_SCROLLING = 4
 
 @dataclass
 class ChannelColumn:
-    root: QWidget
+    levels: LevelsControl
     shown: QCheckBox
-    autoscale: QCheckBox
-    histogram: pg.HistogramLUTWidget
-    # Never drawn: it holds the channel's plane so the histogram has data.
-    source: pg.ImageItem
     rgb: tuple[int, int, int]
 
 
@@ -37,9 +33,7 @@ class ColumnState:
     """One channel's saved settings, parsed from the session."""
 
     shown: bool
-    autoscale: bool
-    min_val: float
-    max_val: float
+    levels: LevelsState
 
 
 class ChannelStrip(QScrollArea):
@@ -67,9 +61,7 @@ class ChannelStrip(QScrollArea):
         self.planes = planes
         self.sync_columns(labels)
         for column, plane in zip(self.columns, planes, strict=True):
-            column.source.setImage(plane, autoLevels=False)
-            if column.autoscale.isChecked():
-                self.apply_levels(column, *autoscale_levels(plane))
+            column.levels.take(plane, autoscale_levels(plane))
 
     def colour(self, planes: np.ndarray) -> np.ndarray:
         """A ``(C, H, W)`` image of these channels as ``(H, W, 3)`` in 0..1: the shown
@@ -79,27 +71,20 @@ class ChannelStrip(QScrollArea):
         for column, plane in zip(self.columns, planes, strict=True):
             if not column.shown.isChecked():
                 continue
-            low, high = mono_levels(column.histogram)
-            scaled = np.clip((plane - low) / max(high - low, 1e-12), 0.0, 1.0)
+            scaled = column.levels.scaled(plane)
             out += scaled[..., None] * (np.asarray(column.rgb, dtype=np.float32) / 255.0)
         return np.clip(out, 0.0, 1.0)
-
-    def apply_levels(self, column: ChannelColumn, low: float, high: float) -> None:
-        # Blocked so levels set here are not mistaken for the user dragging them.
-        column.histogram.item.blockSignals(True)
-        column.histogram.item.setLevels(low, max(high, low + 1e-12))
-        column.histogram.item.blockSignals(False)
 
     def sync_columns(self, labels: list[str]) -> None:
         """One column per channel, renamed in place; columns that stay keep
         their levels."""
         while len(self.columns) > len(labels):
             column = self.columns.pop()
-            column.root.hide()
-            column.root.deleteLater()
+            column.levels.hide()
+            column.levels.deleteLater()
         while len(self.columns) < len(labels):
             self.columns.append(self.build_column(len(self.columns)))
-            self._layout.addWidget(self.columns[-1].root, 1)
+            self._layout.addWidget(self.columns[-1].levels, 1)
         for column, label in zip(self.columns, labels, strict=True):
             column.shown.setText(label)
         self.fit_columns()
@@ -112,65 +97,34 @@ class ChannelStrip(QScrollArea):
         if shown == 0:
             return
         margins = self._layout.contentsMargins()
-        needed = shown * (self.columns[0].root.sizeHint().width() + self._layout.spacing())
+        needed = shown * (self.columns[0].levels.sizeHint().width() + self._layout.spacing())
         self.setMinimumWidth(needed + margins.left() + margins.right() + 2 * self.frameWidth())
 
     def build_column(self, index: int) -> ChannelColumn:
         rgb = color_for_index(index)
-        root = QWidget(self._content)
-        layout = QVBoxLayout(root)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(2)
-        name = QHBoxLayout()
-        swatch = QLabel(root)
+        # The source image is never drawn: it holds the channel's plane so the histogram has data.
+        levels = LevelsControl(self._content, pg.ImageItem(), color_map_from_rgb(rgb))
+        swatch = QLabel(levels)
         swatch.setFixedSize(10, 10)
         swatch.setStyleSheet("background-color: rgb({}, {}, {});".format(*rgb))
-        name.addWidget(swatch)
-        shown = QCheckBox(root)
+        levels.header.addWidget(swatch)
+        shown = QCheckBox(levels)
         shown.setChecked(True)
         shown.setToolTip("Show this channel")
-        name.addWidget(shown, 1)
-        layout.addLayout(name)
-        autoscale = QCheckBox("Auto", root)
-        autoscale.setChecked(True)
-        autoscale.setToolTip("Rescale this channel's levels to each new image")
-        layout.addWidget(autoscale)
-
-        source = pg.ImageItem()
-        histogram = pg.HistogramLUTWidget(root)
-        histogram.setImageItem(source)
-        histogram.item.gradient.setColorMap(color_map_from_rgb(rgb))
-        layout.addWidget(histogram, 1)
-
-        column = ChannelColumn(root, shown, autoscale, histogram, source, rgb)
+        levels.header.addWidget(shown, 1)
         shown.toggled.connect(lambda _checked: self.changed.emit())
-        autoscale.toggled.connect(lambda _checked, c=column: self.on_autoscale_toggled(c))
-        histogram.item.sigLevelsChanged.connect(lambda _item: self.changed.emit())
-        return column
-
-    def on_autoscale_toggled(self, column: ChannelColumn) -> None:
-        if column.autoscale.isChecked() and self.planes:
-            plane = self.planes[self.columns.index(column)]
-            self.apply_levels(column, *autoscale_levels(plane))
-        self.changed.emit()
+        levels.changed.connect(self.changed.emit)
+        return ChannelColumn(levels, shown, rgb)
 
     def clear_planes(self) -> None:
         """Nothing is judged; columns stay, keeping their levels for the next data."""
         self.planes = []
 
     def export_state(self) -> list[dict[str, Any]]:
-        state = []
-        for column in self.columns:
-            low, high = mono_levels(column.histogram)
-            state.append(
-                {
-                    "shown": column.shown.isChecked(),
-                    "autoscale": column.autoscale.isChecked(),
-                    "min_val": low,
-                    "max_val": high,
-                }
-            )
-        return state
+        return [
+            {"shown": column.shown.isChecked(), **column.levels.export_state().to_json()}
+            for column in self.columns
+        ]
 
     def import_state(self, raw: Any) -> None:
         """Parse saved channels from session JSON, a boundary: a malformed entry
@@ -178,12 +132,7 @@ class ChannelStrip(QScrollArea):
         if not isinstance(raw, list):
             return
         self._pending = [
-            ColumnState(
-                shown=bool(entry.get("shown", True)),
-                autoscale=bool(entry.get("autoscale", True)),
-                min_val=float(entry.get("min_val", 0.0)),
-                max_val=float(entry.get("max_val", 1.0)),
-            )
+            ColumnState(shown=bool(entry.get("shown", True)), levels=LevelsState.from_json(entry))
             for entry in raw
             if isinstance(entry, dict)
         ]
@@ -193,9 +142,8 @@ class ChannelStrip(QScrollArea):
         if not self._pending or not self.columns:
             return
         for column, saved in zip(self.columns, self._pending, strict=False):
-            for box, value in ((column.shown, saved.shown), (column.autoscale, saved.autoscale)):
-                box.blockSignals(True)
-                box.setChecked(value)
-                box.blockSignals(False)
-            self.apply_levels(column, saved.min_val, saved.max_val)
+            column.shown.blockSignals(True)
+            column.shown.setChecked(saved.shown)
+            column.shown.blockSignals(False)
+            column.levels.restore(saved.levels)
         self._pending = []
